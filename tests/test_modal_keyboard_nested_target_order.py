@@ -2,21 +2,26 @@ import json
 import os
 import subprocess
 import textwrap
-import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 
 
-def test_nested_file_viewer_precedes_unsaved_dialog_keyboard_targets() -> None:
-    """The first open target owns a key, so this mirrors app.js's viewer-first order."""
-    source = APP_MODAL_JS.read_text(encoding="utf-8")
+def test_nested_file_dialogs_own_keyboard_targets_before_file_viewer() -> None:
+    """Nested file dialogs receive their distinctive keys before the viewer."""
+    app_source = APP_JS.read_text(encoding="utf-8")
+    targets_start = app_source.index("        const modalIsolationTargets = [")
+    targets_end = app_source.index("        ];", targets_start) + len("        ];")
+    targets_source = app_source[targets_start:targets_end]
+    modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
     program = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const source = {json.dumps(source)};
+        const modalSource = {json.dumps(modal_source)};
+        const targetsSource = {json.dumps(targets_source)};
         const clicks = [];
 
         function button(name, label) {{
@@ -31,10 +36,10 @@ def test_nested_file_viewer_precedes_unsaved_dialog_keyboard_targets() -> None:
           }};
         }}
 
-        function dialog(name, buttons) {{
+        function dialog(name, buttons, open = false) {{
           return {{
             name,
-            style: {{ display: "flex" }},
+            style: {{ display: open ? "flex" : "none" }},
             querySelectorAll(selector) {{
               if (selector !== "button") throw new Error(`unexpected selector: ${{selector}}`);
               return buttons;
@@ -42,28 +47,58 @@ def test_nested_file_viewer_precedes_unsaved_dialog_keyboard_targets() -> None:
           }};
         }}
 
-        const fileViewer = dialog("fileViewer", [button("viewer-delete", "Delete")]);
-        const fileUnsavedDialog = dialog("fileUnsavedDialog", [button("unsaved-discard", "Discard"), button("unsaved-cancel", "Cancel")]);
-        const ctx = {{ window: {{}} }};
+        const fileViewer = dialog("fileViewer", [button("viewer-delete", "Delete"), button("viewer-replace", "Replace")], true);
+        const fileUnsavedDialog = dialog("fileUnsavedDialog", [button("unsaved-discard", "Discard"), button("unsaved-cancel", "Cancel")], true);
+        const filePasteDialog = dialog("filePasteDialog", [button("paste-replace", "Replace")]);
+        const sendChoice = dialog("sendChoice", []);
+        const appConfirm = dialog("appConfirm", []);
+        const queueViewer = dialog("queueViewer", []);
+        const helpViewer = dialog("helpViewer", []);
+        const diagViewer = dialog("diagViewer", []);
+        const editViewer = dialog("editViewer", []);
+        const voiceSettingsViewer = dialog("voiceSettingsViewer", []);
+        const newSessionDialogController = {{ viewer: dialog("newSessionViewer", []) }};
+        const ctx = {{
+          window: {{}},
+          fileViewer,
+          fileUnsavedDialog,
+          filePasteDialog,
+          sendChoice,
+          appConfirm,
+          queueViewer,
+          helpViewer,
+          diagViewer,
+          editViewer,
+          voiceSettingsViewer,
+          newSessionDialogController,
+        }};
         vm.createContext(ctx);
-        vm.runInContext(source, ctx);
+        vm.runInContext(modalSource, ctx);
+        vm.runInContext(`${{targetsSource}}\nglobalThis.modalIsolationTargetsForTest = modalIsolationTargets;`, ctx);
         const handler = ctx.window.CodoxearModal.createModalKeyboardHandler({{
-          modalIsolationTargets: [fileViewer, fileUnsavedDialog],
+          modalIsolationTargets: ctx.modalIsolationTargetsForTest,
           isTextEntryElement: () => false,
         }});
-        const event = {{
-          key: "d",
-          defaultPrevented: false,
-          propagationStopped: false,
-          altKey: false,
-          ctrlKey: false,
-          metaKey: false,
-          isComposing: false,
-          preventDefault() {{ this.defaultPrevented = true; }},
-          stopPropagation() {{ this.propagationStopped = true; }},
-        }};
-        const activated = handler(event);
-        process.stdout.write(JSON.stringify({{ activated, clicks, event }}));
+        function press(key) {{
+          const event = {{
+            key,
+            defaultPrevented: false,
+            propagationStopped: false,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            isComposing: false,
+            preventDefault() {{ this.defaultPrevented = true; }},
+            stopPropagation() {{ this.propagationStopped = true; }},
+          }};
+          const activated = handler(event);
+          return {{ activated, defaultPrevented: event.defaultPrevented, propagationStopped: event.propagationStopped }};
+        }}
+        const unsaved = press("d");
+        fileUnsavedDialog.style.display = "none";
+        filePasteDialog.style.display = "flex";
+        const paste = press("r");
+        process.stdout.write(JSON.stringify({{ clicks, unsaved, paste }}));
         """
     )
     proc = subprocess.run(
@@ -76,7 +111,8 @@ def test_nested_file_viewer_precedes_unsaved_dialog_keyboard_targets() -> None:
     )
     result = json.loads(proc.stdout)
 
-    assert result["activated"] is True
-    assert result["event"]["defaultPrevented"] is True
-    assert result["event"]["propagationStopped"] is True
-    assert result["clicks"] == ["viewer-delete"]
+    assert result["clicks"] == ["unsaved-discard", "paste-replace"]
+    for event_name in ("unsaved", "paste"):
+        assert result[event_name]["activated"] is True
+        assert result[event_name]["defaultPrevented"] is True
+        assert result[event_name]["propagationStopped"] is True
