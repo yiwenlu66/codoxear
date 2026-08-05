@@ -3581,7 +3581,8 @@
                   else console.error("initial voice and notification sync failed", e);
                 }
               })();
-	          } catch (e) {
+          } catch (e) {
+            console.log("[session-refresh] initial refreshSessions caught", e);
 	            if (e && e.status === 401) {
               handleAppAuthLoss();
 	              return;
