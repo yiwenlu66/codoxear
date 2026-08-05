@@ -53,6 +53,7 @@ FRONTEND_ASSET_FILES = (
     "app_chat_search.js",
     "app_shell.js",
     "app_sessions.js",
+    "app_session_open.js",
     "app_transcript_view.js",
     "app_message_flow.js",
     "app_attachments.js",

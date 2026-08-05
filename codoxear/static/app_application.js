@@ -125,6 +125,9 @@
       const codoxearNavigationPulse = window.CodoxearNavigationPulse;
       if (!codoxearNavigationPulse || typeof codoxearNavigationPulse.createNavigationPulseController !== "function")
         throw new Error("Codoxear navigation pulse controller failed to load");
+      const codoxearSessionOpen = window.CodoxearSessionOpen;
+      if (!codoxearSessionOpen || typeof codoxearSessionOpen.createSessionOpenController !== "function")
+        throw new Error("Codoxear session open controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -2667,7 +2670,7 @@
           resolveAppUrl,
           handleAppAuthLoss,
           refreshSessions,
-          openSession,
+          openSession: (...args) => sessionOpenController.openSession(...args),
           clearSelectedSessionAfterRemoval,
           activeTranscriptSnapshot,
           updateSessionTranscriptSlot,
@@ -3036,7 +3039,7 @@
             }
             if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             if (e && e.status === 409) {
-              await openSession(sid, { useCache: false });
+              await sessionOpenController.openSession(sid, { useCache: false });
               return false;
             }
             setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
@@ -3229,7 +3232,7 @@
               e.preventDefault();
               e.stopPropagation();
               if (selected !== sessionId) return;
-              void openSession(sessionId, { useCache: true });
+              void sessionOpenController.openSession(sessionId, { useCache: true });
             },
           });
           turnOpen = false;
@@ -3264,117 +3267,76 @@
           setTyping(cachedBusy);
         }
 
-        async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
-          pollGen += 1;
-          const myGen = pollGen;
-          messageFlowController.prepareSessionOpen();
-
-          const oldSelected = selected;
-          selected = sessionId;
-          // Optimistically update sidebar active state for immediate visual feedback.
-          // The next poll cycle re-renders the full sidebar, but this avoids the
-          // perceived lag where the transcript switches before the highlight moves.
-          sessionsWrap.querySelectorAll(".session.active").forEach((el) => el.classList.remove("active"));
-          const optimisticActive = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
-          if (optimisticActive) optimisticActive.classList.add("active");
-          // Save the outgoing session's draft, load the incoming session's draft.
-          if (oldSelected && oldSelected !== sessionId) saveSelectedComposerDraft(oldSelected);
-          loadSelectedComposerDraft(sessionId);
-          if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
-          storageSetItem("codexweb.selected", sessionId);
-          setSessionHash(sessionId);
-          transcriptSlotRuntime.setActivePending();
-          clearRenderedTranscriptRange();
-          turnOpen = false;
-          attachmentsController.syncStagedAttachmentsFromSelectedSession();
-          updateQueueBadge();
-          setStatus({ running: false, queueLen: 0 });
-          setContext(null);
-          setTyping(false);
-          resetChatRenderState();
-
-          const s = sessionIndex.get(sessionId);
-          if (selected !== sessionId || pollGen !== myGen) return null;
-          titleLabel.textContent = s ? sessionTitleWithId(s) : sessionId ? String(sessionId) : "No session selected";
-          clickLoadT0 = performance.now();
-          clickMetricPending = true;
-          const optimisticBusy = Boolean(s && s.busy);
-          const optimisticQueueLen = s && Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
-          turnOpen = optimisticBusy;
-          setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
-          setContext(s ? s.token || null : null);
-          updateTypingStatsFromSession(s);
-          setTyping(optimisticBusy);
-          const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());
-          if (fileViewerSyncStarted) {
-            void ensureCurrentFileViewerSession().catch((e) => console.error("file viewer session sync failed after selection", e));
-          }
-
-          const cachedTail = s ? transcriptSlotRuntime.getTailCache(sessionId) : null;
-          let displayedCachedTail = false;
-          if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
-            applyCachedTail(sessionId, cachedTail, s);
-            displayedCachedTail = true;
-          }
-          if (!displayedCachedTail) renderTranscriptLoading(sessionId);
-
-          let data;
-          const tailRequest = messageFlowController.beginOpenSessionTailRequest(sessionId, myGen);
-          try {
-            data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
-              signal: tailRequest.signal,
-            });
-          } catch (e) {
-            if (e && e.status === 401) {
-              handleAppAuthLoss();
-              return null;
+        const sessionOpenController = codoxearSessionOpen.createSessionOpenController({
+          nextPollGeneration: () => { pollGen += 1; return pollGen; },
+          prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
+          getSelected: () => selected,
+          setSelected: (sessionId) => { selected = sessionId; },
+          setActiveSession: (sessionId) => {
+            sessionsWrap.querySelectorAll(".session.active").forEach((element) => element.classList.remove("active"));
+            const active = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
+            if (active) active.classList.add("active");
+          },
+          saveComposerDraft: saveSelectedComposerDraft,
+          loadComposerDraft: loadSelectedComposerDraft,
+          closeUnattendedForOtherSession: (sessionId) => {
+            if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
+          },
+          persistSelected: (sessionId) => storageSetItem("codexweb.selected", sessionId),
+          setSessionHash,
+          resetTranscriptForSession: () => {
+            transcriptSlotRuntime.setActivePending();
+            clearRenderedTranscriptRange();
+            turnOpen = false;
+          },
+          syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
+          updateQueueBadge,
+          setStatus,
+          setContext,
+          setTyping,
+          resetChatRenderState,
+          getSession: (sessionId) => sessionIndex.get(sessionId),
+          isCurrent: (sessionId, generation) => selected === sessionId && pollGen === generation,
+          setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
+          markClickLoad: () => { clickLoadT0 = performance.now(); clickMetricPending = true; },
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          updateTypingStats: updateTypingStatsFromSession,
+          beginFileViewerSync: () => {
+            const started = Boolean(isFileViewerOpen() && !currentFileDirty());
+            if (started) void ensureCurrentFileViewerSession().catch((error) => console.error("file viewer session sync failed after selection", error));
+            return started;
+          },
+          finishFileViewerSync: (sessionId, started, refreshCandidates) => {
+            if (isFileViewerOpen() && !currentFileDirty() && !started) void ensureCurrentFileViewerSession();
+            else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
+              void refreshCandidates({ sessionId }).catch((error) => console.error("file candidates refresh failed after transcript load", error));
             }
-            if (messageFlowController.isOpenSessionTailAbortError(tailRequest, e)) return null;
-            if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
-            messageFlowController.markMessagePollFailure();
-            if (e && e.status === 404) {
-              clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });
-              void refreshSessions().catch((e2) => {
-                if (e2 && e2.status === 401) handleAppAuthLoss();
-                else console.error("refreshSessions failed after session disappeared", e2);
-              });
-              return null;
-            }
-            if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
-              applyCachedTail(sessionId, cachedTail, s);
-              displayedCachedTail = true;
-            }
-            renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
-            if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
-            return null;
-          } finally {
-            messageFlowController.finishOpenSessionTailRequest(tailRequest);
-          }
-          if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
-          messageFlowController.markMessagePollSuccess();
-          const slotChange = updateSessionTranscriptSlot(sessionId, data);
-          if (slotChange.ignoredStaleBound) {
-            renderPendingTranscriptSlot(sessionId);
-            applySessionRuntimeFromTail(sessionId, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
-            if (slotChange.current.state !== "failed") kickPoll(900);
-            return data;
-          }
-          if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-          else renderPendingTranscriptSlot(sessionId);
-          applySessionRuntimeFromTail(sessionId, data);
-          if (slotChange.current.state !== "failed") {
-            openMessageEventSource(sessionId, myGen);
-            kickPoll(900);
-          }
-          if (isMobile()) setSidebarOpen(false);
-          updateUnattendedBtnState();
-          if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
-            void ensureCurrentFileViewerSession();
-          } else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
-            void refreshFileCandidates({ sessionId }).catch((e) => console.error("file candidates refresh failed after transcript load", e));
-          }
-          return data;
-        }
+          },
+          getTailCache: (sessionId) => transcriptSlotRuntime.getTailCache(sessionId),
+          tailCacheMatchesSession,
+          applyCachedTail,
+          renderTranscriptLoading,
+          messageFlow: () => messageFlowController,
+          api,
+          initPageLimit,
+          handleAuthLoss: handleAppAuthLoss,
+          clearRemovedSession: clearSelectedSessionAfterRemoval,
+          refreshSessions,
+          renderTranscriptLoadError,
+          isDisposed: () => appDisposed,
+          kickPoll,
+          messagePollDelayMs,
+          updateTranscriptSlot: updateSessionTranscriptSlot,
+          renderPendingTranscriptSlot,
+          applySessionRuntimeFromTail,
+          renderSessionTail,
+          openMessageEventSource,
+          isMobile,
+          closeSidebar: () => setSidebarOpen(false),
+          updateUnattendedButton: updateUnattendedBtnState,
+          refreshFileCandidates,
+          consoleError: (...args) => console.error(...args),
+        });
 
 			        async function applyLiveMessageData(sid, gen, data) {
           return messageFlowController.applyLiveMessageData(sid, gen, data);
@@ -3390,7 +3352,7 @@
           invalidateOlderLoad();
           transcriptScrollRuntime.enableAutoScroll();
           try {
-            await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
+            await sessionOpenController.openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
           } catch (e) {
             if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
@@ -3401,7 +3363,7 @@
         }
 
         async function selectSession(id) {
-          await openSession(id, { useCache: true });
+          await sessionOpenController.openSession(id, { useCache: true });
         }
 
         function rememberPendingHashSession(sid) {
