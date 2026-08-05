@@ -51,13 +51,17 @@
       function renderApp() {
             cleanupActiveApp();
 	        const root = $("#root");
-        const shellDOM = codoxearShell.createShellDOM({
+        const codoxearWiring = window.CodoxearWiring;
+        if (!codoxearWiring || typeof codoxearWiring.createWiring !== "function")
+          throw new Error("Codoxear wiring factories failed to load");
+        const wiring = codoxearWiring.createWiring();
+        const shellDOM = codoxearShell.createShellDOM(wiring.createShellDOMOptions({
           root,
           el,
           iconSvg,
           resolveAppUrl,
           versionedShellAssetPath,
-        });
+        }));
         const {
           app,
           backdrop,
@@ -106,14 +110,14 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
-        const networkStatus = codoxearNetwork.createNetworkStatusController({
+        const networkStatus = codoxearNetwork.createNetworkStatusController(wiring.createNetworkStatusOptions({
           banner: networkBanner,
           navigatorLike: typeof navigator === "undefined" ? undefined : navigator,
-        });
+        }));
         const codoxearUnattendedDom = window.CodoxearUnattended;
         if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
           throw new Error("Codoxear unattended DOM failed to load");
-        const unattendedDom = codoxearUnattendedDom.createUnattendedDom({ el, iconSvg, unattendedBtn });
+        const unattendedDom = codoxearUnattendedDom.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
         const { unattendedMenu, enabledEl: unattendedEnabledEl, cooldownEl: unattendedCooldownEl, remainingEl: unattendedRemainingEl, requestEl: unattendedRequestEl } = unattendedDom;
         root.appendChild(unattendedMenu);
         let pendingHashSessionId = "";
@@ -134,8 +138,6 @@
          let sessionsPollErrorStreak = 0;
          let secondaryPollErrorStreak = 0;
          let currentRunning = false;
-         let sessionsRefreshInFlight = null;
-         let sessionsRefreshQueued = false;
         let selected = null; // selected session_id (null until chosen)
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
@@ -191,7 +193,7 @@
         const codoxearEventBindings = window.CodoxearEventBindings;
         if (!codoxearEventBindings || typeof codoxearEventBindings.createEventBindings !== "function")
           throw new Error("Codoxear event bindings failed to load");
-        const eventBindings = codoxearEventBindings.createEventBindings({ addEvent: addAppEvent });
+        const eventBindings = codoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
@@ -322,7 +324,7 @@
             void runSessionsPollTick();
           }, Math.max(0, Number(delayMs) || 0));
         }
-        const secondaryPollController = codoxearSecondaryPoll.createSecondaryPollController({
+        const secondaryPollController = codoxearSecondaryPoll.createSecondaryPollController(wiring.createSecondaryPollOptions({
           isDisposed: () => appDisposed,
           isPollingEnabled: () => secondaryPollingEnabled,
           stopPolling: stopSecondaryPolling,
@@ -332,21 +334,21 @@
           setTimeout,
           runTick: runSecondaryPollTick,
           delayForPoll: secondaryPollDelayMs,
-        });
+        }));
 
         const codoxearSessionTitle = window.CodoxearSessionTitle;
         if (!codoxearSessionTitle || typeof codoxearSessionTitle.createSessionTitleController !== "function")
           throw new Error("Codoxear session title controller failed to load");
-        const sessionTitleController = codoxearSessionTitle.createSessionTitleController({
+        const sessionTitleController = codoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
           titleLabel,
           getSelected: () => selected,
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
-        });
+        }));
 
         let helpReturnFocusEl = null;
-        const applicationModalDOM = codoxearShell.createApplicationModalDOM({
+        const applicationModalDOM = codoxearShell.createApplicationModalDOM(wiring.createApplicationModalDOMOptions({
           root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost: shellDOM.elements.voiceHost,
-        });
+        }));
         const {
           fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
       fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn,
@@ -390,9 +392,9 @@
         const codoxearDialogMenu = window.CodoxearDialogMenu;
         if (!codoxearDialogMenu || typeof codoxearDialogMenu.createDialogMenuController !== "function")
           throw new Error("Codoxear dialog menu controller failed to load");
-        const dialogMenuController = codoxearDialogMenu.createDialogMenuController({ windowTarget: window });
+        const dialogMenuController = codoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
 
-        const newSessionDialogController = codoxearNewSession.createNewSessionDialogController({
+        const newSessionDialogController = codoxearNewSession.createNewSessionDialogController(wiring.createNewSessionDialogOptions({
           root,
           el,
           iconSvg,
@@ -414,7 +416,7 @@
           setPickerButtonContent,
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
-        });
+        }));
 
         const modalIsolationTargets = [
           fileUnsavedDialog,
@@ -553,12 +555,12 @@
           return codoxearClipboard.copyToClipboard(text);
         }
 
-        const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({
+        const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime(wiring.createCodeBlockCopyOptions({
           copyToClipboard,
           setToast,
           setTimeout,
           clearTimeout,
-        });
+        }));
 
         function formatConversationForCopy(events) {
           return codoxearConversationCopy.formatConversationForCopy(events);
@@ -724,7 +726,7 @@
           return transcriptViewController;
         }
 
-        const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime({ root: chatInner });
+        const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime(wiring.createMessageCopyNavigationOptions({ root: chatInner }));
 
         function renderedMessageRows() {
           return transcriptView().renderedMessageRows();
@@ -812,17 +814,17 @@
           return codoxearViewport.prefersReducedMotion();
         }
 
-        const navigationPulseController = codoxearNavigationPulse.createNavigationPulseController({
+        const navigationPulseController = codoxearNavigationPulse.createNavigationPulseController(wiring.createNavigationPulseOptions({
           setActiveRow: setActiveMessageCopyRow,
           activeElementIsCopyButton: activeElementIsMessageCopyButton,
           setTimeout,
-        });
+        }));
 
         const hintModeController = (function instantiateHintModeController() {
           const codoxearHintMode = window.CodoxearHintMode;
           if (!codoxearHintMode || typeof codoxearHintMode.createHintModeController !== "function")
             throw new Error("Codoxear hint mode controller failed to load");
-          return codoxearHintMode.createHintModeController({
+          return codoxearHintMode.createHintModeController(wiring.createHintModeOptions({
             documentTarget: document,
             isTextEntryElement,
             isMobile,
@@ -833,13 +835,13 @@
               label: element.getAttribute("data-hint"),
               element,
             })),
-          });
+          }));
         })();
 
-        const activateModalButtonForKey = codoxearModal.createModalKeyboardHandler({
+        const activateModalButtonForKey = codoxearModal.createModalKeyboardHandler(wiring.createModalKeyboardHandlerOptions({
           modalIsolationTargets,
           isTextEntryElement,
-        });
+        }));
         addAppEvent(document, "keydown", activateModalButtonForKey);
 
         // --- Direct (no-leader) Vimium-style shortcuts ---
@@ -922,7 +924,7 @@
           const codoxearChatNavigation = window.CodoxearChatNavigation;
           if (!codoxearChatNavigation || typeof codoxearChatNavigation.createChatNavigationController !== "function")
             throw new Error("Codoxear chat navigation controller failed to load");
-          return codoxearChatNavigation.createChatNavigationController({
+          return codoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
             prevUserBtn,
             nextUserBtn,
             getSelected: () => selected,
@@ -945,7 +947,7 @@
             isModalTargetOpen,
             addAppEvent,
             documentTarget: document,
-          });
+          }));
         })();
 
         function updateChatNavButtons() {
@@ -1051,7 +1053,7 @@
         )
           throw new Error("Codoxear transcript helpers failed to load");
 
-        const olderLoadRuntime = codoxearTranscript.createOlderLoadRuntime({
+        const olderLoadRuntime = codoxearTranscript.createOlderLoadRuntime(wiring.createOlderLoadOptions({
           olderWrap,
           olderButton: olderBtn,
           olderError,
@@ -1059,13 +1061,13 @@
           AbortControllerCtor: AbortController,
           nowMs: () => performance.now(),
           autoCooldownMs: OLDER_AUTO_COOLDOWN_MS,
-        });
+        }));
 
         chatSearchController = (function instantiateChatSearchController() {
           const codoxearChatSearch = window.CodoxearChatSearch;
           if (!codoxearChatSearch || typeof codoxearChatSearch.createChatSearchController !== "function")
             throw new Error("Codoxear chat search controller failed to load");
-          return codoxearChatSearch.createChatSearchController({
+          return codoxearChatSearch.createChatSearchController(wiring.createChatSearchOptions({
             chatSearchBtn,
             chatSearchInput,
             chatSearchPrevBtn,
@@ -1088,27 +1090,27 @@
             applyChatSearchMarks,
             pulseNavigatedRow: (row) => navigationPulseController.pulseNavigatedRow(row),
             prefersReducedMotion,
-          });
+          }));
         })();
 
-        const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime({
+        const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime(wiring.createTranscriptSlotOptions({
           getSession: (sessionId) => sessionIndex.get(sessionId) || null,
           maxTailEvents: INIT_PAGE_LIMIT,
-        });
+        }));
 
         function activeTranscriptSnapshot() {
           return transcriptSlotRuntime.activeSnapshot();
         }
 
-        const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({
+        const typingRowRuntime = codoxearTranscript.createTypingRowRuntime(wiring.createTypingRowOptions({
           root: chatInner,
           bottomSentinel,
           el,
           shouldAutoScroll: () => transcriptScrollRuntime.snapshot().autoScroll,
           scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
-        });
+        }));
 
-        const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime({
+        const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
           chat,
           jumpButton: jumpBtn,
           timeChip: chatTimeChip,
@@ -1124,9 +1126,9 @@
           bottomThresholdPx: 80,
           olderTopTriggerPx: OLDER_TOP_TRIGGER_PX,
           olderCancelPx: OLDER_CANCEL_PX,
-        });
+        }));
 
-        const transcriptDomRuntime = codoxearTranscript.createTranscriptDomRuntime({
+        const transcriptDomRuntime = codoxearTranscript.createTranscriptDomRuntime(wiring.createTranscriptDomOptions({
           root: chatInner,
           olderWrap,
           bottomSentinel,
@@ -1143,7 +1145,7 @@
             syncMessageCopyTabStops();
             if (chatSearchController.isOpen()) chatSearchController.refreshLoaded({ jump: false, preserveCurrent: true });
           },
-        });
+        }));
 
         function olderLoadSnapshot() {
           return olderLoadRuntime.snapshot();
@@ -1346,13 +1348,13 @@
         return codoxearMessageIdentity.normalizeTextForPendingMatch(s);
       }
 
-      const transcriptEventRuntime = codoxearTranscript.createTranscriptEventRuntime({
+      const transcriptEventRuntime = codoxearTranscript.createTranscriptEventRuntime(wiring.createTranscriptEventOptions({
         eventKey: codoxearMessageIdentity.eventKey,
         pendingMatchKey: codoxearMessageIdentity.pendingMatchKey,
         normalizePendingText: codoxearMessageIdentity.normalizeTextForPendingMatch,
         assistantDedupeKey: codoxearMessageIdentity.chatAssistantDedupeKey,
         maxRecentEventKeys: 320,
-      });
+      }));
 
       function eventKey(ev) {
         return codoxearMessageIdentity.eventKey(ev);
@@ -1392,7 +1394,7 @@
         return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });
       }
 
-      const pendingUserController = codoxearPendingUser.createPendingUserController({
+      const pendingUserController = codoxearPendingUser.createPendingUserController(wiring.createPendingUserOptions({
         selectedSessionId: () => selected,
         takePendingUserMatch,
         chatInner,
@@ -1400,9 +1402,9 @@
         time24,
         rebuildDecorations,
         markEventSeen,
-      });
+      }));
 
-        transcriptViewController = codoxearTranscriptView.createTranscriptViewController({
+        transcriptViewController = codoxearTranscriptView.createTranscriptViewController(wiring.createTranscriptViewOptions({
           root: chatInner,
           bottomSentinel,
           document,
@@ -1429,9 +1431,9 @@
             typingRowRuntime,
             historySlackRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
           },
-        });
+        }));
 
-        attachmentsController = codoxearAttachments.createAttachmentsController({
+        attachmentsController = codoxearAttachments.createAttachmentsController(wiring.createAttachmentsOptions({
           attachBtn,
           imgInput,
           composer,
@@ -1468,9 +1470,9 @@
           extractFilesFromDropData,
           addEventListener: addAppEvent,
           uploadMaxBytes: ATTACH_UPLOAD_MAX_BYTES,
-        });
+        }));
 
-        messageFlowController = codoxearMessageFlow.createMessageFlowController({
+        messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.createMessageFlowOptions({
           getSelected: () => selected,
           getGeneration: () => pollGen,
           isAppDisposed: () => appDisposed,
@@ -1555,7 +1557,7 @@
           now: () => Date.now(),
           consoleWarn: (...args) => console.warn(...args),
           consoleError: (...args) => console.error(...args),
-        });
+        }));
 
         function messagePollDelayMs(now = Date.now()) {
           return messageFlowController.messagePollDelayMs(now);
@@ -1610,7 +1612,7 @@
         }
 
 
-         const sidebarController = codoxearSessions.createSessionsController({
+         const sidebarController = codoxearSessions.createSessionsController(wiring.createSessionsOptions({
            sessionsWrap,
            sidebarEmptyHint,
            el,
@@ -1662,7 +1664,7 @@
            now: () => Date.now(),
            performanceNow: () => performance.now(),
            consoleError: (...args) => console.error(...args),
-         });
+         }));
 
         function refreshSessions() {
           return sessionRefreshController.refreshSessions();
@@ -2006,7 +2008,7 @@
           const codoxearUnattended = window.CodoxearUnattended;
           if (!codoxearUnattended || typeof codoxearUnattended.createUnattendedController !== "function")
             throw new Error("Codoxear unattended controller failed to load");
-          return codoxearUnattended.createUnattendedController({
+          return codoxearUnattended.createUnattendedController(wiring.createUnattendedOptions({
             unattendedBtn,
             unattendedMenu,
             enabledEl: unattendedEnabledEl,
@@ -2030,7 +2032,7 @@
             storageGetItem,
             storageSetItem,
             storageRemoveItem,
-          });
+          }));
         })();
 
         // App-shell button projection. The unattended-specific projection
@@ -2076,7 +2078,7 @@
         // feeds voice from the poll/SSE orchestration.
         let voiceController;
         function instantiateVoiceController() {
-          return codoxearVoice.createVoiceController({
+          return codoxearVoice.createVoiceController(wiring.createVoiceOptions({
             announceBtn,
             notificationBtn,
             liveAudio,
@@ -2110,7 +2112,7 @@
                 else console.error("desktop notification session select failed", e);
               });
             },
-          });
+          }));
         }
         voiceController = instantiateVoiceController();
         function voiceAnnouncementsEnabled() {
@@ -2140,22 +2142,22 @@
         function hideVoiceSettingsDialog() {
           return voiceController.hideVoiceSettingsDialog();
         }
-        const dialogMenusController = codoxearDialogMenus.createDialogMenusController({
+        const dialogMenusController = codoxearDialogMenus.createDialogMenusController(wiring.createDialogMenusOptions({
           sessionEditController: () => sessionEditController,
           newSessionDialogController: () => newSessionDialogController,
-        });
+        }));
 
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
-        const filePickerMenuState = codoxearFilePicker.createMenuState({
+        const filePickerMenuState = codoxearFilePicker.createMenuState(wiring.createMenuStateOptions({
           normalizeLineNumber,
-        });
-        const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime({
+        }));
+        const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime(wiring.createMenuDomOptions({
           field: filePickerField,
           menu: filePickerMenu,
           input: filePickerInput,
           menuState: filePickerMenuState,
-        });
-        const filePickerSearchState = codoxearFilePicker.createSearchState({
+        }));
+        const filePickerSearchState = codoxearFilePicker.createSearchState(wiring.createSearchStateOptions({
           blocked: () => blockUnavailableFileAction(),
           currentSessionId: () => currentFileViewerSessionId() || selected || "",
           api,
@@ -2164,8 +2166,8 @@
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
-        });
-        const filePickerEntryRuntime = codoxearFilePicker.createEntryRuntime({
+        }));
+        const filePickerEntryRuntime = codoxearFilePicker.createEntryRuntime(wiring.createEntryOptions({
           menuState: filePickerMenuState,
           inputValue: () => filePickerInput.value,
           candidateKeys: () => fileViewerController.currentFileCandidateKeys(),
@@ -2177,8 +2179,8 @@
           activeFilePath: () => activeFilePathValue(),
           searchSnapshot: () => filePickerSearchSnapshot(),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
-        });
-        const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime({
+        }));
+        const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime(wiring.createMenuRenderOptions({
           menu: filePickerMenu,
           menuState: filePickerMenuState,
           inputValue: () => filePickerInput.value,
@@ -2206,8 +2208,8 @@
           },
           el,
           createTextNode: (value) => document.createTextNode(value),
-        });
-        const filePickerInputRuntime = codoxearFilePicker.createInputRuntime({
+        }));
+        const filePickerInputRuntime = codoxearFilePicker.createInputRuntime(wiring.createInputOptions({
           input: filePickerInput,
           menuState: filePickerMenuState,
           ensureCurrentSession: () => ensureCurrentFileViewerSession(),
@@ -2229,15 +2231,15 @@
           optionElementById: (id) => document.getElementById(id),
           isFocusInsideField: () => filePickerField.contains(document.activeElement),
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
-        });
+        }));
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
-        const fileEditorMonacoLoader = codoxearFileEditor.createMonacoLoader({
+        const fileEditorMonacoLoader = codoxearFileEditor.createMonacoLoader(wiring.createMonacoLoaderOptions({
           resolveAppUrl,
           timeoutMs: MONACO_LOADER_TIMEOUT_MS,
-        });
-        const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({
+        }));
+        const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer(wiring.createFileEditorRendererOptions({
           runtime: fileEditorRuntime,
           monacoLoader: fileEditorMonacoLoader,
           host: fileDiff,
@@ -2260,12 +2262,12 @@
           runProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
           syncReadOnly: () => syncFileEditorReadOnly(),
           updateTouchToolbar: () => updateFileTouchToolbar(),
-        });
-        const filePdfLoader = codoxearFileViewer.createPdfLoader({
+        }));
+        const filePdfLoader = codoxearFileViewer.createPdfLoader(wiring.createPdfLoaderOptions({
           resolveAppUrl,
           timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
-        });
-        const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime({
+        }));
+        const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime(wiring.createFileFallbackOptions({
           host: fileDiff,
           el,
           normalizeLineNumber,
@@ -2281,12 +2283,12 @@
           markdownPreviewHtml: (body, context) => markdownPreviewHtml(body, context),
           upgradeCandidateFileRefs: (node) => upgradeCandidateFileRefs(node),
           blockedFileMessage: (rel, reason, viewerMaxBytes, size) => blockedFileMessage(rel, reason, viewerMaxBytes, size),
-        });
-        const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime({
+        }));
+        const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime(wiring.createFileDownloadOptions({
           resolveAppUrl,
           document,
-        });
-        const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime({
+        }));
+        const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wiring.createFilePdfRenderOptions({
           host: fileDiff,
           el,
           ensurePdfJs: () => ensurePdfJs(),
@@ -2302,8 +2304,8 @@
           isActivePdfRenderState: (state) => fileViewerController.isActivePdfRenderState(state),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
           IntersectionObserverCtor: typeof IntersectionObserver === "function" ? IntersectionObserver : null,
-        });
-        const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({
+        }));
+        const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime(wiring.createFilePasteDialogOptions({
           backdrop: filePasteBackdrop,
           dialog: filePasteDialog,
           input: filePasteInput,
@@ -2311,15 +2313,15 @@
           afterModalVisibilityChanged,
           focusActiveEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
-        });
-        const fileRenderSurfaceRuntime = codoxearFileViewer.createFileRenderSurfaceRuntime({
+        }));
+        const fileRenderSurfaceRuntime = codoxearFileViewer.createFileRenderSurfaceRuntime(wiring.createFileRenderSurfaceOptions({
           diff: fileDiff,
           image: fileImage,
           video: fileVideo,
           videoPreviewButton: fileVideoPreviewBtn,
           clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
-        });
-        const fileModeControlsRuntime = codoxearFileViewer.createFileModeControlsRuntime({
+        }));
+        const fileModeControlsRuntime = codoxearFileViewer.createFileModeControlsRuntime(wiring.createFileModeControlsOptions({
           diffButton: fileModeDiffBtn,
           previewButton: fileModePreviewBtn,
           downloadButton: fileDownloadBtn,
@@ -2328,16 +2330,16 @@
           setFileEditMode: (mode) => fileEditModeController.setFileEditMode(mode),
           syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
           updateFileEditButton: () => updateFileEditButton(),
-        });
-        const fileTouchToolbarRuntime = codoxearFileViewer.createFileTouchToolbarRuntime({
+        }));
+        const fileTouchToolbarRuntime = codoxearFileViewer.createFileTouchToolbarRuntime(wiring.createFileTouchToolbarOptions({
           toolbar: fileTouchToolbar,
           actions: fileTouchActions,
           dpad: fileTouchDpad,
           copyButton: fileTouchCopyBtn,
           pasteButton: fileTouchPasteBtn,
           selectButton: fileTouchSelectBtn,
-        });
-        const fileViewerModalRuntime = codoxearFileViewer.createFileViewerModalRuntime({
+        }));
+        const fileViewerModalRuntime = codoxearFileViewer.createFileViewerModalRuntime(wiring.createFileViewerModalOptions({
           backdrop: fileBackdrop,
           viewer: fileViewer,
           pickerInput: filePickerInput,
@@ -2349,8 +2351,8 @@
           isModalTargetOpen,
           setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileViewerReturnFocusElement(element, ElementCtor),
           takeReturnFocusElement: () => fileViewerController.takeFileViewerReturnFocusElement(),
-        });
-        const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRuntime({
+        }));
+        const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRuntime(wiring.createFileUnsavedDialogOptions({
           backdrop: fileUnsavedBackdrop,
           dialog: fileUnsavedDialog,
           viewer: fileViewer,
@@ -2370,16 +2372,16 @@
           setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileUnsavedReturnFocusElement(element, ElementCtor),
           takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
           isUnavailable: () => isFileViewerSessionUnavailable(),
-        });
+        }));
         const codoxearFileUnsaved = window.CodoxearFileUnsaved;
         if (!codoxearFileUnsaved || typeof codoxearFileUnsaved.createFileUnsavedController !== "function")
           throw new Error("Codoxear file unsaved controller failed to load");
-        const fileUnsavedController = codoxearFileUnsaved.createFileUnsavedController({
+        const fileUnsavedController = codoxearFileUnsaved.createFileUnsavedController(wiring.createFileUnsavedOptions({
           documentTarget: document,
           ElementCtor: HTMLElement,
           dialogRuntime: fileUnsavedDialogRuntime,
           getFileViewerController: () => fileViewerController,
-        });
+        }));
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -2593,18 +2595,18 @@
           return fileViewerController.currentFileEditMode();
         }
 
-        const fileEditModeController = codoxearFileEditMode.createFileEditModeController({
+        const fileEditModeController = codoxearFileEditMode.createFileEditModeController(wiring.createFileEditModeOptions({
           fileViewerController: () => fileViewerController,
-        });
+        }));
 
-        const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
+        const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime(wiring.createFileInspectOptions({
           currentSessionId: () => currentFileViewerSessionId(),
           selectedSessionId: () => selected,
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           api: (url, options) => api(url, options),
-        });
+        }));
 
-        const fileViewerController = codoxearFileViewer.createFileViewerController({
+        const fileViewerController = codoxearFileViewer.createFileViewerController(wiring.createFileViewerOptions({
           el,
           fileStatus,
           fileEditButton: fileEditBtn,
@@ -2666,8 +2668,8 @@
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
-        });
-        sessionEditController = window.CodoxearSessionEdit.createSessionEditController({
+        }));
+        sessionEditController = window.CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
           documentTarget: document,
           ElementCtor: HTMLElement,
           el,
@@ -2701,8 +2703,8 @@
           afterModalVisibilityChanged,
           positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           addAppEvent,
-        });
-        const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({
+        }));
+        const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime(wiring.createFileViewerPanelOptions({
           controller: fileViewerController,
           disposeFileEditor: () => disposeFileEditor(),
           resetRenderSurface: () => fileRenderSurfaceRuntime.reset(),
@@ -2714,8 +2716,8 @@
           setStatus: (status) => {
             fileStatus.textContent = status;
           },
-        });
-        const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleRuntime({
+        }));
+        const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleRuntime(wiring.createFileViewerLifecycleOptions({
           controller: fileViewerController,
           beginHide: () => fileViewerModalRuntime.beginHide(),
           hideDisplay: () => fileViewerModalRuntime.hideDisplay(),
@@ -2750,16 +2752,16 @@
               filePickerInput.focus();
             }
           },
-        });
-        const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime({
+        }));
+        const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime(wiring.createFileVideoPreviewOptions({
           controller: fileViewerController,
           fetchPreview: (url, options) => fetch(url, options),
           resolveAppUrl: (url) => resolveAppUrl(url),
           handleAuthLoss: () => handleAppAuthLoss(),
           errorText: (error) => codoxearFileHelpers.fileVideoPreviewErrorText(error),
           video: fileVideo,
-        });
-        const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
+        }));
+        const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime(wiring.createFileLoadResultOptions({
           controller: fileViewerController,
           resolveAppUrl,
           setStatus: (status) => {
@@ -2774,8 +2776,8 @@
           showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
           showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
           loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options),
-        });
-        const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({
+        }));
+        const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime(wiring.createFileCandidateRefreshOptions({
           controller: fileViewerController,
           currentSessionId: () => currentFileViewerSessionId(),
           selectedSessionId: () => selected,
@@ -2796,8 +2798,8 @@
           api: (url) => api(url),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           renderMenu: () => renderFilePickerMenu(),
-        });
-        const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime({
+        }));
+        const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime(wiring.createOpenedFileOptions({
           currentSessionId: () => currentFileViewerSessionId(),
           selectedSessionId: () => selected,
           sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
@@ -2808,8 +2810,8 @@
           listFromFilesField: (files) => listFromFilesField(files),
           listFromFileRecords: (files) => listFromFileRecords(files),
           deleteCandidateCache: (sessionId) => fileViewerController.deleteFileCandidateCache(sessionId),
-        });
-        const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime({
+        }));
+        const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime(wiring.createFileReferenceOptions({
           selectedSessionId: () => selected,
           sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
           sessions: () => Array.from(sessionIndex.values()),
@@ -2827,7 +2829,7 @@
           setToast: (message) => setToast(message),
           api: (url, options) => api(url, options),
           el,
-        });
+        }));
 
         async function openDraftFilePathWithGuard(path) {
           return await fileViewerController.openDraftFilePathWithGuard(path);
@@ -3049,9 +3051,9 @@
             closeFilePickerMenu({ restoreInput: true });
           }
         });
-        const fileTouchController = codoxearFileTouch.createFileTouchController({
+        const fileTouchController = codoxearFileTouch.createFileTouchController(wiring.createFileTouchOptions({
           fileViewerController: () => fileViewerController,
-        });
+        }));
         addAppEvent(document, "keydown", (event) => fileTouchController.handleFileTouchSelectionKeydown(event), true);
         addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);
         addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);
@@ -3123,7 +3125,7 @@
           const codoxearQueue = window.CodoxearQueue;
           if (!codoxearQueue || typeof codoxearQueue.createQueueController !== "function")
             throw new Error("Codoxear queue controller failed to load");
-          return codoxearQueue.createQueueController({
+          return codoxearQueue.createQueueController(wiring.createQueueOptions({
             queueBackdrop,
             queueCloseBtn,
             queueList,
@@ -3150,7 +3152,7 @@
             iconSvg,
             confirmAction: (options) => confirmApp(options),
             recoveryPanelFocusFallback: () => null,
-          });
+          }));
         })();
 
         function selectedSessionLaunchFailed() {
@@ -3205,7 +3207,7 @@
           const codoxearDiagnostics = window.CodoxearDiagnostics;
           if (!codoxearDiagnostics || typeof codoxearDiagnostics.createDiagnosticsController !== "function")
             throw new Error("Codoxear diagnostics controller failed to load");
-          return codoxearDiagnostics.createDiagnosticsController({
+          return codoxearDiagnostics.createDiagnosticsController(wiring.createDiagnosticsOptions({
             diagBackdrop,
             diagViewer,
             diagContent,
@@ -3232,7 +3234,7 @@
             afterModalVisibilityChanged,
             el,
             uiVersion: UI_VERSION,
-          });
+          }));
         })();
 
         eventBindings.on(diagCopyConversationBtn, 'click', (e) => void diagController.onCopyConversationClick(e));
@@ -3251,7 +3253,7 @@
         const codoxearSessionLifecycle = window.CodoxearSessionLifecycle;
         if (!codoxearSessionLifecycle || typeof codoxearSessionLifecycle.createSessionLifecycleController !== "function")
           throw new Error("Codoxear session lifecycle controller failed to load");
-        sessionLifecycleController = codoxearSessionLifecycle.createSessionLifecycleController({
+        sessionLifecycleController = codoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
           nextPollGeneration: () => { pollGen += 1; return pollGen; },
           incrementPollGeneration: () => { pollGen += 1; },
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
@@ -3343,12 +3345,12 @@
           syncRecoveryUiForSession,
           sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
           consoleError: (...args) => console.error(...args),
-        });
+        }));
 
         const codoxearSessionRefresh = window.CodoxearSessionRefresh;
         if (!codoxearSessionRefresh || typeof codoxearSessionRefresh.createSessionRefreshController !== "function")
           throw new Error("Codoxear session refresh controller failed to load");
-        sessionRefreshController = codoxearSessionRefresh.createSessionRefreshController({
+        sessionRefreshController = codoxearSessionRefresh.createSessionRefreshController(wiring.createSessionRefreshOptions({
           api,
           isDisposed: () => appDisposed,
           apiResponseNotModified,
@@ -3383,7 +3385,7 @@
           syncComposerSendButton,
           syncQueueSubmitState,
           maybeSelectPendingHashSession,
-        });
+        }));
 
         eventBindings.on($("#helpBtnSide"), 'click', (e) => {
           e.preventDefault();
@@ -3419,14 +3421,14 @@
         eventBindings.on($("#chatEmptyNewBtn"), 'click', async () => {
           newSessionDialogController.open();
         });
-        const interruptController = codoxearInterrupt.createInterruptController({
+        const interruptController = codoxearInterrupt.createInterruptController(wiring.createInterruptOptions({
           selectedSessionId: () => selected,
           setToast,
           api,
           now: Date.now,
           setPollFastUntilMs,
           kickPoll,
-        });
+        }));
         eventBindings.on(interruptBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -3493,7 +3495,7 @@
         const codoxearIOSViewport = window.CodoxearIOSViewport;
         if (!codoxearIOSViewport || typeof codoxearIOSViewport.createIOSViewportController !== "function")
           throw new Error("Codoxear iOS viewport controller failed to load");
-        const iosViewportController = codoxearIOSViewport.createIOSViewportController({
+        const iosViewportController = codoxearIOSViewport.createIOSViewportController(wiring.createIOSViewportOptions({
           windowTarget: window,
           documentTarget: document,
           navigatorTarget: navigator,
@@ -3505,11 +3507,11 @@
           requestAnimationFrame,
           setTimeout,
           clearTimeout,
-        });
+        }));
         updateQueueBadge();
         syncQueueSubmitState();
         syncComposerSendButton();
-        composerController = codoxearComposer.createComposerController({
+        composerController = codoxearComposer.createComposerController(wiring.createComposerOptions({
           form,
           textarea,
           msgPh,
@@ -3550,7 +3552,7 @@
           now: () => Date.now(),
           consoleError: (...args) => console.error(...args),
           windowTarget: window,
-        });
+        }));
 
         setActiveAppCleanup(cleanupApp);
         if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
