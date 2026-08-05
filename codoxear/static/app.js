@@ -86,7 +86,6 @@
       const codoxearAttachments = window.CodoxearAttachments;
       if (!codoxearAttachments || typeof codoxearAttachments.createAttachmentsController !== "function")
         throw new Error("Codoxear attachments module failed to load");
-      const codoxearUnread = window.CodoxearUnread;
       const codoxearMessageFlow = window.CodoxearMessageFlow;
       if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
         throw new Error("Codoxear message flow module failed to load");
