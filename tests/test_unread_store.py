@@ -61,6 +61,23 @@ class TestUnreadStore(unittest.TestCase):
             self.assertEqual(responses[0][1]["count"], 0)
             self.assertEqual(store.watermark("sid"), "m1")
 
+    def test_unread_endpoint_reads_bound_transcript_events(self):
+        with tempfile.TemporaryDirectory() as td:
+            transcript = Path(td) / "transcript.jsonl"
+            transcript.write_text(
+                '{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}],"phase":"final_answer"}}\n',
+                encoding="utf-8",
+            )
+            store = UnreadStore(Path(td) / "session_unread.json")
+            session = SimpleNamespace(log_path=transcript)
+            manager = SimpleNamespace(_unread_store=store, get_session=lambda _sid: session)
+            responses = []
+
+            _handle_unread_get(_Handler(), session_id="sid", manager=manager, deps=_deps({}, responses))
+
+            self.assertEqual(responses, [(200, {"count": 0, "first_unread_event_id": None, "last_unread_event_id": None})])
+            self.assertTrue(store.watermark("sid"))
+
 
 if __name__ == "__main__":
     unittest.main()

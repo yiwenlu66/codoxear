@@ -6,6 +6,7 @@ from typing import Any, Callable
 import urllib.parse
 
 from . import rollout_log as _rollout_log
+from .message_routes import _read_chat_export_events
 from .cwd_suggest import cwd_suggestions
 
 
