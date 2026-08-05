@@ -42,15 +42,36 @@
       const display = computed ? computed.display : style.display;
       const visibility = computed ? computed.visibility : style.visibility;
       if (display === "none" || visibility === "hidden") return false;
-      // Must also be within the current viewport (not scrolled off-screen).
-      // This prevents hint badges for file links that exist in the DOM but
-      // are far above or below the visible conversation area.
+      // A target must have a visible footprint in the current viewport and
+      // win at least one hit-test point. DOM visibility alone is insufficient:
+      // a drawer or popover can leave an underlying control measurable while
+      // making it impossible to activate.
       if (typeof target.getBoundingClientRect === "function") {
         const rect = target.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return false;
-        const vh = view ? view.innerHeight : 0;
-        const vw = view ? view.innerWidth : 0;
-        if (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw) return false;
+        const bounds = [rect.left, rect.top, rect.right, rect.bottom].map(Number);
+        if (!bounds.every(Number.isFinite)) return true;
+        const [rectLeft, rectTop, rectRight, rectBottom] = bounds;
+        const vh = view ? Number(view.innerHeight) || 0 : 0;
+        const vw = view ? Number(view.innerWidth) || 0 : 0;
+        const left = Math.max(0, rectLeft);
+        const top = Math.max(0, rectTop);
+        const right = Math.min(vw, rectRight);
+        const bottom = Math.min(vh, rectBottom);
+        if (right <= left || bottom <= top) return false;
+        if (typeof documentTarget.elementFromPoint === "function") {
+          const insetX = Math.min(2, Math.max(0, (right - left) / 4));
+          const insetY = Math.min(2, Math.max(0, (bottom - top) / 4));
+          const points = [
+            [(left + right) / 2, (top + bottom) / 2],
+            [left + insetX, top + insetY],
+            [right - insetX, top + insetY],
+            [left + insetX, bottom - insetY],
+            [right - insetX, bottom - insetY],
+          ];
+          const ownsHit = (hit) => hit === target || (typeof target.contains === "function" && target.contains(hit));
+          if (!points.some(([x, y]) => ownsHit(documentTarget.elementFromPoint(x, y)))) return false;
+        }
       }
       return true;
     }

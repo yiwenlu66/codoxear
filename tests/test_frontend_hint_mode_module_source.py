@@ -60,6 +60,9 @@ def eval_hint_mode() -> dict:
         const disabledBrowse = makeNode("browse", {{ disabled: true }});
         const hiddenDetails = makeNode("details", {{ hidden: true }});
         const reserved = makeNode("reserved");
+        const coveredSearch = makeNode("covered-search");
+        coveredSearch.getBoundingClientRect = () => ({{ left: 12, top: 24, right: 36, bottom: 48, width: 24, height: 24 }});
+        const cover = makeNode("cover");
         const textInput = makeNode("input", {{ textEntry: true }});
         const modalClose = makeNode("modal-close");
         modalClose.getAttribute = (name) => name === "aria-label" ? "Close" : "";
@@ -71,7 +74,8 @@ def eval_hint_mode() -> dict:
         const documentTarget = {{
           body,
           activeElement: null,
-          defaultView: {{ getComputedStyle: (node) => node.style }},
+          defaultView: {{ innerHeight: 800, innerWidth: 800, getComputedStyle: (node) => node.style }},
+          elementFromPoint() {{ return cover; }},
           querySelectorAll(selector) {{
             if (selector === "#sessions .session[data-session-id]") return [hiddenSession, sessionOne, sessionTwo];
             if (selector === ".chat a[data-file-path], .chat a[data-file-picker-query]") return [];
@@ -105,6 +109,7 @@ def eval_hint_mode() -> dict:
             {{ label: "/", element: search }},
             {{ label: "b", element: disabledBrowse }},
             {{ label: "d", element: hiddenDetails }},
+            {{ label: "c", element: coveredSearch }},
             {{ label: "f", element: reserved }},
           ],
         }});
@@ -188,6 +193,7 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         self.assertIn("/", result["labels"])
         self.assertNotIn("b", result["labels"])
         self.assertNotIn("d", result["labels"])
+        self.assertNotIn("c", result["labels"])
         self.assertNotIn("f", result["labels"])
 
     def test_escape_cleans_up_and_f_never_activates_a_target(self) -> None:
