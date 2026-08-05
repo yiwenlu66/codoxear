@@ -208,6 +208,30 @@ def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
     assert metrics and metrics[0][0] == "api_messages_init_ms"
 
 
+
+def test_messages_tail_reuses_unchanged_bounded_page() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        log_path.write_text(
+            json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n",
+            encoding="utf-8",
+        )
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps()
+        manager = _TailManager(session)
+
+        with mock.patch.object(
+            message_routes_module._rollout_log,
+            "_read_chat_page_reverse",
+            wraps=message_routes_module._rollout_log._read_chat_page_reverse,
+        ) as reader:
+            handle_messages_tail(_FakeHandler(), session_id="s1", query="limit=20", manager=manager, deps=deps)
+            handle_messages_tail(_FakeHandler(), session_id="s1", query="limit=20", manager=manager, deps=deps)
+
+    assert reader.call_count == 1
+    assert [status for status, _body in responses] == [200, 200]
+
+
 def test_messages_live_stream_sets_sse_headers_and_sends_initial_tail() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "rollout.jsonl"

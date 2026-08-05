@@ -251,10 +251,13 @@
     }
 
     function openMessageEventSource(sessionId = getSelected(), generation = getGeneration()) {
-      if (!sessionId || !isCurrent(sessionId, generation) || visibilityState() !== "visible" || typeof EventSourceCtor !== "function") return;
+      if (!sessionId || !isCurrent(sessionId, generation) || visibilityState() !== "visible" || typeof EventSourceCtor !== "function") return false;
       const snapshot = activeTranscriptSnapshot();
-      if (snapshot.state !== "bound" || !snapshot.liveCursor) return;
-      closeMessageEventSource();
+      if (snapshot.state !== "bound" || !snapshot.liveCursor) return false;
+      // A visibility resume can occur before EventSource calls `open`. Reuse
+      // that in-flight connection instead of starting both a second stream and
+      // a fallback HTTP poll for the same cursor.
+      if (messageEventSource) return true;
       const url = resolveAppUrl(`/api/sessions/${sessionId}/live?cursor=${encodeURIComponent(snapshot.liveCursor)}`);
       const source = new EventSourceCtor(url);
       messageEventSource = source;
@@ -296,12 +299,12 @@
         kickPoll(0);
         scheduleMessageEventSourceRetry(sessionId, generation);
       });
+      return true;
     }
 
     function resumeLiveDelivery() {
       if (isAppDisposed() || visibilityState() !== "visible" || !getSelected()) return;
-      if (!messageSseOpen) openMessageEventSource();
-      if (!messageSseOpen) kickPoll(0);
+      if (!messageSseOpen && !openMessageEventSource()) kickPoll(0);
     }
 
     function clearPollSchedule() {

@@ -7,6 +7,7 @@ import tempfile
 from codoxear.voice_routes import VoiceRouteDeps
 from codoxear.voice_routes import handle_voice_get_route
 from codoxear.voice_routes import handle_voice_post_route
+from codoxear.voice_projection import voice_settings_snapshot_payload
 
 
 class _FakeHandler:
@@ -43,7 +44,13 @@ class _FakeVoicePush:
         self.raise_toggle_keyerror = False
 
     def settings_snapshot(self, *, redact_secrets: bool = False) -> dict[str, object]:
-        return {"redact_secrets": redact_secrets, "tts_api_key": "", "has_tts_api_key": True}
+        return {
+            "redact_secrets": redact_secrets,
+            "tts_api_key": "",
+            "has_tts_api_key": True,
+            "vapid_public_key": "public-key",
+            "subscriptions": [{"id": "sub-1"}],
+        }
 
     def subscriptions_snapshot(self) -> dict[str, object]:
         return {"subscriptions": [{"id": "sub-1"}]}
@@ -130,10 +137,59 @@ def test_voice_get_settings_feed_and_message_status_mapping() -> None:
         handler, path="/api/notifications/feed", query="since=bad", voice_push=voice, deps=deps
     ) is True
     assert responses == [
-        (200, {"ok": True, "redact_secrets": True, "tts_api_key": "", "has_tts_api_key": True}),
+        (
+            200,
+            {
+                "ok": True,
+                "redact_secrets": True,
+                "tts_api_key": "",
+                "has_tts_api_key": True,
+                "vapid_public_key": "public-key",
+                "subscriptions": [{"id": "sub-1"}],
+            },
+        ),
         (200, {"ok": True, "message_id": "known", "summary_status": "done"}),
         (400, {"error": "message_id required"}),
         (400, {"error": "invalid since"}),
+    ]
+
+
+
+def test_voice_settings_snapshot_embeds_the_subscription_snapshot() -> None:
+    payload = voice_settings_snapshot_payload(
+        voice_settings={"tts_api_key": "secret"},
+        subscriptions={
+            "sub-1": {
+                "id": "sub-1",
+                "subscription": {"endpoint": "https://push.example/sub-1"},
+                "notifications_enabled": True,
+                "device_class": "mobile",
+                "updated_ts": 1.0,
+            }
+        },
+        queue_depth=0,
+        active_listener_count=0,
+        audio_state={},
+        vapid_public_key="public-key",
+        redact_secrets=True,
+    )
+
+    assert payload["tts_api_key"] == ""
+    assert payload["vapid_public_key"] == "public-key"
+    assert payload["subscriptions"] == [
+        {
+            "id": "sub-1",
+            "endpoint": "https://push.example/sub-1",
+            "notifications_enabled": True,
+            "device_class": "mobile",
+            "created_ts": None,
+            "updated_ts": 1.0,
+            "last_success_ts": None,
+            "last_failure_ts": None,
+            "last_error": None,
+            "user_agent": None,
+            "device_label": None,
+        }
     ]
 
 

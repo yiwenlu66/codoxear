@@ -39,6 +39,10 @@ def voice_settings_snapshot_payload(
             "total_devices": total_devices,
             "vapid_public_key": vapid_public_key,
         },
+        # Browser startup and visibility refresh need both settings and the
+        # current device subscription. Keep the two VoicePush-owned snapshots
+        # in one response so those refreshes use one request.
+        **subscriptions_snapshot_payload(subscriptions=subscriptions, vapid_public_key=vapid_public_key),
     }
 
 

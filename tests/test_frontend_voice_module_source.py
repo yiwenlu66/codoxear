@@ -479,6 +479,26 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertEqual(result["off"]["title"], "Notifications off")
         self.assertFalse(result["off"]["active"])
 
+    def test_background_refresh_coalesces_subscription_snapshot_and_skips_inactive_polling(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.seedStorage({ "codoxear.notificationEnabled": "1" });
+            const c = h.createController();
+            await c.refreshBackgroundState({ force: true, primeNotifications: true });
+            const enabledCalls = h.calls.filter((x) => x[0] === "api").map((x) => x[1]);
+            h.calls.length = 0;
+            h.seedStorage({});
+            const inactive = h.createController();
+            await inactive.refreshBackgroundState();
+            const inactiveCalls = h.calls.filter((x) => x[0] === "api").map((x) => x[1]);
+            globalThis.__result = { enabledCalls, inactiveCalls };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["enabledCalls"], ["/api/settings/voice", "/api/notifications/feed?since=0"])
+        self.assertEqual(result["inactiveCalls"], [])
+
     # --- 7. live-audio last_error / error projection ---
 
     def test_live_audio_last_error_surfaces_on_announce_button(self) -> None:

@@ -107,6 +107,34 @@ def test_aborted_tail_request_is_distinguished_from_poll_failure() -> None:
     assert result == {"aborted": True, "recognized": True, "errorStreak": 0}
 
 
+
+def test_visibility_resume_reuses_inflight_sse_without_a_fallback_poll() -> None:
+    result = run_flow(
+        """
+        const sources = [];
+        const timers = [];
+        class FakeEventSource {
+          constructor(url) { this.url = url; this.listeners = {}; sources.push(this); }
+          addEventListener(type, listener) { this.listeners[type] = listener; }
+          close() { this.closed = true; }
+        }
+        const test = harness({
+          EventSource: FakeEventSource,
+          setTimeout: (callback, delay) => { const timer = { callback, delay }; timers.push(timer); return timer; },
+          clearTimeout: noop,
+        });
+        const opened = test.controller.openMessageEventSource("sid", 1);
+        test.controller.resumeLiveDelivery();
+        process.stdout.write(JSON.stringify({ opened, streams: sources.length, fallbackTimers: timers.length, snapshot: test.controller.snapshot() }));
+        """
+    )
+    assert result["opened"] is True
+    assert result["streams"] == 1
+    assert result["fallbackTimers"] == 0
+    assert result["snapshot"]["hasEventSource"] is True
+    assert result["snapshot"]["messageSseOpen"] is False
+
+
 def test_sse_reconnect_waits_until_document_is_visible() -> None:
     result = run_flow(
         """

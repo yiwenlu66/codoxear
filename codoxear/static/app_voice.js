@@ -873,6 +873,19 @@
       if (!isSettingsOpen()) syncVoiceSettingsFormFromState();
     }
 
+    async function refreshBackgroundState({ force = false, primeNotifications = false } = {}) {
+      const announcementsEnabled = voiceAnnouncementsEnabled();
+      const notificationsEnabled = notificationsEnabledLocally();
+      if (!force && !announcementsEnabled && !notificationsEnabled) return false;
+
+      // `/api/settings/voice` includes the subscription snapshot. A single
+      // request refreshes both state authorities when a tab becomes visible.
+      const snapshot = await loadVoiceSettings();
+      await syncNotificationState(snapshot);
+      if (notificationsEnabled) await pollNotificationFeed({ prime: primeNotifications });
+      return true;
+    }
+
     async function loadVoiceSettings() {
       const data = await api("/api/settings/voice");
       if (isAppDisposed()) return data;
@@ -1308,6 +1321,7 @@
       notificationsEnabledLocally,
       isSettingsOpen,
       loadVoiceSettings,
+      refreshBackgroundState,
       syncNotificationState,
       pollNotificationFeed,
       resumeAnnouncementRuntime,
