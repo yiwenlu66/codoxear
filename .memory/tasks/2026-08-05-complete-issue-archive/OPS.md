@@ -1628,3 +1628,10 @@ most of the 66 items you listed are discovered by myself. most of my original re
 --- [2026-08-05T04:47:18.439Z] ---
 how do i know what you missed? you remember or i rememeber????? just find your own fucking transcript in ~/.pi/agent, gather all fucking user messages i ever typed, and gather them ensuring you never forget one single requests again!!!! btw, why .memory/project/USER_REQUESTS.md????????? the task-based memory system i set up is just fucking joke?????
 
+
+--- [2026-08-06T05:05:00Z] ---
+Isolated Docker browser verification for the archive visual closures. `bash scripts/docker_verify.sh HEAD` passed against commit `3af20baa` on loopback port 19643 (never :8743), retaining artifacts at `/tmp/codoxear-docker-verify-results.Chy6m0/`. Targeted isolated-browser review used 390×844 and 1280×800, with screenshots/measurements retained under `/tmp/codoxear-docker-verify-results.Wd4uXS/` and `/tmp/codoxear-docker-verify-results.0OpioV/`.
+
+During verification the original `66d45eba` frontend wiring emitted `filePickerMenuState is not defined`, `updateQueueBadge is not a function`, `limit must be an integer` (`messages/tail?limit=undefined`), then exposed missing `renderTranscript`/`rememberTailSnapshot` and cleanup-only `hintModeController` dependencies. Commits `a1d296c3` and `3af20baa` repair those concrete controller contracts. The final Docker smoke passed with no page/fatal console errors; clicking New Session and reloading the application in an isolated browser produced no page errors.
+
+Rows #8, #10, #31, #48, #58, #63, #64, #67, #68, #73, #76, #82, #84, and #91 have direct Docker-browser closure evidence in EPISTEMIC.md. Row #47 remains PARTIAL only for the unexercised date-pill requirement; its mobile navigation and desktop-dead-space slices are closed. Row #79 remains PARTIAL: the suite contains 77 `*source*.py` test files and 104 test files calling `read_text()`.
