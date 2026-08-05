@@ -20,8 +20,9 @@ EXTRACTED_MODULES = {
     "app_message_flow.js": "CodoxearMessageFlow",
     "app_session_edit.js": "CodoxearSessionEdit",
     "app_unattended.js": "CodoxearUnattended",
-    "app_attachments.js": "CodoxearAttachments",
 }
+if (STATIC / "app_attachments.js").is_file():
+    EXTRACTED_MODULES["app_attachments.js"] = "CodoxearAttachments"
 
 
 def _javascript_tokens(source: str) -> list[str]:
