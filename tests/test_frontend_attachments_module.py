@@ -1,5 +1,6 @@
 import json
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -92,7 +93,15 @@ def run_attachments(body: str) -> dict:
         {body}
         """
     )
-    completed = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    # The module source is deliberately evaluated as production JavaScript.
+    # Passing it as `node -e` makes every consumer of this shared harness
+    # depend on the OS command-line size limit as the module grows.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8", delete=False) as script_file:
+        script_file.write(script)
+    try:
+        completed = subprocess.run(["node", script_file.name], check=True, capture_output=True, text=True)
+    finally:
+        Path(script_file.name).unlink(missing_ok=True)
     return json.loads(completed.stdout)
 
 
