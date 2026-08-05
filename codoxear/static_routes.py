@@ -57,6 +57,7 @@ FRONTEND_ASSET_FILES = (
     "app_ios_viewport.js",
     "app_session_title.js",
     "app_session_edit.js",
+    "app_application.js",
     "app.js",
     "app.css",
 )
