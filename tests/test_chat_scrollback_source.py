@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
 APP_COMPOSITION_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
 APP_CHAT_INTERACTION_JS = ROOT / "codoxear" / "static" / "app_chat_interaction.js"
+APP_MESSAGE_HISTORY_JS = ROOT / "codoxear" / "static" / "app_message_history.js"
 APP_SESSION_LIFECYCLE_JS = ROOT / "codoxear" / "static" / "app_session_lifecycle.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
@@ -22,6 +23,7 @@ def eval_launch_recovery_details() -> dict:
         APP_JS.read_text(encoding="utf-8"),
         APP_COMPOSITION_JS.read_text(encoding="utf-8"),
         APP_CHAT_INTERACTION_JS.read_text(encoding="utf-8"),
+        APP_MESSAGE_HISTORY_JS.read_text(encoding="utf-8"),
     ))
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
