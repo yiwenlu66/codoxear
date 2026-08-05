@@ -436,13 +436,20 @@
       if (!code) continue;
       const languageClass = Array.from(code.classList).find((value) => value.startsWith("language-"));
       if (languageClass) code.dataset.lang = languageClass.slice("language-".length);
-      if (!pre.querySelector(":scope > .code-copy-btn")) {
+      if (!pre.parentElement || !pre.parentElement.classList.contains("codeBlockWrap")) {
+        const wrap = doc.createElement("div");
+        wrap.className = "codeBlockWrap";
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+      }
+      const wrap = pre.parentElement;
+      if (wrap && !wrap.querySelector(":scope > .code-copy-btn")) {
         const button = doc.createElement("button");
         button.className = "code-copy-btn";
         button.type = "button";
         button.setAttribute("aria-label", "Copy code");
         button.title = "Copy code";
-        pre.prepend(button);
+        wrap.appendChild(button);
       }
     }
   }

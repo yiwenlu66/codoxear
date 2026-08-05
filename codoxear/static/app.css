@@ -1488,9 +1488,13 @@
         white-space: pre-wrap;
         word-break: break-word;
       }
-      .md pre {
+      .codeBlockWrap {
         position: relative;
         margin: var(--space-4) 0 var(--space-5) 0;
+      }
+      .md pre {
+        position: relative;
+        margin: 0;
         padding: var(--space-5);
         border-radius: 0;
         overflow: auto;

@@ -23,7 +23,7 @@
 
   function codePreFromTarget(target) {
     const pre = closestElement(target, "pre");
-    return pre && typeof pre.querySelector === "function" && pre.querySelector(":scope > .code-copy-btn") ? pre : null;
+    return pre && pre.parentElement && typeof pre.parentElement.querySelector === "function" && pre.parentElement.querySelector(":scope > .code-copy-btn") ? pre.parentElement : null;
   }
 
   function createCodeBlockCopyRuntime(deps = {}) {
