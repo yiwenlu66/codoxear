@@ -113,6 +113,9 @@
       const codoxearInterrupt = window.CodoxearInterrupt;
       if (!codoxearInterrupt || typeof codoxearInterrupt.createInterruptController !== "function")
         throw new Error("Codoxear interrupt controller failed to load");
+      const codoxearDialogMenus = window.CodoxearDialogMenus;
+      if (!codoxearDialogMenus || typeof codoxearDialogMenus.createDialogMenusController !== "function")
+        throw new Error("Codoxear dialog menus controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -1576,7 +1579,7 @@
           prepareModalOpen,
           afterModalVisibilityChanged,
           isModalTargetOpen,
-          applyDialogMenus,
+          applyDialogMenus: () => dialogMenusController.applyDialogMenus(),
           positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           setPickerButtonContent,
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
@@ -3613,10 +3616,10 @@
         function hideVoiceSettingsDialog() {
           return voiceController.hideVoiceSettingsDialog();
         }
-        function applyDialogMenus() {
-          if (sessionEditController) sessionEditController.applyMenus();
-          newSessionDialogController.applyMenus();
-        }
+        const dialogMenusController = codoxearDialogMenus.createDialogMenusController({
+          sessionEditController: () => sessionEditController,
+          newSessionDialogController: () => newSessionDialogController,
+        });
 
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         const filePickerMenuState = codoxearFilePicker.createMenuState({

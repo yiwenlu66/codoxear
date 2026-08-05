@@ -55,6 +55,7 @@ FRONTEND_ASSET_FILES = (
     "app_attachments.js",
     "app_composer.js",
     "app_dialog_menu.js",
+    "app_dialog_menus.js",
     "app_file_unsaved.js",
     "app_ios_viewport.js",
     "app_session_title.js",
