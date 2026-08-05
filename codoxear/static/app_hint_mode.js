@@ -32,6 +32,7 @@
 
     let badgeContainer = null;
     let hintedTargets = new Map();
+    let hintBuffer = "";
 
     function targetIsVisible(target) {
       if (!target || target.disabled || target.offsetParent === null) return false;
@@ -78,18 +79,26 @@
       return labels.map((value) => String(value || "").trim()).find(Boolean) || "control";
     }
 
+    function targetIsHintExcluded(target) {
+      return Boolean(target && typeof target.hasAttribute === "function" && target.hasAttribute("data-hint-excluded"));
+    }
+
     function visibleInteractiveTargets(root) {
       return safeQueryAll(root, "button, input, textarea, select, [role='button'], [role='option'], a[href]")
-        .filter((target) => targetIsVisible(target) && !target.disabled);
+        .filter((target) => targetIsVisible(target) && !target.disabled && !targetIsHintExcluded(target));
     }
 
-    function targetIsInChat(target) {
-      if (!target || typeof target.closest !== "function") return false;
-      return Boolean(target.closest(".chat"));
+    function fallbackHint(index) {
+      const alphabet = "abcdefghijklmnopqrstuvwxyz";
+      const high = Math.floor(index / alphabet.length) % alphabet.length;
+      const low = index % alphabet.length;
+      // `f` is reserved only while mode is inactive, so it provides a
+      // prefix-safe namespace for controls beyond the one-key shell map.
+      return `f${alphabet[high]}${alphabet[low]}`;
     }
 
-    function assignAvailableLetter(targets, target, usedLabels, pool) {
-      if (!target || Array.from(targets.values()).includes(target)) return;
+    function assignAvailableHint(targets, target, usedLabels, pool, fallbackIndex) {
+      if (!target || Array.from(targets.values()).includes(target)) return fallbackIndex;
       const label = controlLabel(target).toLowerCase();
       for (const candidate of label) {
         if (!/[a-z]/.test(candidate) || candidate === "f" || usedLabels.has(candidate)) continue;
@@ -97,12 +106,18 @@
         usedLabels.add(candidate);
         const index = pool.indexOf(candidate);
         if (index >= 0) pool.splice(index, 1);
-        return;
+        return fallbackIndex;
       }
       const fallback = pool.shift();
-      if (!fallback) return;
-      targets.set(fallback, target);
-      usedLabels.add(fallback);
+      if (fallback) {
+        targets.set(fallback, target);
+        usedLabels.add(fallback);
+        return fallbackIndex;
+      }
+      const overflow = fallbackHint(fallbackIndex);
+      targets.set(overflow, target);
+      usedLabels.add(overflow);
+      return fallbackIndex + 1;
     }
 
     function openIsolationTarget() {
@@ -118,7 +133,8 @@
         const controls = visibleInteractiveTargets(isolationTarget);
         const usedLabels = new Set(["f"]);
         const pool = "abcdefghijklmnopqrstuvwxyz".split("").filter((ch) => ch !== "f");
-        for (const control of controls) assignAvailableLetter(targets, control, usedLabels, pool);
+        let fallbackIndex = 0;
+        for (const control of controls) fallbackIndex = assignAvailableHint(targets, control, usedLabels, pool, fallbackIndex);
         return targets;
       }
 
@@ -141,19 +157,19 @@
         if (index >= 0) pool.splice(index, 1);
       }
 
-      // Shell controls added by focused controllers (voice, settings, logout,
-      // context details, attachments, and transient menus) are discovered at
-      // runtime so a new button cannot silently become keyboard-inaccessible.
+      let fallbackIndex = 0;
+      // Focused controllers and transcript rows are discovered at runtime so a
+      // new interactive control cannot silently become keyboard-inaccessible.
       for (const control of visibleInteractiveTargets(documentTarget.body)) {
-        if (targetIsInChat(control) || targetIsInsideOpenModal(control)) continue;
-        assignAvailableLetter(targets, control, usedLabels, pool);
+        if (targetIsInsideOpenModal(control)) continue;
+        fallbackIndex = assignAvailableHint(targets, control, usedLabels, pool, fallbackIndex);
       }
 
-      // Dynamic hints: assign available letters to clickable file references
+      // Dynamic hints: assign available labels to clickable file references
       // in the conversation view (a[data-file-path] and a[data-file-picker-query]).
       const fileLinks = Array.from(documentTarget.querySelectorAll(".chat a[data-file-path], .chat a[data-file-picker-query]"))
         .filter((link) => targetIsVisible(link) && !targetIsInsideOpenModal(link));
-      for (const link of fileLinks) assignAvailableLetter(targets, link, usedLabels, pool);
+      for (const link of fileLinks) fallbackIndex = assignAvailableHint(targets, link, usedLabels, pool, fallbackIndex);
       return targets;
     }
 
@@ -181,6 +197,7 @@
     function enter() {
       if (hintedTargets.size || isMobile()) return false;
       hintedTargets = collectTargets();
+      hintBuffer = "";
       if (!hintedTargets.size) return false;
       badgeContainer = documentTarget.createElement("div");
       badgeContainer.className = "codoxear-hint-mode";
@@ -198,6 +215,7 @@
       }
       badgeContainer = null;
       hintedTargets.clear();
+      hintBuffer = "";
     }
 
     function canEnter(target) {
@@ -218,11 +236,19 @@
         return;
       }
       const label = String(event.key || "").toLowerCase();
-      const target = hintedTargets.get(label);
-      if (!target) {
+      if (label.length !== 1) {
         exit();
         return;
       }
+      const nextBuffer = hintBuffer + label;
+      const matchingLabels = Array.from(hintedTargets.keys()).filter((candidate) => candidate.startsWith(nextBuffer));
+      if (!matchingLabels.length) {
+        exit();
+        return;
+      }
+      hintBuffer = nextBuffer;
+      const target = hintedTargets.get(hintBuffer);
+      if (!target || matchingLabels.some((candidate) => candidate !== hintBuffer)) return;
       if (typeof event.preventDefault === "function") event.preventDefault();
       exit();
       // Prefer focus() for focusable form elements (textarea/input) so the

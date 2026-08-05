@@ -1332,7 +1332,7 @@
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to search the conversation. The search bar shows a position such as <b>2 of 5</b>; at the oldest visible match, it tells you when <b>Previous</b> can load older matches.</li>
   <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live, or <b>/thinking</b> to switch the reasoning level. Start typing to filter the list, then choose an entry. The model picker lists configured providers and models; the thinking picker lists the levels the current model supports.</li>
-  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>e</b> send; <b>i</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>Press <b>f</b> to show keyboard hints over every visible control; type the label exactly as shown. Stable shell labels include <b>1</b>–<b>9</b> sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>e</b> send; <b>i</b> message box; <b>c</b> new session; <b>h</b> help; <b>w</b> settings; and <b>l</b> log out. Extra visible controls receive their displayed dynamic label. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
   <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
   <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>
@@ -1977,24 +1977,10 @@
             modalIsolationTargets,
             isModalTargetOpen,
             addAppEvent,
-            shellHints: [
-              { label: "s", element: toggleSidebarBtn },
-              { label: "t", element: titleLabel },
-              { label: "b", element: fileBtn },
-              { label: "d", element: diagBtn },
-              { label: "u", element: unattendedBtn },
-              { label: "z", element: interruptBtn },
-              { label: "/", element: chatSearchBtn },
-              { label: "p", element: prevUserBtn },
-              { label: "n", element: nextUserBtn },
-              { label: "o", element: olderBtn },
-              { label: "g", element: jumpBtn },
-              { label: "a", element: attachBtn },
-              { label: "q", element: queueBtn },
-              { label: "e", element: sendBtn },
-              { label: "i", element: textarea },
-              { label: "c", element: $("#newBtn") },
-            ],
+            shellHints: Array.from(document.querySelectorAll("[data-hint]")).map((element) => ({
+              label: element.getAttribute("data-hint"),
+              element,
+            })),
           });
         })();
 
