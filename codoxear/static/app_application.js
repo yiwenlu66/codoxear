@@ -122,6 +122,9 @@
       const codoxearPendingUser = window.CodoxearPendingUser;
       if (!codoxearPendingUser || typeof codoxearPendingUser.createPendingUserController !== "function")
         throw new Error("Codoxear pending user controller failed to load");
+      const codoxearNavigationPulse = window.CodoxearNavigationPulse;
+      if (!codoxearNavigationPulse || typeof codoxearNavigationPulse.createNavigationPulseController !== "function")
+        throw new Error("Codoxear navigation pulse controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -1988,14 +1991,11 @@
           return codoxearViewport.prefersReducedMotion();
         }
 
-        function pulseNavigatedRow(row) {
-          if (!row) return;
-          setActiveMessageCopyRow(row, { focusCopy: activeElementIsMessageCopyButton() });
-          row.classList.remove("nav-pulse");
-          void row.offsetWidth;
-          row.classList.add("nav-pulse");
-          setTimeout(() => row.classList.remove("nav-pulse"), 1400);
-        }
+        const navigationPulseController = codoxearNavigationPulse.createNavigationPulseController({
+          setActiveRow: setActiveMessageCopyRow,
+          activeElementIsCopyButton: activeElementIsMessageCopyButton,
+          setTimeout,
+        });
 
         const hintModeController = (function instantiateHintModeController() {
           const codoxearHintMode = window.CodoxearHintMode;
@@ -2115,7 +2115,7 @@
             loadedCopyJumpTarget,
             getScrollTop: () => chat.scrollTop,
             prefersReducedMotion,
-            pulseNavigatedRow,
+            pulseNavigatedRow: (row) => navigationPulseController.pulseNavigatedRow(row),
             setToast,
             openChatSearch,
             handleAppAuthLoss,
@@ -2265,7 +2265,7 @@
             rowSearchText,
             clearChatSearchMarks,
             applyChatSearchMarks,
-            pulseNavigatedRow,
+            pulseNavigatedRow: (row) => navigationPulseController.pulseNavigatedRow(row),
             prefersReducedMotion,
           });
         })();
