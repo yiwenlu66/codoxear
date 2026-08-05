@@ -3455,9 +3455,9 @@
             setTimeout,
             clearTimeout,
             requestShellProjection: updateUnattendedBtnState,
-            storageGetItem: (key) => storageGetItem(key),
-            storageSetItem: (key, value) => storageSetItem(key, value),
-            storageRemoveItem: (key) => storageRemoveItem(key),
+            storageGetItem,
+            storageSetItem,
+            storageRemoveItem,
           });
         })();
 

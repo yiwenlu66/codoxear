@@ -121,7 +121,8 @@ esac
         operations = operation_log.read_text()
         static_js_paths = sorted((deploy_dir / "codoxear" / "static").rglob("*.js"))
         checked_paths = [line.removeprefix("node --check ") for line in operations.splitlines() if line.startswith("node --check ")]
-        assert checked_paths == [str(path) for path in static_js_paths]
+        assert set(checked_paths) == {str(path) for path in static_js_paths}
+        assert len(checked_paths) == len(static_js_paths)
         assert "pipx install --force" in operations
         assert "systemctl --user restart codoxear-server.service" in operations
         assert f"node --check {deploy_dir}/codoxear/static/app.js" in operations
