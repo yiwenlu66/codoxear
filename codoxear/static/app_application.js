@@ -128,6 +128,9 @@
       const codoxearSessionOpen = window.CodoxearSessionOpen;
       if (!codoxearSessionOpen || typeof codoxearSessionOpen.createSessionOpenController !== "function")
         throw new Error("Codoxear session open controller failed to load");
+      const codoxearFileTouch = window.CodoxearFileTouch;
+      if (!codoxearFileTouch || typeof codoxearFileTouch.createFileTouchController !== "function")
+        throw new Error("Codoxear file touch controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -4480,10 +4483,10 @@
             closeFilePickerMenu({ restoreInput: true });
           }
         });
-        function handleFileTouchSelectionKeydown(e) {
-          return fileViewerController.handleFileTouchSelectionKeydown(e);
-        }
-        addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);
+        const fileTouchController = codoxearFileTouch.createFileTouchController({
+          fileViewerController: () => fileViewerController,
+        });
+        addAppEvent(document, "keydown", (event) => fileTouchController.handleFileTouchSelectionKeydown(event), true);
         addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);
         addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);
         addAppEvent(
