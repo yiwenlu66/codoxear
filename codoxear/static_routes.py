@@ -50,6 +50,7 @@ FRONTEND_ASSET_FILES = (
     "app_sessions.js",
     "app_transcript_view.js",
     "app_message_flow.js",
+    "app_attachments.js",
     "app_composer.js",
     "app_session_edit.js",
     "app.js",

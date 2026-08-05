@@ -221,6 +221,7 @@ def eval_open_session_tail_request_abort() -> dict:
           if (request && activeTailController === request.controller) activeTailController = null;
         }};
         ctx.abortMessagePollRequest = () => {{}};
+        ctx.attachmentsController = {{ syncStagedAttachmentsFromSelectedSession: () => calls.push(["attachmentsController.syncStagedAttachmentsFromSelectedSession"]) }};
         ctx.messageFlowController = {{
           prepareSessionOpen: () => ctx.abortOpenSessionTailRequest(),
           beginOpenSessionTailRequest: ctx.beginOpenSessionTailRequest,
@@ -344,6 +345,10 @@ def eval_clear_selected_session_after_removal() -> dict:
           syncComposerSendButton: () => calls.push(["syncSendButtonState"]),
           syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
           syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
+          attachmentsController: {{
+            setStagedAttachments: (...args) => calls.push(["attachmentsController.setStagedAttachments", ...args]),
+            syncAttachButtonState: () => calls.push(["attachmentsController.syncAttachButtonState"]),
+          }},
           messageFlowController: {{
             abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
             clearPollSchedule: () => {{
@@ -429,14 +434,14 @@ class TestChatScrollbackSource(unittest.TestCase):
             ["setStatus", {"running": False, "queueLen": 0}],
             ["setContext", None],
             ["setTyping", False],
-            ["setAttachCount", 0],
+            ["attachmentsController.setStagedAttachments", []],
             ["resetChatRenderState"],
             ["updateQueueBadge"],
             ["hideUnattendedMenu"],
             ["updateUnattendedBtnState"],
             ["syncSendButtonState"],
             ["syncQueueSubmitState"],
-            ["syncAttachButtonState"],
+            ["attachmentsController.syncAttachButtonState"],
         ]:
             self.assertContains(expected, state["calls"])
 

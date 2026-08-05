@@ -83,6 +83,9 @@
       const codoxearComposer = window.CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
         throw new Error("Codoxear composer module failed to load");
+      const codoxearAttachments = window.CodoxearAttachments;
+      if (!codoxearAttachments || typeof codoxearAttachments.createAttachmentsController !== "function")
+        throw new Error("Codoxear attachments module failed to load");
       const codoxearMessageFlow = window.CodoxearMessageFlow;
       if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
         throw new Error("Codoxear message flow module failed to load");
@@ -838,8 +841,7 @@
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
 	        let sending = false;
-	        let attachedFiles = 0;
-        let stagedAttachments = [];
+        let attachmentsController = null;
         let composerController = null;
         let messageFlowController = null;
         function resizeComposer() {
@@ -861,7 +863,6 @@
           if (composerController) composerController.hideSendChoice(options);
         }
 				    let lastToken = null;
-        let attachBadgeEl = null;
         let sessionEditController = null;
         newSessionDefaults = {
           default_backend: "pi",
@@ -1757,7 +1758,7 @@
           if (wasRunning && !currentRunning) {
             // no-op placeholder; keep transition boundary for future UI behavior
           }
-          syncAttachButtonState();
+          attachmentsController.syncAttachButtonState();
           updateQueueBadge();
         }
 
@@ -2396,7 +2397,7 @@
           transcriptSlotRuntime.deleteTailCache(sessionId);
           transcriptSlotRuntime.clearLiveCursor();
           clearRenderedTranscriptRange();
-          setAttachCount(0);
+          attachmentsController.setAttachCount(0);
           invalidateOlderLoad();
           transcriptEventRuntime.resetRecentEvents();
           transcriptScrollRuntime.enableAutoScroll();
@@ -2591,6 +2592,45 @@
           },
         });
 
+        attachmentsController = codoxearAttachments.createAttachmentsController({
+          attachBtn,
+          imgInput,
+          composer,
+          textarea,
+          getSelected: () => selected,
+          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
+          getSending: () => sending,
+          sessionLaunchFailed,
+          sessionHasUnknownSend,
+          sessionIsOrphanRecovery,
+          sessionHasOrphanQueueRecovery,
+          api,
+          setToast,
+          handleAppAuthLoss,
+          refreshSessions,
+          setPollFastUntilMs,
+          kickPoll,
+          resizeComposer,
+          getTray: () => $("#stagedAttachments"),
+          el,
+          fmtBytes,
+          safeAttachmentStem,
+          isLikelyHeic,
+          looksLikeImage,
+          b64FromBytes,
+          dataTransferHasFiles,
+          extractFilesFromClipboardData,
+          extractFilesFromDropData,
+          addEventListener: addAppEvent,
+          uploadMaxBytes: ATTACH_UPLOAD_MAX_BYTES,
+        });
+
         messageFlowController = codoxearMessageFlow.createMessageFlowController({
           getSelected: () => selected,
           getGeneration: () => pollGen,
@@ -2617,7 +2657,7 @@
           renderSessionTail,
           applySessionRuntimeFromTail,
           resetChatRenderState,
-          setAttachCount: (count) => setAttachCount(count),
+          setAttachCount: (count) => attachmentsController.setAttachCount(count),
           setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
           appendEvent,
           appendTailSnapshotEvents,
@@ -2635,13 +2675,11 @@
           setSending: (value) => { sending = Boolean(value); },
           getCurrentRunning: () => currentRunning,
           setCurrentRunning: (value) => { currentRunning = Boolean(value); },
-          getStagedAttachments: () => stagedAttachments.slice(),
-          normalizedStagedAttachments,
-          setSelectedSessionPendingAttachment: (sessionId, value) => {
-            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
-          },
+          getStagedAttachments: () => attachmentsController.getStagedAttachments(),
+          normalizedStagedAttachments: (list) => attachmentsController.normalizedStagedAttachments(list),
+          setSelectedSessionPendingAttachment: (sessionId, value) => attachmentsController.setSelectedSessionPendingAttachment(sessionId, value),
           syncSendButtonState: syncComposerSendButton,
-          syncAttachButtonState,
+          syncAttachButtonState: () => attachmentsController.syncAttachButtonState(),
           syncQueueSubmitState,
           syncRecoveryUiForSession,
           confirmAction: (options) => confirmApp(options),
@@ -2881,8 +2919,8 @@
             applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
             syncRecoveryUiForSession(selected);
           }
-          if (selected) syncStagedAttachmentsFromSelectedSession();
-          else setStagedAttachments([]);
+          if (selected) attachmentsController.syncStagedAttachmentsFromSelectedSession();
+          else attachmentsController.setStagedAttachments([]);
           const renderedSidebar = sidebarController.renderSessions(sessions, {
             selectedId: selected,
             swipeActions,
@@ -3081,15 +3119,14 @@
           setStatus({ running: false, queueLen: 0 });
           setContext(null);
           setTyping(false);
-          if (typeof setStagedAttachments === "function") setStagedAttachments([]);
-          else setAttachCount(0);
+          attachmentsController.setStagedAttachments([]);
           resetChatRenderState();
           updateQueueBadge();
           if (unattendedController.isOpen()) hideUnattendedMenu();
           updateUnattendedBtnState();
           syncComposerSendButton();
           syncQueueSubmitState();
-          syncAttachButtonState();
+          attachmentsController.syncAttachButtonState();
           return true;
         }
 
@@ -3131,7 +3168,7 @@
             const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
             setStatus({ running: currentRunning, queueLen });
           }
-          syncAttachButtonState();
+          attachmentsController.syncAttachButtonState();
           syncQueueSubmitState();
           syncComposerSendButton();
           updateUnattendedBtnState();
@@ -3231,8 +3268,7 @@
           transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
-          if (typeof syncStagedAttachmentsFromSelectedSession === "function") syncStagedAttachmentsFromSelectedSession();
-          else setAttachCount(0);
+          attachmentsController.syncStagedAttachmentsFromSelectedSession();
           updateQueueBadge();
           setStatus({ running: false, queueLen: 0 });
           setContext(null);
@@ -3456,7 +3492,7 @@
         function updateUnattendedBtnState() {
           syncTitleEditState();
           unattendedController.syncButtonState();
-          syncAttachButtonState();
+          attachmentsController.syncAttachButtonState();
           const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
           const fileViewerLabel = !selected ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
           fileBtn.disabled = !selected || fileViewerBlocked;
@@ -4948,191 +4984,6 @@
 	           addAppEvent(window.visualViewport, "resize", onViewportShift);
 	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
-         if (!attachBadgeEl) {
-           attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
-           attachBtn.appendChild(attachBadgeEl);
-         }
-        function normalizedStagedAttachments(list) {
-          if (!Array.isArray(list)) return [];
-          return list
-            .filter((item) => item && typeof item === "object" && typeof item.id === "string" && item.id)
-            .map((item) => ({
-              id: String(item.id),
-              display_name: String(item.display_name || item.filename || "file"),
-              filename: String(item.filename || item.display_name || "file"),
-              size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
-              created_ts: Number.isFinite(Number(item.created_ts)) ? Number(item.created_ts) : 0,
-            }));
-        }
-        function attachmentIdentityText(item) {
-          const name = item && (item.display_name || item.filename) ? String(item.display_name || item.filename) : "staged attachment";
-          const id = item && item.id ? String(item.id).slice(0, 8) : "";
-          const size = item && Number.isFinite(Number(item.size)) ? fmtBytes(Number(item.size)) : "0 B";
-          return id ? `${name} · ${size} · attachment ${id}` : `${name} · ${size}`;
-        }
-        function middleEllipsis(text, limit = 44) {
-          const value = String(text || "");
-          if (value.length <= limit) return value;
-          const left = Math.ceil((limit - 1) / 2);
-          const right = Math.floor((limit - 1) / 2);
-          return `${value.slice(0, left)}…${value.slice(-right)}`;
-        }
-        function setStagedAttachments(list) {
-          stagedAttachments = normalizedStagedAttachments(list);
-          attachedFiles = stagedAttachments.length;
-          renderStagedAttachments();
-          if (textarea) resizeComposer();
-          projectSelectedAttachmentIndicator();
-        }
-        const setAttachCount = (n) => {
-          attachedFiles = Math.max(0, Number(n) || 0);
-          if (attachedFiles === 0 && stagedAttachments.length) stagedAttachments = [];
-          renderStagedAttachments();
-          projectSelectedAttachmentIndicator();
-        };
-        function setSelectedSessionStagedAttachments(list) {
-          if (selected) {
-            const info = sessionIndex.get(selected);
-            if (info) {
-              info.staged_attachments = normalizedStagedAttachments(list);
-              info.pending_attachment = info.staged_attachments.length > 0;
-              sessionIndex.set(selected, info);
-            }
-          }
-          setStagedAttachments(list);
-        }
-        function syncStagedAttachmentsFromSelectedSession() {
-          const info = selected ? sessionIndex.get(selected) : null;
-          setStagedAttachments(info && Array.isArray(info.staged_attachments) ? info.staged_attachments : []);
-        }
-        function renderStagedAttachments() {
-          const tray = $("#stagedAttachments");
-          if (!tray) return;
-          tray.innerHTML = "";
-          if (!stagedAttachments.length) {
-            tray.style.display = "none";
-            return;
-          }
-          tray.style.display = "flex";
-          for (const item of stagedAttachments) {
-            const chip = el("div", { class: "stagedAttachmentChip", title: attachmentIdentityText(item) });
-            const name = item.display_name || item.filename || "file";
-            chip.appendChild(el("span", { class: "stagedAttachmentName", text: middleEllipsis(name) }));
-            chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size || 0) }));
-            const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
-            removeBtn.onclick = async () => {
-              if (!selected) return;
-              const sid = selected;
-              try {
-                const res = await api(`/api/sessions/${sid}/attachments/delete`, { method: "POST", body: { id: item.id } });
-                if (selected === sid) {
-                  setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
-                  setToast("attachment removed");
-                  void refreshSessions().catch((e) => {
-                    if (e && e.status === 401) handleAppAuthLoss();
-                    else console.error("refreshSessions failed", e);
-                  });
-                }
-              } catch (err) {
-                if (err && err.status === 401) {
-                  handleAppAuthLoss();
-                  return;
-                }
-                if (selected === sid) setToast(`remove attachment error: ${err && err.message ? err.message : "unknown error"}`);
-              }
-            };
-            chip.appendChild(removeBtn);
-            tray.appendChild(chip);
-          }
-          const clearBtn = el("button", { class: "stagedAttachmentsClear", type: "button", text: "Clear", title: "Clear staged attachments", "aria-label": "Clear staged attachments" });
-          clearBtn.onclick = async () => {
-            if (!selected) return;
-            const sid = selected;
-            try {
-              const res = await api(`/api/sessions/${sid}/attachments/clear`, { method: "POST", body: {} });
-              if (selected === sid) {
-                setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
-                setToast("attachments cleared");
-                void refreshSessions().catch((e) => {
-                  if (e && e.status === 401) handleAppAuthLoss();
-                  else console.error("refreshSessions failed", e);
-                });
-              }
-            } catch (err) {
-              if (err && err.status === 401) {
-                handleAppAuthLoss();
-                return;
-              }
-              if (selected === sid) setToast(`clear attachments error: ${err && err.message ? err.message : "unknown error"}`);
-            }
-          };
-          tray.appendChild(clearBtn);
-        }
-        // The visible attachment indicator is a projection of the selected
-        // session's server-owned staged attachment list; the legacy
-        // pending_attachment flag is only a compatibility fallback.
-        function projectSelectedAttachmentIndicator() {
-          if (!attachBadgeEl) return;
-          const sessionInfo = selected ? sessionIndex.get(selected) : null;
-          const serverListCount = sessionInfo && Array.isArray(sessionInfo.staged_attachments) ? normalizedStagedAttachments(sessionInfo.staged_attachments).length : 0;
-          const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
-          const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0);
-          if (visible > 0) {
-            attachBadgeEl.textContent = String(visible);
-            attachBadgeEl.style.display = "inline-flex";
-          } else {
-            attachBadgeEl.textContent = "";
-            attachBadgeEl.style.display = "none";
-          }
-        };
-        // Mutate the selected session's cached pending_attachment only when the
-        // frontend has direct evidence it changed (successful attach -> true;
-        // successful send with allow_pending_attachment -> false; successful
-        // pending_attachment/clear -> false). This keeps the cached value in
-        // step with what the server now knows until the next refreshSessions()
-        // returns the authoritative value, so the indicator does not re-render
-        // against stale pending_attachment=true right after a send/clear.
-        function setSelectedSessionPendingAttachment(value) {
-          if (!selected) return false;
-          const info = sessionIndex.get(selected);
-          if (!info) return false;
-          info.pending_attachment = Boolean(value);
-          if (!value) info.staged_attachments = [];
-          sessionIndex.set(selected, info);
-          if (!value) setStagedAttachments([]);
-          else projectSelectedAttachmentIndicator();
-          return true;
-        }
-        function attachmentBlockerForSession(sessionId, sessionInfo = null) {
-          if (!sessionId) return "Select a session to attach a file";
-          const info = sessionInfo || sessionIndex.get(sessionId) || null;
-          if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";
-          if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
-          if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
-          if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
-          if (sending) return "Wait for the current send to finish before attaching a file";
-          return "";
-        }
-        function latestAttachmentBlockerForSession(sessionId) {
-          return attachmentBlockerForSession(sessionId, sessionId ? sessionIndex.get(sessionId) || null : null);
-        }
-        function syncAttachButtonState() {
-          const attachControl = $("#attachBtn");
-          if (!attachControl) return;
-          const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
-          const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
-          const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          attachControl.disabled = Boolean(attachBlocker);
-          attachControl.title = attachLabel;
-          attachControl.setAttribute("aria-label", attachLabel);
-        }
-        setAttachCount(0);
-        syncAttachButtonState();
-        if (!selected) {
-          attachBtn.disabled = true;
-          attachBtn.title = "Select a session to attach a file";
-          attachBtn.setAttribute("aria-label", "Select a session to attach a file");
-        }
         updateQueueBadge();
         syncQueueSubmitState();
         syncComposerSendButton();
@@ -5192,242 +5043,7 @@
           form.requestSubmit();
         });
 
-        async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
-          const url = URL.createObjectURL(file);
-          try {
-            const img = new Image();
-            img.decoding = "async";
-            img.src = url;
-            if (img.decode) await img.decode();
-            else
-              await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = () => reject(new Error("decode failed"));
-              });
-            const w0 = img.naturalWidth || img.width || 0;
-            const h0 = img.naturalHeight || img.height || 0;
-            if (!w0 || !h0) throw new Error("invalid image dimensions");
-            const scale = Math.min(1, maxDim / Math.max(w0, h0));
-            const w = Math.max(1, Math.round(w0 * scale));
-            const h = Math.max(1, Math.round(h0 * scale));
-            const canvas = document.createElement("canvas");
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext("2d", { alpha: false });
-            if (!ctx) throw new Error("no canvas");
-            ctx.drawImage(img, 0, 0, w, h);
-            const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-            if (!blob) throw new Error("jpeg encode failed");
-            return blob;
-          } finally {
-            URL.revokeObjectURL(url);
-          }
-        }
 
-        function imageExtensionFromMimeType(type, fallback = "") {
-          const normalized = String(type || "").toLowerCase();
-          if (normalized === "image/jpeg" || normalized === "image/jpg") return "jpg";
-          if (normalized === "image/png") return "png";
-          if (normalized === "image/gif") return "gif";
-          if (normalized === "image/webp") return "webp";
-          if (normalized === "image/heic") return "heic";
-          if (normalized === "image/heif") return "heif";
-          if (normalized === "image/avif") return "avif";
-          return normalized.startsWith("image/") ? fallback : "";
-        }
-
-        function pastedFileName(file, index, seed) {
-          const suffix = index > 0 ? `-${index + 1}` : "";
-          const base = `pasted-${seed}${suffix}`;
-          const ext = imageExtensionFromMimeType(file && file.type, "png");
-          return ext ? `${base}.${ext}` : base;
-        }
-
-        async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
-          const sessionId = sid || selected;
-          const uploadFiles = Array.from(files || []).filter(Boolean);
-          if (!uploadFiles.length) return false;
-
-          const producer = String(source || "picker");
-          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : "uploading";
-          const producerNameSeed = Date.now();
-          let successes = 0;
-          let stoppedByBlocker = "";
-          const failures = [];
-          for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
-            const f = uploadFiles[fileIndex];
-            try {
-              if (selected !== sessionId) break;
-              const attachBlocker = latestAttachmentBlockerForSession(sessionId);
-              if (attachBlocker) {
-                stoppedByBlocker = attachBlocker;
-                break;
-              }
-              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : "uploading file...");
-              const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
-              let uploadBlob = f;
-              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : "file");
-              if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
-                setToast("compressing image...");
-                const stem = safeAttachmentStem(uploadName);
-                uploadName = `${stem}.jpg`;
-                const tries = [
-                  { maxDim: 2048, quality: 0.86 },
-                  { maxDim: 1600, quality: 0.82 },
-                  { maxDim: 1600, quality: 0.72 },
-                  { maxDim: 1280, quality: 0.68 },
-                  { maxDim: 1280, quality: 0.58 },
-                ];
-                let blob = null;
-                for (const t of tries) {
-                  blob = await toJpegBlob(f, t);
-                  if (blob.size <= maxBytes) break;
-                }
-                if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
-                uploadBlob = blob;
-              }
-              const ab = await uploadBlob.arrayBuffer();
-              if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
-              const b64 = b64FromBytes(new Uint8Array(ab));
-              const res = await api(`/api/sessions/${sessionId}/inject_file`, {
-                method: "POST",
-                body: { filename: uploadName, data_b64: b64 },
-              });
-              if (selected === sessionId && res && res.ok) {
-                successes += 1;
-                setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);
-              }
-            } catch (e) {
-              if (e && e.status === 401) {
-                handleAppAuthLoss();
-                return false;
-              }
-              failures.push(`${f && f.name ? f.name : "file"}: ${e && e.message ? e.message : "unknown error"}`);
-            }
-          }
-          if (selected === sessionId) {
-            if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
-            else if (successes && stoppedByBlocker) setToast(`attached ${successes}; stopped: ${stoppedByBlocker}`);
-            else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
-            else if (failures.length) setToast(`attach error: ${failures[0]}`);
-            else if (stoppedByBlocker) setToast(stoppedByBlocker);
-            setPollFastUntilMs(Date.now() + 4000);
-            kickPoll(0);
-            void refreshSessions().catch((refreshErr) => {
-              if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
-              else console.error("refreshSessions failed", refreshErr);
-            });
-          }
-          return successes > 0;
-        }
-
-        attachBtn.onclick = () => {
-          const sid = selected;
-          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;
-          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);
-          if (attachBlocker) {
-            setToast(attachBlocker);
-            return;
-          }
-          imgInput.value = "";
-          imgInput.click();
-        };
-        imgInput.addEventListener("change", async () => {
-          const sid = selected;
-          if (!sid) return;
-          const files = Array.from(imgInput.files || []);
-          imgInput.value = "";
-          await stageFiles(files, { sid, source: "picker" });
-        });
-
-
-        function clipboardPlainText(data) {
-          if (!data || typeof data.getData !== "function") return "";
-          try {
-            return data.getData("text/plain") || data.getData("text") || "";
-          } catch (_) {
-            return "";
-          }
-        }
-
-        function insertComposerPastedText(text) {
-          const value = String(text || "");
-          if (!value) return false;
-          const start = Number.isFinite(textarea.selectionStart) ? textarea.selectionStart : textarea.value.length;
-          const end = Number.isFinite(textarea.selectionEnd) ? textarea.selectionEnd : start;
-          if (typeof textarea.setRangeText === "function") {
-            textarea.setRangeText(value, start, end, "end");
-          } else {
-            textarea.value = `${textarea.value.slice(0, start)}${value}${textarea.value.slice(end)}`;
-            textarea.selectionStart = start + value.length;
-            textarea.selectionEnd = start + value.length;
-          }
-          textarea.dispatchEvent(new Event("input", { bubbles: true }));
-          return true;
-        }
-
-        textarea.addEventListener("paste", (e) => {
-          const files = extractFilesFromClipboardData(e.clipboardData);
-          if (!files.length) return;
-          const pastedText = clipboardPlainText(e.clipboardData);
-          e.preventDefault();
-          if (pastedText) insertComposerPastedText(pastedText);
-          void stageFiles(files, { sid: selected, source: "paste" });
-        });
-
-        let composerDragDepth = 0;
-        function setComposerDropActive(active) {
-          composer.classList.toggle("drop-active", Boolean(active));
-        }
-        function clearComposerDropActive() {
-          composerDragDepth = 0;
-          setComposerDropActive(false);
-        }
-        addAppEvent(composer, "dragenter", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          composerDragDepth += 1;
-          setComposerDropActive(true);
-        }, { passive: false });
-        addAppEvent(composer, "dragover", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-          setComposerDropActive(true);
-        }, { passive: false });
-        addAppEvent(composer, "dragleave", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          composerDragDepth = Math.max(0, composerDragDepth - 1);
-          if (composerDragDepth === 0) setComposerDropActive(false);
-        }, { passive: false });
-        addAppEvent(composer, "drop", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          clearComposerDropActive();
-          const files = extractFilesFromDropData(e.dataTransfer);
-          if (!files.length) return;
-          void stageFiles(files, { sid: selected, source: "drop" });
-        }, { passive: false });
-        addAppEvent(window, "dragover", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-        }, { passive: false });
-        addAppEvent(window, "dragleave", (e) => {
-          const outsideWindow =
-            e.clientX <= 0 ||
-            e.clientY <= 0 ||
-            e.clientX >= window.innerWidth ||
-            e.clientY >= window.innerHeight ||
-            (!e.relatedTarget && (e.target === document || e.target === document.documentElement || e.target === document.body));
-          if (outsideWindow) clearComposerDropActive();
-        }, { passive: false });
-        addAppEvent(window, "dragend", () => {
-          clearComposerDropActive();
-        }, { passive: false });
-        addAppEvent(window, "drop", (e) => {
-          if (dataTransferHasFiles(e.dataTransfer)) e.preventDefault();
-          clearComposerDropActive();
-        }, { passive: false });
 
         composerController = codoxearComposer.createComposerController({
           form,
@@ -5446,7 +5062,7 @@
           sessionLaunchFailed,
           getSending: () => sending,
           getCurrentRunning: () => currentRunning,
-          getStagedAttachments: () => stagedAttachments.slice(),
+          getStagedAttachments: () => attachmentsController.getStagedAttachments(),
           api,
           setToast,
           setPollFastUntilMs,
