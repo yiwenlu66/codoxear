@@ -150,7 +150,7 @@ esac
 
 def test_deploy_rejects_undefined_app_call_before_service_operations(tmp_path: Path) -> None:
     source_root = tmp_path / "source"
-    subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)], check=True)
+    subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)], cwd=ROOT, check=True)
     subprocess.run(["git", "-C", source_root, "config", "user.email", "tests@example.invalid"], check=True)
     subprocess.run(["git", "-C", source_root, "config", "user.name", "deploy test"], check=True)
     app_path = source_root / "codoxear" / "static" / "app.js"
