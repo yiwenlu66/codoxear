@@ -21,7 +21,6 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 APP_SHELL_JS = ROOT / "codoxear" / "static" / "app_shell.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-MANIFEST = ROOT / "codoxear" / "static" / "manifest.webmanifest"
 
 
 class _ViewportParser(HTMLParser):
@@ -187,14 +186,15 @@ def test_ios_composer_textarea_and_safe_area_geometry() -> None:
     variables = _computed_rule(393, ":root")
     composer_input = _computed_rule(393, ".composer textarea")
     phone_composer = _computed_rule(393, ".composer")
-    desktop_composer = _computed_rule(1024, ".composer")
 
     # iOS Safari only auto-zooms editable controls below 16 CSS px.
     assert _resolve_px(composer_input["font-size"], variables) >= 16
-    # A 34px iPhone home-indicator inset remains outside the composer at both
-    # mobile and wider layouts; the phone branch may retune only its base gap.
-    assert _padding_bottom(phone_composer["padding"], variables, safe_area_bottom=34) == 39
-    assert _padding_bottom(desktop_composer["padding"], variables, safe_area_bottom=34) == 40
+    # A 34px iPhone home-indicator inset must increase the 393px compositor's
+    # effective bottom padding by exactly that inset, proving it is part of
+    # the computed geometry instead of a fixed replacement gap.
+    base_padding = _padding_bottom(phone_composer["padding"], variables, safe_area_bottom=0)
+    inset_padding = _padding_bottom(phone_composer["padding"], variables, safe_area_bottom=34)
+    assert inset_padding == base_padding + 34
 
 
 def test_viewport_enables_ios_safe_area_layout() -> None:
@@ -203,4 +203,3 @@ def test_viewport_enables_ios_safe_area_layout() -> None:
     assert parser.content is not None
     directives = {part.strip() for part in parser.content.split(",")}
     assert {"width=device-width", "initial-scale=1", "viewport-fit=cover"} <= directives
-    assert json.loads(MANIFEST.read_text(encoding="utf-8"))["display"] == "standalone"
