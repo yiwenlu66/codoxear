@@ -74,7 +74,7 @@ esac
         f"""#!/usr/bin/env bash
 set -eu
 printf 'node %s\\n' "$*" >> {operation_log!s}
-[[ "$1" == "-c" ]]
+[[ "$1" == "--check" ]]
 [[ -f "$2" ]]
 """,
     )
@@ -119,13 +119,16 @@ esac
         assert service["EnvironmentFile"] == f"-{environment_file}"
         assert service["Environment"] == "CODEX_WEB_PORT=9876 PRESERVE_ME=yes"
         operations = operation_log.read_text()
+        static_js_paths = sorted((deploy_dir / "codoxear" / "static").rglob("*.js"))
+        checked_paths = [line.removeprefix("node --check ") for line in operations.splitlines() if line.startswith("node --check ")]
+        assert checked_paths == [str(path) for path in static_js_paths]
         assert "pipx install --force" in operations
         assert "systemctl --user restart codoxear-server.service" in operations
-        assert f"node -c {deploy_dir}/codoxear/static/app.js" in operations
+        assert f"node --check {deploy_dir}/codoxear/static/app.js" in operations
         assert "agent-browser fill #pw test-password" in operations
         assert "agent-browser click #loginBtn" in operations
         assert "agent-browser eval" in operations
-        assert operations.index(f"node -c {deploy_dir}/codoxear/static/app.js") < operations.index("pipx install --force")
+        assert operations.index(f"node --check {deploy_dir}/codoxear/static/app.js") < operations.index("pipx install --force")
 
         (deploy_dir / "must-stay-unmodified").write_text("dirty")
         operation_log.write_text("")
@@ -142,3 +145,69 @@ esac
     finally:
         if deploy_dir.exists():
             subprocess.run(["git", "-C", ROOT, "worktree", "remove", "--force", str(deploy_dir)], check=False)
+
+
+def test_deploy_rejects_undefined_app_call_before_service_operations(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)], check=True)
+    subprocess.run(["git", "-C", source_root, "config", "user.email", "tests@example.invalid"], check=True)
+    subprocess.run(["git", "-C", source_root, "config", "user.name", "deploy test"], check=True)
+    app_path = source_root / "codoxear" / "static" / "app.js"
+    app_path.write_text(app_path.read_text() + "\nfoo();\n")
+    subprocess.run(["git", "-C", source_root, "add", "--", "codoxear/static/app.js"], check=True)
+    subprocess.run(["git", "-C", source_root, "commit", "--quiet", "-m", "inject undefined app reference"], check=True)
+    commit = subprocess.check_output(["git", "-C", source_root, "rev-parse", "HEAD"], text=True).strip()
+
+    deploy_dir = tmp_path / "deploy"
+    unit_path = tmp_path / "codoxear-server.service"
+    unit_path.write_text(
+        "[Service]\n"
+        "WorkingDirectory=/editable/checkout\n"
+        "ExecStart=/old/venv/bin/python -u -m codoxear.server\n"
+    )
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    operation_log = tmp_path / "operations.log"
+    _write_executable(
+        fake_bin / "node",
+        f"""#!/usr/bin/env bash
+set -eu
+printf 'node %s\\n' "$*" >> {operation_log!s}
+[[ "$1" == "--check" ]]
+[[ -f "$2" ]]
+""",
+    )
+    for command in ("pipx", "systemctl", "curl"):
+        _write_executable(
+            fake_bin / command,
+            f"""#!/usr/bin/env bash
+set -eu
+printf '{command} %s\\n' "$*" >> {operation_log!s}
+exit 91
+""",
+        )
+
+    environment = os.environ | {
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CODOXEAR_DEPLOY_DIR": str(deploy_dir),
+        "CODOXEAR_SERVICE_UNIT": str(unit_path),
+    }
+    try:
+        completed = subprocess.run(
+            [str(source_root / "scripts" / "deploy.sh"), commit],
+            cwd=source_root,
+            env=environment,
+            text=True,
+            capture_output=True,
+        )
+        assert completed.returncode != 0
+        assert "undefined function reference: foo" in completed.stderr
+        assert "app.js reference check failed" in completed.stderr
+        operations = operation_log.read_text()
+        assert "node --check" in operations
+        assert "pipx " not in operations
+        assert "systemctl " not in operations
+        assert "curl " not in operations
+    finally:
+        if deploy_dir.exists():
+            subprocess.run(["git", "-C", source_root, "worktree", "remove", "--force", str(deploy_dir)], check=False)

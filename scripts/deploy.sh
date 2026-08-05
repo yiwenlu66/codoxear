@@ -2,7 +2,8 @@
 # Deploy a committed Codoxear snapshot without ever serving the source checkout.
 #
 # Release guards:
-# - Node parses the snapshot's app.js before pipx or service operations.
+# - Node parses every static JavaScript asset, and check_js_refs.py rejects bare
+#   function calls in app.js that no local declaration or loaded module provides.
 # - The selected/session-index/session-list state declarations are explicit
 #   regression tripwires for the renderApp closure.
 # - An authenticated browser smoke check requires a completed session-list
@@ -43,7 +44,7 @@ if ! command -v curl >/dev/null; then
   exit 1
 fi
 if ! command -v node >/dev/null; then
-  echo "node is required to syntax-check app.js before deployment" >&2
+  echo "node is required to syntax-check static JavaScript before deployment" >&2
   exit 1
 fi
 if [[ ! -f "$UNIT_PATH" ]]; then
@@ -96,13 +97,21 @@ update_snapshot || {
   exit 1
 }
 
-# Parse the exact immutable app snapshot before changing the installed package
-# or restarting the service. The declaration tripwires cover renderApp state
-# whose absence can otherwise surface only after the async session-list render.
-if ! node -c "$DEPLOY_DIR/codoxear/static/app.js"; then
-  echo "app.js syntax check failed in deploy snapshot" >&2
+# Parse every exact immutable static asset before changing the installed package
+# or restarting the service. Grammar validation cannot detect a bare call whose
+# declaration was lost during extraction, so the reference checker examines the
+# app shell against its locally declared names and globals registered by scripts
+# that index.html actually loads.
+while IFS= read -r -d '' javascript_path; do
+  node --check "$javascript_path"
+done < <(find "$DEPLOY_DIR/codoxear/static" -type f -name '*.js' -print0 | sort -z)
+if ! python3 "$DEPLOY_DIR/scripts/check_js_refs.py" "$DEPLOY_DIR/codoxear/static"; then
+  echo "app.js reference check failed in deploy snapshot" >&2
   exit 1
 fi
+
+# Declaration tripwires cover renderApp state whose absence can otherwise
+# surface only after the async session-list render.
 for declaration in \
   'let[[:space:]]+latestSessions[[:space:]]*=' \
   'let[[:space:]]+selected[[:space:]]*=' \
