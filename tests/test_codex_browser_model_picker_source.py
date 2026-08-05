@@ -29,6 +29,7 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
                   this.disabled = false;
                   this.textContent = "";
                   this.className = "";
+                  this.title = "";
                 }
                 set innerHTML(value) { this.children = []; this._innerHTML = value; }
                 get innerHTML() { return this._innerHTML || ""; }
@@ -94,13 +95,23 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
               if (providerRows.length !== 3) throw new Error("configured providers were not rendered");
               if (providerRows.map((row) => row.textContent).join("|") !== "chatgpt — active provider|openai-api — unavailable on current provider|custom — unavailable on current provider") throw new Error("provider availability labels are wrong");
               if (providerRows[0].attributes["data-active"] !== "true") throw new Error("active provider was not marked");
+              if (providerRows.slice(1).some((row) => row.tagName !== "div" || typeof row.onclick === "function")) throw new Error("provider labels became provider-switching controls");
+              if (providerRows[1].title !== "Model provider changes require starting a new Codex session." || providerRows[2].title !== "Model provider changes require starting a new Codex session.") throw new Error("inactive provider models lack the unavailable tooltip");
               if (options.map((option) => option.textContent).join("|") !== "gpt-current — current model|gpt-small") throw new Error("inactive-provider models leaked into picker or active model lacks indicator");
               if (options.some((option) => option.textContent.includes("gpt-other") || option.textContent.includes("custom-1"))) throw new Error("inactive provider model rendered as selectable");
-              if (modelPicker.children.some((child) => child.tagName === "button" && child.textContent.includes("provider"))) throw new Error("picker exposed a provider switching control");
               options[1].onclick();
               await new Promise((resolve) => setTimeout(resolve, 0));
-              if (JSON.stringify(settingsCalls) !== JSON.stringify([{ path: "/api/sessions/codex-live/settings", body: { model: "gpt-small" } }])) throw new Error("model selection did not send the typed model-only setting");
-              process.stdout.write(JSON.stringify({ providers: providerRows.map((row) => row.textContent), selected: settingsCalls[0].body }));
+              textarea.value = "/effort low";
+              textarea.dispatch("input");
+              const effortOptions = modelPicker.children.filter((child) => child.tagName === "button");
+              if (effortOptions.length !== 1 || effortOptions[0].textContent !== "low") throw new Error("Codex effort picker did not render the requested level");
+              effortOptions[0].onclick();
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              if (JSON.stringify(settingsCalls) !== JSON.stringify([
+                { path: "/api/sessions/codex-live/settings", body: { model: "gpt-small" } },
+                { path: "/api/sessions/codex-live/settings", body: { effort: "low" } },
+              ])) throw new Error("Codex picker settings did not use typed model- and effort-only payloads");
+              process.stdout.write(JSON.stringify({ providers: providerRows.map((row) => row.textContent), settings: settingsCalls }));
             })();
             """
         )
@@ -120,7 +131,10 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
                     "openai-api — unavailable on current provider",
                     "custom — unavailable on current provider",
                 ],
-                "selected": {"model": "gpt-small"},
+                "settings": [
+                    {"path": "/api/sessions/codex-live/settings", "body": {"model": "gpt-small"}},
+                    {"path": "/api/sessions/codex-live/settings", "body": {"effort": "low"}},
+                ],
             },
         )
 
