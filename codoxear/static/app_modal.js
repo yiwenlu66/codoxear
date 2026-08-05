@@ -35,10 +35,46 @@
     });
   }
 
+  function modalButtonLabel(button) {
+    return [button.textContent, button.getAttribute("aria-label")]
+      .map((label) => String(label || "").trim().toLowerCase())
+      .find(Boolean) || "";
+  }
+
+  function modalButtonHint(label, labels) {
+    for (let index = 0; index < label.length; index += 1) {
+      const candidate = label[index];
+      if (!/[a-z0-9]/.test(candidate)) continue;
+      if (labels.filter((other) => other[index] === candidate).length === 1) return candidate;
+    }
+    return "";
+  }
+
+  function createModalKeyboardHandler({ modalIsolationTargets, isTextEntryElement: isTextEntry }) {
+    return function activateModalButtonForKey(e) {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return false;
+      const key = String(e.key || "").toLowerCase();
+      if (key.length !== 1 || isTextEntry(e.target)) return false;
+      for (const modal of modalIsolationTargets) {
+        if (!isModalTargetOpen(modal)) continue;
+        const buttons = [...modal.querySelectorAll("button")].filter((button) => !button.disabled && !button.hidden && button.getClientRects().length);
+        const labels = buttons.map(modalButtonLabel);
+        const button = buttons.find((candidate, index) => modalButtonHint(labels[index], labels) === key);
+        if (!button) continue;
+        e.preventDefault();
+        e.stopPropagation();
+        button.click();
+        return true;
+      }
+      return false;
+    };
+  }
+
   window.CodoxearModal = Object.freeze({
     isModalTargetOpen,
     syncModalIsolation,
     restoreModalFocus,
     focusModalCloseButton,
+    createModalKeyboardHandler,
   });
 })();

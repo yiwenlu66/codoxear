@@ -405,10 +405,15 @@
         typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
         typeof codoxearPolling.browserOffline !== "function" ||
         typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
+        typeof codoxearPolling.networkRetryDelayMs !== "function" ||
         typeof codoxearPolling.messagePollDelayMs !== "function" ||
         typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
       )
         throw new Error("Codoxear polling helpers failed to load");
+
+      const codoxearNetwork = window.CodoxearNetwork;
+      if (!codoxearNetwork || typeof codoxearNetwork.createNetworkStatusController !== "function")
+        throw new Error("Codoxear network status helpers failed to load");
 
       const codoxearConversationCopy = window.CodoxearConversationCopy;
       if (
@@ -780,6 +785,7 @@
           ctxChip,
           interruptBtn,
           toast,
+          networkBanner,
           toggleSidebarBtn,
           unattendedBtn,
           diagBtn,
@@ -797,6 +803,10 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
+        const networkStatus = codoxearNetwork.createNetworkStatusController({
+          banner: networkBanner,
+          navigatorLike: typeof navigator === "undefined" ? undefined : navigator,
+        });
         const codoxearUnattendedDom = window.CodoxearUnattended;
         if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
           throw new Error("Codoxear unattended DOM failed to load");
@@ -819,6 +829,8 @@
          let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
          let secondaryPollingEnabled = true;
+         let sessionsPollErrorStreak = 0;
+         let secondaryPollErrorStreak = 0;
          let currentRunning = false;
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
@@ -922,10 +934,37 @@
           renderLogin(renderApp);
         }
         function sessionsPollDelayMs() {
-          return codoxearPolling.sessionsPollDelayMs(document.visibilityState);
+          return codoxearPolling.networkRetryDelayMs({
+            normalDelayMs: codoxearPolling.sessionsPollDelayMs(document.visibilityState),
+            offline: browserOffline(),
+            errorStreak: sessionsPollErrorStreak,
+          });
         }
         function secondaryPollDelayMs() {
-          return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
+          return codoxearPolling.networkRetryDelayMs({
+            normalDelayMs: codoxearPolling.secondaryPollDelayMs(document.visibilityState),
+            offline: browserOffline(),
+            errorStreak: secondaryPollErrorStreak,
+          });
+        }
+        function browserOffline() {
+          return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
+        }
+        function markSessionsPollSuccess() {
+          sessionsPollErrorStreak = 0;
+          networkStatus.reportSuccess();
+        }
+        function markSessionsPollFailure(transportFailed = true) {
+          sessionsPollErrorStreak = Math.min(sessionsPollErrorStreak + 1, 20);
+          if (transportFailed) networkStatus.reportFailure();
+        }
+        function markSecondaryPollSuccess() {
+          secondaryPollErrorStreak = 0;
+          networkStatus.reportSuccess();
+        }
+        function markSecondaryPollFailure(transportFailed = true) {
+          secondaryPollErrorStreak = Math.min(secondaryPollErrorStreak + 1, 20);
+          if (transportFailed) networkStatus.reportFailure();
         }
 
         function stopSessionsPolling() {
@@ -944,11 +983,13 @@
           if (appDisposed || !sessionsPollingEnabled) return;
           try {
             await refreshSessions();
+            markSessionsPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            markSessionsPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("refreshSessions timer failed", e2);
           }
           scheduleSessionsPoll();
@@ -956,14 +997,14 @@
         async function runSecondaryPollTick() {
           if (appDisposed || !secondaryPollingEnabled) return;
           try {
-            await loadVoiceSettings();
-            await syncNotificationState();
-            if (notificationsEnabledLocally()) await pollNotificationFeed();
+            await refreshVoiceBackgroundState();
+            markSecondaryPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("secondary poll failed", e2);
           }
           scheduleSecondaryPoll();
@@ -1481,7 +1522,8 @@
           typeof codoxearModal.isModalTargetOpen !== "function" ||
           typeof codoxearModal.syncModalIsolation !== "function" ||
           typeof codoxearModal.restoreModalFocus !== "function" ||
-          typeof codoxearModal.focusModalCloseButton !== "function"
+          typeof codoxearModal.focusModalCloseButton !== "function" ||
+          typeof codoxearModal.createModalKeyboardHandler !== "function"
         )
           throw new Error("Codoxear modal helpers failed to load");
 
@@ -1956,39 +1998,10 @@
           });
         })();
 
-        function modalButtonLabel(button) {
-          return [button.textContent, button.getAttribute("aria-label")]
-            .map((label) => String(label || "").trim().toLowerCase())
-            .find(Boolean) || "";
-        }
-
-        function modalButtonHint(label, labels) {
-          for (let index = 0; index < label.length; index += 1) {
-            const candidate = label[index];
-            if (!/[a-z0-9]/.test(candidate)) continue;
-            if (labels.filter((other) => other[index] === candidate).length === 1) return candidate;
-          }
-          return "";
-        }
-
-        function activateModalButtonForKey(e) {
-          if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return false;
-          const key = String(e.key || "").toLowerCase();
-          if (key.length !== 1 || isTextEntryElement(e.target)) return false;
-          for (const modal of modalIsolationTargets) {
-            if (!isModalTargetOpen(modal)) continue;
-            const buttons = [...modal.querySelectorAll("button")].filter((button) => !button.disabled && !button.hidden && button.getClientRects().length);
-            const labels = buttons.map(modalButtonLabel);
-            const button = buttons.find((candidate, index) => modalButtonHint(labels[index], labels) === key);
-            if (!button) continue;
-            e.preventDefault();
-            e.stopPropagation();
-            button.click();
-            return true;
-          }
-          return false;
-        }
-
+        const activateModalButtonForKey = codoxearModal.createModalKeyboardHandler({
+          modalIsolationTargets,
+          isTextEntryElement,
+        });
         addAppEvent(document, "keydown", activateModalButtonForKey);
 
         // --- Direct (no-leader) Vimium-style shortcuts ---
@@ -2670,6 +2683,8 @@
           hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
           visibilityState: () => document.visibilityState,
           navigatorValue: () => (typeof navigator === "undefined" ? undefined : navigator),
+          reportTransportSuccess: () => networkStatus.reportSuccess(),
+          reportTransportFailure: () => networkStatus.reportFailure(),
           EventSource: typeof EventSource === "function" ? EventSource : null,
           AbortController: typeof AbortController === "function" ? AbortController : null,
           setTimeout: window.setTimeout.bind(window),
@@ -3535,6 +3550,9 @@
         function loadVoiceSettings() {
           return voiceController.loadVoiceSettings();
         }
+        function refreshVoiceBackgroundState(options) {
+          return voiceController.refreshBackgroundState(options);
+        }
         function syncNotificationState(serverSnapshot) {
           return voiceController.syncNotificationState(serverSnapshot);
         }
@@ -3631,7 +3649,7 @@
           visibleEntries: () => filePickerEntryRuntime.visibleEntries(),
           searchSnapshot: () => filePickerSearchSnapshot(),
           normalizeDraftFilePath: (query) => normalizeDraftFilePath(query),
-          draftSuppressed: () => filePickerDraftSuppressed(),
+          draftSuppressed: () => filePickerSearchState.draftSuppressed(filePickerInput.value),
           draftEntry: (path) => filePickerEntryRuntime.draftEntry(path),
           syncActiveDescendant: (focusIndex) => filePickerDomRuntime.syncActiveDescendant(focusIndex),
           sectionLabel: (source) => filePickerSectionLabel(source),
@@ -5488,10 +5506,7 @@
 	            if (pick) await selectSession(pick);
               void (async () => {
                 try {
-                  await Promise.all([loadVoiceSettings(), syncNotificationState()]);
-                  if (appDisposed) return;
-                  if (voiceAnnouncementsEnabled()) resumeAnnouncementRuntime({ resetSource: false });
-                  if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
+                  await refreshVoiceBackgroundState({ force: true, primeNotifications: true });
                 } catch (e) {
                   if (e && e.status === 401) handleAppAuthLoss();
                   else console.error("initial voice and notification sync failed", e);
@@ -5521,10 +5536,7 @@
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
                   resumeAnnouncementRuntime({ resetSource: false });
-                  if (selected) {
-                    messageFlowController.resumeLiveDelivery();
-                    kickPoll(0);
-                  }
+                  if (selected) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
                   scheduleSecondaryPoll(0);
                   return;
@@ -5535,13 +5547,24 @@
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
+                networkStatus.reportSuccess();
                 messageFlowController.resetMessagePollBackoff();
-                if (selected) kickPoll(0);
+                sessionsPollErrorStreak = 0;
+                secondaryPollErrorStreak = 0;
+                if (selected) {
+                  messageFlowController.resumeLiveDelivery();
+                  kickPoll(0);
+                }
                 scheduleSessionsPoll(0);
+                scheduleSecondaryPoll(0);
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
+                networkStatus.sync();
+                messageFlowController.closeMessageEventSource();
                 if (selected) kickPoll(messagePollDelayMs());
+                scheduleSessionsPoll(sessionsPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
