@@ -107,7 +107,7 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
     def test_polling_policy_preserves_delay_contracts(self) -> None:
         result = eval_polling_policy()
         self.assertEqual(result["intervals"], {
-            "SESSION_POLL_VISIBLE_MS": 3500,
+            "SESSION_POLL_VISIBLE_MS": 5000,
             "SESSION_POLL_HIDDEN_MS": 15000,
             "SECONDARY_POLL_VISIBLE_MS": 30000,
             "SECONDARY_POLL_HIDDEN_MS": 60000,
@@ -119,7 +119,7 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
             "MESSAGE_POLL_ERROR_MIN_MS": 2000,
             "MESSAGE_POLL_ERROR_MAX_MS": 30000,
         })
-        self.assertEqual(result["sessionsVisible"], 3500)
+        self.assertEqual(result["sessionsVisible"], 5000)
         self.assertEqual(result["sessionsHidden"], 15000)
         self.assertEqual(result["secondaryVisible"], 30000)
         self.assertEqual(result["secondaryHidden"], 60000)
@@ -138,7 +138,7 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
         self.assertEqual(result["offlineHighErrorKick0"], 30000)
         self.assertEqual(result["sessionsOffline"], 15000)
         self.assertEqual(result["secondaryOffline"], 60000)
-        self.assertEqual(result["sessionsFailed"], 4000)
+        self.assertEqual(result["sessionsFailed"], 5000)
         self.assertEqual(result["recovered"], 1500)
         self.assertEqual(result["negativeKick"], 0)
         self.assertEqual(result["stringKick"], 42)

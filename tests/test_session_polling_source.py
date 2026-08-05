@@ -32,7 +32,7 @@ def eval_polling_and_cache() -> dict:
 class TestSessionPollingBehavior(unittest.TestCase):
     def test_visibility_turn_and_errors_choose_the_correct_poll_delay(self) -> None:
         result = eval_polling_and_cache()
-        self.assertEqual(result["sessionsVisible"], 3500)
+        self.assertEqual(result["sessionsVisible"], 5000)
         self.assertEqual(result["sessionsHidden"], 15000)
         self.assertEqual(result["idle"], 1500)
         self.assertEqual(result["running"], 500)
