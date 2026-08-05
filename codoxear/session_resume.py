@@ -6,6 +6,7 @@ import re
 from typing import Any, Callable, Iterable
 
 from .agent_backend import normalize_agent_backend
+from .session_log_paths import is_pi_subagent_session_log_path
 
 
 def resume_candidate_from_log(
@@ -16,6 +17,8 @@ def resume_candidate_from_log(
     is_subagent_session_meta: Callable[[dict[str, Any]], bool],
 ) -> dict[str, Any] | None:
     backend_name = normalize_agent_backend(agent_backend)
+    if backend_name == "pi" and is_pi_subagent_session_log_path(log_path):
+        return None
     meta = read_session_meta(log_path, agent_backend=backend_name)
     if is_subagent_session_meta(meta):
         return None

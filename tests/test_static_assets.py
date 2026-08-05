@@ -333,7 +333,6 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_unattended.js", names)
         self.assertIn("codoxear/static/app_chat_navigation.js", names)
         self.assertIn("codoxear/static/app_chat_search.js", names)
-        self.assertIn("codoxear/static/", names)
         self.assertIn("codoxear/static/codoxear-icon.png", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)

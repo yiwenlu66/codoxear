@@ -25,6 +25,7 @@
     const getPollGen = typeof options.getPollGen === "function" ? options.getPollGen : () => 0;
     const api = typeof options.api === "function" ? options.api : async () => ({ total: loadedUserMessageRows().length, matches: [] });
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
+    const loadOlderMessages = requireFunction(options.loadOlderMessages, "loadOlderMessages");
     const loadedUserMessageRows = requireFunction(options.loadedUserMessageRows, "loadedUserMessageRows");
     const loadedCopyMessageRows = requireFunction(options.loadedCopyMessageRows, "loadedCopyMessageRows");
     const loadedUserJumpTarget = requireFunction(options.loadedUserJumpTarget, "loadedUserJumpTarget");
@@ -112,6 +113,16 @@
       }
     }
 
+    async function loadHistoryUntilEventId(eventId) {
+      const targetId = typeof eventId === "string" ? eventId : "";
+      if (!targetId) return null;
+      while (true) {
+        const row = loadedUserMessageRows().find((item) => item.dataset && item.dataset.messageId === targetId) || null;
+        if (row) return row;
+        if (!(await loadOlderMessages({ auto: false, cancelOnScroll: false }))) return null;
+      }
+    }
+
     async function jumpToLoadedUserMessage(direction) {
       const rows = loadedUserMessageRows();
       syncButtons();
@@ -127,6 +138,11 @@
         return;
       }
       const cursor = typeof match.before_byte === "string" ? match.before_byte : "";
+      if (direction < 0) {
+        const target = await loadHistoryUntilEventId(match.message_id);
+        if (target) scrollToRow(target);
+        return;
+      }
       if (!cursor || !(await loadTranscriptWindowAtCursor(cursor))) return;
       scrollToRow(rowForMatch(match));
     }

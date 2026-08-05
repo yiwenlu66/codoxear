@@ -305,7 +305,10 @@
       const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
       const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
       const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
-      if (configuredDefault) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
+      const configuredDefaultBelongsToProvider = !providerModelMap
+        || !activeProvider
+        || (Array.isArray(providerModelMap[activeProvider]) && providerModelMap[activeProvider].includes(configuredDefault));
+      if (configuredDefault && configuredDefaultBelongsToProvider) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
       for (const item of latestSessions()) {
         if (codoxearLaunch.sessionAgentBackend(item) !== currentBackend) continue;
         const model = typeof item.model === "string" ? item.model.trim() : "";

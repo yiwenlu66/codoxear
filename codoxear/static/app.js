@@ -311,7 +311,18 @@
       function sidebarModelText(s) {
         const model = s && typeof s.model === "string" ? s.model.trim() : "";
         if (!model || model.toLowerCase() === "default") return "";
-        return model.length > 16 ? `${model.slice(0, 6)}…${model.slice(-8)}` : model;
+        if (model.length <= 16) return model;
+        const slash = model.indexOf("/");
+        if (slash > 0 && slash < model.length - 1) {
+          const provider = model.slice(0, slash);
+          const modelName = model.slice(slash + 1);
+          const suffixBudget = 8;
+          if (modelName.length <= suffixBudget) {
+            const providerBudget = Math.max(1, 16 - modelName.length - 2);
+            return `${provider.slice(0, providerBudget)}…/${modelName}`;
+          }
+        }
+        return `${model.slice(0, 6)}…${model.slice(-8)}`;
       }
 
       function sessionIdFromHash() {
@@ -2079,6 +2090,7 @@
             getPollGen: () => pollGen,
             api,
             loadTranscriptWindowAtCursor,
+            loadOlderMessages,
             loadedUserMessageRows,
             loadedCopyMessageRows,
             loadedUserJumpTarget,

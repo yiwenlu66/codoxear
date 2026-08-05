@@ -28,6 +28,7 @@ def eval_navigation() -> dict:
         const controller = ctx.window.CodoxearChatNavigation.createChatNavigationController({{
           prevUserBtn: prev, nextUserBtn: next, getSelected: () => selected,
           loadedUserMessageRows: () => userRows, loadedCopyMessageRows: () => copyRows,
+          loadOlderMessages: async () => false,
           loadedUserJumpTarget: (_rows, direction) => direction < 0 ? {{ target: null, reason: "first" }} : {{ target: userRows[0] }},
           loadedCopyJumpTarget: (_rows, direction) => direction < 0 ? {{ target: null, reason: "first" }} : {{ target: copyRows[0] }},
           getScrollTop: () => 100, prefersReducedMotion: () => false,
@@ -60,11 +61,11 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_navigation_jumps_are_delegated_to_controller(self) -> None:
         calls = eval_navigation()["calls"]
-        self.assertContains(["scroll", "u1", {"block": "start", "behavior": "auto"}], calls)
-        self.assertContains(["pulse", "u1"], calls)
-        self.assertContains(["search"], calls)
-        self.assertNotContains(["key-prevent-user"], calls)
-        self.assertNotContains(["blocked-prevent"], calls)
+        self.assertIn(["scroll", "u1", {"block": "start", "behavior": "auto"}], calls)
+        self.assertIn(["pulse", "u1"], calls)
+        self.assertIn(["search"], calls)
+        self.assertNotIn(["key-prevent-user"], calls)
+        self.assertNotIn(["blocked-prevent"], calls)
 
 
 if __name__ == "__main__":
