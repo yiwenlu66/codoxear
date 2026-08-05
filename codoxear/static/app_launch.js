@@ -119,6 +119,7 @@
       model: typeof raw.model === "string" ? raw.model : null,
       models: Array.isArray(raw.models) ? raw.models.slice() : [],
       model_providers: modelProviders,
+      provider_models: raw.provider_models && typeof raw.provider_models === "object" ? raw.provider_models : null,
       reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
       reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["xhigh", "high", "medium", "low"],
       service_tier: typeof raw.service_tier === "string" ? raw.service_tier : "flex",
