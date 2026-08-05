@@ -116,7 +116,7 @@ for declaration in \
   'let[[:space:]]+latestSessions[[:space:]]*=' \
   'let[[:space:]]+selected[[:space:]]*=' \
   'let[[:space:]]+sessionIndex[[:space:]]*='; do
-  if ! grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app_application_composition.js"; then
+  if ! grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app_application.js" && ! grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app_application_composition.js" 2>/dev/null; then
     echo "app.js render state declaration check failed: $declaration" >&2
     exit 1
   fi
