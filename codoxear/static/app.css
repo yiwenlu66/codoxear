@@ -967,7 +967,7 @@
         padding: 0 var(--space-2);
         border-radius: 0;
         border: 0;
-        background: var(--panel);
+        background: transparent;
         color: var(--muted);
         font-family: var(--font-mono);
         font-size: var(--font-sm);
