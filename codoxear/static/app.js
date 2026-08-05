@@ -830,8 +830,7 @@
         root.appendChild(unattendedMenu);
         let pendingHashSessionId = "";
         let pendingHashSessionSelectInFlight = false;
-        const INIT_PAGE_LIMIT_DESKTOP = 60;
-        const INIT_PAGE_LIMIT_MOBILE = 24;
+        const INIT_PAGE_LIMIT = 24;
         const OLDER_PAGE_LIMIT = 60;
         const CHAT_DOM_WINDOW = 260;
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
@@ -1753,7 +1752,7 @@
         let currentSubagentsRunning = 0;
         function renderStatusChip() {
           const q = currentQueueLen;
-          const base = currentRunning ? "Busy" : q ? (isMobile() ? `Q ${q}` : `Queue ${q}`) : "Idle";
+          const base = currentRunning ? "Busy" : q ? `Queue ${q}` : "Idle";
           statusChip.style.display = "inline-flex";
           statusChip.textContent = currentSubagentsRunning > 0 ? `${base} · ▸${currentSubagentsRunning}` : base;
         }
@@ -2178,7 +2177,7 @@
         }
 
         function initPageLimit() {
-          return isMobile() ? INIT_PAGE_LIMIT_MOBILE : INIT_PAGE_LIMIT_DESKTOP;
+          return INIT_PAGE_LIMIT;
         }
 
         function olderPageLimit() {
@@ -2254,7 +2253,7 @@
 
         const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime({
           getSession: (sessionId) => sessionIndex.get(sessionId) || null,
-          maxTailEvents: Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE),
+          maxTailEvents: INIT_PAGE_LIMIT,
         });
 
         function activeTranscriptSnapshot() {
@@ -3361,7 +3360,7 @@
             openMessageEventSource(sessionId, myGen);
             kickPoll(900);
           }
-          if (isMobile()) setSidebarOpen(false);
+          if (window.matchMedia("(max-width: 880px)").matches) setSidebarOpen(false);
           updateUnattendedBtnState();
           if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession();
@@ -4889,7 +4888,7 @@
         };
 
         toggleSidebarBtn.onclick = () => {
-          if (isMobile()) {
+          if (window.matchMedia("(max-width: 880px)").matches) {
             setSidebarOpen(!document.body.classList.contains("sidebar-open"));
             return;
           }
