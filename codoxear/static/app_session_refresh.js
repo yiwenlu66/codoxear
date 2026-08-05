@@ -61,7 +61,9 @@
     }
 
     async function refreshSessionsOnce() {
+      console.log("[session-refresh] before /api/sessions");
       const data = await api("/api/sessions");
+      console.log("[session-refresh] after /api/sessions", data);
       let latestSessions = getLatestSessions();
       if (isDisposed()) return latestSessions;
       const notModified = apiResponseNotModified(data);
@@ -105,7 +107,9 @@
       }
       if (selected) syncAttachments();
       else clearAttachments();
+      console.log("[session-refresh] before renderSessions", sessions.length);
       const renderedSidebar = renderSessions(sessions, { selectedId: selected, swipeActions: !useDesktopSessionActions() });
+      console.log("[session-refresh] after renderSessions", renderedSidebar);
       if (!renderedSidebar) return sessions;
       if (selected) {
         const session = sessionIndex.get(selected);
