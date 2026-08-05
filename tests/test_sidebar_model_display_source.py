@@ -32,6 +32,7 @@ def eval_sidebar_display_cases() -> dict[str, str]:
           deepseek: sidebarModelText({{ model: "deepseek-v4-flash" }}),
           claude: sidebarModelText({{ model: "claude-sonnet-4-5" }}),
           longProviderModel: sidebarModelText({{ model: "provider/very-long-model-name-for-ellipsis-proof", model_provider: "ignored-provider" }}),
+          shortModelSuffix: sidebarModelText({{ model: "dexgem-responses/kimi-k3" }}),
           effortNull: sidebarEffortCode(null),
           effortUnknown: sidebarEffortCode("ultra"),
           effortOff: sidebarEffortCode("off"),
@@ -66,6 +67,7 @@ class TestSidebarModelDisplaySource(unittest.TestCase):
         self.assertEqual(result["deepseek"], "deepse…v4-flash")
         self.assertEqual(result["claude"], "claude…nnet-4-5")
         self.assertEqual(result["longProviderModel"], "provid…is-proof")
+        self.assertEqual(result["shortModelSuffix"], "dexgem-…/kimi-k3")
 
     def test_sidebar_reasoning_effort_codes_have_compact_known_values(self) -> None:
         result = eval_sidebar_display_cases()

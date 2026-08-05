@@ -31,6 +31,25 @@
     return value;
   }
 
+  const CONTROL_SLASH_COMMANDS = new Set(["model", "effort", "thinking", "new"]);
+
+  function slashCommandName(raw) {
+    const match = String(raw || "").trim().match(/^\/([^\s/]+)/);
+    return match ? match[1].toLowerCase() : "";
+  }
+
+  function isKnownControlSlashCommand(raw, session) {
+    const command = slashCommandName(raw);
+    if (!command) return false;
+    if (CONTROL_SLASH_COMMANDS.has(command)) return true;
+    return Array.isArray(session && session.slash_commands)
+      && session.slash_commands.some((entry) => String(entry && entry.name || "").replace(/^\//, "").toLowerCase() === command);
+  }
+
+  function isModelControlCommand(raw) {
+    return slashCommandName(raw) === "model";
+  }
+
   function createMessageFlowController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("message flow dependency missing: options");
 
@@ -543,6 +562,8 @@
       const renderHere = sessionId === getSelected();
       const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
       const sessionInfo = getSessionInfo(sessionId) || null;
+      const isControlSlashCommand = isKnownControlSlashCommand(raw, sessionInfo);
+      const modelControlCommand = isModelControlCommand(raw);
       if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
         setToast("failed launch cannot receive messages");
         return false;
@@ -568,8 +589,8 @@
 
       const localId = nextLocalEchoId();
       const startedAt = now() / 1000;
-      if (renderHere && !continuesOpenTurn) typingRowRuntime.resetTypingStats();
-      if (renderHere && !renewsTranscript) {
+      if (renderHere && !continuesOpenTurn && !isControlSlashCommand) typingRowRuntime.resetTypingStats();
+      if (renderHere && !renewsTranscript && !isControlSlashCommand) {
         if (!renderedAtLiveTail()) {
           clearTranscriptDom();
           clearRenderedTranscriptRange();
@@ -590,8 +611,6 @@
           clearRenderedTranscriptRange();
           invalidateOlderLoad();
           renderPendingTranscriptSlot(sessionId);
-          setTurnOpen(true);
-          setCurrentRunning(true);
         }
         const attachmentCleanupError = response && (response.attachment_cleanup_error || response.attachments_cleanup_error)
           ? String(response.attachment_cleanup_error || response.attachments_cleanup_error)
@@ -612,6 +631,14 @@
           if (error && error.status === 401) handleAppAuthLoss();
           else consoleError("refreshSessions failed", error);
         });
+        if (modelControlCommand) {
+          setTimeoutFn(() => {
+            void refreshSessions().catch((error) => {
+              if (error && error.status === 401) handleAppAuthLoss();
+              else consoleError("refreshSessions failed after model change", error);
+            });
+          }, 1500);
+        }
         return true;
       } catch (error) {
         if (error && error.status === 401) {

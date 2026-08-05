@@ -174,7 +174,43 @@ def test_confirmed_send_resets_idle_typing_window_but_preserves_steer_counts() -
     }
 
 
-def test_failed_transcript_renewal_send_keeps_current_binding() -> None:
+
+def test_control_slash_commands_do_not_open_a_conversation_turn_and_model_rechecks_sessions() -> None:
+    out = _run_node(
+        """
+        const timers = [];
+        let refreshes = 0;
+        async function send(raw) {
+          const harness = createHarness({
+            api: async () => ({ queued: false, queue_len: 0 }),
+            refreshSessions: async () => { refreshes += 1; },
+            setTimeout: (callback, delay) => { timers.push({ callback, delay }); return timers.length; },
+          });
+          const ok = await harness.create().sendText(raw);
+          return {
+            ok,
+            turnOpen: harness.state.turnOpen,
+            running: harness.state.running,
+            pendingEvents: harness.state.events.length,
+            resets: harness.state.resets,
+          };
+        }
+        Promise.all(["/model", "/effort", "/thinking", "/new"].map(send)).then(async (commands) => {
+          const modelRefresh = timers.find((timer) => timer.delay === 1500);
+          await modelRefresh.callback();
+          process.stdout.write(JSON.stringify({ commands, refreshes, delayedRefreshes: timers.filter((timer) => timer.delay === 1500).length }));
+        });
+        """
+    )
+    assert out["commands"] == [
+        {"ok": True, "turnOpen": False, "running": False, "pendingEvents": 0, "resets": 0},
+        {"ok": True, "turnOpen": False, "running": False, "pendingEvents": 0, "resets": 0},
+        {"ok": True, "turnOpen": False, "running": False, "pendingEvents": 0, "resets": 0},
+        {"ok": True, "turnOpen": False, "running": False, "pendingEvents": 0, "resets": 0},
+    ]
+    assert out["delayedRefreshes"] == 1
+    assert out["refreshes"] == 5
+
     out = _run_node(
         """
         const stateChanges = { renewals: 0, cacheDeletes: 0, pendingRenders: 0 };

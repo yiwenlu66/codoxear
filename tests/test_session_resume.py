@@ -504,7 +504,10 @@ class TestSessionResumeCandidates(unittest.TestCase):
             )
             _write_jsonl(other, [{"type": "session", "id": "pi-b", "cwd": "/elsewhere", "timestamp": "2026-03-08T02:00:00Z"}])
 
-            rows = _list_resume_candidates("/repo", [same, other], agent_backend="pi", limit=10)
+            child = root / "parent" / "subagent" / "run-0" / "session.jsonl"
+            _write_jsonl(child, [{"type": "session", "id": "pi-child", "cwd": "/repo", "timestamp": "2026-03-08T01:30:00Z"}])
+
+            rows = _list_resume_candidates("/repo", [same, child, other], agent_backend="pi", limit=10)
 
         self.assertEqual([row["session_id"] for row in rows], ["pi-a"])
         self.assertEqual(rows[0]["agent_backend"], "pi")

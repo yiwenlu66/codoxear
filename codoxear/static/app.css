@@ -970,12 +970,14 @@
         background: var(--state-pending);
       }
 
-      .status-chip {
+      .status-chip,
+      .chatTimeChip {
         display: inline-flex;
         align-items: center;
-        height: 32px;
+        height: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         box-sizing: border-box;
-        padding: var(--space-1) var(--space-4);
+        padding: 0 var(--space-2);
         border-radius: 0;
         border: 1px solid var(--border);
         background: var(--panel);
@@ -999,13 +1001,9 @@
         background: var(--ink);
       }
       .status-chip,
-      #ctxChip,
       .chatTimeChip,
       .ts {
         font-family: var(--font-mono);
-      }
-      #ctxChip {
-        padding: 2px var(--space-2);
       }
 
       button:focus-visible,
@@ -1129,6 +1127,7 @@
         left: var(--space-5);
         right: calc(var(--space-5) + var(--chat-nav-rail-w));
         display: none;
+        align-items: center;
         justify-content: center;
         min-width: 0;
         overflow: hidden;

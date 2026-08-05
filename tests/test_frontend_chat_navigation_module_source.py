@@ -32,6 +32,7 @@ const deps = {
     return { total: rows.length, matches: [] };
   },
   loadTranscriptWindowAtCursor: async (cursor) => { events.push(`window:${cursor}`); rows = [row('u0', 'c0', 0)]; return { jumped_window: true }; },
+  loadOlderMessages: async () => { events.push('older'); rows = [row('u0', 'c0', 0), ...rows]; return true; },
   loadedUserMessageRows: () => rows, loadedCopyMessageRows: () => rows,
   loadedUserJumpTarget: (items, direction) => direction > 0 && items.length > 1 ? { target: items[1], reason: 'target' } : { target: null, reason: direction < 0 ? 'first' : 'last' },
   loadedCopyJumpTarget: () => ({ target: null, reason: 'last' }), getScrollTop: () => 0,
@@ -78,7 +79,21 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
 })();
 ''')
         self.assertTrue(any("direction=previous" in item and "anchor=c1" in item for item in result["events"]))
-        self.assertIn("window:c0", result["events"])
+        self.assertIn("older", result["events"])
+        self.assertNotIn("window:c0", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+
+    def test_backward_boundary_progressively_prepends_until_target_is_loaded(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u2', 'c2', 100)]; apiMode = 'boundary';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events, ids: rows.map((item) => item.dataset.messageId) }));
+})();
+''')
+        self.assertEqual(result["ids"], ["u0", "u2"])
+        self.assertEqual(result["events"].count("older"), 1)
+        self.assertNotIn("window:c0", result["events"])
         self.assertIn("scroll:u0", result["events"])
 
     def test_server_boundary_toasts_have_no_window_qualifier(self) -> None:
