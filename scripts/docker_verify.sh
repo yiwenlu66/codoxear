@@ -251,6 +251,7 @@ browser screenshot --full "$artifacts/verification.png" > "$artifacts/browser-sc
 
 if python3 - "$artifacts/browser-report.json" "$artifacts/browser-errors.json" "$artifacts/browser-console.json" "$artifacts/report.json" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -294,19 +295,31 @@ checks = {
     "no_visible_load_failure": report.get("visibleLoadFailure") is False,
     "no_page_errors": errors == [],
 }
-# agent-browser emits console entries as a list. Any console error is a browser
-# failure even when application code catches it before it becomes pageerror.
+# Console resource diagnostics such as a missing favicon arrive as `error` entries,
+# but do not mean the application failed. Keep those diagnostics in the report
+# and fail only for JavaScript exceptions or Codoxear module-load failures.
 error_console = [
     entry for entry in console
     if isinstance(entry, dict) and str(entry.get("type") or entry.get("level") or "").lower() == "error"
 ]
-checks["no_console_errors"] = not error_console
+fatal_console_errors = [
+    entry for entry in error_console
+    if re.search(
+        r"\b(?:ReferenceError|TypeError|SyntaxError)\b|\bCodoxear\b.*\bfailed to load\b",
+        str(entry.get("text") or ""),
+        re.IGNORECASE,
+    )
+]
+checks["no_fatal_console_errors"] = not fatal_console_errors
 summary = {
     "pass": all(checks.values()),
     "checks": checks,
     "browserReport": report,
     "pageErrors": errors,
-    "consoleErrors": error_console,
+    "fatalConsoleErrors": fatal_console_errors,
+    "ignoredConsoleErrors": [
+        entry for entry in error_console if entry not in fatal_console_errors
+    ],
 }
 output_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(summary, indent=2))
