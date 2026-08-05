@@ -16,10 +16,12 @@ def eval_model_options(
     *,
     backend: str = "codex",
     provider_choices: list[str] | None = None,
+    provider_models: dict[str, list[str]] | None = None,
     latest_sessions: list[dict] | None = None,
 ) -> dict:
     sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, NEW_SESSION)]
     providers = provider_choices if provider_choices is not None else ["chatgpt", "openai-api", "crs"]
+    model_map = provider_models if provider_models is not None else {}
     sessions = latest_sessions if latest_sessions is not None else [
         {"agent_backend": "codex", "model": "gpt-5.4", "model_provider": "openai", "preferred_auth_method": "chatgpt"},
         {"agent_backend": "codex", "model": "gpt-5.4", "model_provider": "crs", "preferred_auth_method": "apikey"},
@@ -35,7 +37,7 @@ def eval_model_options(
         const modelInput={{value:{json.dumps(query)},focus(){{}},setSelectionRange(){{}}}}, noop=()=>{{}}, cls={{toggle(){{}},remove(){{}}}}, node={{innerHTML:"",appendChild(){{}}}};
         const c=ctx.window.CodoxearNewSession.createNewSessionController({{
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
-          defaultsSource:()=>({{model:"gpt-5.4-mini",models:["gpt-5.4","o4-mini"],model_providers:{json.dumps(providers)},provider_choices:{json.dumps(providers)},reasoning_efforts:["off","low","high"],reasoning_efforts_by_model:{{}}}}),
+          defaultsSource:()=>({{model:"gpt-5.4-mini",models:["gpt-5.4","o4-mini"],model_providers:{json.dumps(providers)},provider_choices:{json.dumps(providers)},provider_models:{json.dumps(model_map)},reasoning_efforts:["off","low","high"],reasoning_efforts_by_model:{{}}}}),
           latestSessions:()=>{json.dumps(sessions)}, tmuxAvailable:()=>true,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
           cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},recentCwds:()=>[],cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
@@ -83,6 +85,16 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         pairs = {(item["providerChoice"], item["model"]) for item in result["options"]}
         self.assertContains(("chatgpt", "gpt-5.4"), pairs)
         self.assertNotContains(("", "ghost-model"), pairs)
+
+    def test_configured_provider_model_map_prevents_cross_product_options(self) -> None:
+        result = eval_model_options(
+            "",
+            provider_choices=["chatgpt", "crs"],
+            provider_models={"chatgpt": ["gpt-5.4"], "crs": ["kimi-k3"]},
+            latest_sessions=[],
+        )
+        pairs = {(item["providerChoice"], item["model"]) for item in result["options"]}
+        self.assertEqual(pairs, {("chatgpt", "gpt-5.4"), ("crs", "kimi-k3")})
 
     def test_long_provider_is_shown_without_abbreviation_and_preserves_identity(self) -> None:
         result = eval_model_options("", provider_choices=["chatgpt", "openai-api", "dexgem-completions"])

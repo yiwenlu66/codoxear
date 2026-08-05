@@ -304,7 +304,10 @@
       const providerChoices = newSessionProviderChoices();
       const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
       const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
-      const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
+      const rawProviderModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
+      const providerModelMap = rawProviderModelMap && Object.values(rawProviderModelMap).some((models) => Array.isArray(models) && models.length)
+        ? rawProviderModelMap
+        : null;
       const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
       const configuredDefaultBelongsToProvider = !providerModelMap
         || !activeProvider
