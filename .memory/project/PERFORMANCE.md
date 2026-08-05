@@ -13,12 +13,12 @@ view (`sessionsPollDelayMs("visible")`), yielding 12 sidebar polls in a
 60-second idle window. An unchanged list response is one initial `200` followed
 by 11 ETag-driven `304` responses.
 
-Hidden traffic uses a **3–15 second backoff envelope** in the audit plan. The
-current polling module's active hidden intervals are 5 seconds for transcript
-fallback and 15 seconds for session-list polls (15 seconds offline); it has no
-3,000-ms hidden timer. Keep that distinction explicit when changing cadence:
-the 60-second floor below measures the visible 5,000-ms session-list path, not
-a hidden-page path.
+Hidden traffic uses a **5–15 second backoff**: the current polling module
+uses 5 seconds for transcript fallback and 15 seconds for session-list polls
+(15 seconds offline). A previously claimed 3-second hidden envelope was never
+implemented; this document records the executable cadence. Keep that distinction
+explicit when changing polling: the 60-second floor below measures the visible
+5,000-ms session-list path, not a hidden-page path.
 
 ## Baseline
 
