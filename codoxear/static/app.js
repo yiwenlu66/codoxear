@@ -914,8 +914,7 @@
           if (voiceController) voiceController.dispose();
           if (unattendedController) unattendedController.dispose();
           filePickerSearchState.dispose();
-          if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
-          iosViewportGuardTimer = null;
+          if (iosViewportController) iosViewportController.dispose();
           if (chatSearchController) chatSearchController.dispose();
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
@@ -925,7 +924,7 @@
           fileViewerController.abortPendingFileOpenTransport();
           hideUnattendedMenu();
           hideFilePasteDialog();
-          sessionEditController.hideFileUnsavedDialog("cancel");
+          fileUnsavedController.hideFileUnsavedDialog("cancel");
           closeSendChoiceDialog();
           if (composerController) composerController.dispose();
           sidebarController.dispose();
@@ -1037,34 +1036,14 @@
           }, Math.max(0, Number(delayMs) || 0));
         }
 
-            titleLabel.style.cursor = "default";
-            titleLabel.title = "No session selected";
-            titleLabel.onclick = () => {
-              if (!selected) return;
-              sessionEditController.openEditSession(selected);
-            };
-            titleLabel.onkeydown = (e) => {
-              if (!selected) return;
-              if (e.key !== "Enter" && e.key !== " ") return;
-              e.preventDefault();
-              sessionEditController.openEditSession(selected);
-            };
-            function syncTitleEditState() {
-              const interactive = Boolean(selected);
-              titleLabel.style.cursor = interactive ? "pointer" : "default";
-              titleLabel.title = interactive ? "Edit conversation" : "No session selected";
-              titleLabel.tabIndex = interactive ? 0 : -1;
-              if (interactive) {
-                titleLabel.setAttribute("role", "button");
-                titleLabel.setAttribute("aria-label", "Edit conversation");
-                titleLabel.removeAttribute("aria-disabled");
-              } else {
-                titleLabel.removeAttribute("role");
-                titleLabel.removeAttribute("aria-label");
-                titleLabel.setAttribute("aria-disabled", "true");
-              }
-            }
-            syncTitleEditState();
+        const codoxearSessionTitle = window.CodoxearSessionTitle;
+        if (!codoxearSessionTitle || typeof codoxearSessionTitle.createSessionTitleController !== "function")
+          throw new Error("Codoxear session title controller failed to load");
+        const sessionTitleController = codoxearSessionTitle.createSessionTitleController({
+          titleLabel,
+          getSelected: () => selected,
+          openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
+        });
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
         const fileCloseBtn = el("button", {
@@ -1548,6 +1527,11 @@
           button.appendChild(el("span", { class: "pickerButtonChevron", html: iconSvg("chevronDown") }));
         }
 
+        const codoxearDialogMenu = window.CodoxearDialogMenu;
+        if (!codoxearDialogMenu || typeof codoxearDialogMenu.createDialogMenuController !== "function")
+          throw new Error("Codoxear dialog menu controller failed to load");
+        const dialogMenuController = codoxearDialogMenu.createDialogMenuController({ windowTarget: window });
+
         const newSessionDialogController = codoxearNewSession.createNewSessionDialogController({
           root,
           el,
@@ -1566,7 +1550,7 @@
           afterModalVisibilityChanged,
           isModalTargetOpen,
           applyDialogMenus,
-          positionDialogMenu,
+          positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           setPickerButtonContent,
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
           spawnSession: spawnSessionWithCwd,
@@ -3359,7 +3343,7 @@
             openMessageEventSource(sessionId, myGen);
             kickPoll(900);
           }
-          if (window.matchMedia("(max-width: 880px)").matches) setSidebarOpen(false);
+          if (isMobile()) setSidebarOpen(false);
           updateUnattendedBtnState();
           if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession();
@@ -3502,7 +3486,7 @@
         // controller. Everything else (title edit, attach/file/send/queue/diag
         // buttons, context bar, chat nav, chat-search close) stays here.
         function updateUnattendedBtnState() {
-          syncTitleEditState();
+          sessionTitleController.syncTitleEditState();
           unattendedController.syncButtonState();
           attachmentsController.syncAttachButtonState();
           const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
@@ -3605,42 +3589,6 @@
         function applyDialogMenus() {
           if (sessionEditController) sessionEditController.applyMenus();
           newSessionDialogController.applyMenus();
-        }
-
-        function positionDialogMenu(menu, anchorBtn) {
-          if (!menu || !anchorBtn) return;
-          const host = menu.parentElement;
-          if (!host) return;
-          const vv = window.visualViewport;
-          const rect = anchorBtn.getBoundingClientRect();
-          const hostRect = host.getBoundingClientRect();
-          const viewportW = hostRect.width;
-          const viewportTop = vv ? vv.offsetTop : 0;
-          const viewportBottom = viewportTop + (vv ? vv.height : window.innerHeight);
-          const margin = 12;
-          const desiredWidth = Math.min(Math.max(rect.width, 280), viewportW - margin * 2);
-          menu.style.position = "absolute";
-          const left = Math.max(margin, Math.min(viewportW - margin - desiredWidth, rect.left - hostRect.left));
-          menu.style.left = `${left}px`;
-          menu.style.width = `${desiredWidth}px`;
-          menu.style.right = "auto";
-          menu.style.bottom = "auto";
-          menu.style.maxHeight = "";
-          const menuHeight = Math.min(menu.scrollHeight || 260, Math.floor((viewportBottom - viewportTop) * 0.5));
-          const spaceBelow = viewportBottom - rect.bottom - margin;
-          const spaceAbove = rect.top - viewportTop - margin;
-          const openAbove = spaceBelow < Math.min(220, menuHeight) && spaceAbove > spaceBelow;
-          if (openAbove) {
-            const maxHeight = Math.max(120, spaceAbove - 8);
-            menu.style.maxHeight = `${maxHeight}px`;
-            const top = Math.max(viewportTop + margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 8);
-            menu.style.top = `${top}px`;
-          } else {
-            const maxHeight = Math.max(120, spaceBelow - 8);
-            menu.style.maxHeight = `${maxHeight}px`;
-            const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
-            menu.style.top = `${top}px`;
-          }
         }
 
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
@@ -3869,6 +3817,15 @@
           takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
           isUnavailable: () => isFileViewerSessionUnavailable(),
         });
+        const codoxearFileUnsaved = window.CodoxearFileUnsaved;
+        if (!codoxearFileUnsaved || typeof codoxearFileUnsaved.createFileUnsavedController !== "function")
+          throw new Error("Codoxear file unsaved controller failed to load");
+        const fileUnsavedController = codoxearFileUnsaved.createFileUnsavedController({
+          documentTarget: document,
+          ElementCtor: HTMLElement,
+          dialogRuntime: fileUnsavedDialogRuntime,
+          getFileViewerController: () => fileViewerController,
+        });
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -4086,14 +4043,6 @@
           return fileViewerController.setFileEditMode(nextMode);
         }
 
-        function hideFileUnsavedDialog(choice = "cancel") {
-          return sessionEditController.hideFileUnsavedDialog(choice);
-        }
-
-        function promptFileUnsavedChoice() {
-          return sessionEditController.promptFileUnsavedChoice();
-        }
-
         const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
           currentSessionId: () => currentFileViewerSessionId(),
           selectedSessionId: () => selected,
@@ -4111,13 +4060,13 @@
           normalizeLineNumber,
           normalizeFileApiPath,
           isFileViewerOpen: () => isFileViewerOpen(),
-          hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice),
+          hideFileUnsavedDialog: (choice) => fileUnsavedController.hideFileUnsavedDialog(choice),
           resetFileSearchState: () => resetFileSearchState(),
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
           isTextFileKind: (kind) => isTextFileKind(kind),
           isDiffableFileKind: (kind) => isDiffableFileKind(kind),
           confirmReload: (message) => confirmApp({ title: "Reload file from disk?", message, confirmText: "Reload", cancelText: "Cancel", destructive: true }),
-          promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
+          promptUnsavedFileChoice: () => fileUnsavedController.promptFileUnsavedChoice(),
           restoreFileEditorText: (text) => restoreFileEditorText(text),
           hideFileViewer: () => hideFileViewer(),
           setFilePath: (path, options) => setFilePath(path, options),
@@ -4183,8 +4132,6 @@
           editSaveBtn,
           editCancelBtn: $("#editCancelBtn"),
           editViewer,
-          fileUnsavedDialogRuntime,
-          fileViewerController,
           getSessionInfo: (sid) => sessionIndex.get(sid),
           getSessions: () => Array.from(sessionIndex.values()),
           selectedSessionId: () => selected,
@@ -4198,7 +4145,7 @@
           setTitle: (_sid, session) => { if (session) titleLabel.textContent = sessionTitleWithId(session); },
           prepareModalOpen,
           afterModalVisibilityChanged,
-          positionDialogMenu,
+          positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           addAppEvent,
         });
         const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({
@@ -4219,7 +4166,7 @@
           beginHide: () => fileViewerModalRuntime.beginHide(),
           hideDisplay: () => fileViewerModalRuntime.hideDisplay(),
           finishHide: (state) => fileViewerModalRuntime.finishHide(state),
-          hideFileUnsavedDialog: () => hideFileUnsavedDialog(),
+          hideFileUnsavedDialog: () => fileUnsavedController.hideFileUnsavedDialog(),
           hideFilePasteDialog: () => hideFilePasteDialog(),
           resetFileViewerPanel: () => resetFileViewerPanel(),
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
@@ -4228,7 +4175,7 @@
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
           isFileViewerOpen: () => isFileViewerOpen(),
           selectedSessionId: () => selected,
-          maybeHandleUnsavedFileChanges: () => maybeHandleUnsavedFileChanges(),
+          maybeHandleUnsavedFileChanges: () => fileUnsavedController.maybeHandleUnsavedFileChanges(),
           filePickerSearchSessionId: () => filePickerSearchSnapshot().sessionId,
           refreshFileCandidates: (options) => refreshFileCandidates(options),
           setFilePath: (path, options) => setFilePath(path, options),
@@ -4327,22 +4274,6 @@
           api: (url, options) => api(url, options),
           el,
         });
-
-        async function maybeHandleUnsavedFileChanges() {
-          return await sessionEditController.maybeHandleUnsavedFileChanges();
-        }
-
-        function handleFileUnsavedSaveChoice() {
-          return sessionEditController.handleFileUnsavedSaveChoice();
-        }
-
-        function handleFileUnsavedDiscardChoice() {
-          return sessionEditController.handleFileUnsavedDiscardChoice();
-        }
-
-        function handleFileUnsavedCancelChoice() {
-          return sessionEditController.handleFileUnsavedCancelChoice();
-        }
 
         async function openDraftFilePathWithGuard(path) {
           return await fileViewerController.openDraftFilePathWithGuard(path);
@@ -4541,10 +4472,10 @@
           void requestHideFileViewer();
         };
         fileBackdrop.onclick = () => void requestHideFileViewer();
-        $("#fileUnsavedSaveBtn").onclick = () => handleFileUnsavedSaveChoice();
-        $("#fileUnsavedDiscardBtn").onclick = () => handleFileUnsavedDiscardChoice();
-        $("#fileUnsavedCancelBtn").onclick = () => handleFileUnsavedCancelChoice();
-        fileUnsavedBackdrop.onclick = () => handleFileUnsavedCancelChoice();
+        $("#fileUnsavedSaveBtn").onclick = () => fileUnsavedController.handleFileUnsavedSaveChoice();
+        $("#fileUnsavedDiscardBtn").onclick = () => fileUnsavedController.handleFileUnsavedDiscardChoice();
+        $("#fileUnsavedCancelBtn").onclick = () => fileUnsavedController.handleFileUnsavedCancelChoice();
+        fileUnsavedBackdrop.onclick = () => fileUnsavedController.handleFileUnsavedCancelChoice();
         $("#filePasteInsertBtn").onclick = () => {
           handleFilePasteInsert(filePasteInput.value);
         };
@@ -4612,7 +4543,7 @@
             return;
           }
           if (fileUnsavedDialog.style.display === "flex") {
-            sessionEditController.hideFileUnsavedDialog("cancel");
+            fileUnsavedController.hideFileUnsavedDialog("cancel");
             return;
           }
           if (isFileViewerOpen()) {
@@ -4887,7 +4818,7 @@
         };
 
         toggleSidebarBtn.onclick = () => {
-          if (window.matchMedia("(max-width: 880px)").matches) {
+          if (isMobile()) {
             setSidebarOpen(!document.body.classList.contains("sidebar-open"));
             return;
           }
@@ -4931,113 +4862,25 @@
           void loadOlderMessages({ auto: false });
         };
 
-         const isIOS =
-           /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
-           (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-	         function activeTextEntryElement() {
-	           const active = document.activeElement;
-	           return isTextEntryElement(active) ? active : null;
-	         }
-	         let iosViewportGuardTimer = null;
-	         let iosViewportGuardUntil = 0;
-	         function normalizePageScroll() {
-	           if (!isIOS) return;
-	           const activeEntry = activeTextEntryElement();
-	           if (activeEntry && activeEntry !== textarea) return;
-	           const y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-	           if (y <= 0) return;
-	           window.scrollTo(0, 0);
-	           document.documentElement.scrollTop = 0;
-	           document.body.scrollTop = 0;
-	         }
-	         function stopIOSViewportGuard() {
-	           if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
-	           iosViewportGuardTimer = null;
-	           iosViewportGuardUntil = 0;
-	         }
-	         function isIOSViewportGuardActive() {
-	           return isIOS && Date.now() < iosViewportGuardUntil;
-	         }
-	         function runIOSViewportGuard({ preserveChatBottom, durationMs = 1400 } = {}) {
-	           if (!isIOS) return;
-	           stopIOSViewportGuard();
-	           iosViewportGuardUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
-	           const tick = () => {
-	             const activeEntry = activeTextEntryElement();
-	             if (activeEntry && activeEntry !== textarea) {
-	               stopIOSViewportGuard();
-	               return;
-	             }
-	             updateAppHeightVar();
-	             normalizePageScroll();
-	             if (preserveChatBottom && transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scrollToBottom();
-	             if (!isIOSViewportGuardActive()) {
-	               iosViewportGuardTimer = null;
-	               return;
-	             }
-	             iosViewportGuardTimer = setTimeout(tick, 50);
-	           };
-	           tick();
-	         }
-	         if (window.visualViewport) {
-	           const onViewportShift = () => {
-	             updateAppHeightVar();
-	             if (!isIOS) return;
-	             const activeEntry = activeTextEntryElement();
-	             if (activeEntry && activeEntry !== textarea) {
-	               stopIOSViewportGuard();
-	               return;
-	             }
-	             if (document.activeElement === textarea || isIOSViewportGuardActive()) {
-	               normalizePageScroll();
-	               if (transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scheduleScrollToBottom();
-	             }
-	           };
-	           addAppEvent(window.visualViewport, "resize", onViewportShift);
-	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
-	         }
+        const codoxearIOSViewport = window.CodoxearIOSViewport;
+        if (!codoxearIOSViewport || typeof codoxearIOSViewport.createIOSViewportController !== "function")
+          throw new Error("Codoxear iOS viewport controller failed to load");
+        const iosViewportController = codoxearIOSViewport.createIOSViewportController({
+          windowTarget: window,
+          documentTarget: document,
+          navigatorTarget: navigator,
+          textarea,
+          isTextEntryElement,
+          updateAppHeightVar,
+          transcriptScrollRuntime,
+          addAppEvent,
+          requestAnimationFrame,
+          setTimeout,
+          clearTimeout,
+        });
         updateQueueBadge();
         syncQueueSubmitState();
         syncComposerSendButton();
-	          textarea.addEventListener(
-	            "focus",
-	            () => {
-	              const wasNear = transcriptScrollRuntime.isNearBottom();
-              if (wasNear) {
-                transcriptScrollRuntime.enableAutoScroll();
-                transcriptScrollRuntime.syncJumpButton();
-              }
-	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: wasNear, durationMs: 1800 });
-	              else {
-	                const tick = () => {
-	                  updateAppHeightVar();
-	                  if (wasNear) transcriptScrollRuntime.scrollToBottom();
-	                };
-	                requestAnimationFrame(tick);
-	                setTimeout(tick, 120);
-	              }
-	            },
-	            { passive: true }
-	          );
-	          textarea.addEventListener(
-	            "blur",
-	            () => {
-	              setTimeout(() => {
-	                if (isIOS) {
-	                  const activeEntry = activeTextEntryElement();
-	                  if (activeEntry && activeEntry !== textarea) {
-	                    stopIOSViewportGuard();
-	                    updateAppHeightVar();
-	                    return;
-	                  }
-	                  runIOSViewportGuard({ preserveChatBottom: false, durationMs: 900 });
-	                  return;
-	                }
-	                updateAppHeightVar();
-	              }, 0);
-	            },
-	            { passive: true }
-	          );
         composerController = codoxearComposer.createComposerController({
           form,
           textarea,
