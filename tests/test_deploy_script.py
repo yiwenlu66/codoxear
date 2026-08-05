@@ -149,9 +149,6 @@ esac
 
 
 def test_deploy_rejects_undefined_app_call_before_service_operations(tmp_path: Path) -> None:
-    # A prior test may have left pytest in a deleted temporary directory. Move the
-    # parent process before Git starts so clone setup never inherits that cwd.
-    os.chdir(tmp_path)
     source_root = tmp_path / "source"
     subprocess.run(
         ["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)],
@@ -220,4 +217,3 @@ exit 91
     finally:
         if deploy_dir.exists():
             subprocess.run(["git", "-C", source_root, "worktree", "remove", "--force", str(deploy_dir)], check=False)
-        os.chdir(ROOT)
