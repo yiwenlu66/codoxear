@@ -1,79 +1,28 @@
-# SSE phone, Tailscale, and long-idle field test
+# SSE phone battle-test runbook
 
-Run this against the committed snapshot serving your real Codoxear instance, with a real broker-backed session selected in the phone browser. This test checks the delivery path that matters in practice: a transcript must resume from the server log after the browser loses its EventSource connection. It does not require a special mobile build.
+Use this runbook against the normal Codoxear instance on port **8443**. It is a real-phone check of live transcript delivery; do **not** use or restart the live deployment on port 8743.
 
-## Before each run
+Before starting, choose a session that is actively producing assistant messages, or send it a request that will produce several updates over the test period. Keep the same session selected throughout the test unless a step says otherwise.
 
-1. Open Codoxear from the phone through the normal Tailscale URL and log in.
-2. Select one real session whose transcript log is bound (the transcript is visible and the composer is enabled).
-3. Send a prompt that causes the agent to emit numbered, distinctive markers while it works. For example:
+| Step | Do this on the phone | What you should see when SSE works |
+| --- | --- | --- |
+| 1 | Open `http://[tailscale-ip]:8443/` in the phone browser. Replace `[tailscale-ip]` with the Tailscale IP of the Codoxear host. | The Codoxear login page loads. |
+| 2 | Log in. | The session list and main Codoxear UI appear. |
+| 3 | Select a session. | Its existing transcript loads and the selected session is shown as active. |
+| 4 | Watch the transcript while the assistant is working. Do not manually refresh the page. | New assistant messages appear in the transcript as they are produced. The page does not need a reload or a tap to show them. |
+| 5 | Put the phone to sleep for **30 seconds**. | The display locks or turns off; no action is required while it is asleep. |
+| 6 | Wake and unlock the phone, returning to the same browser tab. Do not refresh manually. | The transcript reconnects automatically. Any assistant messages produced during sleep appear, in order, and later messages continue to arrive live. |
+| 7 | With the tab still open, switch from Wi-Fi to cellular, or from cellular to Wi-Fi. | After the network changes, the transcript reconnects automatically and resumes live updates. Messages produced during the transition appear without a manual refresh. |
+| 8 | Keep the same tab open for **1 hour**. | The live connection stays usable through the hour because SSE heartbeats keep the idle connection alive. When the assistant produces a message, it appears without refreshing; the transcript does not freeze. |
+| 9 | Switch to another phone tab or app, then return to the Codoxear tab. | The transcript resumes automatically and catches up with any messages produced while it was in the background. New messages continue to appear live. |
+| 10 | Report any disconnects, frozen state, or missed messages. | A successful run has no manual refresh requirement, no permanently stale transcript, and no missing assistant messages after sleep, network changes, the one-hour idle period, or tab switching. |
 
-   ```text
-   Work on a real task. At each meaningful checkpoint, begin your visible update with `PHONE-SSE-01`, then increment the number for each later update. Keep the task active for at least ten minutes.
-   ```
+## What to include in a failure report
 
-4. Keep a note of the last complete marker shown before the disruption. Do not use a failed launch row or a session that is already idle: those do not exercise a live stream.
+- Which numbered step failed and the time it happened.
+- Phone model, OS version, browser and browser version.
+- Whether the phone was asleep, the tab was backgrounded, or the network changed.
+- The last message visible before the problem and the first message visible after returning, including any missing or duplicated messages.
+- A screenshot or screen recording of the frozen or disconnected state, if possible.
 
-A healthy recovery may show an immediate poll update while EventSource reconnects. The user-visible requirement is that the transcript reaches the newest server-log marker exactly once; it must not remain stale or create a duplicated sequence.
-
-## 1. Sleep / wake
-
-1. With the selected session producing work, record the last marker.
-2. Lock the phone and leave it asleep for **at least five minutes**. For a stronger test, repeat with a 30-minute sleep.
-3. Unlock it, return to the same browser tab, and wait ten seconds without manually refreshing.
-4. Verify that the next visible marker is newer than the pre-sleep marker, no markers are duplicated, and the spinner/status matches the live session.
-5. Send one short steering message from the phone. It should reach the same terminal session, and its next answer should appear in the phone transcript.
-
-**Pass:** the transcript catches up within ten seconds of visibility, then continues with the same ordered marker sequence. The page immediately kicks its poll fallback and schedules the live-flow SSE reconnect after six seconds; a poll can supply the catch-up state while the stream reconnects.
-
-## 2. Tailscale / network change
-
-1. Keep the same session selected and record its latest marker.
-2. While the page remains open, switch Wi-Fi off so the phone moves to cellular; keep Tailscale enabled. Wait 30 seconds.
-3. Switch Wi-Fi back on. If your normal use includes moving between two Tailscale networks, repeat while joining the second network instead.
-4. Return to the transcript and wait ten seconds. Then send a short steering message.
-5. Compare the visible markers with the terminal transcript or the desktop browser for the same session.
-
-**Pass:** all markers produced during the outage appear once and in order after connectivity returns; the steering message is neither lost nor duplicated. A transient connection failure is expected. A stale transcript after ten seconds, a permanent spinner, a repeated marker, or an extra user message is a failure worth reporting.
-
-## 3. Long-lived session
-
-1. Start a real session that will remain available for **24 hours** (longer is better), and keep the phone tab open in the background after recording the latest marker.
-2. At approximately 1 hour, 8 hours, and 24 hours, open the tab and check the session. At one checkpoint, change networks before opening it.
-3. At every checkpoint, record: time, last marker before backgrounding, first marker after foregrounding, whether the session is busy or idle, and whether a steering message succeeded.
-4. If the mobile OS discards the tab, reopen the normal Codoxear URL, select the same session, and perform the same marker/order check. Tab eviction is acceptable only if loading the session rehydrates the transcript correctly from its log.
-
-**Pass:** every foreground/reopen converges to the server-log transcript without gaps or duplicates, and later messages continue to arrive. The session may be idle, but its historical transcript must remain readable.
-
-## What to capture on failure
-
-Capture enough evidence to locate the boundary between the phone, Tailscale, server, and broker:
-
-- Phone model, OS version, browser/version, and whether the page was locked, backgrounded, or evicted.
-- The exact Tailscale URL form used and the network transition (Wi-Fi name/cellular/exit node), without credentials.
-- Wall-clock time of the disruption and recovery attempt.
-- Last marker before disruption, first marker after recovery, and any duplicated/missing marker range.
-- A screen recording or screenshots of the transcript and session status.
-- The corresponding broker transcript/log excerpt from the terminal, redacted for secrets.
-
-Do not restart or kill the broker to recover a failed phone test. A server restart is safe for session content, but record it as a separate condition because this runbook is specifically measuring client sleep, network change, and durable cursor recovery.
-
-## Automated counterpart
-
-`tests/test_sse_battle_advanced.py` is the repeatable, isolated battle runner. It starts a real loopback HTTP/1.1 server that calls the production `handle_messages_live_stream` handler over a broker-shaped native JSONL log; it never contacts the deployed service or port 8743. The suite proves these boundaries:
-
-- Killing the server-side stream after a confirmed event and reconnecting from the signed live cursor delivers the appended boundary event once, in order; the replacement connection is accepted in under one second.
-- A virtual monotonic clock advances the production handler through more than 60 seconds of silence. Three 25-second heartbeat frames are emitted before the harness disconnects it at 75 seconds, proving the handler does not self-close during that idle interval without making CI wait a minute.
-- A burst of 1,000 native log events arrives in exact insertion order, with no duplicate or missing event.
-- A relay which fragments output into 17-byte chunks and drops partway through an event leaves that unconfirmed delta to be replayed exactly once from the durable cursor.
-- The poll fallback (`/api/sessions/<id>/messages/tail`) rehydrates the log and returns the next signed live cursor.
-- The actual live page controller in `app_message_flow.js` defers a scheduled SSE retry while `visibilityState` is `hidden`, then opens the cursor-bearing EventSource when visibility resumes. Its scheduled retry floor is six seconds; the visibility-resume path also kicks polling immediately.
-- The standalone `app_sse.js` EventSource controller reports malformed JSON through its `onMalformedMessage` hook and accepts the following valid event without closing the connection. `app_message_flow.js` is the controller currently wired by `app.js`; `app_sse.js` remains a separately loaded controller with its own unit-level contract.
-
-Run it directly with:
-
-```sh
-python3 -m unittest discover -s tests -p 'test_sse_battle_advanced.py' -v
-```
-
-This runner exercises server/process-stream failure, cursor recovery, long idle heartbeat scheduling, slow/chunked transport, poll fallback, and browser-controller visibility logic. It cannot reproduce mobile OS radio suspension, Tailscale route changes, browser tab eviction, or multi-day timer/network behavior; those remain the purpose of the real-device field run above.
+Do not restart the server, broker, or browser to hide the failure before recording these details. A manual refresh that restores the transcript is useful evidence, but it is still a failure for this test because SSE was expected to reconnect and catch up automatically.
