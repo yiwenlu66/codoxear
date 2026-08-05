@@ -5535,7 +5535,6 @@
               addAppEvent(document, "visibilitychange", () => {
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
-                  resumeAnnouncementRuntime({ resetSource: false });
                   if (selected) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
                   scheduleSecondaryPoll(0);

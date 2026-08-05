@@ -1237,6 +1237,13 @@
       e.preventDefault();
       hideVoiceSettingsDialog();
     });
+    // The controller owns the browser's voice runtime. Restoring a visible tab
+    // reasserts the listener and restarts a paused announcement stream even if
+    // the session/SSE layer has not yet selected or refreshed a conversation.
+    addEvent(documentTarget, "visibilitychange", () => {
+      if (isAppDisposed() || documentTarget.visibilityState !== "visible") return;
+      resumeAnnouncementRuntime({ resetSource: false });
+    });
     voiceSettingsSaveBtn.onclick = async () => {
       try {
         voiceSettingsStatus.textContent = "Saving...";
