@@ -116,6 +116,9 @@
       const codoxearDialogMenus = window.CodoxearDialogMenus;
       if (!codoxearDialogMenus || typeof codoxearDialogMenus.createDialogMenusController !== "function")
         throw new Error("Codoxear dialog menus controller failed to load");
+      const codoxearFileEditMode = window.CodoxearFileEditMode;
+      if (!codoxearFileEditMode || typeof codoxearFileEditMode.createFileEditModeController !== "function")
+        throw new Error("Codoxear file edit mode controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -3801,7 +3804,7 @@
           downloadButton: fileDownloadBtn,
           videoPreviewButton: fileVideoPreviewBtn,
           hideFilePasteDialog: () => hideFilePasteDialog(),
-          setFileEditMode: (mode) => setFileEditMode(mode),
+          setFileEditMode: (mode) => fileEditModeController.setFileEditMode(mode),
           syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
           updateFileEditButton: () => updateFileEditButton(),
         });
@@ -4069,9 +4072,9 @@
           return fileViewerController.currentFileEditMode();
         }
 
-        function setFileEditMode(nextMode) {
-          return fileViewerController.setFileEditMode(nextMode);
-        }
+        const fileEditModeController = codoxearFileEditMode.createFileEditModeController({
+          fileViewerController: () => fileViewerController,
+        });
 
         const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
           currentSessionId: () => currentFileViewerSessionId(),
