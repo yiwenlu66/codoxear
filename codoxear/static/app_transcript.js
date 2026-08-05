@@ -308,7 +308,7 @@
   }
 
   function thinkingModeForTokens(thinkingTokens) {
-    return Number.isFinite(Number(thinkingTokens)) && Number(thinkingTokens) > 0 ? "tokens" : "none";
+    return Number.isFinite(Number(thinkingTokens)) && Number(thinkingTokens) > 0 ? "tokens" : "blocks";
   }
 
   function createTypingRowRuntime(options = {}) {
@@ -340,8 +340,8 @@
     function renderTypingStats() {
       if (!typingStatsNode) return;
       const { thinking, thinkingTokens, thinkingMode, tools } = typingStats;
-      const thinkingValue = thinkingMode === "tokens" ? formatThinkingTokens(thinkingTokens) : "";
-      const hasThinking = thinkingMode === "tokens" && thinkingTokens > 0;
+      const thinkingValue = thinkingMode === "tokens" ? formatThinkingTokens(thinkingTokens) : (thinking > 0 ? String(thinking) : "");
+      const hasThinking = (thinkingMode === "tokens" && thinkingTokens > 0) || thinking > 0;
       const activity = tools || hasThinking ? `tools: ${tools} · thinking: ${thinkingValue}` : "";
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
       const text = [activity, subagents].filter(Boolean).join(" · ");
