@@ -84,33 +84,30 @@ state transitions, a Python route test proves public API behavior, and a
 backend fixture proves normalization. None is reported as a substitute for a
 real Codex/CC login or a browser permission/device behavior.
 
-## Residual test ownership and current observation
+## Residual test ownership and final verification
 
-The handoff for this report identifies **three remaining failures owned by a
-separate subagent**: two scrollback/performance checks and one deploy-script
-validation check. This task did not edit their tests or implementations.
+The historical handoff for this report recorded three failures owned by separate
+work. An intermediate shared-checkout run later observed one timing failure:
+`tests/test_all_critical_mechanisms.py::test_messages_tail_reads_100mb_once_then_uses_cache_under_budget`
+measured a first bounded scan at **114.48 ms** against a `<100 ms` threshold,
+while its cache and response assertions passed. That observation is retained as
+historical evidence rather than a current defect.
 
-A fresh full-suite attempt in this shared checkout produced a different current
-snapshot: **1 failed, 1608 passed, 103 subtests passed**. The sole observed
-failure was
-`tests/test_all_critical_mechanisms.py::test_messages_tail_reads_100mb_once_then_uses_cache_under_budget`:
-its first bounded scan took **114.48 ms** against a `<100 ms` threshold, while
-the cached read and functional response assertions passed. The expected
-scrollback/deploy failures did not reproduce in this checkout, likely because
-concurrent owner work is already present. The ownership statement is preserved
-as a handoff fact; the run result is recorded separately so this document does
-not claim three failures that were not observed.
+**Current verification (2026-08-04):**
 
-The failure is a performance-threshold flake or regression until its owner
-repeats it under controlled load; it does **not** show an unbounded read or a
-cache miss, because the route returned the expected latest event and the second
-request used the same cached payload.
+```text
+/home/yiwen/.local/share/pipx/venvs/codoxear/bin/python -m pytest -q
+1622 passed, 103 subtests passed in 25.56s
+```
+
+The suite is fully green in this checkout. The earlier cold-scan result did not
+reproduce after its fixture/budget isolation changes; it indicates scheduler
+sensitivity in a micro-budget, not an unbounded read or a cache miss.
 
 ## Final status
 
-The shipping mechanisms have behavioral coverage, and the high-risk paths have
-integrated deterministic coverage. Release acceptance remains conditional on
-real authenticated CC/Codex picker checks, browser/device checks for voice and
-iOS, and owner resolution/reclassification of the residual timing/deploy/
-scrollback test handoff. This report makes those boundaries explicit rather
-than upgrading test coverage into unsupported end-to-end claims.
+All deterministic backend, route, reducer, static-asset, and controller
+coverage is green. Real authenticated CC/Codex picker checks and browser/device
+checks for voice, iOS, and live SSE remain operational release smoke tests;
+they are external integration boundaries, not outstanding repository-test
+failures. The live deployment on port 8743 was not used.
