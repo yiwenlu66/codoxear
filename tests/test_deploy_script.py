@@ -152,8 +152,9 @@ def test_deploy_rejects_undefined_app_call_before_service_operations(tmp_path: P
     source_root = tmp_path / "source"
     subprocess.run(
         ["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)],
-        cwd=tmp_path,
+        cwd=str(tmp_path),
         check=True,
+        capture_output=True,
     )
     subprocess.run(["git", "-C", source_root, "config", "user.email", "tests@example.invalid"], check=True)
     subprocess.run(["git", "-C", source_root, "config", "user.name", "deploy test"], check=True)
