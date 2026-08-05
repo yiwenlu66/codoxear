@@ -54,9 +54,9 @@ This memo records the final local state of the session. Validation ran only in
 
 The extraction work moved five session-facing controller responsibilities out
 of the shell while retaining fail-loud injected dependencies: attachment
-staging (`c536e6e2`), queue ownership (`dd966f2e`), launch ownership
-(`2372ab52`), voice ownership (`e4b609d1`), and unattended ownership
-(`c1abb762`). The current module inventory also contains focused transcript,
+staging (`c536e6e2`), queue ownership (`ff644e70`, `1bfccc0`), launch ownership
+(`e4b609d1`), voice ownership (`2372ab52`), and unattended ownership
+(`dd966f2e`). The current module inventory also contains focused transcript,
 message-flow, session, composer, modal, SSE, and file controllers.
 
 ## Critical mechanisms shipped
