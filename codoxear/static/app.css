@@ -1,5 +1,3 @@
-      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-
       :root {
         --ink: #2f2b26;
         --paper: #ffffff;
