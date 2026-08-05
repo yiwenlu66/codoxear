@@ -1,6 +1,6 @@
 # Complete cross-reference of user requests
 
-**Method and deployment audit.** This is a grouped, chronological extraction of actionable requests from all 340 user messages in `OPS.md`. Repeated reports of the same defect are one row and retain every material transcript reference. The live deployment is the clean detached worktree `~/.local/share/codoxear/deploy` at `9235b4ee2910b432332a456fd0af74d73904dfb7`. Every cited implementation commit was checked for deployed ancestry. The only cited commits absent from that snapshot are `806e2c38`, `8b7a6a33`, and `ab524698`; their associated rows were already **PARTIAL**, so none is treated as deployed evidence. The editable tree contains unrelated source, test, and task-memory changes; no status below depends on them.
+**Method and deployment audit.** This is a grouped, chronological extraction of actionable requests from all 340 user messages in `OPS.md`. Repeated reports of the same defect are one row and retain every material transcript reference. At the final deployment check, the live detached worktree `~/.local/share/codoxear/deploy` was `15eb6e8c1dc5d5ead254d90ae35d5491f992c0ea`; its application-code ancestry includes the deployed wrapper follow-up `9235b4ee`. Every cited implementation commit was checked for deployed ancestry. The only cited commits absent from that snapshot are `806e2c38`, `8b7a6a33`, and `ab524698`; their associated rows were already **PARTIAL**, so none is treated as deployed evidence. The editable tree contains unrelated source, test, and task-memory changes; no status below depends on them.
 
 **Status meaning.** **CLOSED** means deployed code plus behavior evidence for the named request. **PARTIAL** means code exists (including deployed code) but the whole request lacks the required direct verification or acceptance. **OPEN** means no implementation was located. **INVALID** is reserved for an explicit later replacement, not merely a change of implementation preference. A visual request without current browser/device evidence remains **PARTIAL**, even if its CSS is deployed.
 
@@ -124,12 +124,12 @@
 
 ## Current deployment audit
 
-- The deployment is exactly `9235b4ee`: `git -C ~/.local/share/codoxear/deploy rev-parse HEAD` resolved to `9235b4ee2910b432332a456fd0af74d73904dfb7` during the final audit. It contains `5b801945` plus the deployed `9235b4ee` wrapper-layout follow-up; this documentation-only commit is not deployed.
+- At the final deployment check, `git -C ~/.local/share/codoxear/deploy rev-parse HEAD` resolved to `15eb6e8c1dc5d5ead254d90ae35d5491f992c0ea`. Its application code includes `9235b4ee`, the code-copy wrapper-layout follow-up; this documentation-only commit is not deployed.
 - **Thinking-count fix:** `a02d19af` is an ancestor of the deployed commit. It removes fallback display of thinking-block counts; the remaining gap is a live token-producing interaction proof, not deployment.
 - **Code-block-copy fix:** `5b801945` is an ancestor of the deployment and `9235b4ee` is the current deployed wrapper-layout follow-up. Together they wrap each `<pre>` and keep its copy button outside the code scroller; visual/touch behavior remains unverified.
 - **`/model` delayed refresh:** deployed. `codoxear/static/app_message_flow.js` schedules a 1.5-second `refreshSessions()` after a model-control slash command. The server remains log-authoritative, so a provider must emit the resulting model evidence before the sidebar can actually change.
 - **Formerly OPEN issue numbers:** #20, #23, #27, #69, #95, and #96 are now **CLOSED** with deployed implementation evidence. #97 is **PARTIAL**, not open: its deployed filtering/pair-preservation code lacks a real configured-provider launch check.
-- Docker verification of current deployed commit `9235b4ee` passed in an isolated container on `127.0.0.1:19644` (not `:8743`): application bootstrapped, a Pi session card rendered, no page errors or fatal console errors; artifacts are at `/tmp/codoxear-docker-verify-results.dJpy0t`.
+- Docker verification of deployed commit `15eb6e8c` passed in an isolated container on `127.0.0.1:19646` (not `:8743`): application bootstrapped, a Pi session card rendered, no page errors or fatal console errors; artifacts are at `/tmp/codoxear-docker-verify-results.bc0TSX`.
 
 ## Live status summary
 
