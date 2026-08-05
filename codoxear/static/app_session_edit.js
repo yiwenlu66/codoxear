@@ -1,4 +1,4 @@
-(function registerSessionEdit(global) {
+(function (global) {
   "use strict";
 
   function createSessionEditController(options = {}) {
