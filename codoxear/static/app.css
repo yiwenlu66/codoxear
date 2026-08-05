@@ -35,7 +35,7 @@
         --dialog-group-gap: var(--space-5);
         --sidebar-w: 320px;
         --composer-band-h: 48px;
-        --bubble-user: var(--bg);
+        --bubble-user: #faf9f6;
         --bubble-assistant: var(--paper);
         --session-active: var(--wash);
         /* Semantic surface and state tokens keep UI colors on the paper palette. */
@@ -376,8 +376,14 @@
         animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       @keyframes stateDotPulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.55; }
+        0%, 100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.55;
+          transform: scale(0.72);
+        }
       }
       @media (prefers-reduced-motion: reduce) {
         .stateDot.busy,
@@ -391,8 +397,12 @@
           animation: none;
         }
       }
+      /* A selected card uses the same solid two-pixel perimeter on the
+         touch and desktop branches without changing its layout dimensions. */
       .session.active {
-        border: 2px solid var(--ink);
+        border: 1px solid var(--ink);
+        outline: 1px solid var(--ink);
+        outline-offset: -1px;
         background: var(--session-active);
         color: var(--ink);
       }
@@ -425,12 +435,17 @@
       .sidebarMetaData {
         display: inline-flex;
         align-items: baseline;
+        flex: 0 0 auto;
         min-width: 0;
         white-space: nowrap;
         font-family: var(--font-mono);
       }
+      .sidebarMetaData > span:last-child {
+        flex: 0 0 auto;
+      }
       .sidebarMetaLabel,
       .sidebarMetaSeparator {
+        flex: 0 0 auto;
         font-family: sans-serif;
       }
 	      .ownerBadge {
@@ -499,13 +514,15 @@
 	      .effortMark.effort-off {
 	        color: var(--text-effort-off);
 	      }
-	      .metaText {
-	        flex: 1 1 auto;
-	        min-width: 0;
-	        overflow: hidden;
-	        text-overflow: ellipsis;
-	        white-space: nowrap;
-	      }
+      .metaText {
+        display: flex;
+        align-items: baseline;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .sessionInner {
         padding: var(--space-3);
         display: flex;
@@ -772,7 +789,7 @@
       }
       .toast {
         position: fixed;
-        top: calc(56px + env(safe-area-inset-top));
+        top: calc(56px + 44px + var(--space-2) + env(safe-area-inset-top));
         right: var(--space-5);
         z-index: 95;
         margin: 0;
@@ -3055,10 +3072,22 @@ select {
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      #newSessionModelMenu .fileMenuItem {
+        align-items: flex-start;
+      }
       #newSessionModelMenu .fileMenuPath,
       #newSessionModelMenu .fileMenuHint {
-        flex: 0 1 auto;
         min-width: 0;
+        white-space: normal;
+        overflow: visible;
+        overflow-wrap: anywhere;
+      }
+      #newSessionModelMenu .fileMenuPath {
+        flex: 1 1 auto;
+      }
+      #newSessionModelMenu .fileMenuHint {
+        flex: 0 1 40%;
+        text-align: right;
       }
       .pickerButtonChevron {
         flex: 0 0 auto;
@@ -3440,7 +3469,7 @@ select {
         .toast {
           left: 50%;
           right: auto;
-          top: calc(56px + env(safe-area-inset-top));
+          top: calc(56px + 44px + var(--space-2) + env(safe-area-inset-top));
           transform: translateX(-50%);
           max-width: min(88vw, 360px);
           text-align: center;
@@ -3471,6 +3500,14 @@ select {
           height: 28px;
           min-width: 28px;
           min-height: 28px;
+        }
+        .chatSearchBar .icon-btn::after {
+          inset: -8px;
+        }
+        /* Compact chrome keeps distinct 44px touch zones for the adjacent
+           previous, next, and close actions. */
+        .chatSearchBar .icon-btn + .icon-btn {
+          margin-left: var(--space-7);
         }
         .topbar {
           padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3) var(--space-4);
