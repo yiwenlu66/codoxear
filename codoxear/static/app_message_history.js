@@ -25,8 +25,8 @@
       chatInner, setTimeout, clearTimeout, sessionIdFromHash, sessionSelectable, isAppDisposed } = options;
     const { transcriptSlotRuntime, transcriptScrollRuntime, clearTranscriptDom, setOlderState,
       restorePendingUserRowsForSession, markClickFirstPaint, updateSessionTranscriptSlot,
-      syncActiveTranscriptSlot, updateTypingStatsFromSession, setTyping,
-      renderDetachedTranscriptWindow, clearOlderLoadError, showOlderLoadError,
+      syncActiveTranscriptSlot, rememberTailSnapshot, updateTypingStatsFromSession, setTyping,
+      renderDetachedTranscriptWindow, renderTranscript, clearOlderLoadError, showOlderLoadError,
       renderedMessageRows, resetChatRenderState } = transcript;
     const transcriptView = () => transcript.transcriptView();
     const refreshSessions = () => getSessionRefreshController().refreshSessions();

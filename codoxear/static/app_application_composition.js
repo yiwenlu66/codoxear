@@ -441,13 +441,16 @@
           return codoxearModal.syncModalIsolation(app, modalIsolationTargets);
         }
 
+        function closeFilePickerMenu() {
+          if (!fileOpsController) return;
+          fileOpsController.closeFilePickerMenu({ restoreInput: false });
+        }
+
         function closeTransientOverlays({ closeSearch = false } = {}) {
           if (unattendedController.isOpen()) hideUnattendedMenu();
           if (closeSearch && chatSearchController.isOpen()) closeChatSearch();
           if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
-          filePickerMenuState.close();
-          filePickerMenu.classList.remove("open");
-          filePickerInput.setAttribute("aria-expanded", "false");
+          closeFilePickerMenu();
           newSessionDialogController.closeMenus();
           sessionEditController.closeDependencyMenu();
         }
@@ -644,6 +647,7 @@
           fileViewer, appConfirm, sendChoice, composer, attachBtn, imgInput, codeBlockCopyRuntime,
           networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
           syncComposerSendButton, syncQueueSubmitState, updateUnattendedBtnState: () => updateUnattendedBtnState(),
+          updateQueueBadge: () => updateQueueBadge(),
           codoxearCodeCopy: window.CodoxearCodeCopy,
           codoxearTranscriptRender: window.CodoxearTranscriptRender,
           codoxearMessageHistory: window.CodoxearMessageHistory,
@@ -1055,7 +1059,7 @@
           renderTranscriptLoadError,
           messageFlow: () => messageFlowController,
           api,
-          initPageLimit,
+          initPageLimit: () => INIT_PAGE_LIMIT,
           handleAuthLoss: handleAppAuthLoss,
           refreshSessions,
           isDisposed: () => appDisposed,

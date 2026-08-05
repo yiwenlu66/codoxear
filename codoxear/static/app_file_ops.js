@@ -743,6 +743,7 @@ fileEditorOpsController.bindInteractions({
       fileViewerController,
       fileUnsavedController,
       fileReferenceRuntime,
+      closeFilePickerMenu,
       hideFilePasteDialog,
       currentFileViewerSessionId,
       ensureCurrentFileViewerSession,
