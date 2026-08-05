@@ -1,3 +1,5 @@
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
       :root {
         --ink: #2f2b26;
         --paper: #ffffff;
@@ -420,13 +422,21 @@
         background: var(--ink);
         color: var(--paper);
       }
-	      .sessionMetaLine {
-	        display: flex;
-	        align-items: center;
-	        gap: var(--space-2);
-	        min-width: 0;
-	        flex-wrap: nowrap;
-	      }
+      .sessionMetaLine {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+        flex-wrap: nowrap;
+        font-family: sans-serif;
+      }
+      .sidebarMetaData {
+        font-family: var(--font-mono);
+      }
+      .sidebarMetaLabel,
+      .sidebarMetaSeparator {
+        font-family: sans-serif;
+      }
 	      .ownerBadge {
 	        width: 18px;
 	        height: 18px;
@@ -956,7 +966,7 @@
         box-sizing: border-box;
         padding: 0 var(--space-2);
         border-radius: 0;
-        border: 1px solid var(--border);
+        border: 0;
         background: var(--panel);
         color: var(--muted);
         font-family: var(--font-mono);
@@ -1672,6 +1682,7 @@
         border-top: 1px solid var(--hairline);
         padding: var(--space-2) var(--space-5) calc(var(--space-2) + env(safe-area-inset-bottom));
         background: var(--panel);
+        border-top: 1px solid var(--border);
       }
       .composer form {
         position: relative;
@@ -2758,7 +2769,7 @@ select {
         padding: 0;
       }
       .agentBackendTab.active {
-        border: 2px solid var(--ink);
+        border: 3px solid var(--ink);
         background: var(--paper);
         color: var(--ink);
         font-weight: 600;
