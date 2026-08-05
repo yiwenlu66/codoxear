@@ -504,7 +504,7 @@ class TestSessionResumeCandidates(unittest.TestCase):
             )
             _write_jsonl(other, [{"type": "session", "id": "pi-b", "cwd": "/elsewhere", "timestamp": "2026-03-08T02:00:00Z"}])
 
-            child = root / "parent" / "subagent" / "run-0" / "session.jsonl"
+            child = root / "2026-03-08T01-00-00_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl" / "subagent-123" / "worker-0" / "session.jsonl"
             _write_jsonl(child, [{"type": "session", "id": "pi-child", "cwd": "/repo", "timestamp": "2026-03-08T01:30:00Z"}])
 
             rows = _list_resume_candidates("/repo", [same, child, other], agent_backend="pi", limit=10)

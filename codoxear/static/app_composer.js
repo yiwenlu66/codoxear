@@ -29,6 +29,7 @@
     const getSending = requireFunction(options.getSending, "getSending");
     const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
+    const isModalOpen = typeof options.isModalOpen === "function" ? options.isModalOpen : () => false;
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
@@ -538,16 +539,16 @@
       if (sessionId) storageRemoveItem(sessionDraftKey(sessionId));
     }
 
-    function clearComposer() {
+    function blurComposer() {
+      if (typeof textarea.blur !== "function") return;
+      try { textarea.blur(); } catch (_) {}
+    }
+
+    function clearComposer({ blur = true } = {}) {
       textarea.value = "";
       clearSessionDraft(getSelected());
       autoGrow();
-      // Blur the message box after sending — users rarely send two
-      // consecutive messages to the same session, and returning focus to
-      // the document restores access to global keyboard shortcuts.
-      if (typeof textarea.blur === "function") {
-        try { textarea.blur(); } catch (_) {}
-      }
+      if (blur) blurComposer();
     }
 
     function syncSendChoiceAttachmentPolicy() {
@@ -597,12 +598,19 @@
       syncModelPicker();
     });
     listen(textarea, "keydown", (event) => {
-      if (modelPickerOpen) {
-        if (event.key === "Escape") {
+      if (event.key === "Escape") {
+        if (isModalOpen()) return;
+        if (modelPickerOpen) {
           event.preventDefault();
           hideModelPicker();
           return;
         }
+        event.preventDefault();
+        event.stopPropagation();
+        blurComposer();
+        return;
+      }
+      if (modelPickerOpen) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
           const delta = event.key === "ArrowDown" ? 1 : -1;
@@ -640,7 +648,8 @@
         return;
       }
       const ok = await sendText(raw);
-      if (ok && textarea.value === raw) clearComposer();
+      if (ok) blurComposer();
+      if (ok && textarea.value === raw) clearComposer({ blur: false });
     };
 
     sendChoiceNowBtn.onclick = async () => {
@@ -649,7 +658,8 @@
       hideSendChoice({ restoreFocus: true });
       if (!raw || !sessionId) return;
       const ok = await sendText(raw, { sid: sessionId });
-      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer();
+      if (ok) blurComposer();
+      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer({ blur: false });
     };
     sendChoiceLaterBtn.onclick = async () => {
       const raw = sendChoicePending && sendChoicePending.text;

@@ -305,26 +305,25 @@
       const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
       const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
       const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
+      const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
       const configuredDefaultBelongsToProvider = !providerModelMap
         || !activeProvider
         || (Array.isArray(providerModelMap[activeProvider]) && providerModelMap[activeProvider].includes(configuredDefault));
+      const isConfiguredProviderModel = (providerChoice, model) => {
+        if (providerChoices.length && !providerChoices.includes(providerChoice)) return false;
+        if (providerModelMap) return Array.isArray(providerModelMap[providerChoice]) && providerModelMap[providerChoice].includes(model);
+        return model === configuredDefault || configuredModels.includes(model);
+      };
       if (configuredDefault && configuredDefaultBelongsToProvider) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
       for (const item of latestSessions()) {
         if (codoxearLaunch.sessionAgentBackend(item) !== currentBackend) continue;
         const model = typeof item.model === "string" ? item.model.trim() : "";
         if (!model) continue;
         const prov = codoxearLaunch.sessionProviderChoice(item);
-        const providerChoice = providerChoices.includes(prov) || (prov && newSessionAllowsCustomProvider()) ? prov : "";
-        // When providerModelMap exists, skip recent sessions whose model doesn't belong to the resolved provider.
-        if (providerModelMap) {
-          if (!providerChoice) continue;
-          if (Array.isArray(providerModelMap[providerChoice]) && !providerModelMap[providerChoice].includes(model)) continue;
-          if (!Array.isArray(providerModelMap[providerChoice])) continue;
-        }
-        const providerAbsent = currentBackend === "pi" && !providerChoice && !(typeof item.model_provider === "string" && item.model_provider.trim());
-        addNewSessionModelOption(out, seen, model, { providerChoice, providerAbsent, recent: true });
+        const providerChoice = providerChoices.includes(prov) ? prov : "";
+        if (!isConfiguredProviderModel(providerChoice, model)) continue;
+        addNewSessionModelOption(out, seen, model, { providerChoice, recent: true });
       }
-      const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
       if (providerChoices.length) {
         if (providerModelMap) {
           // Pi: each model belongs to a specific provider — no cross-product.
