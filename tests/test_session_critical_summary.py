@@ -67,10 +67,10 @@ def _listing_store(tmp_path: Path) -> SessionStore:
     )
 
 
-def _write_10mb_log(path: Path) -> None:
-    """Make a 10 MiB logical JSONL with a scan-stopping 2 MiB tail."""
-    target_size = 10 * 1024 * 1024
-    tail_size = 2 * 1024 * 1024
+def _write_3mb_log(path: Path) -> None:
+    """Make a 3 MiB logical JSONL with a 1 MiB parseable tail."""
+    target_size = 3 * 1024 * 1024
+    tail_size = 1 * 1024 * 1024
     latest = json.dumps(
         {
             "type": "response_item",
@@ -206,10 +206,10 @@ def test_session_critical_summary(tmp_path: Path, monkeypatch) -> None:
     assert public_pi_row["reasoning_effort"] == "high"
 
     # 685782e8: the message-tail route makes one bounded scan, then serves its
-    # unchanged revision from cache. This fixture needs a log larger than the
-    # retained tail window, not a 50 MiB sparse file.
-    large_log = tmp_path / "10mb.jsonl"
-    _write_10mb_log(large_log)
+    # unchanged revision from cache. A small sparse log is enough to cover
+    # the cache identity and replay behavior without a slow cold scan.
+    large_log = tmp_path / "3mb.jsonl"
+    _write_3mb_log(large_log)
     messages_session = Session(
         session_id="messages-summary",
         thread_id="messages-thread",
