@@ -86,6 +86,9 @@
       const codoxearAttachments = window.CodoxearAttachments;
       if (!codoxearAttachments || typeof codoxearAttachments.createAttachmentsController !== "function")
         throw new Error("Codoxear attachments module failed to load");
+      const codoxearUnread = window.CodoxearUnread;
+      if (!codoxearUnread || typeof codoxearUnread.createUnreadController !== "function")
+        throw new Error("Codoxear unread controller failed to load");
       const codoxearMessageFlow = window.CodoxearMessageFlow;
       if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
         throw new Error("Codoxear message flow module failed to load");
@@ -842,6 +845,7 @@
         let recentCwds = [];
 	        let sending = false;
         let attachmentsController = null;
+        let unreadController = null;
         let composerController = null;
         let messageFlowController = null;
         function resizeComposer() {
@@ -2631,6 +2635,16 @@
           uploadMaxBytes: ATTACH_UPLOAD_MAX_BYTES,
         });
 
+        unreadController = codoxearUnread.createUnreadController({
+          api,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
+        });
+
         messageFlowController = codoxearMessageFlow.createMessageFlowController({
           getSelected: () => selected,
           getGeneration: () => pollGen,
@@ -2882,6 +2896,7 @@
           if (notModified && !sidebarController.hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
           if (!notModified || firstLoadNeedsPopulation) {
             latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+            await unreadController.refreshSidebarCounts(latestSessions);
             newSessionDefaults =
               data && typeof data.new_session_defaults === "object" && data.new_session_defaults
                 ? data.new_session_defaults
@@ -2954,8 +2969,8 @@
           });
         }
 
-        function renderTranscript(events, { preserveScroll = false } = {}) {
-          return transcriptView().renderTranscript(events, { preserveScroll });
+        function renderTranscript(events, { preserveScroll = false, firstUnreadEventId = "" } = {}) {
+          return transcriptView().renderTranscript(events, { preserveScroll, firstUnreadEventId });
         }
 
         function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
@@ -3063,9 +3078,10 @@
         }
 
         function renderSessionTail(events) {
-          renderTranscript(events, { preserveScroll: false });
+          const firstUnreadEventId = unreadController.firstUnreadForInitialRender(selected);
+          renderTranscript(events, { preserveScroll: false, firstUnreadEventId });
           markClickFirstPaint();
-          transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
+          if (!firstUnreadEventId) transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
         }
 
 
@@ -3276,6 +3292,13 @@
           resetChatRenderState();
 
           const s = sessionIndex.get(sessionId);
+          try {
+            await unreadController.loadForOpen(sessionId);
+          } catch (error) {
+            if (error && error.status === 401) handleAppAuthLoss();
+            else console.error("failed to load unread state", error);
+          }
+          if (selected !== sessionId || pollGen !== myGen) return null;
           titleLabel.textContent = s ? sessionTitleWithId(s) : sessionId ? String(sessionId) : "No session selected";
           clickLoadT0 = performance.now();
           clickMetricPending = true;
@@ -4885,6 +4908,11 @@
 
         chat.addEventListener("scroll", () => {
           transcriptScrollRuntime.handleScroll();
+          if (!selected) return;
+          void unreadController.markReadIfScrolledPast(selected, renderedMessageRows(), chat.scrollTop).catch((error) => {
+            if (error && error.status === 401) handleAppAuthLoss();
+            else console.error("failed to mark transcript read", error);
+          });
         });
         chat.addEventListener(
           "wheel",
