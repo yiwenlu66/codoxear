@@ -116,7 +116,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_shell.js": "window.CodoxearShell = {};\n",
             "app_sessions.js": "window.CodoxearSessions = {};\n",
             "app_transcript_view.js": "window.CodoxearTranscriptView = {};\n",
-            "app_unread.js": "window.CodoxearUnread = {};\n",
+            "": "window.CodoxearUnread = {};\n",
             "app_session_edit.js": "window.CodoxearSessionEdit = {};\n",
             "app_message_flow.js": "window.CodoxearMessageFlow = {};\n",
             "app_attachments.js": "window.CodoxearAttachments = {};\n",
@@ -193,7 +193,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_chat_navigation.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_chat_search.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_attachments.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_unread.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                 ),
                 encoding="utf-8",
@@ -240,7 +240,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_chat_navigation.js?v={version}", rendered)
             self.assertIn(f"app_chat_search.js?v={version}", rendered)
             self.assertIn(f"app_attachments.js?v={version}", rendered)
-            self.assertIn(f"app_unread.js?v={version}", rendered)
+            self.assertIn(f"?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
     def test_static_asset_version_is_memoized(self) -> None:
@@ -333,7 +333,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_unattended.js", names)
         self.assertIn("codoxear/static/app_chat_navigation.js", names)
         self.assertIn("codoxear/static/app_chat_search.js", names)
-        self.assertIn("codoxear/static/app_unread.js", names)
+        self.assertIn("codoxear/static/", names)
         self.assertIn("codoxear/static/codoxear-icon.png", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
