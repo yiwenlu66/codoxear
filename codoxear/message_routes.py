@@ -301,6 +301,14 @@ def _decode_cursor_target(deps: MessageRouteDeps, token: str, *, kind: str, sess
     return session.log_path, deps.decode_message_cursor(token, kind=kind, session=session)
 
 
+def _cursor_session_from_path(session: Any, log_path: Path) -> Any:
+    """Build a cursor-encoding session from the session's thread_id and the
+    log_path where events were actually read. After a broker re-bind, the
+    session's log_path may differ from the cursor's embedded log_path.
+    New cursors must point to the file the events came from."""
+    return SimpleNamespace(thread_id=session.thread_id, log_path=log_path)
+
+
 def _next_jsonl_record_byte(log_path: Path, record_start: int) -> int:
     with log_path.open("rb") as stream:
         stream.seek(max(0, int(record_start)))
@@ -1026,15 +1034,21 @@ def handle_messages_history(handler: Any, *, session_id: str, query: str, manage
             },
         )
         return
+    # Use the lenient cursor decoder: the cursor is a signed token that
+    # embeds its own log_path. After a broker re-bind (pending_bind → bound),
+    # the session's log_path changes but old cursors still point to valid
+    # log files. decode_message_cursor_target accepts the cursor's own
+    # log_path if the file still exists.
     try:
-        before_byte = deps.decode_message_cursor(cursor_q[0], kind="history", session=s)
+        history_log_path, before_byte = _decode_cursor_target(deps, cursor_q[0], kind="history", session=s)
     except MessageCursorError as e:
         deps.json_response(handler, 409, {"error": str(e)})
         return
-    events, next_before, has_older = _rollout_log._read_chat_history_page(s.log_path, before_byte=before_byte, limit=limit)
+    events, next_before, has_older = _rollout_log._read_chat_history_page(history_log_path, before_byte=before_byte, limit=limit)
     events = manager._attach_notification_texts(events)
-    events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
-    history_cursor = deps.encode_message_cursor(kind="history", session=s, pos=next_before) if has_older and next_before > 0 else None
+    cursor_session_for_encode = _cursor_session_from_path(s, history_log_path)
+    events = _attach_history_cursors_impl(events, session=cursor_session_for_encode, encode_cursor=deps.encode_message_cursor)
+    history_cursor = deps.encode_message_cursor(kind="history", session=cursor_session_for_encode, pos=next_before) if has_older and next_before > 0 else None
     _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, s)
     transcript = _message_transcript_identity(s)
     deps.json_response(
