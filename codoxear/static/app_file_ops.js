@@ -35,6 +35,22 @@
     return Object.freeze({ setFileEditMode });
   }
 
+  function createFileTouchController(options = {}) {
+    if (typeof options.fileViewerController !== "function") {
+      throw new TypeError("file touch controller dependency missing: fileViewerController");
+    }
+
+    function handleFileTouchSelectionKeydown(event) {
+      const controller = options.fileViewerController();
+      if (!controller || typeof controller.handleFileTouchSelectionKeydown !== "function") {
+        throw new TypeError("file touch controller dependency missing: fileViewerController.handleFileTouchSelectionKeydown");
+      }
+      return controller.handleFileTouchSelectionKeydown(event);
+    }
+
+    return Object.freeze({ handleFileTouchSelectionKeydown });
+  }
+
   function createFileOpsController(options = {}) {
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
@@ -779,5 +795,6 @@ fileEditorOpsController.bindInteractions({
 
   global.CodoxearClipboard = Object.freeze({ copyToClipboard });
   global.CodoxearFileEditMode = Object.freeze({ createFileEditModeController });
+  global.CodoxearFileTouch = Object.freeze({ createFileTouchController });
   global.CodoxearFileOps = Object.freeze({ createFileOpsController });
 })(window);
