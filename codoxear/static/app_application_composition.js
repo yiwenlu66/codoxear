@@ -644,7 +644,7 @@
           olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput,
           chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl,
           chatSearchBar, chatSearchBtn, prevUserBtn, nextUserBtn, textarea, statusChip, ctxChip,
-          interruptBtn, toast, sessionsWrap, sidebarEmptyHint, queueViewer, helpViewer, diagViewer, editViewer,
+          interruptBtn, toast, titleLabel, sessionsWrap, sidebarEmptyHint, queueViewer, helpViewer, diagViewer, editViewer,
           fileViewer, appConfirm, sendChoice, composer, attachBtn, imgInput, codeBlockCopyRuntime,
           networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
           syncComposerSendButton, syncQueueSubmitState, updateUnattendedBtnState: () => updateUnattendedBtnState(),
