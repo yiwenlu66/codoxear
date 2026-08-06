@@ -896,8 +896,8 @@
       }
       button.primary,
       .composer .icon-btn.primary {
-        min-height: var(--ctl);
-        min-width: var(--ctl);
+        min-height: var(--ctl) !important;
+        min-width: var(--ctl) !important;
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
