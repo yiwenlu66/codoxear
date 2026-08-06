@@ -119,13 +119,15 @@ function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
 
 async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
   const state = olderLoadSnapshot();
-  if (!getSelected() || !state.hasMore || state.isLoading) return false;
+  console.log("[OLDER] loadOlderMessages called", {hasMore: state.hasMore, isLoading: state.isLoading, selected: getSelected()});
+  if (!getSelected() || !state.hasMore || state.isLoading) { console.log("[OLDER] early return:", {noSelected: !getSelected(), noHasMore: !state.hasMore, isLoading: state.isLoading}); return false; }
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
   const sid = getSelected();
   const gen = getPollGeneration();
   const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
   try {
     const reqCursor = oldestRenderedHistoryCursor();
+    console.log("[OLDER] cursor:", reqCursor ? reqCursor.substring(0,20) : "NULL");
     if (!reqCursor) throw new Error("history cursor missing");
     const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
       signal: load.signal,
