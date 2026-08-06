@@ -885,7 +885,7 @@
         border-left: 0;
       }
       button {
-        min-height: var(--ctl);
+        min-height: var(--ctl-chrome);
         touch-action: manipulation;
         border: 1px solid var(--border);
         background: var(--paper);
@@ -896,6 +896,8 @@
       }
       button.primary,
       .composer .icon-btn.primary {
+        min-height: var(--ctl);
+        min-width: var(--ctl);
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
@@ -920,8 +922,8 @@
         cursor: not-allowed;
       }
 	      .icon-btn {
-	        width: var(--ctl);
-	        height: var(--ctl);
+	        width: var(--ctl-chrome);
+	        height: var(--ctl-chrome);
 	        padding: 0;
 	        display: inline-flex;
 	        align-items: center;
