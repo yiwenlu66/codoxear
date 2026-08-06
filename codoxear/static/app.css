@@ -580,6 +580,7 @@
           width: var(--ctl-chrome);
           height: var(--ctl-chrome);
           min-width: var(--ctl-chrome);
+          min-height: var(--ctl-chrome);
         }
         .session.desktop .sessionActions.right {
           right: var(--space-2);
