@@ -404,10 +404,10 @@
       const wasTurnOpen = getTurnOpen();
       const active = activeTranscriptSnapshot();
       if (active.state === "bound" && slotInfo.state === "pending_bind") {
+        // Server is re-binding the log, but our existing messages are still
+        // valid. Do NOT clear the DOM — just update the slot metadata and
+        // let the next poll/SSE append events on top of what's visible.
         updateSessionTranscriptSlot(sessionId, data);
-        resetChatRenderState();
-        renderPendingTranscriptSlot(sessionId);
-        setAttachCount(0);
         applySessionRuntimeFromTail(sessionId, data);
         return;
       }

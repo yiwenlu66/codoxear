@@ -174,8 +174,15 @@ function maybeAutoLoadOlder() {
 function applySessionRuntimeFromTail(sessionId, data) {
   const slot = syncActiveTranscriptSlot(sessionId);
   transcriptSlotRuntime.setLiveCursor(slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
-  activeTailHistoryCursor = usableOlderHistoryCursor(data);
-  setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });
+  // Only update the older-history cursor when the payload actually carries
+  // older-history metadata. Poll/SSE responses omit it; overwriting with null
+  // would hide the "load older messages" affordance and break scrolling up.
+  const incomingCursor = usableOlderHistoryCursor(data);
+  const payloadHasOlderInfo = data && (typeof data.has_older !== "undefined" || typeof data.history_cursor !== "undefined");
+  if (payloadHasOlderInfo) {
+    activeTailHistoryCursor = incomingCursor;
+    setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });
+  }
   const nowBusy = Boolean(data && data.busy);
   setTurnOpen(nowBusy);
   const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
