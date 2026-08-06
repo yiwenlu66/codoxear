@@ -31,7 +31,7 @@
         --font-3xl: 20px;
         --ctl: 44px;
         --ctl-chrome: 32px;
-        --dialog-control-h: 40px;
+        --dialog-control-h: var(--ctl-chrome);
         --dialog-group-gap: var(--space-5);
         --sidebar-w: 320px;
         --composer-band-h: 48px;
