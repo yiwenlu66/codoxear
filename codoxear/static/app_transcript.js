@@ -705,6 +705,7 @@
     const defaultWindowRows = Math.max(1, Math.floor(Number(options.defaultWindowRows) || 1));
 
     function clear() {
+      console.trace("[CODOXEAR-CLEAR] domRuntime.clear() called — destroying " + root.querySelectorAll(".msg-row").length + " message rows");
       root.innerHTML = "";
       root.appendChild(olderWrap);
       root.appendChild(bottomSentinel);
