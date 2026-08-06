@@ -401,7 +401,7 @@
          touch and desktop branches without changing its layout dimensions. */
       .session.active {
         border: 1px solid var(--ink);
-        border-left: 3px solid var(--ink);
+        border-left-width: 3px;
         background: var(--session-active);
         color: var(--ink);
       }
