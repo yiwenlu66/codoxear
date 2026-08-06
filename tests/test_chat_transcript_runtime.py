@@ -12,6 +12,7 @@ APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
+APP_SESSION_LIFECYCLE_JS = ROOT / "codoxear" / "static" / "app_session_lifecycle.js"
 APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 
 
@@ -842,7 +843,75 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["frozen"])
 
 
-    def test_transcript_renewal_ignores_old_bound_identity_until_new_log_arrives(self) -> None:
+    def test_same_session_reload_keeps_rendered_rows_when_tail_fails_or_is_empty(self) -> None:
+        lifecycle_source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(lifecycle_source)}, ctx);
+            const calls = [];
+            const state = {{ selected: "sid", generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}] }};
+            const messageFlow = {{
+              prepareSessionOpen: () => calls.push("prepare"),
+              beginOpenSessionTailRequest: (sessionId, generation) => ({{ sessionId, generation, signal: {{}} }}),
+              isOpenSessionTailAbortError: () => false,
+              isCurrentOpenSessionTailRequest: () => true,
+              finishOpenSessionTailRequest: () => {{}},
+              markMessagePollFailure: () => calls.push("poll-failure"),
+              markMessagePollSuccess: () => calls.push("poll-success"),
+            }};
+            const defaults = () => {{}};
+            const options = new Proxy({{
+              nextPollGeneration: () => ++state.generation,
+              incrementPollGeneration: defaults,
+              prepareSessionOpen: messageFlow.prepareSessionOpen,
+              getSelected: () => state.selected,
+              setSelected: (value) => {{ state.selected = value; }},
+              setActiveSession: defaults, saveComposerDraft: defaults, loadComposerDraft: defaults,
+              closeUnattendedForOtherSession: defaults, persistSelected: defaults, removePersistedSelected: defaults, setSessionHash: defaults,
+              resetTranscriptForSession: () => calls.push("reset-transcript"),
+              clearTranscriptForRemovedSession: defaults, syncAttachments: defaults, clearAttachments: defaults, syncAttachmentButton: defaults,
+              updateQueueBadge: defaults, setStatus: defaults, setContext: defaults, setTyping: defaults,
+              resetChatRenderState: () => calls.push("reset-chat"),
+              getSession: () => ({{ session_id: "sid", busy: false, queue_len: 0, token: null }}),
+              isCurrent: () => true, setTitle: defaults, setNoSessionTitle: defaults, markClickLoad: defaults,
+              setTurnOpen: defaults, updateTypingStats: defaults, beginFileViewerSync: () => false, finishFileViewerSync: defaults,
+              handleFileViewerSessionUnavailable: defaults, getTailCache: () => null, tailCacheMatchesSession: () => false,
+              applyCachedTail: defaults, renderTranscriptLoading: () => calls.push("render-loading"), messageFlow: () => messageFlow,
+              api: async () => {{ const response = state.responses.shift(); if (response instanceof Error) throw response; return response; }},
+              initPageLimit: () => 60, handleAuthLoss: defaults, refreshSessions: async () => [], isDisposed: () => true,
+              kickPoll: defaults, messagePollDelayMs: () => 900,
+              updateTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
+              renderPendingTranscriptSlot: () => calls.push("render-pending"), applySessionRuntimeFromTail: defaults,
+              renderSessionTail: () => calls.push("render-tail"), openMessageEventSource: defaults,
+              isMobile: () => false, closeSidebar: defaults, updateUnattendedButton: defaults, refreshFileCandidates: defaults,
+              isUnattendedOpen: () => false, hideUnattendedMenu: defaults, syncComposerSendButton: defaults, syncQueueSubmitState: defaults,
+              saveSessionScrollPosition: defaults, restoreSessionScrollPosition: defaults, clearSessionScrollPosition: defaults,
+              setActiveTranscriptPending: defaults, deleteTranscriptSession: defaults, dropPendingUserRows: defaults,
+              sessionIdFromHash: () => "", rememberPendingHashSession: defaults, sessionSelectable: () => false,
+              normalizeAgentBackendName: (value) => value, providerChoiceToSettings: () => ({{}}), backendSupportsFast: () => false,
+              setToast: defaults, confirmAction: async () => false, syncRecoveryUiForSession: defaults, sleep: async () => {{}}, consoleError: defaults,
+              renderTranscriptLoadError: (_sessionId, _error, options) => calls.push(["render-load-error", Boolean(options.preserveTranscript)]),
+            }}, {{ get: (target, name) => name in target ? target[name] : defaults }});
+            const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController(options);
+            (async () => {{
+              await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false }});
+              process.stdout.write(JSON.stringify({{ calls }}));
+            }})().catch((error) => {{ console.error(error); process.exit(1); }});
+            """
+        )
+        out = _run_node(js)
+
+        self.assertNotIn("reset-transcript", out["calls"])
+        self.assertNotIn("reset-chat", out["calls"])
+        self.assertNotIn("render-loading", out["calls"])
+        self.assertNotIn("render-tail", out["calls"])
+        self.assertIn(["render-load-error", True], out["calls"])
+
+
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""

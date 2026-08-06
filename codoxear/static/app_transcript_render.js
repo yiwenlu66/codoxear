@@ -604,6 +604,19 @@ function restorePendingUserRowsForSession(sessionId) {
 
 function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
   if (!sessionId || getSelected() !== sessionId || !sessionMeta) return;
+  const currentSlot = getSessionTranscriptSlot(sessionId);
+  const listedSlot = transcriptSnapshotFromData(sessionMeta);
+  const requiresReplacement =
+    currentSlot.state === "bound" &&
+    (listedSlot.state === "pending_bind" || (listedSlot.state === "bound" && currentSlot.key !== listedSlot.key));
+  if (requiresReplacement) {
+    // The sidebar is allowed to discover a replacement transcript, but it is
+    // not proof that a readable tail is ready. Keep the visible transcript
+    // until the guarded same-session reload obtains replacement events.
+    void getSessionLifecycleController().openSession(sessionId, { useCache: false, fallbackToCacheOnFailure: true });
+    return;
+  }
+
   const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);
   if (!slotChange.resetPending) return;
 

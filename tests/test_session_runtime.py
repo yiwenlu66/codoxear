@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import threading
 from typing import Any
@@ -119,6 +120,29 @@ def test_apply_run_settings_backfill_ignores_stale_log_binding() -> None:
     assert session.model_provider is None
     assert session.model is None
     assert session.reasoning_effort is None
+
+
+def test_apply_run_settings_backfill_uses_pi_model_change_while_bridge_is_live() -> None:
+    session = _session()
+    session.agent_backend = "pi"
+    session.broker_pid = os.getpid()
+    session.pi_thinking_command = True
+    session.model_provider = "launch-provider"
+    session.model = "launch-model"
+    session.reasoning_effort = "bridge-effort"
+
+    update = apply_run_settings_backfill(
+        session,
+        expected_log_path=Path("/tmp/log.jsonl"),
+        log_provider="switched-provider",
+        log_model="switched-model",
+        log_effort="stale-log-effort",
+    )
+
+    assert update is not None
+    assert session.model_provider == "switched-provider"
+    assert session.model == "switched-model"
+    assert session.reasoning_effort == "bridge-effort"
 
 
 def test_runtime_status_uses_log_idle_over_stale_broker_busy() -> None:

@@ -124,6 +124,7 @@
       const generation = nextPollGeneration();
       messageFlow().prepareSessionOpen();
       const oldSelected = getSelected();
+      const reloadingSelectedSession = oldSelected === sessionId;
       if (oldSelected && oldSelected !== sessionId) saveSessionScrollPosition(oldSelected);
       setSelected(sessionId);
       setActiveSession(sessionId);
@@ -132,13 +133,15 @@
       closeUnattendedForOtherSession(sessionId);
       persistSelected(sessionId);
       setSessionHash(sessionId);
-      resetTranscriptForSession();
+      if (!reloadingSelectedSession) {
+        resetTranscriptForSession();
+      }
       syncAttachments();
       updateQueueBadge();
       setStatus({ running: false, queueLen: 0 });
       setContext(null);
       setTyping(false);
-      resetChatRenderState();
+      if (!reloadingSelectedSession) resetChatRenderState();
 
       const session = getSession(sessionId);
       if (!isCurrent(sessionId, generation)) return null;
@@ -160,7 +163,7 @@
         restoreSessionScrollPosition(sessionId);
         displayedCachedTail = true;
       }
-      if (!displayedCachedTail) renderTranscriptLoading(sessionId);
+      if (!displayedCachedTail && !reloadingSelectedSession) renderTranscriptLoading(sessionId);
 
       const tailRequest = messageFlow().beginOpenSessionTailRequest(sessionId, generation);
       let data;
@@ -183,7 +186,7 @@
           restoreSessionScrollPosition(sessionId);
           displayedCachedTail = true;
         }
-        renderTranscriptLoadError(sessionId, error, { preserveTranscript: displayedCachedTail });
+        renderTranscriptLoadError(sessionId, error, { preserveTranscript: displayedCachedTail || reloadingSelectedSession });
         if (!isDisposed() && isCurrent(sessionId, generation)) kickPoll(messagePollDelayMs());
         return null;
       } finally {
@@ -193,15 +196,18 @@
       messageFlow().markMessagePollSuccess();
       const slotChange = updateTranscriptSlot(sessionId, data);
       if (slotChange.ignoredStaleBound) {
-        renderPendingTranscriptSlot(sessionId);
+        if (!reloadingSelectedSession) renderPendingTranscriptSlot(sessionId);
         applySessionRuntimeFromTail(sessionId, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
         if (slotChange.current.state !== "failed") kickPoll(900);
         return data;
       }
-      if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
-        renderSessionTail(Array.isArray(data.events) ? data.events : []);
+      const tailEvents = Array.isArray(data.events) ? data.events : [];
+      if ((slotChange.current.state === "bound" || slotChange.current.state === "failed") && (!reloadingSelectedSession || tailEvents.length)) {
+        renderSessionTail(tailEvents);
         restoreSessionScrollPosition(sessionId);
-      } else renderPendingTranscriptSlot(sessionId);
+      } else if (!reloadingSelectedSession) {
+        renderPendingTranscriptSlot(sessionId);
+      }
       applySessionRuntimeFromTail(sessionId, data);
       if (slotChange.current.state !== "failed") { openMessageEventSource(sessionId, generation); kickPoll(900); }
       if (isMobile()) closeSidebar();

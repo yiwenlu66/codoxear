@@ -348,15 +348,16 @@ def apply_run_settings_backfill(
 ) -> RunSettingsUpdate | None:
     if session is None or session.log_path != expected_log_path:
         return None
-    # A live bridge-capable session keeps its model/effort current in the
-    # sidecar via the broker (read from the bridge caps every turn), so that
-    # value beats the log replay — the log lags a terminal change that is only
-    # recorded at the next turn. Only bridge-less or dead-broker sessions fall
-    # back to the log for settings the sidecar never learned.
+    # Pi's model_change event is authoritative even while the bridge is live:
+    # the bridge owns interactive thinking control, but Pi's native /model
+    # command records its effective provider/model only in the session log.
+    # Applying that evidence here keeps the sidebar current without inventing
+    # a second browser-side model cache. A bridge-provided thinking level can
+    # precede its log record, so retain that bridge authority for effort.
     bridge_live = bool(getattr(session, "pi_thinking_command", False)) and _pid_alive(getattr(session, "broker_pid", None))
-    if log_provider is not None and not bridge_live:
+    if log_provider is not None:
         session.model_provider = log_provider
-    if log_model is not None and not bridge_live:
+    if log_model is not None:
         session.model = log_model
     if log_effort is not None and not bridge_live:
         session.reasoning_effort = log_effort
