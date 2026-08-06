@@ -843,7 +843,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["frozen"])
 
 
-    def test_same_session_reload_keeps_rendered_rows_when_tail_fails_or_is_empty(self) -> None:
+    def test_same_session_reload_preserves_rows_unless_forced_to_render_tail(self) -> None:
         lifecycle_source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
@@ -852,7 +852,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.createContext(ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
-            const state = {{ selected: "sid", generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}] }};
+            const state = {{ selected: "sid", generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}, {{ transcript_state: "bound", events: [{{ role: "assistant", text: "latest" }}], busy: false, queue_len: 0, token: null }}] }};
             const messageFlow = {{
               prepareSessionOpen: () => calls.push("prepare"),
               beginOpenSessionTailRequest: (sessionId, generation) => ({{ sessionId, generation, signal: {{}} }}),
@@ -888,7 +888,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               renderSessionTail: () => calls.push("render-tail"), openMessageEventSource: defaults,
               isMobile: () => false, closeSidebar: defaults, updateUnattendedButton: defaults, refreshFileCandidates: defaults,
               isUnattendedOpen: () => false, hideUnattendedMenu: defaults, syncComposerSendButton: defaults, syncQueueSubmitState: defaults,
-              saveSessionScrollPosition: defaults, restoreSessionScrollPosition: defaults, clearSessionScrollPosition: defaults,
+              saveSessionScrollPosition: defaults, restoreSessionScrollPosition: () => calls.push("restore-scroll"), clearSessionScrollPosition: defaults,
               setActiveTranscriptPending: defaults, deleteTranscriptSession: defaults, dropPendingUserRows: defaults,
               sessionIdFromHash: () => "", rememberPendingHashSession: defaults, sessionSelectable: () => false,
               normalizeAgentBackendName: (value) => value, providerChoiceToSettings: () => ({{}}), backendSupportsFast: () => false,
@@ -899,6 +899,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             (async () => {{
               await controller.openSession("sid", {{ useCache: false }});
               await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false, forceRender: true }});
               process.stdout.write(JSON.stringify({{ calls }}));
             }})().catch((error) => {{ console.error(error); process.exit(1); }});
             """
@@ -908,7 +909,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertNotIn("reset-transcript", out["calls"])
         self.assertNotIn("reset-chat", out["calls"])
         self.assertNotIn("render-loading", out["calls"])
-        self.assertNotIn("render-tail", out["calls"])
+        self.assertEqual(out["calls"].count("render-tail"), 1)
+        self.assertNotIn("restore-scroll", out["calls"])
         self.assertIn(["render-load-error", True], out["calls"])
 
 

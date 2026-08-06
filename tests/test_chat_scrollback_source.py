@@ -86,6 +86,60 @@ def eval_launch_recovery_details() -> dict:
 
 
 
+def eval_jump_to_latest_forces_tail_render() -> dict:
+    source = APP_MESSAGE_HISTORY_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const transcriptHelpers = {{
+          normalizeTailEvent: () => null, normalizeTranscriptState: () => null,
+          normalizedTranscriptEvents: () => [], transcriptKey: () => "",
+          historyCursorFromPayload: () => null, hasUsableOlderHistory: () => false,
+          transcriptSnapshotFromData: () => null, transcriptIdentityFromData: () => null,
+          tailCacheMatchesSession: () => false, rememberTailSnapshot: () => {{}},
+          appendTailSnapshotEvents: () => {{}}, createTranscriptSlotRuntime: () => ({{}}),
+          createTypingRowRuntime: () => ({{}}), hasHumanOriginatedUserEvent: () => false,
+          createTranscriptRenderRuntime: () => ({{}}), createTranscriptDomRuntime: () => ({{}}),
+          createTranscriptScrollRuntime: () => ({{}}), createTranscriptEventRuntime: () => ({{}}),
+          createOlderLoadRuntime: () => ({{ invalidate: () => calls.push("invalidate-older") }}),
+          createLoadedChatSearchRuntime: () => ({{}}), createChatSearchAllRuntime: () => ({{}}),
+        }};
+        const ctx = {{ window: {{ CodoxearTranscript: transcriptHelpers }}, console }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const controller = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
+          getSelected: () => "sid", getPollGeneration: () => 7, getSessionIndex: () => new Map(),
+          getSessionLifecycleController: () => ({{ openSession: async (...args) => calls.push(["open", ...args]) }}),
+          getSessionRefreshController: () => ({{ refreshSessions: async () => {{}} }}),
+          getSendLifecycleController: () => ({{ kickPoll: (delay) => calls.push(["kick", delay]) }}),
+          getAttachmentsController: () => ({{}}),
+          transcript: {{
+            transcriptView: () => ({{}}),
+            transcriptScrollRuntime: {{
+              enableAutoScroll: () => calls.push("enable-auto-scroll"),
+              scheduleScrollToBottom: (options) => calls.push(["scroll-bottom", options]),
+            }},
+          }},
+          wiring: {{ createOlderLoadOptions: () => ({{}}) }}, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}},
+          AbortController: function AbortController() {{}}, performance: {{ now: () => 0 }},
+          OLDER_AUTO_COOLDOWN_MS: 0, OLDER_PAGE_LIMIT: 30, api: async () => ({{}}), handleAppAuthLoss: () => {{}},
+          setTurnOpen: () => {{}}, setStatus: () => {{}}, setContext: () => {{}}, getCurrentRunning: () => false,
+          syncQueueSubmitState: () => {{}}, syncComposerSendButton: () => {{}}, updateUnattendedBtnState: () => {{}},
+          updateQueueBadge: () => {{}}, sessionLaunchFailed: () => false, confirmApp: async () => false, setToast: () => {{}},
+          codoxearDisplay: {{ recoveryPromptPreview: () => "" }}, redactedLaunchErrorText: () => "", chatInner: {{ querySelectorAll: () => [] }},
+          setTimeout, clearTimeout, sessionIdFromHash: () => "", sessionSelectable: () => false, isAppDisposed: () => false,
+        }});
+        (async () => {{
+          await controller.jumpToLatest();
+          process.stdout.write(JSON.stringify({{ calls }}));
+        }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_open_session_tail_request_abort() -> dict:
     source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -292,6 +346,14 @@ class TestChatScrollbackSource(unittest.TestCase):
             ["syncComposerSendButton"], ["syncQueueSubmitState"],
         ]:
             self.assertContains(expected, result["calls"])
+
+    def test_jump_to_latest_forces_same_session_tail_render(self) -> None:
+        result = eval_jump_to_latest_forces_tail_render()
+        self.assertIn("invalidate-older", result["calls"])
+        self.assertIn("enable-auto-scroll", result["calls"])
+        self.assertIn(["open", "sid", {"useCache": False, "fallbackToCacheOnFailure": True, "forceRender": True}], result["calls"])
+        self.assertIn(["scroll-bottom", {"syncJump": True}], result["calls"])
+        self.assertIn(["kick", 0], result["calls"])
 
     def test_open_session_tail_request_aborts_superseded_open(self) -> None:
         result = eval_open_session_tail_request_abort()

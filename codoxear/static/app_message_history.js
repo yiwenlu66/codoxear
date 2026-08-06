@@ -363,7 +363,11 @@ async function jumpToLatest() {
   invalidateOlderLoad();
   transcriptScrollRuntime.enableAutoScroll();
   try {
-    await getSessionLifecycleController().openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
+    await getSessionLifecycleController().openSession(sid, {
+      useCache: false,
+      fallbackToCacheOnFailure: true,
+      forceRender: true,
+    });
   } catch (e) {
     if (getSelected() !== sid) return;
     setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);

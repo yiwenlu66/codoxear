@@ -149,7 +149,7 @@
       return selectedCleared;
     }
 
-    async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
+    async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, forceRender = false } = {}) {
       const generation = nextPollGeneration();
       messageFlow().prepareSessionOpen();
       const oldSelected = getSelected();
@@ -231,20 +231,21 @@
         return data;
       }
       const tailEvents = Array.isArray(data.events) ? data.events : [];
-      if (!reloadingSelectedSession) {
-        // Fresh session selection: full render is correct.
+      if (!reloadingSelectedSession || forceRender) {
+        // Fresh selections and explicit latest-tail requests replace the DOM.
+        // Ordinary same-session reloads preserve the rendered rows and scroll.
         if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
           renderSessionTail(tailEvents);
-          restoreSessionScrollPosition(sessionId);
+          // Latest-tail navigation is terminal: restoring an older saved
+          // position would overwrite renderSessionTail's bottom scroll.
+          if (!forceRender) restoreSessionScrollPosition(sessionId);
         } else {
           renderPendingTranscriptSlot(sessionId);
         }
       }
-      // Same-session reload (e.g. log-path change detected by poll):
-      // NEVER clear+re-render. The DOM already shows messages.
-      // appendEvent (called by subsequent polls/SSE) deduplicates by
-      // message_id, so new events appear without destroying existing
-      // content or scroll position.
+      // Same-session reloads normally leave the DOM intact: appendEvent
+      // (called by subsequent polls/SSE) deduplicates by message_id, so new
+      // events appear without destroying existing content or scroll position.
       applySessionRuntimeFromTail(sessionId, data);
       if (slotChange.current.state !== "failed") { openMessageEventSource(sessionId, generation); kickPoll(900); }
       if (isMobile()) closeSidebar();
