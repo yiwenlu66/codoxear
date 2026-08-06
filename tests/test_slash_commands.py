@@ -22,6 +22,11 @@ def test_live_pi_registry_filters_known_interactive_entries():
     assert names(projected) == ["model", "custom"]
 
 
+def test_codex_only_exposes_broker_advertised_live_controls():
+    assert slash_commands_for_backend("codex") == []
+    assert names(slash_commands_for_backend("codex", [{"name": "model"}, {"name": "effort"}])) == ["model", "effort"]
+
+
 def test_non_pi_defaults_are_backend_specific():
     assert names(default_slash_commands("cc"))[:2] == ["model", "effort"]
     assert default_slash_commands("codex") == []

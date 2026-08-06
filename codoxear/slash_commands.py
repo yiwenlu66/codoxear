@@ -65,9 +65,21 @@ def default_slash_commands(backend: str, *, pi_bridge_capable: bool = False) -> 
 
 
 def slash_commands_for_backend(backend: str, caps: Any = None, *, pi_bridge_capable: bool = False) -> list[dict[str, str]]:
-    """Project public, browser-safe commands; caps win for live Pi sessions."""
-    if str(backend or "").strip().lower() != "pi":
-        return default_slash_commands(backend, pi_bridge_capable=pi_bridge_capable)
+    """Project commands the browser can invoke from a live backend session.
+
+    Codex capabilities are emitted only by a broker that successfully attached
+    its typed app-server control transport; preserving those rows makes the
+    browser picker available. Claude Code has a stable browser-safe command
+    set, while Pi filters its live extension registry for commands whose TUI
+    flow is interactive.
+    """
+    backend = str(backend or "").strip().lower()
+    if backend == "codex":
+        return _clean_commands(caps)
+    if backend == "cc":
+        return default_slash_commands("cc")
+    if backend != "pi":
+        return []
     if pi_bridge_capable and isinstance(caps, (list, tuple)):
         return [command for command in _clean_commands(caps) if command["name"] not in PI_INTERACTIVE_SLASH_COMMANDS or command["name"] == "model"]
     return default_slash_commands("pi", pi_bridge_capable=False)

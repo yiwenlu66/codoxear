@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from codoxear import broker as broker_module
 from codoxear.broker_control import _handle_broker_control_connection
 from codoxear.broker_turn_state import State
 from codoxear.codex_live_control import CodexLiveControlError
@@ -58,6 +59,26 @@ def test_app_server_launch_copies_only_shared_config_flags() -> None:
             "resume", "thread-1",
         ]
     ) == ["-c", "model_provider=\"custom\"", "--disable", "goals"]
+
+
+def test_broker_keeps_codex_app_server_socket_outside_discovery_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sock_dir = tmp_path / "socks"
+    captured: dict[str, Path] = {}
+
+    monkeypatch.setattr(broker_module, "AGENT_BACKEND", "codex")
+    monkeypatch.setattr(broker_module, "SOCK_DIR", sock_dir)
+    monkeypatch.setattr(
+        broker_module,
+        "start_codex_app_server",
+        lambda **kwargs: (captured.setdefault("socket_path", kwargs["socket_path"]) and object(), None),
+    )
+
+    live_broker = broker_module.Broker(cwd=str(tmp_path), codex_args=[])
+    live_broker._prepare_codex_live_control()
+
+    assert captured["socket_path"].parent == sock_dir / "private"
+    assert captured["socket_path"].name.startswith("codex-app-server-")
+    assert live_broker.codex_args[:2] == ["--remote", f"unix://{captured['socket_path']}"]
 
 
 def test_broker_settings_command_targets_bound_thread_without_pty_keys(tmp_path: Path) -> None:

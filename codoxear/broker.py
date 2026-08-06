@@ -366,7 +366,7 @@ class Broker:
     def _prepare_codex_live_control(self) -> None:
         if AGENT_BACKEND != "codex" or not codex_live_control_compatible_args(self.codex_args):
             return
-        socket_path = SOCK_DIR / f"codex-app-server-{os.getpid()}.sock"
+        socket_path = SOCK_DIR / "private" / f"codex-app-server-{os.getpid()}.sock"
         server, error = start_codex_app_server(
             agent_bin=AGENT_BIN,
             cwd=self.cwd,
