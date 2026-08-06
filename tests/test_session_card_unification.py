@@ -1,9 +1,8 @@
-"""Behavioral VM coverage for the shared session-card content tree.
+"""Behavioral VM coverage for the split session-card DOM contract.
 
-The touch and fine-pointer variants intentionally differ only in action exposure:
-touch binds the swipe gesture, while desktop adds `.desktop` and exposes actions
-on hover.  The title, badges, metadata, and card border owner must be the same
-DOM structure in both variants.
+Touch cards use swipe-revealed left/right action groups; fine-pointer desktop cards
+use one inline hover-revealed group. Both branches project the same title, badges,
+and metadata while retaining their intentionally distinct interaction DOM.
 """
 
 import json
@@ -81,6 +80,7 @@ HARNESS = textwrap.dedent(
       }], { selectedId: "s1", swipeActions });
       const card = wrap.children[0];
       const swipe = byClass(card, "sessionSwipe");
+      const inlineActions = byClass(card, "sessionActionsInline");
       const content = byClass(card, "sessionContent");
       const title = textByClass(card, "titleText");
       const badges = byClass(card, "sessionBadges").children.map((badge) => badge.attrs.text);
@@ -88,9 +88,11 @@ HARNESS = textwrap.dedent(
       card.onclick();
       return {
         cardClasses: classes(card), cardTopology: topology(card), contentTopology: topology(content),
+        hasSwipeActions: Boolean(swipe), hasInlineActions: Boolean(inlineActions),
         swipeX: Object.hasOwn(content.dataset, "swipeX") ? content.dataset.swipeX : null,
         swipeListeners: Object.keys(content.listeners).sort(), title, badges, metadata, selections, sidebarOpen,
-        actionLabels: swipe.children.slice(0, 2).flatMap((actions) => actions.children.map((button) => button.attrs["aria-label"])),
+        touchActionLabels: swipe ? swipe.children.slice(0, 2).flatMap((actions) => actions.children.map((button) => button.attrs["aria-label"])) : [],
+        desktopActionLabels: inlineActions ? inlineActions.children.map((button) => button.attrs["aria-label"]) : [],
       };
     }
 
@@ -112,12 +114,19 @@ def test_session_card_content_tree_is_identical_across_reveal_branches() -> None
     touch = result["touch"]
     desktop = result["desktop"]
 
-    assert touch["cardTopology"]["children"] == desktop["cardTopology"]["children"]
-    assert touch["contentTopology"] == desktop["contentTopology"]
     assert touch["title"] == desktop["title"] == "Unified card"
     assert touch["badges"] == desktop["badges"] == ["queue 2", "unread 1"]
     assert touch["metadata"] == desktop["metadata"] == "2m | model-2026 ·hi | codoxear | main"
-    assert touch["actionLabels"] == desktop["actionLabels"] == ["Delete session", "Edit conversation", "Duplicate session"]
+
+    assert touch["hasSwipeActions"] is True
+    assert touch["hasInlineActions"] is False
+    assert touch["touchActionLabels"] == ["Delete session", "Edit conversation", "Duplicate session"]
+    assert touch["desktopActionLabels"] == []
+
+    assert desktop["hasSwipeActions"] is False
+    assert desktop["hasInlineActions"] is True
+    assert desktop["touchActionLabels"] == []
+    assert desktop["desktopActionLabels"] == ["Edit conversation", "Duplicate session", "Delete session"]
 
     assert "desktop" not in touch["cardClasses"]
     assert "desktop" in desktop["cardClasses"]
