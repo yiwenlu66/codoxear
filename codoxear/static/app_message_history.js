@@ -119,7 +119,7 @@ function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
 
 async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
   const state = olderLoadSnapshot();
-  console.log("[OLDER] loadOlderMessages called", {hasMore: state.hasMore, isLoading: state.isLoading, selected: getSelected()});
+  try { localStorage.setItem("__debug_older_called", JSON.stringify({hasMore: state.hasMore, isLoading: state.isLoading})); } catch(e) {}
   if (!getSelected() || !state.hasMore || state.isLoading) { console.log("[OLDER] early return:", {noSelected: !getSelected(), noHasMore: !state.hasMore, isLoading: state.isLoading}); return false; }
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
   const sid = getSelected();
