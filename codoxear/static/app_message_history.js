@@ -118,9 +118,8 @@ function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
 }
 
 async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
-  const state = olderLoadSnapshot();
-  try { localStorage.setItem("__debug_older_called", JSON.stringify({hasMore: state.hasMore, isLoading: state.isLoading})); } catch(e) {}
-  if (!getSelected() || !state.hasMore || state.isLoading) { console.log("[OLDER] early return:", {noSelected: !getSelected(), noHasMore: !state.hasMore, isLoading: state.isLoading}); return false; }
+  const state = olderLoadRuntime.snapshot();
+  if (!getSelected() || !state.hasMore || state.isLoading) return false;
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
   const sid = getSelected();
   const gen = getPollGeneration();
@@ -153,7 +152,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
       await getSessionLifecycleController().openSession(sid, { useCache: false });
       return false;
     }
-    setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
+    setOlderState({ hasMore: olderLoadRuntime.snapshot().hasMore, isLoading: false });
     showOlderLoadError();
     return false;
   } finally {

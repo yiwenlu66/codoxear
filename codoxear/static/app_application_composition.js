@@ -1234,13 +1234,7 @@
         eventBindings.on(jumpBtn, 'click', () => {
           void jumpToLatest();
         });
-        try { localStorage.setItem("__debug_bind", JSON.stringify({olderBtn: !!olderBtn, loadOlderType: typeof loadOlderMessages})); } catch(e) {}
         eventBindings.on(olderBtn, 'click', () => {
-          try {
-            const prev = JSON.parse(localStorage.getItem("__debug_clicks") || "[]");
-            prev.push({time: Date.now()});
-            localStorage.setItem("__debug_clicks", JSON.stringify(prev));
-          } catch(e) {}
           void loadOlderMessages({ auto: false });
         });
         eventBindings.on(olderRetryBtn, 'click', () => {
