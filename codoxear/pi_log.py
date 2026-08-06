@@ -388,18 +388,17 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
 
     # Only the LATEST model_change and thinking_level_change are authoritative;
     # everything older is overwritten. Scan the log backward from the end and
-    # stop once both are found, instead of replaying the entire file. A full
-    # replay still happens when the session never changed either value, but
-    # long sessions that switched stop reading early.
+    # stop once both are found, instead of replaying the entire file.
+    #
+    # model_change events are sparse (a handful per session) but can live
+    # anywhere in the log — a long session that switched models early will
+    # have its only model_change deep in the file, beyond any bounded tail.
+    # The backward scan stops as soon as both values are found, so it is
+    # efficient even for large logs. Only diagnostic callers bound it further
+    # via max_scan_bytes.
+    scan_floor = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
     last_model_change: dict | None = None
     last_thinking_change: dict | None = None
-    # Bound the scan to the tail: the latest settings live in the last few MB.
-    # A full GB read is never required — for an ancient session with no recent
-    # change, the header baseline (the launch settings the sidecar recorded) is
-    # the correct answer anyway. ``max_scan_bytes`` (diagnostic callers) further
-    # bounds it when set.
-    tail_bytes = TAIL_SCAN_BYTES if max_scan_bytes is None else min(TAIL_SCAN_BYTES, max(0, int(max_scan_bytes)))
-    scan_floor = max(0, size - tail_bytes)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
