@@ -172,7 +172,11 @@ def eval_open_session_tail_request_abort() -> dict:
           renderSessionTail: () => calls.push(["renderSessionTail"]), openMessageEventSource: () => {{}},
           isMobile: () => false, closeSidebar: () => {{}}, updateUnattendedButton: () => {{}},
           refreshFileCandidates: async () => {{}}, isUnattendedOpen: () => false, hideUnattendedMenu: () => {{}},
-          syncComposerSendButton: () => {{}}, syncQueueSubmitState: () => {{}}, setActiveTranscriptPending: () => {{}},
+          syncComposerSendButton: () => {{}}, syncQueueSubmitState: () => {{}},
+          saveSessionScrollPosition: (sid) => calls.push(["saveSessionScrollPosition", sid]),
+          restoreSessionScrollPosition: (sid) => calls.push(["restoreSessionScrollPosition", sid]),
+          clearSessionScrollPosition: () => {{}},
+          setActiveTranscriptPending: () => {{}},
           deleteTranscriptSession: () => {{}}, dropPendingUserRows: () => {{}}, sessionIdFromHash: () => "", rememberPendingHashSession: () => {{}},
           sessionSelectable: () => false, normalizeAgentBackendName: (value) => value, providerChoiceToSettings: () => ({{}}),
           backendSupportsFast: () => false, setToast: () => {{}}, confirmAction: async () => false, syncRecoveryUiForSession: () => {{}}, sleep: async () => {{}}, consoleError: () => {{}},
@@ -195,6 +199,7 @@ def eval_open_session_tail_request_abort() -> dict:
             loadErrorCalls: calls.filter((call) => call[0] === "renderTranscriptLoadError"),
             successCalls: calls.filter((call) => call[0] === "markMessagePollSuccess"),
             renderTailCalls: calls.filter((call) => call[0] === "renderSessionTail"),
+            scrollMemoryCalls: calls.filter((call) => call[0] === "saveSessionScrollPosition" || call[0] === "restoreSessionScrollPosition"),
           }}));
         }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});
         """
@@ -228,6 +233,7 @@ def _run_lifecycle(body: str) -> dict:
           clearAttachments: () => calls.push(["clearAttachments"]), syncAttachmentButton: () => calls.push(["syncAttachmentButton"]), resetChatRenderState: () => calls.push(["resetChatRenderState"]), updateQueueBadge: () => calls.push(["updateQueueBadge"]),
           isUnattendedOpen: () => true, hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]), updateUnattendedButton: () => calls.push(["updateUnattendedButton"]),
           syncComposerSendButton: () => calls.push(["syncComposerSendButton"]), syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
+          clearSessionScrollPosition: (sid) => calls.push(["clearSessionScrollPosition", sid]),
           deleteTranscriptSession: (sid) => calls.push(["deleteTranscriptSession", sid]), dropPendingUserRows: (sid) => calls.push(["dropPendingUserRows", sid]),
         }}, {{ get: (target, name) => name in target ? target[name] : noop }});
         const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController(options);
@@ -266,10 +272,11 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_clear_deleted_session_client_state_clears_explicit_delete_state(self) -> None:
         result = eval_clear_deleted_session_client_state()
         self.assertTrue(result["selectedResult"])
+        self.assertContains(["clearSessionScrollPosition", "sid-1"], result["selectedCalls"])
         self.assertContains(["deleteTranscriptSession", "sid-1"], result["selectedCalls"])
         self.assertContains(["dropPendingUserRows", "sid-1"], result["selectedCalls"])
         self.assertFalse(result["otherResult"])
-        self.assertEqual(result["otherCalls"], [["deleteTranscriptSession", "other"], ["dropPendingUserRows", "other"]])
+        self.assertEqual(result["otherCalls"], [["clearSessionScrollPosition", "other"], ["deleteTranscriptSession", "other"], ["dropPendingUserRows", "other"]])
 
     def test_clear_selected_session_after_removal_resets_missing_session_state(self) -> None:
         result = eval_clear_selected_session_after_removal()
@@ -303,6 +310,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertEqual(result["loadErrorCalls"], [])
         self.assertEqual(result["successCalls"], [["markMessagePollSuccess"]])
         self.assertEqual(len(result["renderTailCalls"]), 1)
+        self.assertEqual(result["scrollMemoryCalls"], [["saveSessionScrollPosition", "sid-a"], ["restoreSessionScrollPosition", "sid-b"]])
 
     def test_launch_recovery_details_are_allowlisted(self) -> None:
         result = eval_launch_recovery_details()

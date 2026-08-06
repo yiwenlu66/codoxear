@@ -415,6 +415,54 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertContains("transcript dependency missing: requestAnimationFrame", out["missingError"])
         self.assertTrue(out["frozen"])
 
+    def test_session_scroll_memory_restores_exact_positions_and_discards_stale_heights(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const rafs = [];
+            const chat = {{ scrollTop: 120, scrollHeight: 500, clientHeight: 100 }};
+            const jumpButton = {{ style: {{ display: "" }} }};
+            const timeChip = {{ style: {{ display: "" }}, textContent: "" }};
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptScrollRuntime({{
+              chat, jumpButton, timeChip,
+              requestAnimationFrame: (fn) => rafs.push(fn),
+              hasSelection: () => true, isSearchOpen: () => false,
+              firstVisibleMessageRow: () => ({{ dataset: {{ ts: "1000" }} }}),
+              dayLabel: () => "Day", time24: () => "12:34",
+              shouldCancelOlderLoad: () => false, cancelOlderLoad: () => {{}}, autoLoadOlder: () => {{}},
+            }});
+            const saved = runtime.saveSessionScrollPosition("sid");
+            const remembered = runtime.sessionScrollPosition("sid");
+            chat.scrollTop = 0;
+            runtime.scheduleScrollToBottom({{ double: true }});
+            const restoreExact = runtime.restoreSessionScrollPosition("sid");
+            while (rafs.length) rafs.shift()();
+            const exact = {{ top: chat.scrollTop, autoScroll: runtime.snapshot().autoScroll, jump: jumpButton.style.display }};
+            chat.scrollTop = 0;
+            chat.scrollHeight = 700;
+            const restoreChanged = runtime.restoreSessionScrollPosition("sid");
+            while (rafs.length) rafs.shift()();
+            const changed = {{ top: chat.scrollTop, autoScroll: runtime.snapshot().autoScroll, jump: jumpButton.style.display }};
+            const cleared = runtime.clearSessionScrollPosition("sid");
+            const restoreMissing = runtime.restoreSessionScrollPosition("sid");
+            process.stdout.write(JSON.stringify({{ saved, remembered, restoreExact, exact, restoreChanged, changed, cleared, restoreMissing }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "saved": True,
+            "remembered": {"scrollTop": 120, "scrollHeight": 500},
+            "restoreExact": True,
+            "exact": {"top": 120, "autoScroll": False, "jump": "inline-flex"},
+            "restoreChanged": True,
+            "changed": {"top": 700, "autoScroll": True, "jump": "none"},
+            "cleared": True,
+            "restoreMissing": False,
+        })
+
     def test_transcript_event_runtime_owns_recent_events_and_pending_echoes(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         identity_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")

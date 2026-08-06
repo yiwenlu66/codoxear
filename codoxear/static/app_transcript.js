@@ -782,6 +782,48 @@
     let renderedAtLiveTail = true;
     let lastScrollTop = Number(chat.scrollTop) || 0;
     let touchY = null;
+    const scrollPositions = new Map();
+
+    function sessionIdForScrollMemory(sessionId) {
+      return typeof sessionId === "string" && sessionId ? sessionId : "";
+    }
+
+    function saveSessionScrollPosition(sessionId) {
+      const id = sessionIdForScrollMemory(sessionId);
+      if (!id) return false;
+      scrollPositions.set(id, Object.freeze({
+        scrollTop: Number(chat.scrollTop) || 0,
+        scrollHeight: Number(chat.scrollHeight) || 0,
+      }));
+      return true;
+    }
+
+    function restoreSessionScrollPosition(sessionId) {
+      const position = scrollPositions.get(sessionIdForScrollMemory(sessionId));
+      if (!position) return false;
+      // renderSessionTail schedules a double bottom-scroll. Restore on the
+      // following frame so its final scheduled write cannot overwrite a
+      // remembered position.
+      requestAnimationFrameFn(() => requestAnimationFrameFn(() => {
+        if ((Number(chat.scrollHeight) || 0) === position.scrollHeight) {
+          setScrollTop(position.scrollTop);
+          autoScroll = isNearBottom();
+        } else {
+          scrollToBottom();
+          autoScroll = true;
+        }
+        syncJumpButton();
+      }));
+      return true;
+    }
+
+    function clearSessionScrollPosition(sessionId) {
+      return scrollPositions.delete(sessionIdForScrollMemory(sessionId));
+    }
+
+    function sessionScrollPosition(sessionId) {
+      return scrollPositions.get(sessionIdForScrollMemory(sessionId)) || null;
+    }
 
     function snapshot() {
       return Object.freeze({ autoScroll, renderedAtLiveTail, lastScrollTop });
@@ -946,6 +988,7 @@
 
     return Object.freeze({
       captureScrollPosition,
+      clearSessionScrollPosition,
       disableAutoScroll,
       enableAutoScroll,
       handleScroll,
@@ -958,11 +1001,14 @@
       maybeAutoLoadOlder,
       preserveScrollFrom,
       reset,
+      restoreSessionScrollPosition,
+      saveSessionScrollPosition,
       scheduleScrollToBottom,
       scrollToBottom,
       setAutoScroll,
       setRenderedAtLiveTail,
       setScrollTop,
+      sessionScrollPosition,
       shouldAutoScrollOrNearBottom,
       shouldStickToBottom,
       snapshot,

@@ -67,6 +67,9 @@
     const hideUnattendedMenu = get("hideUnattendedMenu");
     const syncComposerSendButton = get("syncComposerSendButton");
     const syncQueueSubmitState = get("syncQueueSubmitState");
+    const saveSessionScrollPosition = get("saveSessionScrollPosition");
+    const restoreSessionScrollPosition = get("restoreSessionScrollPosition");
+    const clearSessionScrollPosition = get("clearSessionScrollPosition");
     const setActiveTranscriptPending = get("setActiveTranscriptPending");
     const deleteTranscriptSession = get("deleteTranscriptSession");
     const dropPendingUserRows = get("dropPendingUserRows");
@@ -111,6 +114,7 @@
 
     function clearDeletedSessionClientState(sessionId) {
       const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
+      clearSessionScrollPosition(sessionId);
       deleteTranscriptSession(sessionId);
       dropPendingUserRows(sessionId);
       return selectedCleared;
@@ -120,6 +124,7 @@
       const generation = nextPollGeneration();
       messageFlow().prepareSessionOpen();
       const oldSelected = getSelected();
+      if (oldSelected && oldSelected !== sessionId) saveSessionScrollPosition(oldSelected);
       setSelected(sessionId);
       setActiveSession(sessionId);
       if (oldSelected && oldSelected !== sessionId) saveComposerDraft(oldSelected);
@@ -152,6 +157,7 @@
       let displayedCachedTail = false;
       if (useCache && session && cachedTail && tailCacheMatchesSession(cachedTail, session) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
         applyCachedTail(sessionId, cachedTail, session);
+        restoreSessionScrollPosition(sessionId);
         displayedCachedTail = true;
       }
       if (!displayedCachedTail) renderTranscriptLoading(sessionId);
@@ -174,6 +180,7 @@
         }
         if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && session && cachedTail && tailCacheMatchesSession(cachedTail, session) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
           applyCachedTail(sessionId, cachedTail, session);
+          restoreSessionScrollPosition(sessionId);
           displayedCachedTail = true;
         }
         renderTranscriptLoadError(sessionId, error, { preserveTranscript: displayedCachedTail });
@@ -191,8 +198,10 @@
         if (slotChange.current.state !== "failed") kickPoll(900);
         return data;
       }
-      if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-      else renderPendingTranscriptSlot(sessionId);
+      if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
+        renderSessionTail(Array.isArray(data.events) ? data.events : []);
+        restoreSessionScrollPosition(sessionId);
+      } else renderPendingTranscriptSlot(sessionId);
       applySessionRuntimeFromTail(sessionId, data);
       if (slotChange.current.state !== "failed") { openMessageEventSource(sessionId, generation); kickPoll(900); }
       if (isMobile()) closeSidebar();
