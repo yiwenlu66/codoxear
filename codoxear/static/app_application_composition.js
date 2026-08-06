@@ -1234,7 +1234,9 @@
         eventBindings.on(jumpBtn, 'click', () => {
           void jumpToLatest();
         });
+        console.log("[BIND] olderBtn binding:", !!olderBtn, typeof loadOlderMessages);
         eventBindings.on(olderBtn, 'click', () => {
+          console.log("[BIND] olderBtn clicked, calling loadOlderMessages");
           void loadOlderMessages({ auto: false });
         });
         eventBindings.on(olderRetryBtn, 'click', () => {
