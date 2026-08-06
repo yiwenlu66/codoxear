@@ -60,8 +60,13 @@ _PI_AGENT_INTERNAL_DELIVERY_PREFIXES = (
     "Subagent progress update.",
     "Background task completed:",
     "Subagent needs attention",
+    "subagent needs attention",
     "Subagent result",
+    "subagent result",
     "Subagent-control",
+    "subagent-control",
+    "subagent progress update.",
+    "background task completed:",
 )
 
 # These fields identify transport metadata, never human-authored text. A tag
