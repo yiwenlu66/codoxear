@@ -397,12 +397,11 @@
           animation: none;
         }
       }
-      /* A selected card uses the same solid two-pixel perimeter on the
-         touch and desktop branches without changing its layout dimensions. */
+      /* Active session: inverted ink-on-paper highlight for clear visual
+         distinction from inactive cards. */
       .session.active {
         border: 1px solid var(--ink);
-        outline: 1px solid var(--ink);
-        outline-offset: -1px;
+        box-shadow: inset 0 0 0 2px var(--ink);
         background: var(--session-active);
         color: var(--ink);
       }
@@ -578,6 +577,7 @@
           opacity: 1;
           visibility: visible;
           pointer-events: auto;
+          z-index: 3;
           transition:
             opacity 140ms ease,
             visibility 0s linear;
