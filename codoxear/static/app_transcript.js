@@ -28,6 +28,47 @@
     return `${messageClass}|${text}`;
   }
 
+  function createPendingUserController(options = {}) {
+    function requirePendingUserFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`pending user controller dependency missing: ${name}`);
+      return value;
+    }
+
+    const selectedSessionId = requirePendingUserFunction(options.selectedSessionId, "selectedSessionId");
+    const takePendingUserMatch = requirePendingUserFunction(options.takePendingUserMatch, "takePendingUserMatch");
+    const chatInner = options.chatInner;
+    if (!chatInner || typeof chatInner.querySelector !== "function") throw new TypeError("pending user controller dependency missing: chatInner");
+    const markdownHtml = requirePendingUserFunction(options.markdownHtml, "markdownHtml");
+    const time24 = requirePendingUserFunction(options.time24, "time24");
+    const rebuildDecorations = requirePendingUserFunction(options.rebuildDecorations, "rebuildDecorations");
+    const markEventSeen = requirePendingUserFunction(options.markEventSeen, "markEventSeen");
+
+    function consumePendingUserIfMatches(event, sessionId = selectedSessionId()) {
+      const match = takePendingUserMatch(event, sessionId);
+      if (!match) return false;
+      const { id } = match;
+      const pendingElement = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
+      if (!pendingElement) return false;
+
+      pendingElement.style.opacity = "1";
+      pendingElement.removeAttribute("data-local-id");
+      pendingElement.removeAttribute("data-pending");
+
+      const markdownElement = pendingElement.querySelector(".md");
+      if (markdownElement && typeof event.text === "string") markdownElement.innerHTML = markdownHtml(event.text, sessionId);
+
+      const row = pendingElement.closest(".msg-row");
+      if (row && typeof event.ts === "number" && Number.isFinite(event.ts)) row.dataset.ts = String(event.ts);
+      const timestamp = pendingElement.querySelector(".ts");
+      if (timestamp && typeof event.ts === "number" && Number.isFinite(event.ts)) timestamp.textContent = time24(new Date(event.ts * 1000));
+      rebuildDecorations({ preserveScroll: true });
+      markEventSeen(event);
+      return true;
+    }
+
+    return Object.freeze({ consumePendingUserIfMatches });
+  }
+
   function normalizeTailEvent(ev) {
     if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
     if (typeof ev.text !== "string" || !ev.text.trim()) return null;
@@ -1505,6 +1546,7 @@
     });
   }
 
+  window.CodoxearPendingUser = Object.freeze({ createPendingUserController });
   window.CodoxearMessageIdentity = Object.freeze({
     normalizeTextForPendingMatch,
     pendingMatchKey,
