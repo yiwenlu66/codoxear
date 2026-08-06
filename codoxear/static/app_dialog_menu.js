@@ -8,6 +8,31 @@
     return value;
   }
 
+  function createDialogMenusController(options = {}) {
+    function requireDialogMenusFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`dialog menus controller dependency missing: ${name}`);
+      return value;
+    }
+
+    function requireDialogMenusController(value, name) {
+      if (!value || typeof value.applyMenus !== "function") {
+        throw new TypeError(`dialog menus controller dependency missing: ${name}`);
+      }
+      return value;
+    }
+
+    const sessionEditController = requireDialogMenusFunction(options.sessionEditController, "sessionEditController");
+    const newSessionDialogController = requireDialogMenusFunction(options.newSessionDialogController, "newSessionDialogController");
+
+    function applyDialogMenus() {
+      const sessionEditor = sessionEditController();
+      if (sessionEditor) requireDialogMenusController(sessionEditor, "sessionEditController").applyMenus();
+      requireDialogMenusController(newSessionDialogController(), "newSessionDialogController").applyMenus();
+    }
+
+    return Object.freeze({ applyDialogMenus });
+  }
+
   function createDialogMenuController(options = {}) {
     const windowTarget = requireWindowTarget(options.windowTarget || global);
 
@@ -50,5 +75,6 @@
     return Object.freeze({ positionDialogMenu });
   }
 
+  global.CodoxearDialogMenus = Object.freeze({ createDialogMenusController });
   global.CodoxearDialogMenu = { createDialogMenuController };
 })(window);
