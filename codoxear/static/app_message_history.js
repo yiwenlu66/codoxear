@@ -126,7 +126,6 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
   const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
   try {
     const reqCursor = oldestRenderedHistoryCursor();
-    console.log("[OLDER] cursor:", reqCursor ? reqCursor.substring(0,20) : "NULL");
     if (!reqCursor) throw new Error("history cursor missing");
     const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
       signal: load.signal,
