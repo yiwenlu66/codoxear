@@ -599,11 +599,8 @@
       const startedAt = now() / 1000;
       if (renderHere && !continuesOpenTurn && !isControlSlashCommand) typingRowRuntime.resetTypingStats();
       if (renderHere && !renewsTranscript && !isControlSlashCommand) {
-        if (!renderedAtLiveTail()) {
-          clearTranscriptDom();
-          clearRenderedTranscriptRange();
-          setOlderState({ hasMore: false, isLoading: false });
-        }
+        // NEVER clear the transcript on send. Just scroll to bottom
+        // so the user sees the new message and the response.
         const slot = getSessionTranscriptSlot(sessionId);
         addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0: startedAt });
         appendEvent({ role: "user", text: raw, pending: true, localId, ts: startedAt });
