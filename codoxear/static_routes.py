@@ -24,6 +24,7 @@ FRONTEND_ASSET_FILES = (
     "app_file_helpers.js",
     "app_file_picker.js",
     "app_file_candidates.js",
+    "app_file_candidate_state.js",
     "app_file_download.js",
     "app_file_viewer_lifecycle.js",
     "app_file_viewer_panel.js",
