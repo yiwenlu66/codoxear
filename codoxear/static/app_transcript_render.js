@@ -620,21 +620,13 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
   const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);
   if (!slotChange.resetPending) return;
 
-  transcriptSlotRuntime.deleteTailCache(sessionId);
-  transcriptSlotRuntime.clearLiveCursor();
-  clearRenderedTranscriptRange();
-  getAttachmentsController().setAttachCount(0);
-  invalidateOlderLoad();
-  transcriptEventRuntime.resetRecentEvents();
-  transcriptScrollRuntime.enableAutoScroll();
-  clearTranscriptDom();
-  if (slotChange.current.state === "pending_bind") {
-    getHistoryController().renderPendingTranscriptSlot(sessionId);
-  } else {
-    setOlderState({ hasMore: false, isLoading: false });
-    transcriptScrollRuntime.syncJumpButton();
-    getSendLifecycleController().kickPoll(0);
-  }
+  // NEVER clear the DOM directly from a session-list refresh. This runs
+  // after every send (refreshSessions callback) and a race with concurrent
+  // polls can set the slot to pending_bind before this fires, reaching this
+  // path instead of requiresReplacement above. Delegate to openSession,
+  // which fetches replacement content first. For same-session reloads,
+  // openSession preserves the existing DOM (messages stay visible).
+  void getSessionLifecycleController().openSession(sessionId, { useCache: false, fallbackToCacheOnFailure: true });
 
   const running = Boolean(sessionMeta.busy);
   const queueLen = Number.isFinite(Number(sessionMeta.queue_len)) ? Number(sessionMeta.queue_len) : 0;
