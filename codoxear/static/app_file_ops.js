@@ -12,6 +12,14 @@
     return value;
   }
 
+  async function copyToClipboard(text) {
+    const nav = typeof navigator !== "undefined" ? navigator : window.navigator;
+    if (!window.isSecureContext || !nav || !nav.clipboard || typeof nav.clipboard.writeText !== "function") {
+      throw new Error("Clipboard API unavailable; requires a secure context (HTTPS)");
+    }
+    await nav.clipboard.writeText(String(text ?? ""));
+  }
+
   function createFileOpsController(options = {}) {
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
@@ -754,5 +762,6 @@ fileEditorOpsController.bindInteractions({
     });
   }
 
+  global.CodoxearClipboard = Object.freeze({ copyToClipboard });
   global.CodoxearFileOps = Object.freeze({ createFileOpsController });
 })(window);
