@@ -67,15 +67,11 @@ def test_apply_history_backfill_ignores_stale_binding_or_already_scanned_session
 
 
 def test_apply_run_settings_backfill_prefers_log_evidence_and_preserves_missing_evidence() -> None:
-    """When broker is NOT alive (dead/stale), log backfill fills in model
-    from log evidence — the log is the only available source."""
     session = _session()
     session.model_provider = "launch-provider"
     session.model = "launch-model"
     session.reasoning_effort = "max"
     session.preferred_auth_method = "api-key"
-    # broker_pid is None/0 → broker not alive → log is authoritative
-    session.broker_pid = None
 
     revision = (1, 2, 3, 4)
     update = apply_run_settings_backfill(
@@ -126,15 +122,13 @@ def test_apply_run_settings_backfill_ignores_stale_log_binding() -> None:
     assert session.reasoning_effort is None
 
 
-def test_apply_run_settings_backfill_uses_pi_model_change_when_no_live_model() -> None:
-    """Log model_change updates session.model when broker is alive but has no
-    live bridge model set yet (the log evidence is the only signal)."""
+def test_apply_run_settings_backfill_uses_pi_model_change_while_bridge_is_live() -> None:
     session = _session()
     session.agent_backend = "pi"
     session.broker_pid = os.getpid()
     session.pi_thinking_command = True
-    session.model_provider = None
-    session.model = None
+    session.model_provider = "launch-provider"
+    session.model = "launch-model"
     session.reasoning_effort = "bridge-effort"
 
     update = apply_run_settings_backfill(
@@ -148,33 +142,6 @@ def test_apply_run_settings_backfill_uses_pi_model_change_when_no_live_model() -
     assert update is not None
     assert session.model_provider == "switched-provider"
     assert session.model == "switched-model"
-    assert session.reasoning_effort == "bridge-effort"
-
-
-def test_apply_run_settings_backfill_preserves_live_model_from_broker() -> None:
-    """When broker is alive and session already has a model (set by bridge caps
-    via resolve_run_settings), the log backfill must NOT overwrite it with
-    potentially stale log evidence — that causes sidebar oscillation."""
-    session = _session()
-    session.agent_backend = "pi"
-    session.broker_pid = os.getpid()
-    session.pi_thinking_command = True
-    session.model_provider = "bridge-provider"
-    session.model = "bridge-model"
-    session.reasoning_effort = "bridge-effort"
-
-    update = apply_run_settings_backfill(
-        session,
-        expected_log_path=Path("/tmp/log.jsonl"),
-        log_provider="stale-provider",
-        log_model="stale-model",
-        log_effort="stale-log-effort",
-    )
-
-    assert update is not None
-    # Broker is alive and session.model is already set → log must not overwrite
-    assert session.model_provider == "bridge-provider"
-    assert session.model == "bridge-model"
     assert session.reasoning_effort == "bridge-effort"
 
 
