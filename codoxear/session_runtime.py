@@ -348,16 +348,30 @@ def apply_run_settings_backfill(
 ) -> RunSettingsUpdate | None:
     if session is None or session.log_path != expected_log_path:
         return None
-    # Pi's model_change event is authoritative even while the bridge is live:
-    # the bridge owns interactive thinking control, but Pi's native /model
-    # command records its effective provider/model only in the session log.
-    # Applying that evidence here keeps the sidebar current without inventing
-    # a second browser-side model cache. A bridge-provided thinking level can
-    # precede its log record, so retain that bridge authority for effort.
-    bridge_live = bool(getattr(session, "pi_thinking_command", False)) and _pid_alive(getattr(session, "broker_pid", None))
-    if log_provider is not None:
+    # Authority rule (must match resolve_run_settings):
+    # - Bridge live caps are authoritative for EFFORT (thinking level).
+    # - Log model_change events are authoritative for MODEL/provider.
+    # - BUT: the log record of a /model change only appears at the NEXT turn
+    #   boundary. Between /model execution and the next turn, the bridge's
+    #   live value is the only signal. The log backfill scanning the bounded
+    #   tail may find an OLDER model_change event and overwrite the bridge's
+    #   newer value, causing sidebar oscillation.
+    #
+    # Fix: if the broker is alive AND the bridge has provided a live model
+    # (sidecar live_run_settings.model is set), the log backfill must NOT
+    # overwrite it with potentially stale evidence. The log scan's own
+    # revision guard prevents re-reading the same window; the live value
+    # is only superseded when the log actually contains a NEWER model_change.
+    broker_alive = _pid_alive(getattr(session, "broker_pid", None))
+    bridge_live = bool(getattr(session, "pi_thinking_command", False)) and broker_alive
+    # Check whether the sidecar carries a live model from the bridge.
+    # session.model is the value resolve_run_settings already computed using
+    # the correct priority (live > log for a running broker). If it differs
+    # from what the log backfill found, and the broker is alive, keep the
+    # existing value — the bridge's signal is more current.
+    if log_provider is not None and not (broker_alive and getattr(session, "model_provider", None)):
         session.model_provider = log_provider
-    if log_model is not None:
+    if log_model is not None and not (broker_alive and getattr(session, "model", None)):
         session.model = log_model
     if log_effort is not None and not bridge_live:
         session.reasoning_effort = log_effort
