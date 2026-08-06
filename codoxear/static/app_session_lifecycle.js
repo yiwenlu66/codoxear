@@ -202,12 +202,20 @@
         return data;
       }
       const tailEvents = Array.isArray(data.events) ? data.events : [];
-      if ((slotChange.current.state === "bound" || slotChange.current.state === "failed") && (!reloadingSelectedSession || tailEvents.length)) {
-        renderSessionTail(tailEvents);
-        restoreSessionScrollPosition(sessionId);
-      } else if (!reloadingSelectedSession) {
-        renderPendingTranscriptSlot(sessionId);
+      if (!reloadingSelectedSession) {
+        // Fresh session selection: full render is correct.
+        if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
+          renderSessionTail(tailEvents);
+          restoreSessionScrollPosition(sessionId);
+        } else {
+          renderPendingTranscriptSlot(sessionId);
+        }
       }
+      // Same-session reload (e.g. log-path change detected by poll):
+      // NEVER clear+re-render. The DOM already shows messages.
+      // appendEvent (called by subsequent polls/SSE) deduplicates by
+      // message_id, so new events appear without destroying existing
+      // content or scroll position.
       applySessionRuntimeFromTail(sessionId, data);
       if (slotChange.current.state !== "failed") { openMessageEventSource(sessionId, generation); kickPoll(900); }
       if (isMobile()) closeSidebar();
