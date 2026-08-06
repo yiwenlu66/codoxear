@@ -6,6 +6,35 @@
     return value;
   }
 
+  function createInterruptController(options = {}) {
+    function requireInterruptFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`interrupt controller dependency missing: ${name}`);
+      return value;
+    }
+
+    const selectedSessionId = requireInterruptFunction(options.selectedSessionId, "selectedSessionId");
+    const setToast = requireInterruptFunction(options.setToast, "setToast");
+    const api = requireInterruptFunction(options.api, "api");
+    const now = requireInterruptFunction(options.now, "now");
+    const setPollFastUntilMs = requireInterruptFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
+    const kickPoll = requireInterruptFunction(options.kickPoll, "kickPoll");
+
+    async function interruptSelectedSession() {
+      const sessionId = selectedSessionId();
+      if (!sessionId) return;
+      try {
+        setToast("interrupting...");
+        await api(`/api/sessions/${sessionId}/interrupt`, { method: "POST" });
+        setPollFastUntilMs(now() + 2500);
+        kickPoll(0);
+      } catch (error) {
+        setToast(`interrupt error: ${error.message}`);
+      }
+    }
+
+    return Object.freeze({ interruptSelectedSession });
+  }
+
   function createSessionLifecycleController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("session lifecycle dependency missing: options");
     const get = (name) => requireFunction(options[name], name);
@@ -359,5 +388,6 @@
     });
   }
 
+  global.CodoxearInterrupt = Object.freeze({ createInterruptController });
   global.CodoxearSessionLifecycle = Object.freeze({ createSessionLifecycleController });
 })(window);
