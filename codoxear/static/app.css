@@ -559,25 +559,37 @@
           overflow: visible;
         }
       @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
+        .session.desktop .sessionSwipe {
+          overflow: visible;
+        }
         .session.desktop .sessionActions {
-          background: var(--paper);
+          top: 50%;
+          bottom: auto;
+          transform: translateY(-50%);
           opacity: 0;
           visibility: hidden;
           pointer-events: none;
+          background: var(--paper);
+          padding: 0;
+          gap: 0;
           transition:
             opacity 140ms ease,
             visibility 140ms step-end;
         }
-        .session.desktop .sessionActions.left {
-          left: auto;
+        .session.desktop .sessionActions .icon-btn {
+          width: var(--ctl-chrome);
+          height: var(--ctl-chrome);
+          min-width: var(--ctl-chrome);
+        }
+        .session.desktop .sessionActions.right {
           right: var(--space-2);
-          background: var(--paper);
           padding: 0;
           gap: var(--space-1);
         }
-        .session.desktop .sessionActions.right {
-          background: var(--paper);
-          padding: 0;
+        .session.desktop .sessionActions.left {
+          left: auto;
+          right: calc(var(--space-2) + var(--ctl-chrome) * 2 + var(--space-1) + var(--space-1));
+          padding: 0 var(--space-1) 0 0;
           gap: var(--space-1);
         }
         .session.desktop:hover .sessionActions,
