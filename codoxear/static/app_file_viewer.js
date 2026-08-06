@@ -1335,6 +1335,41 @@
       return result;
     }
 
+    async function inspectPlainCandidates(paths) {
+      const sid = selectedSessionId() || "";
+      const results = new Map();
+      if (!sid) return results;
+      const uniquePaths = [...new Set((Array.isArray(paths) ? paths : []).filter((path) => typeof path === "string" && path !== ""))];
+      const uncachedPaths = [];
+      for (const path of uniquePaths) {
+        const cached = validationCache.get(validationKey(path, false));
+        if (cached) {
+          results.set(path, { ...cached, path });
+          continue;
+        }
+        uncachedPaths.push(path);
+      }
+      for (let offset = 0; offset < uncachedPaths.length; offset += 50) {
+        const chunk = uncachedPaths.slice(offset, offset + 50);
+        try {
+          const res = await api("/api/files/inspect-batch", { method: "POST", body: { session_id: sid, paths: chunk } });
+          const inspected = Array.isArray(res && res.results) ? res.results : [];
+          for (let index = 0; index < chunk.length; index += 1) {
+            const inspectPath = chunk[index];
+            const inspect = inspected[index];
+            const result = inspect && inspect.exists
+              ? { ok: true, path: inspectPath, inspectPath, gitPath: false, kind: inspect.kind, resolvedPath: inspect.resolved_path }
+              : { ok: false, path: inspectPath, inspectPath, gitPath: false };
+            if (result.ok) validationCache.set(validationKey(inspectPath, false), result);
+            results.set(inspectPath, result);
+          }
+        } catch {
+          for (const inspectPath of chunk) results.set(inspectPath, { ok: false, path: inspectPath, inspectPath, gitPath: false });
+        }
+      }
+      return results;
+    }
+
     async function equivalentInspection(entries, rawPath) {
       if (!entriesMayReferToSamePath(entries)) return null;
       const inspected = [];
@@ -1348,23 +1383,32 @@
       return inspected.find((result) => !result.gitPath) || inspected[0] || null;
     }
 
-    async function inspectPath(path) {
+    async function inspectionPlan(path) {
       const rawPath = String(path ?? "");
-      if (rawPath === "") return { ok: false };
-      let inspectEntry = { path: rawPath, gitPath: false, apiPath: "" };
+      if (rawPath === "") return { invalid: true };
+      let entry = { path: rawPath, gitPath: false, apiPath: "" };
       if (!rawPath.includes("/") && selectedSessionId()) {
         const candidates = await getKnownCandidates();
         const matches = exactBareMatches(candidates, rawPath);
         const searched = matches.length > 1 && !entriesMayReferToSamePath(matches) ? { matches: [], truncated: false } : await searchBareCandidates(rawPath);
         const merged = exactBareMatches([...matches, ...searched.matches], rawPath);
-        if (merged.length === 1 && !searched.truncated) inspectEntry = merged[0];
-        else if (merged.length > 1 && !searched.truncated) {
-          const equivalent = await equivalentInspection(merged, rawPath);
-          if (equivalent) return equivalent;
-          return { ok: false, ambiguous: true, path: rawPath };
-        } else if (searched.truncated) return { ok: false, ambiguous: true, path: rawPath };
+        if (merged.length === 1 && !searched.truncated) entry = merged[0];
+        else if (merged.length > 1 && !searched.truncated) return { rawPath, equivalentEntries: merged };
+        else if (searched.truncated) return { rawPath, ambiguous: true };
       }
-      return await inspectCandidate(inspectEntry, rawPath);
+      return { rawPath, entry };
+    }
+
+    async function inspectPath(path) {
+      const plan = await inspectionPlan(path);
+      if (plan.invalid) return { ok: false };
+      if (plan.ambiguous) return { ok: false, ambiguous: true, path: plan.rawPath };
+      if (plan.equivalentEntries) {
+        const equivalent = await equivalentInspection(plan.equivalentEntries, plan.rawPath);
+        if (equivalent) return equivalent;
+        return { ok: false, ambiguous: true, path: plan.rawPath };
+      }
+      return await inspectCandidate(plan.entry, plan.rawPath);
     }
 
     function replaceAmbiguousNode(node, path, line = null) {
@@ -1386,17 +1430,35 @@
     async function upgradeCandidateRefs(root) {
       if (!root) return false;
       const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
-      for (const node of nodes) {
-        const path = String(node.getAttribute("data-candidate-file-path") ?? "");
-        const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
-        if (path === "") continue;
-        const result = await inspectPath(path);
-        if (result && result.ambiguous) {
-          replaceAmbiguousNode(node, result.path || path, line);
+      const plans = await Promise.all(
+        nodes.map(async (node) => {
+          const path = String(node.getAttribute("data-candidate-file-path") ?? "");
+          return { node, line: normalizeLineNumber(node.getAttribute("data-candidate-file-line")), plan: await inspectionPlan(path) };
+        })
+      );
+      const batchPaths = plans
+        .map(({ plan }) => plan.entry && normalizeCandidate(plan.entry))
+        .filter((entry) => entry && !entry.gitPath && !entry.apiPath)
+        .map((entry) => entry.path);
+      const directInspections = await inspectPlainCandidates(batchPaths);
+      for (const { node, line, plan } of plans) {
+        if (plan.invalid) continue;
+        if (plan.ambiguous) {
+          replaceAmbiguousNode(node, plan.rawPath, line);
           continue;
         }
-        if (!result || !result.ok) continue;
-        const resolvedPath = String(result.resolvedPath || result.inspectPath || path);
+        let result;
+        if (plan.equivalentEntries) result = await equivalentInspection(plan.equivalentEntries, plan.rawPath);
+        else {
+          const entry = normalizeCandidate(plan.entry);
+          const direct = entry && !entry.gitPath && !entry.apiPath ? directInspections.get(entry.path) : null;
+          result = direct ? { ...direct, path: plan.rawPath } : await inspectCandidate(entry, plan.rawPath);
+        }
+        if (!result || !result.ok) {
+          if (plan.equivalentEntries) replaceAmbiguousNode(node, plan.rawPath, line);
+          continue;
+        }
+        const resolvedPath = String(result.resolvedPath || result.inspectPath || plan.rawPath);
         const link = el("a", {
           href: "#",
           class: "inlineFileLink",
@@ -1404,7 +1466,7 @@
           "data-file-kind": result.kind || "text",
         });
         if (line && result.kind !== "directory") link.setAttribute("data-file-line", String(line));
-        link.textContent = node.textContent || path;
+        link.textContent = node.textContent || plan.rawPath;
         node.replaceWith(link);
       }
       return true;

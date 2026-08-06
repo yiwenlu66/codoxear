@@ -46,6 +46,20 @@ const runtime = module.createFileInspectRuntime({ currentSessionId: () => sid, s
         self.assertEqual(result["absent"], {"exists": False})
         self.assertEqual(result["calls"][1], ["/api/files/inspect", {"session_id": "s1", "path": "b.py", "git_path": True, "path_token": "raw-token"}])
 
+    def test_candidate_reference_upgrade_batches_direct_paths_and_skips_missing_files(self) -> None:
+        result = run_vm(
+            r'''
+const module = ctx.window.CodoxearFileViewer; const calls = [];
+function candidate(path) { return { textContent: path, getAttribute(name) { return name === 'data-candidate-file-path' ? path : null; }, replaceWith(next) { this.replacement = next; } }; }
+const nodes = [candidate('src/present.py'), candidate('src/gone.py')];
+const runtime = module.createFileReferenceRuntime({ selectedSessionId: () => 's1', sessionById: () => null, chatRoot: null, sessionRelativePath: (path) => path, listFromFilesField: () => [], listFromFileRecords: () => [], normalizeFileApiPath: () => '', normalizeLineNumber: () => null, parseLocalFileRef: () => null, showFileViewer: async () => true, selectSession: async () => true, openDirectorySession: () => true, setToast: () => {}, api: async (url, options) => { calls.push([url, options.body]); return { results: [{ path: 'src/present.py', exists: true, resolved_path: '/repo/src/present.py', kind: 'text' }, { path: 'src/gone.py', exists: false }] }; }, el: (tag, attrs) => ({ tag, attrs, setAttribute(name, value) { this.attrs[name] = value; }, appendChild() {} }) });
+(async () => { await runtime.upgradeCandidateRefs({ querySelectorAll: () => nodes }); process.stdout.write(JSON.stringify({ calls, linked: nodes[0].replacement && nodes[0].replacement.attrs['data-file-path'], missingLinked: Boolean(nodes[1].replacement) })); })().catch((e) => { console.error(e); process.exit(1); });
+'''
+        )
+        self.assertEqual(result["calls"], [["/api/files/inspect-batch", {"session_id": "s1", "paths": ["src/present.py", "src/gone.py"]}]])
+        self.assertEqual(result["linked"], "/repo/src/present.py")
+        self.assertFalse(result["missingLinked"])
+
     def test_mode_controls_and_touch_toolbar_follow_active_file_capabilities(self) -> None:
         result = run_vm(
             r'''

@@ -465,6 +465,52 @@ def test_handle_global_file_post_route_rejects_non_string_session_id_before_reso
     assert responses == [(400, {"error": "session_id must be a string"})]
 
 
+def test_handle_global_file_inspect_batch_reports_missing_files_without_a_404() -> None:
+    def resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
+        assert session_id == "session-1"
+        if raw_path == "gone.md":
+            raise FileNotFoundError("gone.md")
+        return Path("/repo") / raw_path
+
+    deps, responses = _global_file_deps(
+        {"session_id": "session-1", "paths": ["present.md", "gone.md"]},
+        resolve_client_file_path=resolve_client_file_path,
+    )
+    handled = handle_global_file_post_route(_FakeHandler(), path="/api/files/inspect-batch", manager=_FakeManager("/tmp"), deps=deps)
+    assert handled is True
+    assert responses == [
+        (
+            200,
+            {
+                "results": [
+                    {
+                        "ok": True,
+                        "path": "present.md",
+                        "exists": True,
+                        "resolved_path": "/repo/present.md",
+                        "kind": "text",
+                        "content_type": None,
+                        "size": 5,
+                        "reason": None,
+                        "viewer_max_bytes": None,
+                    },
+                    {"path": "gone.md", "exists": False},
+                ]
+            },
+        )
+    ]
+
+
+def test_handle_global_file_inspect_batch_limits_paths_before_resolution() -> None:
+    deps, responses = _global_file_deps(
+        {"session_id": "session-1", "paths": [f"file-{index}" for index in range(51)]},
+        resolve_client_file_path=lambda **_kwargs: (_ for _ in ()).throw(AssertionError("path resolution should not run")),
+    )
+    handled = handle_global_file_post_route(_FakeHandler(), path="/api/files/inspect-batch", manager=_FakeManager("/tmp"), deps=deps)
+    assert handled is True
+    assert responses == [(400, {"error": "at most 50 paths allowed"})]
+
+
 def test_handle_global_file_post_route_preserves_whitespace_only_path_and_records_read() -> None:
     with tempfile.TemporaryDirectory() as td:
         base = Path(td)

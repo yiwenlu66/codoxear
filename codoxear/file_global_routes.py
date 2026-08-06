@@ -17,6 +17,7 @@ from .video_preview import video_response_payload
 
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
+MAX_GLOBAL_FILE_INSPECT_BATCH_PATHS = 50
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,9 @@ def handle_global_file_post_route(
         return True
     if path == "/api/files/inspect":
         _handle_global_file_inspect(handler, deps=deps)
+        return True
+    if path == "/api/files/inspect-batch":
+        _handle_global_file_inspect_batch(handler, deps=deps)
         return True
     return False
 
@@ -93,6 +97,25 @@ def _global_file_request(handler: Any, deps: GlobalFileRouteDeps) -> GlobalFileR
     return GlobalFileRequest(path=raw_path, session_id=session_id, git_path=git_path)
 
 
+def _global_file_batch_requests(handler: Any, deps: GlobalFileRouteDeps) -> list[GlobalFileRequest] | None:
+    body = deps.read_json_body(handler)
+    session_id_raw = body.get("session_id")
+    if not isinstance(session_id_raw, str) or not session_id_raw:
+        deps.json_response(handler, 400, {"error": "session_id required"})
+        return None
+    raw_paths = body.get("paths")
+    if not isinstance(raw_paths, list):
+        deps.json_response(handler, 400, {"error": "paths must be an array"})
+        return None
+    if len(raw_paths) > MAX_GLOBAL_FILE_INSPECT_BATCH_PATHS:
+        deps.json_response(handler, 400, {"error": f"at most {MAX_GLOBAL_FILE_INSPECT_BATCH_PATHS} paths allowed"})
+        return None
+    if any(not isinstance(raw_path, str) or raw_path == "" for raw_path in raw_paths):
+        deps.json_response(handler, 400, {"error": "paths must contain non-empty strings"})
+        return None
+    return [GlobalFileRequest(path=raw_path, session_id=session_id_raw, git_path=False) for raw_path in raw_paths]
+
+
 def _global_file_view(request: GlobalFileRequest, deps: GlobalFileRouteDeps) -> tuple[Path, str, ClientFileView]:
     if request.git_path:
         return deps.resolve_git_client_file_view(session_id=request.session_id, raw_path=request.path)
@@ -120,6 +143,19 @@ def _handle_global_file_read(handler: Any, *, manager: Any, deps: GlobalFileRout
     deps.json_response(handler, 200, global_file_read_payload(request=request, path_obj=path_obj, rel_for_url=rel_for_url, view=view))
 
 
+def global_file_inspect_payload(*, path_obj: Path, view: ClientFileView) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "path": path_json_text(path_obj),
+        **path_token_response_fields(str(path_obj)),
+        "kind": view.kind,
+        "content_type": view.content_type,
+        "size": int(view.size),
+        "reason": view.blocked_reason,
+        "viewer_max_bytes": view.viewer_max_bytes,
+    }
+
+
 def _handle_global_file_inspect(handler: Any, *, deps: GlobalFileRouteDeps) -> None:
     if not deps.require_auth(handler):
         handler._unauthorized()
@@ -132,20 +168,35 @@ def _handle_global_file_inspect(handler: Any, *, deps: GlobalFileRouteDeps) -> N
     except (FileNotFoundError, PermissionError, ValueError, RuntimeError) as e:
         _map_resolve_error(handler, e, deps)
         return
-    deps.json_response(
-        handler,
-        200,
-        {
-            "ok": True,
-            "path": path_json_text(path_obj),
-            **path_token_response_fields(str(path_obj)),
-            "kind": view.kind,
-            "content_type": view.content_type,
-            "size": int(view.size),
-            "reason": view.blocked_reason,
-            "viewer_max_bytes": view.viewer_max_bytes,
-        },
-    )
+    deps.json_response(handler, 200, global_file_inspect_payload(path_obj=path_obj, view=view))
+
+
+def _handle_global_file_inspect_batch(handler: Any, *, deps: GlobalFileRouteDeps) -> None:
+    if not deps.require_auth(handler):
+        handler._unauthorized()
+        return
+    requests = _global_file_batch_requests(handler, deps)
+    if requests is None:
+        return
+    results: list[dict[str, Any]] = []
+    for request in requests:
+        try:
+            path_obj, _rel_for_url, view = _global_file_view(request, deps)
+        except FileNotFoundError:
+            results.append({"path": request.path, "exists": False})
+            continue
+        except (PermissionError, ValueError, RuntimeError) as e:
+            results.append({"path": request.path, "exists": False, "error": str(e)})
+            continue
+        results.append(
+            {
+                **global_file_inspect_payload(path_obj=path_obj, view=view),
+                "path": request.path,
+                "exists": True,
+                "resolved_path": path_json_text(path_obj),
+            }
+        )
+    deps.json_response(handler, 200, {"results": results})
 
 
 def _absolute_media_query(path_obj: Path) -> str:
