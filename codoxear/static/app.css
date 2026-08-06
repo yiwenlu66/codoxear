@@ -243,7 +243,7 @@
         align-items: center;
         justify-content: center;
         gap: var(--space-3);
-        height: 44px;
+        height: var(--ctl);
         border-radius: 0;
         font-weight: 500;
         line-height: 1;
@@ -646,9 +646,9 @@
         font-size: var(--font-xs);
       }
       .sessionAction > .icon-btn {
-        width: 36px;
-        height: 36px;
-        min-height: 36px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         padding: 0;
       }
       .row {
@@ -885,7 +885,7 @@
         border-left: 0;
       }
       button {
-        min-height: 44px;
+        min-height: var(--ctl);
         touch-action: manipulation;
         border: 1px solid var(--border);
         background: var(--paper);
@@ -1149,7 +1149,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 44px;
+        min-height: var(--ctl);
         padding: var(--space-2) var(--space-5) var(--space-3);
       }
       .chatTimeChip {
@@ -1201,7 +1201,7 @@
       .chatSearchInput {
         flex: 1 1 auto;
         min-width: 0;
-        height: 32px;
+        height: var(--ctl-chrome);
         border: 0;
         border-bottom: 1px solid var(--hairline);
         border-radius: 0;
@@ -1230,10 +1230,10 @@
       }
       .chatSearchBar .icon-btn {
         flex: 0 0 32px;
-        width: 32px;
-        height: 32px;
-        min-width: 32px;
-        min-height: 32px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         border-radius: 0;
       }
       .chatSearchBar .icon-btn::after {
@@ -1311,7 +1311,7 @@
         flex-wrap: wrap;
       }
       .transcriptRetryBtn.icon-btn.text-btn {
-        height: 28px;
+        height: var(--ctl-chrome);
         min-width: 0;
         padding: 0 9px;
         background: var(--paper);
@@ -1357,10 +1357,10 @@
         position: absolute;
         right: -36px;
         bottom: 0;
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
-        min-height: 30px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         padding: 0;
         border: 1px solid var(--border);
         border-radius: 0;
@@ -1565,10 +1565,10 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
-        min-height: 30px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         padding: 0;
         border: 1px solid var(--ink);
         border-radius: 0;
@@ -1774,7 +1774,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--space-2);
-        height: 32px;
+        height: var(--ctl-chrome);
         min-width: 0;
         max-width: min(280px, 100%);
         border: 1px solid var(--hairline);
@@ -1812,7 +1812,7 @@
         line-height: 16px;
       }
       .stagedAttachmentsClear {
-        height: 32px;
+        height: var(--ctl-chrome);
         margin-left: auto;
         padding: 0 var(--space-1);
         font-size: var(--font-xs);
@@ -1885,9 +1885,9 @@ select {
         outline: none;
       }
       textarea {
-        height: 44px;
+        height: var(--ctl);
         resize: none;
-        min-height: 44px;
+        min-height: var(--ctl);
         max-height: 180px;
         overflow-y: hidden;
       }
@@ -2011,8 +2011,8 @@ select {
 	        position: absolute;
 	        left: -13px;
 	        top: 50%;
-	        width: 44px;
-	        height: 44px;
+	        width: var(--ctl);
+	        height: var(--ctl);
 	        transform: translateY(-50%);
 	      }
 	      .unattendedMenu input[type="checkbox"] {
@@ -2091,8 +2091,8 @@ select {
         position: absolute;
         left: -13px;
         top: 50%;
-        width: 44px;
-        height: 44px;
+        width: var(--ctl);
+        height: var(--ctl);
         transform: translateY(-50%);
       }
       .voiceToggleRow input[type="checkbox"] {
@@ -2572,7 +2572,7 @@ select {
       }
       .fileConflictActions .icon-btn.text-btn {
         min-width: 0;
-        height: 28px;
+        height: var(--ctl-chrome);
         padding: 0 var(--space-3);
       }
       .fileTouchToolbar {
@@ -2605,13 +2605,13 @@ select {
         pointer-events: auto;
       }
       .fileTouchSpacer {
-        width: 44px;
-        height: 44px;
+        width: var(--ctl);
+        height: var(--ctl);
       }
       .fileTouchBtn {
-        width: 44px;
-        height: 44px;
-        min-height: 44px;
+        width: var(--ctl);
+        height: var(--ctl);
+        min-height: var(--ctl);
         border-radius: 0;
         border: 1px solid var(--border);
         background: var(--paper);
@@ -2896,8 +2896,8 @@ select {
         position: absolute;
         left: -13px;
         top: 50%;
-        width: 44px;
-        height: 44px;
+        width: var(--ctl);
+        height: var(--ctl);
         transform: translateY(-50%);
       }
       .checkField input[type="checkbox"] {
@@ -3322,8 +3322,8 @@ select {
         color: var(--text-warning);
       }
       .queueIconBtn {
-        width: 32px;
-        height: 32px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
         border-radius: 0;
         background: var(--surface-subtle);
         border-color: var(--border-queue);
@@ -3499,7 +3499,7 @@ select {
         }
         .chatSearchBar {
           flex-basis: 36px;
-          height: 36px;
+          height: var(--ctl-chrome);
           padding: var(--space-1) var(--space-4);
           gap: 2px;
         }
@@ -3507,21 +3507,21 @@ select {
           display: none;
         }
         .chatSearchInput {
-          height: 28px;
+          height: var(--ctl-chrome);
           padding: 2px var(--space-1);
         }
         .chatSearchStatus {
-          max-width: 36px;
+          max-width: var(--ctl-chrome);
           overflow: hidden;
           text-overflow: ellipsis;
           font-size: var(--font-2xs);
         }
         .chatSearchBar .icon-btn {
           flex-basis: 28px;
-          width: 28px;
-          height: 28px;
-          min-width: 28px;
-          min-height: 28px;
+          width: var(--ctl-chrome);
+          height: var(--ctl-chrome);
+          min-width: var(--ctl-chrome);
+          min-height: var(--ctl-chrome);
         }
         .chatSearchBar .icon-btn::after {
           inset: -8px;
@@ -3623,10 +3623,10 @@ select {
         bottom: 14px;
         z-index: 10;
         display: none;
-        width: 32px;
-        height: 32px;
-        min-width: 32px;
-        min-height: 32px;
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
         padding: 0;
         border-radius: 0;
         align-items: center;
