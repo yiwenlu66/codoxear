@@ -18,12 +18,21 @@ def run_vm(body: str) -> dict:
         "DIAGNOSTICS": STATIC / "app_diagnostics.js",
         "VOICE_HELPERS": STATIC / "app_voice_helpers.js",
         "VOICE": STATIC / "app_voice.js",
-        "FILE_VIEWER": STATIC / "app_file_viewer.js",
+        "FILE_VIEWER_SCRIPTS": [
+            STATIC / name
+            for name in (
+                "app_file_candidates.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
+                "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",
+                "app_file_mode.js", "app_file_render_surface.js", "app_file_viewer_controller.js", "app_file_viewer.js",
+            )
+        ],
     }
     declarations = "\n".join(
         f"const {name}_SOURCE = {json.dumps(path.read_text(encoding='utf-8'))};"
         for name, path in sources.items()
+        if name != "FILE_VIEWER_SCRIPTS"
     )
+    viewer_sources = json.dumps([path.read_text(encoding="utf-8") for path in sources["FILE_VIEWER_SCRIPTS"]])
     script = f"""
         const vm = require("vm");
         {declarations}
@@ -52,8 +61,9 @@ def run_vm(body: str) -> dict:
           clearTimeout() {{}}, setInterval: () => 0, clearInterval() {{}},
         }};
         vm.createContext(ctx);
-        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, VOICE_SOURCE, FILE_VIEWER_SOURCE]
+        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, VOICE_SOURCE]
           .forEach((source) => vm.runInContext(source, ctx));
+        {viewer_sources}.forEach((source) => vm.runInContext(source, ctx));
         {body}
     """
     proc = subprocess.run(

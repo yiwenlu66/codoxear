@@ -7,17 +7,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
+APP_FILE_VIEWER_SCRIPTS = [
+    ROOT / "codoxear" / "static" / name
+    for name in (
+        "app_file_candidates.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
+        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",
+        "app_file_mode.js", "app_file_render_surface.js", "app_file_viewer_controller.js", "app_file_viewer.js",
+    )
+]
 
 
 def eval_file_picker_session_helpers() -> dict[str, object]:
-    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    sources = json.dumps([path.read_text(encoding="utf-8") for path in APP_FILE_VIEWER_SCRIPTS])
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{ window: {{}}, AbortController }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(source)}, ctx);
+        {sources}.forEach((source) => vm.runInContext(source, ctx));
         const sessionIndex = new Map([
           ["session-a", {{ cwd: "/project-A", files: ["/project-A/file-a.py"] }}],
           ["session-b", {{ cwd: "/project-B", files: ["/project-B/file-b.py"] }}],

@@ -5,16 +5,23 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VIEWER = ROOT / "codoxear" / "static" / "app_file_viewer.js"
+VIEWER_SCRIPTS = [
+    ROOT / "codoxear" / "static" / name
+    for name in (
+        "app_file_candidates.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
+        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",
+        "app_file_mode.js", "app_file_render_surface.js", "app_file_viewer_controller.js", "app_file_viewer.js",
+    )
+]
 
 
 def run_viewer(js: str) -> dict:
-    source = json.dumps(VIEWER.read_text(encoding="utf-8"))
+    sources = json.dumps([path.read_text(encoding="utf-8") for path in VIEWER_SCRIPTS])
     program = f"""
 const vm = require('vm');
 const ctx = {{ window: {{}}, console }};
 vm.createContext(ctx);
-vm.runInContext({source}, ctx);
+{sources}.forEach((source) => vm.runInContext(source, ctx));
 {js}
 """
     proc = subprocess.run(["node"], input=textwrap.dedent(program), check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
