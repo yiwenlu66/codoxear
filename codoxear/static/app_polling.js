@@ -19,6 +19,34 @@
     return visibilityState === "hidden" ? hiddenMs : visibleMs;
   }
 
+  function createSecondaryPollController(options = {}) {
+    function requireSecondaryPollFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`secondary poll controller dependency missing: ${name}`);
+      return value;
+    }
+
+    const isDisposed = requireSecondaryPollFunction(options.isDisposed, "isDisposed");
+    const isPollingEnabled = requireSecondaryPollFunction(options.isPollingEnabled, "isPollingEnabled");
+    const stopPolling = requireSecondaryPollFunction(options.stopPolling, "stopPolling");
+    const setTimer = requireSecondaryPollFunction(options.setTimer, "setTimer");
+    const scheduleTimer = requireSecondaryPollFunction(options.setTimeout, "setTimeout");
+    const runTick = requireSecondaryPollFunction(options.runTick, "runTick");
+    const delayForPoll = requireSecondaryPollFunction(options.delayForPoll, "delayForPoll");
+
+    function scheduleSecondaryPoll(delayMs = delayForPoll()) {
+      if (isDisposed() || !isPollingEnabled()) return;
+      stopPolling();
+      setTimer(
+        scheduleTimer(() => {
+          setTimer(null);
+          void runTick();
+        }, Math.max(0, Number(delayMs) || 0))
+      );
+    }
+
+    return Object.freeze({ scheduleSecondaryPoll });
+  }
+
   function sessionsPollDelayMs(visibilityState) {
     return visibilityPollDelayMs(visibilityState, POLLING_INTERVALS.SESSION_POLL_VISIBLE_MS, POLLING_INTERVALS.SESSION_POLL_HIDDEN_MS);
   }
@@ -63,6 +91,7 @@
     return Math.max(safeRequested, errorDelay);
   }
 
+  window.CodoxearSecondaryPoll = Object.freeze({ createSecondaryPollController });
   window.CodoxearPolling = Object.freeze({
     POLLING_INTERVALS,
     sessionsPollDelayMs,
