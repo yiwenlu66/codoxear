@@ -23,7 +23,8 @@ class TestPiThinkingBridgeSource(unittest.TestCase):
                   .replace(/type SessionManager[\\s\\S]*?const THINKING_LEVELS/, "const THINKING_LEVELS")
                   .replace(/: readonly ThinkingLevel\\[\\]/, "")
                   .replace(/function writeActiveSession\\(ctx: ExtensionContext, reason: string\\): void/, "function writeActiveSession(ctx, reason)")
-                  .replace(/function writeThinkingCapabilities\\(\\): void/, "function writeThinkingCapabilities()")
+                  .replace(/function writeThinkingCapabilities\\(commands\\)/, "function writeThinkingCapabilities(commands)")
+                  .replace(/function refreshCaps\\(commands\\)/, "function refreshCaps(commands)")
                   .replace(/export default function \\(pi: ExtensionAPI\\): void/, "function bridge(pi)")
                   .replace(/ as ThinkingLevel/g, "");
                 const context = {{ require, process, console }};

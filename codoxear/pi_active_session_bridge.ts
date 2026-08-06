@@ -95,11 +95,11 @@ function readLiveRunSettings(pi) {
 	return out;
 }
 
-let lastCapsModel: string | undefined;
-let lastCapsProvider: string | undefined;
-let lastCapsEffort: string | undefined;
+let lastCapsModel;
+let lastCapsProvider;
+let lastCapsEffort;
 
-function refreshCaps(commands?: Array<{ name: string; description?: string }>) {
+function refreshCaps(commands) {
 	// Re-read live model/effort from Pi and update the caps file.
 	// Called on turn_end, session_start, session_switch so the caps file
 	// always reflects the current model — even after /model changes.
