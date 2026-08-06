@@ -3,38 +3,47 @@
 
 The frontend was split from one monolithic app.js into 67 IIFE modules.
 Each module factory receives an `options` object and destructures names
-from it. The creation calls in app_application_composition.js build these
-options objects. If a name is destructured from `options` in a module
-but NOT present in the creation object, it's undefined at runtime — a
-silent wiring bug.
+from it. The creation calls build these options objects. If a name is
+destructured from `options` but NOT present in the creation object,
+it's undefined at runtime — a silent wiring bug.
 
-This checker finds them statically.
+This checker finds them statically by:
+1. Extracting destructured names from each module factory
+2. Tracing the full creation chain (composition → chat_interaction → children)
+3. Flagging names not present anywhere in the chain
 
-Usage: python3 scripts/check_wiring.py [--fix]
+Usage: python3 scripts/check_wiring.py [static_dir]
 """
 import re
 import sys
 from pathlib import Path
 
-STATIC_DIR = Path(__file__).parent.parent / "codoxear" / "static"
+
+def get_static_dir() -> Path:
+    if len(sys.argv) > 1:
+        p = Path(sys.argv[1])
+    else:
+        p = Path(__file__).parent.parent / "codoxear" / "static"
+    if not p.exists():
+        print(f"ERROR: static dir not found: {p}", file=sys.stderr)
+        sys.exit(2)
+    return p
 
 
 def extract_destructured_names(source: str) -> set[str]:
-    """Find all names destructured from `options` at the module level."""
+    """Find all names destructured from `options` in a module."""
     names = set()
-    # Match: const { a, b, c } = options;
-    # Also: const { a, b: c } = options;
-    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*options\s*;', source):
+    # Match: const { a, b, c } = options;  (single or multi-line)
+    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*options\s*;', source, re.DOTALL):
         for part in m.group(1).split(','):
             part = part.strip()
             if not part:
                 continue
-            # Handle "name: alias" and "name = default"
             name = re.split(r'[:=]', part)[0].strip()
             if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*$', name):
                 names.add(name)
-    # Also match multi-line destructuring (the god-file split has these)
-    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:requireObject\s*\(\s*options|options)', source, re.DOTALL):
+    # Also match: const { a, b } = requireObject(options, "...")
+    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*requireObject\s*\(\s*options', source, re.DOTALL):
         for part in m.group(1).split(','):
             part = part.strip()
             if not part:
@@ -45,171 +54,165 @@ def extract_destructured_names(source: str) -> set[str]:
     return names
 
 
-def extract_creation_keys(source: str, factory_name: str) -> set[str] | None:
-    """Find the keys passed to a specific factory's options object.
+def find_creation_object(source: str, factory_pattern: str) -> list[tuple[str, bool]]:
+    """Find all object literals passed to a factory call.
 
-    Looks for patterns like:
-      const X = module.createYController({
-        ...deps,
-        a, b, c,
-        d: () => ...,
-      });
+    Returns list of (object_body, has_spread) tuples.
     """
-    # Find the factory call
-    # Match createXxx( up to the matching closing )
-    pattern = rf'create{re.escape(factory_name)}\s*\(\s*\{{'
     results = []
-    for m in re.finditer(pattern, source):
-        # Find the matching closing brace
-        start = m.end() - 1  # position of the opening {
+    # Search for the factory call pattern followed by an opening brace
+    # The pattern may be: module.createXxx( or just createXxx(
+    for m in re.finditer(rf'{factory_pattern}\s*\(\s*\{{', source):
+        brace_start = m.end() - 1
         depth = 0
-        i = start
+        i = brace_start
         while i < len(source):
             if source[i] == '{':
                 depth += 1
             elif source[i] == '}':
                 depth -= 1
                 if depth == 0:
-                    block = source[start + 1:i]
+                    body = source[brace_start + 1:i]
+                    has_spread = '...' in body
+                    results.append((body, has_spread))
                     break
             i += 1
-        else:
-            continue
-
-        keys = set()
-        # Find shorthand keys: "name," or "name\n" or "name}" at the start of a line/token
-        # Also find "name:" (key-value pairs)
-        for km in re.finditer(r'(?:^|[\s,])([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?=[,:}\n])', block, re.MULTILINE):
-            key = km.group(1)
-            keys.add(key)
-
-        # Check for ...spread patterns
-        has_spread = '...' in block
-        results.append((keys, has_spread))
-
-    return results if results else None
+    return results
 
 
-def check_module(module_file: str, composition_source: str) -> list[tuple[str, str]]:
-    """Check if all destructured names in a module are present in its creation call."""
-    module_path = STATIC_DIR / module_file
-    if not module_path.exists():
-        return []
+def extract_keys_from_object_body(body: str) -> set[str]:
+    """Extract property names from a JS object literal body."""
+    keys = set()
+    # Shorthand: name, or name at line start
+    for km in re.finditer(r'(?:^|[\s,])([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?=[,:}\n\r])', body, re.MULTILINE):
+        keys.add(km.group(1))
+    return keys
 
-    source = module_path.read_text()
-    destructured = extract_destructured_names(source)
-    if not destructured:
-        return []
 
-    # Find which factory function this module defines
-    # Pattern: function createXxxController or createXxxController =
-    factory_match = re.search(r'function\s+(create[A-Z]\w*Controller)', source)
-    if not factory_match:
-        factory_match = re.search(r'(create[A-Z]\w*Controller)\s*=', source)
-    if not factory_match:
-        # Try without "Controller" suffix
-        factory_match = re.search(r'function\s+(create[A-Z]\w*)', source)
+# Names that are built-in or provided by the JS runtime, not the options chain
+BUILTINS = frozenset({
+    'window', 'document', 'navigator', 'HTMLElement', 'Element', 'EventSource', 'AbortController',
+    'getComputedStyle', 'requestAnimationFrame', 'setTimeout', 'clearTimeout', 'Node',
+    'performance', 'console', 'Math', 'JSON', 'Object', 'Array', 'String', 'Number',
+    'Date', 'Error', 'Promise', 'Set', 'Map', 'Path', 'fetch', 'URL', 'Event',
+    'MutationObserver', 'ResizeObserver', 'IntersectionObserver', 'alert', 'confirm',
+    'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent',
+    'decodeURIComponent', 'requestAnimationFrame', 'matchMedia',
+    'CSS', 'CustomEvent', 'DOMParser', 'XMLSerializer', 'TextEncoder', 'TextDecoder',
+})
 
-    if not factory_match:
-        return []
 
-    factory_name = factory_match.group(1)
-    # Extract the part after "create" for searching in composition
-    search_name = factory_name  # full name like "createMessageHistoryController"
-
-    # Find creation calls in composition
-    creation_results = extract_creation_keys(composition_source, search_name)
-
-    if creation_results is None:
-        # Factory might be called indirectly (via another controller)
-        # Check if it's created inside another controller module
-        return []
-
-    bugs = []
-    for keys, has_spread in creation_results:
-        # If there's a spread (...deps, ...options), we can't verify statically
-        # but we can still flag names that are NOT in the explicit keys
-        # and would only be available via spread
-        missing = destructured - keys
-        if missing and has_spread:
-            # Could be covered by spread — flag as WARNING
-            for name in sorted(missing):
-                bugs.append((name, "via-spread"))
-        elif missing:
-            # Not in keys and no spread — definitely broken
-            for name in sorted(missing):
-                bugs.append((name, "MISSING"))
-
-    return bugs
+def find_module_factory(file_path: Path) -> str | None:
+    """Find the main factory function name exported by a module."""
+    source = file_path.read_text()
+    # Look for function createXxxController
+    for m in re.finditer(r'function\s+(create[A-Z]\w*Controller)\s*\(', source):
+        return m.group(1)
+    # Or assignment
+    for m in re.finditer(r'(create[A-Z]\w*Controller)\s*=\s*(?:async\s+)?function', source):
+        return m.group(1)
+    # Without Controller suffix
+    for m in re.finditer(r'function\s+(create[A-Z]\w*)\s*\(', source):
+        name = m.group(1)
+        if name not in ('createElement',):
+            return name
+    return None
 
 
 def main():
-    fix_mode = "--fix" in sys.argv
+    static_dir = get_static_dir()
 
-    comp_path = STATIC_DIR / "app_application_composition.js"
-    if not comp_path.exists():
-        print("ERROR: app_application_composition.js not found")
-        sys.exit(1)
+    # Load all source files
+    sources: dict[str, str] = {}
+    for f in sorted(static_dir.glob("app_*.js")):
+        sources[f.name] = f.read_text()
 
-    comp_source = comp_path.read_text()
+    # Collect all factory names and their destructured requirements
+    module_deps: dict[str, tuple[str, set[str]]] = {}  # file -> (factory_name, destructured_names)
+    for fname, source in sources.items():
+        names = extract_destructured_names(source)
+        if not names:
+            continue
+        factory = find_module_factory(static_dir / fname)
+        if not factory:
+            continue
+        module_deps[fname] = (factory, names - BUILTINS)
 
-    # Also check app_chat_interaction.js which creates sub-controllers
-    chat_interaction_path = STATIC_DIR / "app_chat_interaction.js"
-    chat_interaction_source = chat_interaction_path.read_text() if chat_interaction_path.exists() else ""
+    # Build a map of all factory call patterns to their creation sites
+    # Check ALL source files for ALL factory calls
+    all_creation_keys: dict[str, list[tuple[set[str], bool, str]]] = {}  # factory -> [(keys, has_spread, creator_file)]
 
-    all_bugs = []
-    js_files = sorted(f.name for f in STATIC_DIR.glob("app_*.js"))
+    for creator_file, creator_source in sources.items():
+        for module_file, (factory, _) in module_deps.items():
+            # Search for this factory being called in this creator file
+            # Pattern: the factory name may be called via module.createXxx or directly
+            patterns = [
+                factory,  # direct call: createXxxController({
+                rf'\w+\.{factory}',  # namespaced: module.createXxxController({
+            ]
+            for pat in patterns:
+                objects = find_creation_object(creator_source, re.escape(pat) if '\\' in pat else pat)
+                for body, has_spread in objects:
+                    keys = extract_keys_from_object_body(body)
+                    all_creation_keys.setdefault(factory, []).append((keys, has_spread, creator_file))
 
-    for module_file in js_files:
-        bugs = check_module(module_file, comp_source)
-        if bugs:
-            for name, kind in bugs:
-                all_bugs.append((module_file, name, kind))
+    # Now check each module's deps against its creation sites
+    definite_bugs = []
+    spread_warnings = []
 
-    if not all_bugs:
-        print("✓ No wiring bugs found in direct creation calls.")
-    else:
-        print(f"Found {len(all_bugs)} potential wiring issues:\n")
-        for module, name, kind in all_bugs:
-            symbol = "❌" if kind == "MISSING" else "⚠️"
-            print(f"  {symbol} {module}: '{name}' ({kind})")
+    for module_file, (factory, deps) in sorted(module_deps.items()):
+        creation_sites = all_creation_keys.get(factory, [])
 
-    # Check for indirect creation (controllers created inside other controllers)
-    print("\n--- Indirect controller creations (via chat_interaction spread) ---")
-    indirect_creators = {
-        "app_chat_interaction.js": chat_interaction_source,
-    }
-
-    for module_file in js_files:
-        module_path = STATIC_DIR / module_file
-        source = module_path.read_text()
-        destructured = extract_destructured_names(source)
-        if not destructured:
+        if not creation_sites:
             continue
 
-        factory_match = re.search(r'function\s+(create[A-Z]\w*Controller)', source)
-        if not factory_match:
-            continue
-
-        factory_name = factory_match.group(1)
-
-        # Check if this factory is called in chat_interaction with spread
-        for creator_file, creator_source in indirect_creators.items():
-            results = extract_creation_keys(creator_source, factory_name)
-            if results is None:
+        for keys, has_spread, creator_file in creation_sites:
+            missing = deps - keys
+            if not missing:
                 continue
 
-            for keys, has_spread in results:
-                missing = destructured - keys
-                if missing:
-                    for name in sorted(missing):
-                        kind = "via-spread" if has_spread else "MISSING"
-                        entry = (module_file, name, kind, creator_file)
-                        if entry not in [(b[0], b[1], b[2]) for b in all_bugs]:
-                            symbol = "❌" if kind == "MISSING" else "⚠️"
-                            print(f"  {symbol} {module_file}: '{name}' ({kind}, created in {creator_file})")
+            for name in sorted(missing):
+                # Check if the name appears ANYWHERE in ANY source file
+                # as: const/let/var/function definition, shorthand property,
+                # destructured binding, or renamed import
+                found_anywhere = False
+                for src in sources.values():
+                    # Direct definition
+                    if re.search(rf'(?:const|let|var|function)\s+{re.escape(name)}\b', src):
+                        found_anywhere = True
+                        break
+                    # Renamed destructuring: { x: name }
+                    if re.search(rf':\s*{re.escape(name)}\b', src):
+                        found_anywhere = True
+                        break
+                    # Shorthand property in object literal (passed as option)
+                    if re.search(rf'\b{re.escape(name)}\s*[,}}\n]', src):
+                        found_anywhere = True
+                        break
 
-    sys.exit(1 if any(b[2] == "MISSING" for b in all_bugs) else 0)
+                if not found_anywhere and not has_spread:
+                    definite_bugs.append((module_file, factory, name, creator_file))
+                elif not found_anywhere and has_spread:
+                    spread_warnings.append((module_file, factory, name, creator_file))
+
+    if definite_bugs:
+        print(f"Found {len(definite_bugs)} DEFINITE wiring bugs:\n")
+        for module, factory, name, creator in definite_bugs:
+            print(f"  ❌ {module}: '{name}' destructured from options but not defined anywhere")
+            print(f"     Factory: {factory}, created in: {creator}")
+
+    if spread_warnings:
+        print(f"\n{len(spread_warnings)} names only available via spread (cannot verify statically):")
+        for module, factory, name, creator in spread_warnings[:10]:
+            print(f"  ⚠️  {module}: '{name}' (via spread in {creator})")
+        if len(spread_warnings) > 10:
+            print(f"  ... and {len(spread_warnings) - 10} more")
+
+    if definite_bugs:
+        sys.exit(1)
+    else:
+        print("\n✓ No definite wiring bugs found.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

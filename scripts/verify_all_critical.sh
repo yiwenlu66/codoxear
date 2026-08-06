@@ -84,6 +84,15 @@ if ! "$python_bin" -m pytest --version; then
     exit 2
 fi
 
+# Docker isolation verification (mandatory for the live deployment gate).
+printf '\n-- Docker isolated browser verification --\n'
+if bash "$repo_root/scripts/docker_verify.sh" HEAD; then
+    printf 'PASS  Docker isolated verification\n'
+else
+    printf 'FAIL  Docker isolated verification\n' >&2
+    exit 1
+fi
+
 printf '\n-- Commit ancestry --\n'
 for entry in "${commits[@]}"; do
     IFS='|' read -r commit mechanism <<<"$entry"

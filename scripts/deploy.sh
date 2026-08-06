@@ -109,7 +109,7 @@ if ! python3 "$SOURCE_ROOT/scripts/check_js_refs.py" "$DEPLOY_DIR/codoxear/stati
   echo "app.js reference check failed in deploy snapshot" >&2
   exit 1
 fi
-if ! python3 "$SOURCE_ROOT/scripts/check_wiring.py"; then
+if ! python3 "$SOURCE_ROOT/scripts/check_wiring.py" "$DEPLOY_DIR/codoxear/static"; then
   echo "cross-IIFE wiring check failed — a module destructures a name not present in its creation options" >&2
   exit 1
 fi
