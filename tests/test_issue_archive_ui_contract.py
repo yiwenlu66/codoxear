@@ -76,7 +76,9 @@ def test_archive_visual_contracts_preserve_focusable_layout_and_data_typography(
     # State, cwd, and branch are ordinary compact prose; only the model and
     # effort unit carries monospace data typography.
     assert _computed(".sessionMetaLine")["font-family"] == "sans-serif"
-    assert _computed(".sidebarMetaData")["font-family"] == "var(--font-mono)"
+    # sidebarMetaData carries model/effort; user explicitly requested proportional
+    # (not monospace) for the entire sidebar secondary line.
+    assert _computed(".sidebarMetaData").get("font-family", "sans-serif") != "var(--font-mono)"
     assert _computed(".sidebarMetaLabel")["font-family"] == "sans-serif"
     assert _computed(".sidebarMetaSeparator")["font-family"] == "sans-serif"
 

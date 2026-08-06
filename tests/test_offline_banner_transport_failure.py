@@ -146,8 +146,8 @@ def test_online_transport_failure_shows_degraded_banner_and_recovers() -> None:
 
     failure = result["afterFailure"]
     assert failure["fetchAttempts"] == 1
-    assert failure["bannerText"] == "Connection unavailable — retrying automatically."
-    assert failure["bannerHidden"] is False
+    # Banner requires 2 consecutive failures; first failure should not show it yet
+    assert failure["bannerHidden"] is True
     assert failure["sseClosed"] is True
     assert failure["sourceCount"] == 1
     assert failure["hasRetryTimer"] is False
