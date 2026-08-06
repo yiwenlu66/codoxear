@@ -13,6 +13,8 @@
   function createNetworkStatusController({ banner, navigatorLike = typeof navigator === "undefined" ? undefined : navigator } = {}) {
     requireNode(banner, "banner");
     let transportFailed = false;
+    let consecutiveFailures = 0;
+    const FAILURE_THRESHOLD = 2;
 
     function render() {
       const offline = browserOffline(navigatorLike);
@@ -32,12 +34,14 @@
     }
 
     function reportFailure() {
-      transportFailed = true;
+      consecutiveFailures += 1;
+      transportFailed = consecutiveFailures >= FAILURE_THRESHOLD;
       return render();
     }
 
     function reportSuccess() {
       transportFailed = false;
+      consecutiveFailures = 0;
       return render();
     }
 
