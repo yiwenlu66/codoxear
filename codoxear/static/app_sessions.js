@@ -265,18 +265,18 @@
           if (launchPending) meta.title = "Session is still starting";
           const editActions = launchRow ? [] : [renameBtn, duplicateBtn];
 
-          const swipeHint = el("span", { class: "swipeHint", "aria-hidden": "true", text: "‹" });
-          const content = el("div", { class: "sessionContent" }, [
-            el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta]),
-            swipeHint,
-          ]);
-          card.appendChild(el("div", { class: "sessionSwipe" }, [
-            el("div", { class: "sessionActions left" }, [deleteBtn]),
-            el("div", { class: "sessionActions right" }, editActions),
-            content,
-          ]));
-
           if (swipeActions) {
+            // TOUCH BRANCH: swipe-revealed left/right action groups
+            const swipeHint = el("span", { class: "swipeHint", "aria-hidden": "true", text: "‹" });
+            const content = el("div", { class: "sessionContent" }, [
+              el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta]),
+              swipeHint,
+            ]);
+            card.appendChild(el("div", { class: "sessionSwipe" }, [
+              el("div", { class: "sessionActions left" }, [deleteBtn]),
+              el("div", { class: "sessionActions right" }, editActions),
+              content,
+            ]));
             content.dataset.swipeX = "0";
             if (openSwipeSessionId === sessionId && openSwipeTargetX !== 0) {
               content.style.transform = `translate3d(${openSwipeTargetX}px, 0, 0)`;
@@ -291,6 +291,14 @@
               void selectSession(sessionId);
             };
           } else {
+            // DESKTOP BRANCH: single inline hover-revealed action group
+            // (LOCKED: do not unify with touch swipe DOM per AGENTS.md)
+            const inlineActions = el("div", { class: "sessionActionsInline" }, [...editActions, deleteBtn]);
+            const content = el("div", { class: "sessionContent" }, [
+              el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta]),
+            ]);
+            card.appendChild(content);
+            card.appendChild(inlineActions);
             card.classList.add("desktop");
             card.onclick = () => {
               if (launchPending) { setToast("session still starting"); return; }

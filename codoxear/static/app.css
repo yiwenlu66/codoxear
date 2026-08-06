@@ -325,6 +325,10 @@
         z-index: 1;
         pointer-events: none;
       }
+      .sessionActionsInline {
+        display: none;
+      }
+
       .sessionActions .icon-btn {
         pointer-events: auto;
       }
@@ -562,46 +566,41 @@
           overflow: visible;
         }
       @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
-        .session.desktop .sessionSwipe {
-          overflow: visible;
+        .session.desktop .sessionContent {
+          transition: padding-right 140ms ease;
         }
-        .session.desktop .sessionActions {
+        .session.desktop .sessionActionsInline {
+          position: absolute;
           top: 50%;
-          bottom: auto;
+          right: var(--space-2);
           transform: translateY(-50%);
+          display: inline-flex;
+          align-items: center;
+          gap: var(--space-1);
           opacity: 0;
           visibility: hidden;
           pointer-events: none;
           background: var(--paper);
-          padding: 0;
-          gap: 0;
+          padding: 0 var(--space-1);
           transition:
             opacity 140ms ease,
             visibility 140ms step-end;
         }
-        .session.desktop .sessionActions .icon-btn {
+        .session.desktop .sessionActionsInline .icon-btn {
           width: var(--ctl-chrome);
           height: var(--ctl-chrome);
           min-width: var(--ctl-chrome);
           min-height: var(--ctl-chrome);
         }
-        .session.desktop .sessionActions.right {
-          right: var(--space-2);
-          padding: 0;
-          gap: var(--space-1);
+        .session.desktop:hover .sessionContent,
+        .session.desktop:focus-within .sessionContent {
+          padding-right: calc(var(--ctl-chrome) * 3 + var(--space-4));
         }
-        .session.desktop .sessionActions.left {
-          left: auto;
-          right: calc(var(--space-2) + var(--ctl-chrome) * 2 + var(--space-1) + var(--space-1));
-          padding: 0 var(--space-1) 0 0;
-          gap: var(--space-1);
-        }
-        .session.desktop:hover .sessionActions,
-        .session.desktop:focus-within .sessionActions {
+        .session.desktop:hover .sessionActionsInline,
+        .session.desktop:focus-within .sessionActionsInline {
           opacity: 1;
           visibility: visible;
           pointer-events: auto;
-          z-index: 3;
           transition:
             opacity 140ms ease,
             visibility 0s linear;
