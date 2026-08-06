@@ -471,19 +471,31 @@
             markMessagePollSuccess();
             const slotChange = updateSessionTranscriptSlot(sessionId, data);
             if (slotChange.ignoredStaleBound) {
-              renderPendingTranscriptSlot(sessionId);
               applySessionRuntimeFromTail(sessionId, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
               return;
             }
-            if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
-              renderSessionTail(Array.isArray(data.events) ? data.events : []);
-            }
+            // Polling must NEVER clear and re-render the transcript.
+            // Append any events we don't already have (dedup handles
+            // duplicates) and set the liveCursor for incremental polling.
+            // Full re-render only happens in openSession (initial load).
             applySessionRuntimeFromTail(sessionId, data);
+            const tailEvents = Array.isArray(data.events) ? data.events : [];
+            for (const ev of tailEvents) appendEvent(ev);
             if (reconnectSseAfterSuccess) resumeLiveDelivery();
             return;
           }
           if (active.state === "failed") return;
-          await openSession(sessionId, { useCache: false });
+          // Bound but no cursor (rare): fetch tail, append events, set
+          // cursor. Same no-clear policy as pending_bind above.
+          pollRequest = beginMessagePollRequest(sessionId, generation);
+          const boundData = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
+          if (!isCurrent(sessionId, generation)) return;
+          markMessagePollSuccess();
+          updateSessionTranscriptSlot(sessionId, boundData);
+          applySessionRuntimeFromTail(sessionId, boundData);
+          const boundEvents = Array.isArray(boundData.events) ? boundData.events : [];
+          for (const ev of boundEvents) appendEvent(ev);
+          if (reconnectSseAfterSuccess) resumeLiveDelivery();
           return;
         }
         const requestedCursor = active.liveCursor;
