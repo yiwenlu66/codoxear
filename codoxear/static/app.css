@@ -446,6 +446,9 @@
         flex: 0 0 auto;
         font-family: sans-serif;
       }
+      .sidebarMetaSeparator {
+        padding: 0 var(--space-1);
+      }
 	      .ownerBadge {
 	        width: 18px;
 	        height: 18px;
