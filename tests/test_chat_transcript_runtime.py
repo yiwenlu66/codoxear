@@ -13,7 +13,7 @@ APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
 APP_SESSION_LIFECYCLE_JS = ROOT / "codoxear" / "static" / "app_session_lifecycle.js"
-APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
+APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 
 
 MESSAGE_FLOW_HARNESS_JS = """

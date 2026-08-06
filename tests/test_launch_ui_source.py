@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCH = ROOT / "codoxear" / "static" / "app_launch.js"
-URLS = ROOT / "codoxear" / "static" / "app_url.js"
+URLS = ROOT / "codoxear" / "static" / "app_application.js"
 STORAGE = ROOT / "codoxear" / "static" / "app_storage.js"
 
 

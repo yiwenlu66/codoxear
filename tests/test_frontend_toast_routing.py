@@ -11,7 +11,7 @@ STATIC = ROOT / "codoxear" / "static"
 
 def run_vm(body: str) -> dict:
     sources = {
-        "TOAST": STATIC / "app_toast.js",
+        "TOAST": STATIC / "app_application_composition.js",
         "MODAL": STATIC / "app_modal.js",
         "HELPERS": STATIC / "app_session_helpers.js",
         "QUEUE": STATIC / "app_queue.js",

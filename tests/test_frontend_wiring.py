@@ -11,7 +11,7 @@ STATIC = ROOT / "codoxear" / "static"
 def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
     sources = {
         name: (STATIC / name).read_text(encoding="utf-8")
-        for name in ("app_wiring.js", "app_event_bindings.js")
+        for name in ("app_wiring.js", "app_application_composition.js")
     }
     program = """
 const vm = require("vm");

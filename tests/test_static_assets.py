@@ -23,15 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROUTES_PY = ROOT / "codoxear" / "static_routes.py"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
 APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
-APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
 APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
-APP_DOM_JS = ROOT / "codoxear" / "static" / "app_dom.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
@@ -41,11 +38,9 @@ APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 APP_SSE_JS = ROOT / "codoxear" / "static" / "app_sse.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
-APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 APP_MESSAGE_ROWS_JS = ROOT / "codoxear" / "static" / "app_message_rows.js"
 APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
-APP_CLIPBOARD_JS = ROOT / "codoxear" / "static" / "app_clipboard.js"
 APP_CODE_COPY_JS = ROOT / "codoxear" / "static" / "app_code_copy.js"
 APP_HINT_MODE_JS = ROOT / "codoxear" / "static" / "app_hint_mode.js"
 APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
@@ -81,15 +76,12 @@ class TestStaticAssets(unittest.TestCase):
 
     def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
         initial_content = {
-            "app_url.js": "window.CodoxearUrls = {};\n",
             "app_storage.js": "window.CodoxearStorage = {};\n",
-            "app_perf.js": "window.CodoxearPerf = {};\n",
             "app_api.js": "window.CodoxearApi = {};\n",
             "app_markdown.js": "window.CodoxearMarkdown = {};\n",
             "app_launch.js": "window.CodoxearLaunch = {};\n",
             "app_new_session.js": "window.CodoxearNewSession = {};\n",
             "app_display.js": "window.CodoxearDisplay = {};\n",
-            "app_dom.js": "window.CodoxearDom = {};\n",
             "app_file_helpers.js": "window.CodoxearFileHelpers = {};\n",
             "app_file_picker.js": "window.CodoxearFilePicker = {};\n",
             "app_file_viewer.js": "window.CodoxearFileViewer = {};\n",
@@ -99,11 +91,9 @@ class TestStaticAssets(unittest.TestCase):
             "app_polling.js": "window.CodoxearPolling = {};\n",
             "app_sse.js": "window.CodoxearSse = {};\n",
             "app_transcript.js": "window.CodoxearTranscript = {};\n",
-            "app_message_identity.js": "window.CodoxearMessageIdentity = {};\n",
             "app_message_rows.js": "window.CodoxearMessageRows = {};\n",
             "app_conversation_copy.js": "window.CodoxearConversationCopy = {};\n",
             "app_modal.js": "window.CodoxearModal = {};\n",
-            "app_clipboard.js": "window.CodoxearClipboard = {};\n",
             "app_code_copy.js": "window.CodoxearCodeCopy = {};\n",
             "app_hint_mode.js": "window.CodoxearHintMode = {};\n",
             "app_voice_helpers.js": "window.CodoxearVoiceHelpers = {};\n",
@@ -162,16 +152,13 @@ class TestStaticAssets(unittest.TestCase):
                     '<link rel="icon" type="image/png" href="favicon.png?v=__CODOXEAR_ASSET_VERSION__" />\n'
                     '<link rel="manifest" href="manifest.webmanifest?v=__CODOXEAR_ASSET_VERSION__" />\n'
                     '<link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />\n'
-                    '<script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_api.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>\n'
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_new_session.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_dom.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_viewer.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -182,11 +169,9 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_polling.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_sse.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_transcript.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_message_rows.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_hint_mode.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -209,16 +194,13 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"favicon.png?v={version}", rendered)
             self.assertIn(f"manifest.webmanifest?v={version}", rendered)
             self.assertIn(f"app.css?v={version}", rendered)
-            self.assertIn(f"app_url.js?v={version}", rendered)
             self.assertIn(f"app_storage.js?v={version}", rendered)
-            self.assertIn(f"app_perf.js?v={version}", rendered)
             self.assertIn(f"app_api.js?v={version}", rendered)
             self.assertIn('src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"', rendered)
             self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app_launch.js?v={version}", rendered)
             self.assertIn(f"app_new_session.js?v={version}", rendered)
             self.assertIn(f"app_display.js?v={version}", rendered)
-            self.assertIn(f"app_dom.js?v={version}", rendered)
             self.assertIn(f"app_file_helpers.js?v={version}", rendered)
             self.assertIn(f"app_file_picker.js?v={version}", rendered)
             self.assertIn(f"app_file_viewer.js?v={version}", rendered)
@@ -229,11 +211,9 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_polling.js?v={version}", rendered)
             self.assertIn(f"app_sse.js?v={version}", rendered)
             self.assertIn(f"app_transcript.js?v={version}", rendered)
-            self.assertIn(f"app_message_identity.js?v={version}", rendered)
             self.assertIn(f"app_message_rows.js?v={version}", rendered)
             self.assertIn(f"app_conversation_copy.js?v={version}", rendered)
             self.assertIn(f"app_modal.js?v={version}", rendered)
-            self.assertIn(f"app_clipboard.js?v={version}", rendered)
             self.assertIn(f"app_code_copy.js?v={version}", rendered)
             self.assertIn(f"app_hint_mode.js?v={version}", rendered)
             self.assertIn(f"app_voice_helpers.js?v={version}", rendered)
@@ -301,15 +281,12 @@ class TestStaticAssets(unittest.TestCase):
             wheel = next(outdir.glob("codoxear-*.whl"))
             with zipfile.ZipFile(wheel) as zf:
                 names = set(zf.namelist())
-        self.assertIn("codoxear/static/app_url.js", names)
         self.assertIn("codoxear/static/app_storage.js", names)
-        self.assertIn("codoxear/static/app_perf.js", names)
         self.assertIn("codoxear/static/app_api.js", names)
         self.assertIn("codoxear/static/app_markdown.js", names)
         self.assertIn("codoxear/static/app_launch.js", names)
         self.assertIn("codoxear/static/app_new_session.js", names)
         self.assertIn("codoxear/static/app_display.js", names)
-        self.assertIn("codoxear/static/app_dom.js", names)
         self.assertIn("codoxear/static/app_file_helpers.js", names)
         self.assertIn("codoxear/static/app_file_picker.js", names)
         self.assertIn("codoxear/static/app_file_viewer.js", names)
@@ -323,11 +300,9 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_polling.js", names)
         self.assertIn("codoxear/static/app_sse.js", names)
         self.assertIn("codoxear/static/app_transcript.js", names)
-        self.assertIn("codoxear/static/app_message_identity.js", names)
         self.assertIn("codoxear/static/app_message_rows.js", names)
         self.assertIn("codoxear/static/app_conversation_copy.js", names)
         self.assertIn("codoxear/static/app_modal.js", names)
-        self.assertIn("codoxear/static/app_clipboard.js", names)
         self.assertIn("codoxear/static/app_code_copy.js", names)
         self.assertIn("codoxear/static/app_hint_mode.js", names)
         self.assertIn("codoxear/static/app_voice_helpers.js", names)

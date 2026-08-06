@@ -51,7 +51,7 @@ Currently supported agent backends:
 - `app_application.js` (854 lines) is the application factory. It validates shared dependencies, creates `app_application_composition.js`, and exposes its rendering surface.
 - `app_application_composition.js` (1393 lines) owns `renderApp` composition: shell construction, application lifecycle, and controller assembly.
 - Extracted domain modules own file work (`app_file_ops.js`), chat/transcript interaction (`app_chat_interaction.js`), and status/context/interrupt display (`app_session_display.js`).
-- Wiring modules separate session transitions (`app_session_lifecycle.js`), session-list refresh (`app_session_refresh.js`), controller option contracts (`app_wiring.js`), and cleanup-owned listener registration (`app_event_bindings.js`).
+- Wiring modules separate session transitions (`app_session_lifecycle.js`), session-list refresh (`app_session_refresh.js`), and controller option contracts (`app_wiring.js`); application composition owns cleanup-registered listeners.
 - Peripheral controllers keep focused workflows out of composition: `app_message_flow.js` for confirmed-send/SSE/polling, `app_attachments.js` for staged uploads, `app_unattended.js` for unattended mode, `app_composer.js` for composer UI, plus focused transcript, queue, file-viewer, launch, search, modal, and voice modules.
 - Supports creating web-owned sessions via the "New session" button with backend tabs for Codex/Pi/Claude Code; **Pi is the default** (overridable via `CODEX_WEB_DEFAULT_AGENT_BACKEND`).
 - Remembers the last backend choice and last provider choice per backend in browser local storage.

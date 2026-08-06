@@ -7,8 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
-APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
+APP_APPLICATION_JS = ROOT / "codoxear" / "static" / "app_application.js"
 APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
@@ -19,7 +18,7 @@ def run_node_json(js: str) -> dict:
 
 
 def eval_api_module_real_order() -> dict:
-    scripts = [APP_URL_JS, APP_PERF_JS, APP_API_JS]
+    scripts = [APP_APPLICATION_JS, APP_API_JS]
     js = textwrap.dedent(
         f"""
         const fs = require("fs");
@@ -82,7 +81,7 @@ def eval_api_module_real_order() -> dict:
 
 
 def eval_api_error_contract() -> dict:
-    scripts = [APP_URL_JS, APP_PERF_JS, APP_API_JS]
+    scripts = [APP_APPLICATION_JS, APP_API_JS]
     js = textwrap.dedent(
         f"""
         const fs = require("fs");

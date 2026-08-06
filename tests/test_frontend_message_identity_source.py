@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
+APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 

@@ -7,17 +7,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
+APP_APPLICATION_JS = ROOT / "codoxear" / "static" / "app_application.js"
+APP_PERF_JS = ROOT / "codoxear" / "static" / "app_api.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
 def eval_perf_module() -> dict:
+    application_source = APP_APPLICATION_JS.read_text(encoding="utf-8")
     source = APP_PERF_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{ window: {{}} }};
+        const ctx = {{ URL, window: {{ location: {{ href: "http://localhost/", origin: "http://localhost", pathname: "/" }} }} }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(application_source)}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const perf = ctx.window.CodoxearPerf;
         perf.pushSample("api", -1);

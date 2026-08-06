@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
 APP_GUARD_JS = ROOT / "codoxear" / "static" / "app_application.js"
+APP_FILE_OPS_JS = ROOT / "codoxear" / "static" / "app_file_ops.js"
 APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
@@ -108,34 +109,20 @@ def eval_app_copy_failure_toasts() -> dict:
 
 
 def eval_app_clipboard_fallback() -> dict:
-    app_source = APP_JS.read_text(encoding="utf-8")
-    start = app_source.index("const codoxearClipboard = window.CodoxearClipboard;")
-    end = app_source.index("const codeBlockCopyRuntime", start)
-    clipboard_source = app_source[start:end]
+    source = APP_FILE_OPS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        let primaryCalls = 0;
         const ctx = {{
-          window: {{}},
-          fallbackText: "",
-          primaryCalls: 0,
-          toast: {{ textContent: "" }},
-          setTimeout: (fn) => fn(),
-          process: {{ stdout: {{ write: (s) => {{ ctx.__output = s; }} }} }},
-          console: {{ error: () => {{}} }},
+          navigator: {{ clipboard: {{ writeText() {{ primaryCalls += 1; throw new Error("permission denied"); }} }} }},
+          window: {{ isSecureContext: true, navigator: null }},
         }};
-        ctx.codoxearClipboard = {{
-          async copyToClipboard() {{
-            ctx.primaryCalls += 1;
-            throw new Error("permission denied");
-          }},
-        }};
-        ctx.window.CodoxearClipboard = ctx.codoxearClipboard;
-        ctx.window.CodoxearCodeCopy = {{ createCodeBlockCopyRuntime: () => ({{}}) }};
         vm.createContext(ctx);
-        ctx.process = process;
-        vm.runInContext({json.dumps(clipboard_source + "\nthis.__copyToClipboard = copyToClipboard;")}, ctx);
-        vm.runInContext('__copyToClipboard("conversation text").then(() => {{ process.stdout.write(JSON.stringify({{ primaryCalls: primaryCalls, threw: false }})); }}).catch((err) => {{ process.stdout.write(JSON.stringify({{ primaryCalls: primaryCalls, threw: true, message: err.message || String(err) }})); }})', ctx)
+        vm.runInContext({json.dumps(source)}, ctx);
+        ctx.window.CodoxearClipboard.copyToClipboard("conversation text")
+          .then(() => process.stdout.write(JSON.stringify({{ primaryCalls, threw: false }})))
+          .catch((err) => process.stdout.write(JSON.stringify({{ primaryCalls, threw: true, message: err.message || String(err) }})));
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

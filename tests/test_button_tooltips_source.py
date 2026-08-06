@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
-APP_DOM_JS = ROOT / "codoxear" / "static" / "app_dom.js"
+APP_DOM_JS = ROOT / "codoxear" / "static" / "app_application.js"
 
 
 def eval_dom_helper() -> dict:
@@ -34,7 +34,11 @@ def eval_dom_helper() -> dict:
             return node;
           }},
         }};
-        const ctx = {{ document, window: {{}} }};
+        const ctx = {{
+          URL,
+          document,
+          window: {{ location: {{ href: "http://localhost/", origin: "http://localhost", pathname: "/" }} }},
+        }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const helper = ctx.window.CodoxearDom;
