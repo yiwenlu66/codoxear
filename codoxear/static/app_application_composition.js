@@ -622,7 +622,7 @@
         const chatInteractionController = codoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
           ...deps,
           wiring,
-          INIT_PAGE_LIMIT, OLDER_PAGE_LIMIT, OLDER_AUTO_COOLDOWN_MS, OLDER_CANCEL_PX, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
+          INIT_PAGE_LIMIT, OLDER_PAGE_LIMIT, OLDER_AUTO_COOLDOWN_MS, OLDER_TOP_TRIGGER_PX, OLDER_CANCEL_PX, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
           window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
           requestAnimationFrame, setTimeout, clearTimeout, $, el, iconSvg,
           getSelected: () => selected,
@@ -649,6 +649,7 @@
           networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
           syncComposerSendButton, syncQueueSubmitState, updateUnattendedBtnState: () => updateUnattendedBtnState(),
           updateQueueBadge: () => updateQueueBadge(),
+          refreshQueueViewer,
           codoxearCodeCopy: window.CodoxearCodeCopy,
           codoxearTranscriptRender: window.CodoxearTranscriptRender,
           codoxearMessageHistory: window.CodoxearMessageHistory,
