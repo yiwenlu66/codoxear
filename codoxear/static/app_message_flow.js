@@ -412,7 +412,15 @@
         return;
       }
       if (active.state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== active.logPath) {
-        await openSession(sessionId, { useCache: false });
+        // Log path changed — but don't clear the visible transcript until
+        // we have replacement content. If the reload fails, the user keeps
+        // seeing their existing messages instead of a blank panel.
+        try {
+          await openSession(sessionId, { useCache: false });
+        } catch (e) {
+          if (e && e.status === 401) handleAppAuthLoss();
+          else console.error("log path change reload failed, keeping existing transcript", e);
+        }
         return;
       }
       const nextLiveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
