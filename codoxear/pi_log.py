@@ -390,13 +390,17 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
     # everything older is overwritten. Scan the log backward from the end and
     # stop once both are found, instead of replaying the entire file.
     #
-    # model_change events are sparse (a handful per session) but can live
-    # anywhere in the log — a long session that switched models early will
-    # have its only model_change deep in the file, beyond any bounded tail.
-    # The backward scan stops as soon as both values are found, so it is
-    # efficient even for large logs. Only diagnostic callers bound it further
-    # via max_scan_bytes.
-    scan_floor = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
+    # Efficiency: for live sessions the bridge writes the current model to the
+    # .caps file via pi.getModel() on every turn_end. This log scan is only a
+    # fallback for dead sessions or sessions without the bridge. The backward
+    # scan stops as soon as both values are found, so sessions that switched
+    # recently stop early. For sessions that never changed, the header baseline
+    # (already loaded above) is the correct answer — bound the scan to avoid
+    # reading a full multi-GB log.
+    max_default_scan = 32 * 1024 * 1024  # 32 MiB backward scan
+    scan_floor = 0 if max_scan_bytes is not None else max(0, size - max_default_scan)
+    if max_scan_bytes is not None:
+        scan_floor = max(0, size - max(0, int(max_scan_bytes)))
     last_model_change: dict | None = None
     last_thinking_change: dict | None = None
     try:

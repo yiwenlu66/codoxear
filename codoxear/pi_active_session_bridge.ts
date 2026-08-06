@@ -27,6 +27,7 @@ type ExtensionAPI = {
 		handler: (event: { type: "session_switch"; reason: "new" | "resume" }, ctx: ExtensionContext) => void,
 	): void;
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
+	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
 	registerCommand(
 		name: string,
 		options: {
@@ -94,6 +95,28 @@ function readLiveRunSettings(pi) {
 	return out;
 }
 
+let lastCapsModel: string | undefined;
+let lastCapsProvider: string | undefined;
+let lastCapsEffort: string | undefined;
+
+function refreshCaps(commands?: Array<{ name: string; description?: string }>) {
+	// Re-read live model/effort from Pi and update the caps file.
+	// Called on turn_end, session_start, session_switch so the caps file
+	// always reflects the current model — even after /model changes.
+	// This eliminates the need for log scanning to learn the current model.
+	const live = readLiveRunSettings(activePi);
+	const model = typeof live.model === "string" ? live.model : undefined;
+	const provider = typeof live.model_provider === "string" ? live.model_provider : undefined;
+	const effort = typeof live.reasoning_effort === "string" ? live.reasoning_effort : undefined;
+	if (model === lastCapsModel && provider === lastCapsProvider && effort === lastCapsEffort && commands === undefined) {
+		return; // nothing changed
+	}
+	lastCapsModel = model;
+	lastCapsProvider = provider;
+	lastCapsEffort = effort;
+	writeThinkingCapabilities(commands);
+}
+
 function writeThinkingCapabilities(commands) {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
@@ -154,12 +177,15 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("session_start", (event, ctx) => {
 		registerEffortCommands();
 		writeActiveSession(ctx, "session_start");
+		refreshCaps();
 	});
 	pi.on("session_switch", (event, ctx) => {
 		registerEffortCommands();
 		writeActiveSession(ctx, event.reason);
+		refreshCaps();
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
+	pi.on("turn_end", () => refreshCaps());
 	const effortHandler = (args, ctx) => {
 		const requested = args.trim().toLowerCase();
 		if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {
