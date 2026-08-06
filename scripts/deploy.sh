@@ -109,6 +109,10 @@ if ! python3 "$SOURCE_ROOT/scripts/check_js_refs.py" "$DEPLOY_DIR/codoxear/stati
   echo "app.js reference check failed in deploy snapshot" >&2
   exit 1
 fi
+if ! python3 "$SOURCE_ROOT/scripts/check_wiring.py"; then
+  echo "cross-IIFE wiring check failed — a module destructures a name not present in its creation options" >&2
+  exit 1
+fi
 
 # Declaration tripwires cover renderApp state whose absence can otherwise
 # surface only after the async session-list render.
