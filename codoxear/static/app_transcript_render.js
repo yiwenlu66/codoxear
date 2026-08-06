@@ -7,6 +7,28 @@
     return value;
   }
 
+  function createNavigationPulseController(options = {}) {
+    function requireNavigationPulseFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`navigation pulse controller dependency missing: ${name}`);
+      return value;
+    }
+
+    const setActiveRow = requireNavigationPulseFunction(options.setActiveRow, "setActiveRow");
+    const activeElementIsCopyButton = requireNavigationPulseFunction(options.activeElementIsCopyButton, "activeElementIsCopyButton");
+    const setTimeout = requireNavigationPulseFunction(options.setTimeout, "setTimeout");
+
+    function pulseNavigatedRow(row) {
+      if (!row) return;
+      setActiveRow(row, { focusCopy: activeElementIsCopyButton() });
+      row.classList.remove("nav-pulse");
+      void row.offsetWidth;
+      row.classList.add("nav-pulse");
+      setTimeout(() => row.classList.remove("nav-pulse"), 1400);
+    }
+
+    return Object.freeze({ pulseNavigatedRow });
+  }
+
   function createTranscriptRenderController(options = {}) {
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
@@ -842,5 +864,6 @@ function prependOlderEvents(events, { preserveViewport = false } = {}) {
     });
   }
 
+  global.CodoxearNavigationPulse = Object.freeze({ createNavigationPulseController });
   global.CodoxearTranscriptRender = Object.freeze({ createTranscriptRenderController });
 })(window);
