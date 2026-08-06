@@ -20,6 +20,21 @@
     await nav.clipboard.writeText(String(text ?? ""));
   }
 
+  function createFileEditModeController(options = {}) {
+    const fileViewerController = typeof options.fileViewerController === "function" ? options.fileViewerController : null;
+    if (!fileViewerController) throw new TypeError("file edit mode controller dependency missing: fileViewerController");
+
+    function setFileEditMode(nextMode) {
+      const viewer = fileViewerController();
+      if (!viewer || typeof viewer.setFileEditMode !== "function") {
+        throw new TypeError("file edit mode controller dependency missing: fileViewerController.setFileEditMode");
+      }
+      return viewer.setFileEditMode(nextMode);
+    }
+
+    return Object.freeze({ setFileEditMode });
+  }
+
   function createFileOpsController(options = {}) {
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
@@ -763,5 +778,6 @@ fileEditorOpsController.bindInteractions({
   }
 
   global.CodoxearClipboard = Object.freeze({ copyToClipboard });
+  global.CodoxearFileEditMode = Object.freeze({ createFileEditModeController });
   global.CodoxearFileOps = Object.freeze({ createFileOpsController });
 })(window);
