@@ -2252,7 +2252,7 @@ select {
         justify-content: flex-end;
       }
       #fileEditBtn {
-        min-width: 38px;
+        min-width: var(--ctl-chrome);
       }
       #fileEditBtn.dirty {
         outline: 2px solid var(--ink);
@@ -2873,8 +2873,8 @@ select {
       .formViewer input[type="time"],
       .formViewer .dialogPickerBtn,
       .formViewer .formActions > button {
-        height: var(--dialog-control-h);
-        min-height: var(--dialog-control-h);
+        height: var(--ctl);
+        min-height: var(--ctl);
       }
       .fieldLabel {
         font-size: var(--font-md);
@@ -3235,8 +3235,8 @@ select {
       }
       .formActions button {
         min-width: 108px;
-        height: var(--dialog-control-h);
-        min-height: var(--dialog-control-h);
+        height: var(--ctl);
+        min-height: var(--ctl);
       }
       .helpBody {
         overflow: auto;
