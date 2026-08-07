@@ -99,7 +99,7 @@ function resetChatRenderState() {
   transcriptScrollRuntime.markLiveTail();
   getHistoryController().olderLoadRuntime.resetAutoTrigger();
       clickMetricPending = false;
-  clearTranscriptDom();
+  transcriptView().replaceWith([]);
   messageCopyNavigationRuntime.reset();
       setOlderState({ hasMore: false, isLoading: false });
   typingRowRuntime.reset();
@@ -111,7 +111,9 @@ function resetChatRenderState() {
 	        }
 
 function clearTranscriptDom() {
-  transcriptDomRuntime.clear();
+  // Kept as a private compatibility helper for reset paths. DOM replacement
+  // remains owned by TranscriptViewController.
+  transcriptView().replaceWith([]);
 }
 
 function clearOlderLoadError() {
@@ -800,6 +802,12 @@ transcriptViewController = codoxearTranscriptView.createTranscriptViewController
   transcript: codoxearTranscript,
   getSelectedSessionId: () => getSelected(),
   getMessageRowDeps: messageRowDeps,
+  policyRuntime: {
+    domRuntime: transcriptDomRuntime,
+    scrollRuntime: transcriptScrollRuntime,
+    setOlderState,
+    getScrollTop: () => chat.scrollTop,
+  },
   renderRuntime: {
     normalizeEvents: normalizedTranscriptEvents,
     consumePendingUserIfMatches: (event, sessionId) => pendingUserController.consumePendingUserIfMatches(event, sessionId),
@@ -820,7 +828,7 @@ transcriptViewController = codoxearTranscriptView.createTranscriptViewController
   },
 }));
 function appendEvent(ev) {
-  transcriptView().appendEvent(ev);
+  return transcriptView().appendEvents([ev]);
 }
 
 function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
@@ -833,20 +841,21 @@ function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
 }
 
 function renderTranscript(events, { preserveScroll = false } = {}) {
-  return transcriptView().renderTranscript(events, { preserveScroll });
+  return transcriptView().replaceWith(events, { preserveScroll });
 }
 
-function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
-  return transcriptView().renderDetachedTranscriptWindow(events, { hasMore });
+function renderDetachedTranscriptWindow(events, { hasMore = false, historyCursor = null } = {}) {
+  return transcriptView().replaceWith(events, { detached: true, cursor: historyCursor, nextHasMore: hasMore });
 }
 
-function prependOlderEvents(events, { preserveViewport = false } = {}) {
-  return transcriptView().prependOlderEvents(events, { preserveViewport });
+function prependOlderEvents(events, { preserveViewport = false, historyCursor = null, hasMore = false } = {}) {
+  return transcriptView().prependEvents(events, { preserveViewport, cursor: historyCursor, nextHasMore: hasMore });
 }
 
     return Object.freeze({
       transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime,
       transcriptEventRuntime, chatSearchController, chatNavigationController,
+      transcriptView,
       resetChatRenderState, clearOlderLoadError, showOlderLoadError, setOlderState,
       clearTranscriptDom, clearRenderedTranscriptRange: () => getHistoryController().clearRenderedTranscriptRange(),
       initPageLimit, activeTranscriptSnapshot, updateSessionTranscriptSlot, getSessionTranscriptSlot,

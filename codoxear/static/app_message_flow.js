@@ -75,7 +75,14 @@
     const resetChatRenderState = requireFunction(options.resetChatRenderState, "resetChatRenderState");
     const setAttachCount = requireFunction(options.setAttachCount, "setAttachCount");
     const setLiveCursor = requireFunction(options.setLiveCursor, "setLiveCursor");
-    const appendEvent = requireFunction(options.appendEvent, "appendEvent");
+    const appendEvents = typeof options.appendEvents === "function"
+      ? options.appendEvents
+      : (events) => {
+        const appendEvent = requireFunction(options.appendEvent, "appendEvents");
+        let changed = false;
+        for (const event of Array.isArray(events) ? events : []) changed = appendEvent(event) || changed;
+        return changed;
+      };
     const appendTailSnapshotEvents = requireFunction(options.appendTailSnapshotEvents, "appendTailSnapshotEvents");
     const setStatus = requireFunction(options.setStatus, "setStatus");
     const setContext = requireFunction(options.setContext, "setContext");
@@ -111,9 +118,6 @@
     const isTranscriptRenewalCommand = requireFunction(options.isTranscriptRenewalCommand, "isTranscriptRenewalCommand");
     const nextLocalEchoId = requireFunction(options.nextLocalEchoId, "nextLocalEchoId");
     const renderedAtLiveTail = requireFunction(options.renderedAtLiveTail, "renderedAtLiveTail");
-    const clearTranscriptDom = requireFunction(options.clearTranscriptDom, "clearTranscriptDom");
-    const clearRenderedTranscriptRange = requireFunction(options.clearRenderedTranscriptRange, "clearRenderedTranscriptRange");
-    const setOlderState = requireFunction(options.setOlderState, "setOlderState");
     const getSessionTranscriptSlot = requireFunction(options.getSessionTranscriptSlot, "getSessionTranscriptSlot");
     const addPendingUser = requireFunction(options.addPendingUser, "addPendingUser");
     const deleteTailCache = requireFunction(options.deleteTailCache, "deleteTailCache");
@@ -426,7 +430,7 @@
       const nextLiveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
       setLiveCursor(nextLiveCursor);
       const events = Array.isArray(data.events) ? data.events : [];
-      for (const event of events) appendEvent(event);
+      appendEvents(events);
       const turnStart = Boolean(data.turn_start);
       const turnEnd = Boolean(data.turn_end);
       const turnAborted = Boolean(data.turn_aborted);
@@ -480,7 +484,7 @@
             // Full re-render only happens in openSession (initial load).
             applySessionRuntimeFromTail(sessionId, data);
             const tailEvents = Array.isArray(data.events) ? data.events : [];
-            for (const ev of tailEvents) appendEvent(ev);
+            appendEvents(tailEvents);
             if (reconnectSseAfterSuccess) resumeLiveDelivery();
             return;
           }
@@ -494,7 +498,7 @@
           updateSessionTranscriptSlot(sessionId, boundData);
           applySessionRuntimeFromTail(sessionId, boundData);
           const boundEvents = Array.isArray(boundData.events) ? boundData.events : [];
-          for (const ev of boundEvents) appendEvent(ev);
+          appendEvents(boundEvents);
           if (reconnectSseAfterSuccess) resumeLiveDelivery();
           return;
         }
@@ -615,7 +619,7 @@
         // so the user sees the new message and the response.
         const slot = getSessionTranscriptSlot(sessionId);
         addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0: startedAt });
-        appendEvent({ role: "user", text: raw, pending: true, localId, ts: startedAt });
+        appendEvents([{ role: "user", text: raw, pending: true, localId, ts: startedAt }]);
         setTurnOpen(true);
         setCurrentRunning(true);
       }
@@ -624,10 +628,11 @@
         if (renderHere && renewsTranscript) {
           deleteTailCache(sessionId);
           beginTranscriptRenewal(sessionId);
+          // A send may advance the transcript epoch, but it must never clear
+          // or replace the currently visible conversation. The next bound tail
+          // supplies the explicit replacement boundary if one is needed.
           clearLiveCursor();
-          clearRenderedTranscriptRange();
           invalidateOlderLoad();
-          renderPendingTranscriptSlot(sessionId);
         }
         const attachmentCleanupError = response && (response.attachment_cleanup_error || response.attachments_cleanup_error)
           ? String(response.attachment_cleanup_error || response.attachments_cleanup_error)

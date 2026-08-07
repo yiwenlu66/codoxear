@@ -59,11 +59,11 @@
     let messageFlowController = null;
     const refreshSessions = () => getSessionRefreshController().refreshSessions();
     const {
-      activeTranscriptSnapshot, updateSessionTranscriptSlot, resetChatRenderState, clearTranscriptDom,
-      clearRenderedTranscriptRange, setOlderState, getSessionTranscriptSlot, beginTranscriptRenewal,
-      dropPendingUserRows, appendTailSnapshotEvents, appendEvent, initPageLimit, typingRowRuntime,
+      activeTranscriptSnapshot, updateSessionTranscriptSlot, resetChatRenderState,
+      getSessionTranscriptSlot, beginTranscriptRenewal,
+      dropPendingUserRows, appendTailSnapshotEvents, initPageLimit, typingRowRuntime,
       transcriptSlotRuntime, transcriptEventRuntime, transcriptScrollRuntime, isTranscriptRenewalCommand,
-      setTyping, updateTypingStatsFromSession
+      transcriptView, setTyping, updateTypingStatsFromSession
     } = transcript;
     const { renderPendingTranscriptSlot, renderSessionTail, applySessionRuntimeFromTail,
       syncRecoveryUiForSession } = history;
@@ -134,7 +134,7 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   resetChatRenderState,
   setAttachCount: (count) => attachmentsController.setAttachCount(count),
   setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
-  appendEvent,
+  appendEvents: (events) => transcriptView().appendEvents(events),
   appendTailSnapshotEvents,
   setStatus,
   setContext,
@@ -161,10 +161,7 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   setToast,
   isTranscriptRenewalCommand,
   nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
-  renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
-  clearTranscriptDom,
-  clearRenderedTranscriptRange,
-  setOlderState,
+  renderedAtLiveTail: () => transcriptView().state().renderedAtLiveTail,
   getSessionTranscriptSlot,
   addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
   deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),

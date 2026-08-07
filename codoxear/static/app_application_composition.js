@@ -714,7 +714,7 @@
         ({ attachmentsController, messageFlowController } = chatInteractionController);
         const {
           chatSearchController, chatNavigationController, hintModeController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
-          transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, olderLoadRuntime,
+          transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, transcriptView, olderLoadRuntime,
           resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
           closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,
           updateSessionTranscriptSlot, tailCacheMatchesSession, applySessionListTranscriptIdentity,
@@ -1110,6 +1110,7 @@
           renderPendingTranscriptSlot,
           applySessionRuntimeFromTail,
           renderSessionTail,
+          replaceWith: (events, options) => transcriptView().replaceWith(events, options),
           openMessageEventSource,
           isMobile,
           closeSidebar: () => setSidebarOpen(false),
@@ -1248,19 +1249,19 @@
 	        eventBindings.on(backdrop, 'click', () => setSidebarOpen(false));
 
         chat.addEventListener("scroll", () => {
-          transcriptScrollRuntime.handleScroll();
+          transcriptView().observeScroll("handleScroll");
         });
         chat.addEventListener(
           "wheel",
           (e) => {
-            transcriptScrollRuntime.handleWheel(e);
+            transcriptView().observeScroll("handleWheel", e);
           },
           { passive: true }
         );
         chat.addEventListener(
           "touchstart",
           (e) => {
-            transcriptScrollRuntime.handleTouchStart(e);
+            transcriptView().observeScroll("handleTouchStart", e);
           },
           { passive: true }
         );
@@ -1268,7 +1269,7 @@
           "touchmove",
           (e) => {
             // Finger moves down -> content scrolls up.
-            transcriptScrollRuntime.handleTouchMove(e);
+            transcriptView().observeScroll("handleTouchMove", e);
           },
           { passive: true }
         );

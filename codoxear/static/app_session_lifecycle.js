@@ -87,6 +87,10 @@
     const renderPendingTranscriptSlot = get("renderPendingTranscriptSlot");
     const applySessionRuntimeFromTail = get("applySessionRuntimeFromTail");
     const renderSessionTail = get("renderSessionTail");
+    const replaceWith = requireFunction(
+      Object.prototype.hasOwnProperty.call(options, "replaceWith") ? options.replaceWith : renderSessionTail,
+      "replaceWith",
+    );
     const openMessageEventSource = get("openMessageEventSource");
     const isMobile = get("isMobile");
     const closeSidebar = get("closeSidebar");
@@ -235,7 +239,7 @@
         // Fresh selections and explicit latest-tail requests replace the DOM.
         // Ordinary same-session reloads preserve the rendered rows and scroll.
         if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
-          renderSessionTail(tailEvents);
+          replaceWith(tailEvents);
           // Latest-tail navigation is terminal: restoring an older saved
           // position would overwrite renderSessionTail's bottom scroll.
           if (!forceRender) restoreSessionScrollPosition(sessionId);
