@@ -2970,8 +2970,8 @@ select {
       #newSessionViewer .formActions > button,
       #newSessionViewer .agentBackendTab,
       #newSessionViewer .icon-btn {
-        height: var(--dialog-control-h);
-        min-height: var(--dialog-control-h);
+        height: var(--ctl);
+        min-height: var(--ctl);
       }
       #newSessionViewer .agentBackendTab,
       #newSessionCloseBtn {
