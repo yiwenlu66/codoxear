@@ -574,6 +574,7 @@
           position: absolute;
           top: 50%;
           right: var(--space-2);
+          z-index: 3;
           transform: translateY(-50%);
           display: inline-flex;
           align-items: center;
