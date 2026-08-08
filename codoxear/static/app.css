@@ -597,6 +597,10 @@
         .session.desktop:focus-within .sessionContent {
           padding-right: calc(var(--ctl-chrome) * 3 + var(--space-4));
         }
+        .session.desktop:hover .sessionMetaLine,
+        .session.desktop:focus-within .sessionMetaLine {
+          max-width: calc(100% - var(--ctl-chrome) * 3 - var(--space-2));
+        }
         .session.desktop:hover .sessionActionsInline,
         .session.desktop:focus-within .sessionActionsInline {
           opacity: 1;
