@@ -276,6 +276,7 @@
         letter-spacing: 0;
       }
       .session {
+        position: relative;
         padding: 0;
         border: 1px solid var(--border);
         border-radius: 0;
