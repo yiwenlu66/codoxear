@@ -80,6 +80,7 @@ FRONTEND_ASSET_FILES = (
     "app_wiring.js",
     "app_application_composition.js",
     "app.js",
+    "dist/app.bundle.js",
     "app.css",
 )
 SHELL_ASSET_FILES = (
@@ -99,6 +100,7 @@ TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
     ("/service-worker.js", "service-worker.js"),
+    ("/dist/app.bundle.js", "dist/app.bundle.js"),
     ("/pdf.mjs", "vendor/pdf.mjs"),
     ("/pdf.worker.mjs", "vendor/pdf.worker.mjs"),
     *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
