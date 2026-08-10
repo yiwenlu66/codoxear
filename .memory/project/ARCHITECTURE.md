@@ -1,166 +1,164 @@
-# Codoxear architecture (distilled)
+# Codoxear Frontend Architecture
 
-Single repo: `/home/yiwen/codoxear` on `main` (remote `git@github.com:yiwenlu66/codoxear.git`). The former `recovery/product-gaps` branch was merged into `main` (merge `1976c30b`); the old two-checkout model (recovery worktree + protected `/home/yiwen/codex-web` checkout) is obsolete and removed.
-Deployed service: `codoxear-server.service` runs from a pipx installation of a detached committed worktree at `~/.local/share/codoxear/deploy`, never from `/home/yiwen/codoxear`. Deploy a reviewed revision with `scripts/deploy.sh <commit-ish>` (normally `scripts/deploy.sh HEAD`). The script verifies the worktree reaches that exact commit, installs it with pipx, rewrites only the unit's `WorkingDirectory` and `ExecStart`, restarts only the server, and verifies `/` → 200 and unauthenticated `/api/sessions` → 401. It preserves the unit environment and the runtime state under `~/.local/share/codoxear`; server restarts are safe for live broker/backend sessions, so never kill brokers or backend CLIs.
+## Problem
 
-## Ownership map (post-refactor, 2026-07)
+The frontend has 66 IIFE modules connected by implicit dependency injection.
+Functions from the original monolithic `app.js` were extracted into separate
+closures without verifying that every destructured reference is actually
+provided. This creates silent runtime failures that only surface when a user
+action triggers the broken path.
 
-- **Backend adapters** (`agent_backend/`): `CodexBackend`, `PiBackend`, and `ClaudeCodeBackend` own launch argv, env, log path recognition, session-id extraction, run-settings, row-busy predicates, chat-event parsing hooks, launch defaults, and validation. Compatibility facades may delegate into adapters, but must not become branch owners. Keep backend-specific parsing in the backend package or its focused log module instead of adding cross-backend conditionals to routes.
-- **Runtime status authority** (`session_runtime.py`): `RuntimeStatus` is the single busy/idle/interrupted-idle synthesis; `SessionRuntimeReadiness` projects send/queue/attachment/unattended eligibility. Routes and coordinators consume `manager._runtime_status_from_state_and_log(...)`; they must not recompute busy/idle.
-- **Turn-state reducer** (`broker_turn_state.py`): the only log→busy reducer. Broker and sessiond both consume it (`_apply_log_objects_to_state`, `_should_clear_busy_state`, `_mark_busy_state_idle`, `_mark_explicit_interrupt_request`, `_update_busy_from_pty_text`). Do not add a second reducer.
-- **Persistent state** (`session_store.py`): SessionStore owns per-session lifecycle (reset/load/delete/save-ordering/prune/recent-cwd). New per-session maps must extend SessionStore lifecycle methods, not add ad-hoc deletion/load code in coordinators.
-- **SessionManager** is a thin coordinator host: methods are bound via `session_manager_method_bindings.py` forwarders to coordinator objects (`session_queue.py`, `session_readiness.py`, `session_recent_cwd.py`, etc.).
-- **sessiond** (`sessiond.py`): supported headless runner. Same control-state schema as broker: `busy`, `queue_len`, `token`, `interrupted_idle`. Intentionally no foreground terminal UX.
-- **Frontend composition:** `app.js` is a 34-line bootstrap. Six composition seams own the former shell: `app_application.js` (dependency facade), `app_application_composition.js` (lifecycle assembly), `app_chat_interaction.js` (transcript/session interaction), `app_file_ops.js` (viewer/editor/picker integration), `app_session_display.js` (status/context projection), and `app_wiring.js` (controller dependency contracts). Focused controllers own their state/actions (`app_message_flow.js`, `app_session_lifecycle.js`, `app_session_refresh.js`, `app_composer.js`, `app_attachments.js`, `app_chat_search.js`, `app_chat_navigation.js`, `app_unattended.js`, and others). New stateful behavior belongs in its focused owner; the bootstrap remains boot-only.
+There is no single source of truth for any displayed state. The transcript's
+rendered range, scroll position, and history cursor are managed by three
+uncoordinated runtimes. The session list's model/effort display is written
+by two functions with different priority rules. The sidebar's active-session
+highlight is applied by one CSS rule but overridden by another.
 
-## Product model invariants
+## Principles
 
+1. **One state authority per domain.** Every displayed value has exactly one
+   declared writer. Other modules read through the authority's interface.
 
-- Selectable backend tabs are product promises. If a turn records user input and then terminates without assistant output or explicit backend error, normalization must emit a truthful visible outcome event; ordinary idle silence violates the projection contract. Completed-without-answer turns use a no-response event, explicit aborts/interruption use a distinct interruption event (`message_class:"error"`, searchable `interrupted` wording), and Pi aborted partial text must remain visible under the interruption row. Claude Code terminal `system/api_error` rows are visible error outcomes only when retries are exhausted; transient retry notices stay out of the transcript by themselves. Live transcript polling must use the unified backend-aware prior-turn context, not a Codex-only helper, or split-poll closes can drop visible outcomes.
-- Sidebar session metadata is a scan surface, not decoration. Backend/model/reasoning state that Codoxear supports must remain visible in compact rows: meaningful non-default model names appear in `.metaText` as `age | model | cwd | branch`, absent/empty/`default` model values are omitted, reasoning markers map `xhigh/high/medium/low/max/minimal/off` to `X/H/M/L/M+/m/–`, unknown effort strings render no marker, and Details/diagnostics remain the expanded raw-value surfaces.
-- Pi turn-close semantics are stop-reason-specific. `stop` and defensive `end_turn` are terminal non-error close reasons; no-visible `stop`/`end_turn` rows become the standard no-response error row, and visible-text `stop`/`end_turn` rows are final answers. `length` is a continuation/compaction boundary, not a turn close: visible-text `length` rows render as narration and remain busy; no-visible/thinking-only `length` rows do not create no-response rows and remain busy until a continuation, explicit terminal row, interruption, error, or process-death recovery resolves the turn.
-- Pi subagent activity is a first-class transcript surface, not a log detail. Pi `pi-subagent:` custom events are normalized into inline narration rows by `agent_backend.py` (`_pi_subagent_*` helpers): background-task progress, control notices (including "subagent needs attention"), and results render as assistant-side rows so the user sees delegation without the terminal. These narration rows must participate in the same tail/history/live/search/export projection contract as ordinary assistant rows.
-- Pi async subagent liveness is a separate ambient projection. `util.scan_active_pi_subagents()` reads active (`running`/`pending`) pi-subagents status files, caches the filesystem scan for two seconds, and groups runs by the exact parent `sessionId` log path. `session_listing.py` exposes `subagents_running` only for Pi sessions bound to that exact current log path. The sidebar's `▸N` suffix and typing bubble use the latest row value as a replacement gauge; it must never enter the monotonic tool/thinking counter reconciliation.
-- Claude Code child transcripts (`<parent-session-id>/subagents/agent-*.jsonl`) prove lineage/history, not liveness. Only a Codoxear-owned CC launch injects temporary `SubagentStart`/`SubagentStop` hooks; `cc_subagents.py` writes/removes app-owned run records and `scan_active_cc_subagents()` accepts one only while its exact web-owned broker PID remains live. Terminal-owned CC sessions inject no hook and always project `subagents_running: 0`; never infer activity from child-log mtime.
-- Transcript search is a projection surface, not a separate parser. Search, tail, history pagination, live polling, export, and server rehydration must preserve the same normalized transcript messages, including synthetic no-response/error rows, and search matches for rendered rows must carry cursors that can load a history window containing the same row. Search must stream positioned events rather than materializing whole-log record/event lists before first-order `count_max` can stop work; any future search optimization must preserve adjacent assistant dedupe, synthetic no-response injection, `_before_byte`/`_after_byte` load/history cursors, before-boundary semantics, oversized-line truncation signaling, and backend pending-tool state.
-- Copy Conversation export-size failures are product limit messages, not clipboard failures. When `/messages/export` returns the known transcript/export-too-large `413` shape with `max_bytes`, the browser must show a specific conversation-too-large copy message with the limit and an actionable alternative; unrelated copy/export/clipboard failures keep generic `copy failed: ...` handling, and the server export cap remains authoritative.
-- Copy Conversation success counts are clipboard-payload counts, not export-row counts. The formatter-owned copyable selection is the single source for both clipboard text and toast count: only non-empty `user`/`assistant` events become `## User` / `## Assistant` sections, `formatConversationForCopy(events)` remains the string contract, and `formatConversationForCopyResult(events).messageCount` is the success-toast count. Raw `/messages/export` `events.length` is a proxy and must not drive user-visible copied-message counts.
-- Transcript code-block copy is block-local, not message-copy reuse. Rendered assistant markdown code blocks carry an accessible `.code-copy-btn` inside their own `<pre>`; the copied payload is the nearest contained `<code>.textContent`, so escaped HTML decodes back to the original snippet and surrounding prose/other blocks are excluded. Code-copy clicks must stop before file-reference or row delegation, while message-level `.msg-copy-btn` continues to copy the raw markdown answer. Code-copy controls are part of the companion-device touch contract on phone and wider coarse-pointer surfaces: at least 44x44 CSS px, sufficient `<pre>` right padding, and no page-level horizontal overflow. Fine-pointer desktop keeps compact 30x30 controls.
-- Context-pressure projection is backend-neutral once a token dict exists. Codex, Pi, and Claude Code all feed the same `token` shape into session rows/message polls and the same frontend `#ctxChip`; backend adapters/parsers own only the source-specific extraction. Claude Code uses assistant `message.usage` prompt-side fields (`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`), excludes `output_tokens`, and requires a conservatively mapped model window. Unknown/unmapped CC usage rows are observed clear signals: stop latest-token scanning, clear stored/runtime token state, and expose public `token:null` rather than guessed or older pressure. CC assistant rows without `message.usage` are neutral and preserve prior token state. The frontend chip is an accessible control, not static status text: when token data is valid, `#ctxChip` is an enabled native/equivalent button that opens the existing context-detail affordance by pointer, Enter, or Space; when token data is absent/invalid, it is hidden and non-focusable. Chip activation must never cross a backend send/key boundary.
-- Product surface must be justified by user workflow, not verification convenience. Sandbox-only flags, broken local packages, and certification workarounds are operational problems to solve, not reasons to narrow product claims. Do not add visible controls merely to make an isolated test path pass.
-- Minimal UI: GTD-style flat sidebar, sparse chat rendering, mobile-first companion (phone is a view/controller of local sessions).
-- Product confirmations belong to Codoxear's DOM, not browser chrome. Destructive/recovery/attachment/file-reload confirmations use the app-owned async `confirmApp()` dialog or injected async seams (`confirmAction`, `confirmReload`): cancel resolves before any backend mutation, confirm preserves the existing route payload, and product code must not reintroduce native `window.confirm()` / bare `confirm()` outside vendored third-party assets. Data-affecting confirmations must declare `destructive:true`, default keyboard focus to Cancel, and trap Tab/Shift-Tab inside `#appConfirm`; constructive confirmations such as pending-attachment send may stay confirm-focused.
-- Fail loud: no silent fallbacks; contract violations return explicit errors.
-- JSON API responses must never carry raw surrogateescape path strings. Filesystem paths discovered from `os.walk` can contain lone surrogates for non-UTF-8 bytes; user-facing display fields must use `git_ops.path_json_text`, while reversible operations require an explicit token field such as `api_path`/`path_token`.
-- File display path is not identity. Same-rendering paths (for example raw-byte `bad<ff>name.txt` and literal `bad\\xffname.txt`) must preserve token identity through picker/open/download/write/recent flows and must be visibly disambiguated before selection (`non-UTF bytes` vs `literal name` style hints are the current convention).
-- Monaco is the required code editor/diff substrate, not an optional enhancement. A clean deployment where Monaco assets do not load is a broken product state to fix, not a supported textarea baseline. Do not certify plain textarea editing as the final editing capability; remove or bypass fallback editing paths as Monaco becomes available.
-- Repository diff truth belongs in the Monaco-backed viewer/diff surface. If Monaco cannot render, fail loud as a deployment/capability defect instead of silently substituting a second editing model.
-- Monaco is now a vendored packaged substrate: `codoxear/static/monaco/vs/**` plus license/notice are served under `/monaco/...`, included recursively in wheel/package data, and included in static asset hashing. Do not reintroduce CDN loading, writable textarea editing, `plain-edit`, or plain unified-diff fallback paths.
-- Mobile shell/file/editor controls must preserve the companion-device contract. Always-used phone shell controls (topbar/sidebar actions, selected-session utility rail, chat navigation rail, and New Session backend tabs) plus file viewer header actions and touch dpad controls have 44px mobile target-size rules. Keep desktop/dense controls compact unless the phone interaction surface requires the 44px floor, and prove mobile geometry with browser evidence rather than source rules alone.
-- Attachment upload is a staged-reference workflow, not cwd import or pre-send PTY paste. Upload routes stage bytes under app-dir `uploads/<session>/` with mode 0600 and server-owned entries (`id`, display name, backend-readable path, size, timestamp). The active upload request contract is `filename` + `data_b64`; any legacy `attachment_index` is ignored and must not control numbering. Upload routes must not call backend key/PTY injection; the legacy `SessionManager.inject_attachment_keys`/`attachment_injection_ready` path has been removed and must not be restored as compatibility fallback. Browser/API staged attachment projections are public views: they omit backend-readable upload `path` values and identify entries by public name/filename/size/id/timestamp. The explicit send path is the commit boundary: generated `Attachment N: <path>` lines are prepended inside confirmed send from private state; confirmed success clears staged entries, while commit-unknown/send failure preserves them. Commit-unknown recovery state also has a public/private split: private committed `text` may contain absolute attachment paths for audit/recovery, while public `commit_unknown_send_text` uses `display_text` or redacts legacy leading generated attachment lines. After confirmed delivery, covered cleanup/projection tail failures surface as response warnings (`attachment_cleanup_error` or `send_state_cleanup_error`) rather than send failures, so the browser does not invite duplicate resend. Multi-file picker, paste-to-attach, drag/drop, and Add-photo/mobile-camera support are implemented; user-facing photo/camera affordances must stay truthful about browser/device fallback and any future producer must reuse the same staged-list invariant.
-- Attachment badge/list authority is server staged-list truth plus immediate local attach feedback reconciled by session-list refresh. Client producers are only file event sources; they must route through the shared staging path and enforce the same attach blockers before calling `/inject_file`. Long upload batches must re-confirm the selected target and re-read blockers before each file; if a blocker appears after partial success, remaining files stop before upload work and already-staged entries remain visible. Browser count/chips must derive from staged entries, not an independent badge state. Direct successful attach/remove/clear/send responses may update the selected cached value for immediate UI projection; server refresh overwrites it.
-- Deleting a session sends shutdown to the broker (terminal-owned sessions too) and removes only that session's staged-upload entry under `uploads/<session_id>`. Cleanup must treat symlink entries as links to unlink, never directories to follow, and must preserve sibling session uploads. `attachments/clear`/delete must surface guard failures explicitly rather than silently claiming cleanup.
-- Failed synthetic launch rows (`launch-*` ids) are not real sessions: no send/queue/attach/file-viewer; Details/Copy/New-like-this render from the session-list row locally. Backend-tab launches that fail before transcript log bind must preserve visible backend/model/reasoning metadata (for example Claude `sonnet` + `max`), project a failed transcript payload, and keep browser/API real-session actions blocked rather than idling silently. The complementary usable Claude path is a real bound CC session only after a live Claude-shaped JSONL is discovered through the sidecar/log binding path; then browser send, transcript/tail outcome rendering, token projection, and idle controls follow the same real-session contracts. Deterministic fake-Claude Docker proofs establish Codoxear mechanics, not real Claude provider/auth behavior.
+2. **Every dependency is explicit.** A module declares its required inputs
+   as a typed options object. The wiring checker verifies at deploy time that
+   every required name is provided. No implicit closure references.
 
-## Implementation and frontend invariants
+3. **State transitions are explicit.** The transcript, session list, and
+   modal stack each have a state machine that controls what operations are
+   legal in each state.
 
-- Markdown rendering uses the `marked` library (jsdelivr) plus Codoxear post-processors: file-reference rewriting (`app_markdown.js`), KaTeX math, and OAI memory-citation rewriting. The CSP (`script-src`/`style-src`) allows the jsdelivr origin. Do not reintroduce a hand-rolled markdown parser or CDN-free paths that skip the post-processors.
-- Live transcript delivery uses SSE (`EventSource`) with polling fallback. When a session is selected and bound to a backend log, the browser opens `/api/sessions/<id>/live` (`message_routes.py` `handle_messages_live_stream`, `text/event-stream`) for real-time message deltas. The SSE handler and the poll handler share the same live-delta/normalization path (`_read_chat_live_delta`, `applyLiveMessageData`), so both produce identical transcript state. If SSE fails or is unavailable, polling resumes automatically.
-- Send path is unconditional confirmed-send: the busy/queue gate was removed. `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Steering via confirmed-send works on all backends; the queue is an opt-in alternative, not a hard gate. Do not reintroduce a busy-gate that blocks direct sends.
-- Performance: static asset responses are gzip-compressed (`static_routes.py`), served over HTTP/1.1 (`server_handler.py`), versioned assets (`?v=...`) carry immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars. Transcript tail opens use an 8 MiB bounded reverse scan plus a `(path, size, mtime_ns, limit)` cache; live message polls skip JSONL/context work at EOF and consume only appended bytes.
-- Paper design language: square geometry; warm-charcoal `--ink`/`--border: #2f2b26` on paper/wash; ink-on-paper primaries; square state dots; `--font-mono` for data; transparent, undimmed backdrops; no decorative `box-shadow`/`outline` or `backdrop-filter`. Chrome controls are visually 32px (`--ctl-chrome`) with a 44px touch hit-slop; composer/dialog controls use `--ctl` (38px desktop, 44px on touch). The design constitution restricts new media-query behavior to token retuning, visibility changes, and layout changes; component-level differences require a named branch. A 44px hit area is not a demand for a 44px visual control.
-- Session card DOM is a locked two-branch design: touch uses swipe actions, desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions`). Do not unify the branches.
-- Keyboard: vimium-style hint mode (`f` leader, then a per-control letter) plus direct shortcuts (`i`, `j`/`k`, `d`/`u`, `G`, `D`, `/`); `/` searches the full transcript, while typing `/` in the composer opens slash-command completion. The topbar interrupt button (`interruptBtn`, hint `z`) is the sole interrupt control on all viewports (composer stop button removed). On capable Codex sessions, `/model` and `/effort` use broker-owned app-server `thread/settings/update`; older versions advertise neither picker. On Pi sessions `/model` uses Pi's native command and bridge-provided `/effort` changes reasoning level (`/thinking` is an alias); existing live sessions need `/reload` or restart before the bridge advertises the capability. On Claude Code sessions, `/model` and `/effort` pickers inject native commands; model rows update only after assistant `message.model` log evidence, while CC effort remains the launch value because its JSONL parser has no effort field. Modal buttons activate by first distinctive letter, with a later letter breaking first-letter ties (`activateModalButtonForKey`).
+4. **Design tokens encode decisions, not just values.** `--ctl` means
+   "primary action touch target." `--ctl-chrome` means "compact secondary
+   chrome control." The rule for which to use is in the token's comment.
 
-## Paper design invariants
+## Architecture
 
-The frontend follows one “paper” design language. These are mechanical invariants, enforced in `app.css` and auditable:
+### State Stores
 
-- **Square warm-charcoal palette.** `border-radius: 0`; `--ink` and `--border` are `#2f2b26`; `--paper` is `#ffffff`, `--bg` is `#f6f5f1`, and `--wash` is `#efeee9`.
-- **Ink-on-paper primaries.** `--accent` is ink; no accent-blue primary.
-- **Square state dots.** `.stateDot` is square; busy is filled + pulse, idle hollow, suppressed filled without pulse, pending amber + pulse. Motion, not hue, is the primary discriminator.
-- **Transparent backdrops.** Overlay backdrops remain transparent and do not dim the app.
-- **Monospace for data.** `--font-mono` carries model names, token counts, paths, and other data-like text.
-- **No decorative depth.** `box-shadow`/`outline` only signal focus/state. No `backdrop-filter`.
-- **Compact chrome + touch hit-slop.** Chrome buttons remain visually 32px (`--ctl-chrome`) and use a 44px touch hit-slop. Composer/dialog controls use `--ctl`: 38px desktop, 44px on touch. Hit-area floor and visual size are distinct requirements.
+Three domain stores, each owned by a single controller:
 
-### Media-query branching rule
+**SessionStore** — owns the session list, active session ID, per-session
+metadata (model, effort, busy, queue). All writes go through this store.
+Modules like the sidebar, message flow, and new-session dialog read from it.
 
-The design constitution restricts new media-query behavior to retuning tokens, visibility, and layout. Do not compensate for a component-level difference with a viewport-specific color, radius, font, or border override. Use an explicit branch when behavior truly differs. The sanctioned branches remain sidebar drawer, locked touch/desktop session-card reveal, viewer fullscreen takeover, hover→always-visible controls, and composer safe-area/anti-zoom.
+**TranscriptViewController** — owns the rendered DOM range, scroll position,
+and history cursor. State machine: LIVE / BROWSING / LOADING_OLDER / REPLACING.
+Only REPLACING may clear the DOM. All other operations are append/prepend.
 
-## State-authority principle
+**UIStore** — owns modal visibility, sidebar drawer state, and viewport
+classification (desktop/touch). One writer per modal.
 
-Every piece of displayed state has exactly one declared authoritative source. When two feeds write the same displayed value, there must be an explicit reconciliation rule stating which wins and under what condition — otherwise the display flickers or regresses.
+### Dependency Injection
 
-- **Typing counts (the canonical dual-writer example).** `tools`/`thinking` counts are written by two feeds: live per-event SSE deltas (exact, sees every event from turn start) and session-list snapshots (the server’s resumable scan, which can lag or start mid-turn). The reconciliation rule (`updateTypingStatsFromSession` in `app.js`): while a turn is open the snapshot may only raise the count (`Math.max` of current and snapshot), never lower it, so an SSE gap recovers rather than flickers; with no turn open the snapshot is the seed projection. The count resets (`resetTypingStats`) when a new turn opens. Both writers share the single `typingRowRuntime` store — there is no second independent counter.
-- **Pi turn-busy vs error rows.** `broker_turn_state.py` is the single log→busy authority. A Pi assistant error row (e.g. overloaded + automatic retry) is treated as turn activity, not a turn close: it clears stale pending calls and reopens the turn with `busy = True`. The session therefore stays busy through retries. A truly terminal error with no following activity also leaves the session busy by design — Pi logs carry no terminal marker that Codoxear can trust, so the user must interrupt (`z`) to clear it. Do not add a second busy reducer or an error-ends-turn path.
-- **Session sidebar metadata** is projected solely from the session-list scan (`session_listing.py`), including the middle-ellipsis model text (`sidebarModelText`: first 6 + `…` + last 8 chars, keeping the distinguishing suffix) and the muted effort code (`·hi`/`·xh`/`·max`). Do not compute model/effort display in a second place.
+Every module factory declares its options:
 
-## Validation norms (learned the hard way)
+```javascript
+function createTranscriptViewController(options) {
+  // options: {
+  //   domRuntime: TranscriptDomRuntime,
+  //   scrollRuntime: TranscriptScrollRuntime,
+  //   olderLoadRuntime: OlderLoadRuntime,
+  //   onStateChange: (state) => void,
+  // }
+}
+```
 
-- `pytest` green is NOT acceptance. A live-route 500 (`/api/sessions` recent_cwds limit) shipped past 1344 passing tests because route tests used fake managers.
-- Acceptance = full local pytest + `scripts/codoxear-docker-sandbox test` + `scripts/codoxear-docker-sandbox smoke` (real server, real login, real route) + browser evidence via agent-browser for UX claims.
-- Docker sandbox: never port 8743; use `CODOXEAR_DOCKER_PORT=18790..19999`. See `.codex/skills/codoxear-docker-test/SKILL.md`.
-- Browser automation must exercise the user-visible branch. If a native dialog or browser mechanism blocks a proof path, use agent-browser/CDP, product-level instrumentation, or a testable UI design so the branch is actually verified; do not park it.
+The wiring checker (`scripts/check_wiring.py`) verifies statically that
+every required option is provided by the creation call. No implicit
+references through closure or `window` globals.
 
-## Known failure modes
+### Transcript View State Machine
 
+```
+LIVE ←→ BROWSING ←→ LOADING_OLDER
+  ↑                       ↓
+  └──── REPLACING ←───────┘
+       (session switch)
+```
 
-- Runtime readiness treats a bound transcript log as the authority for real turn busy/idle. Broker PTY busy hints observed before log bind (for example Codex startup text containing `esc to interrupt`) are not sufficient to block the first browser input because no log-watcher idle path can clear them. After a confirmed send, the send-boundary mechanism blocks follow-up input until the log appears/advances or recovery is surfaced.
-- `interrupted_idle` is an override for an interrupted non-final log tail, not a durable busy-state category. Once post-interrupt log activity proves the override stale, Codoxear suppresses repeated stale broker `interrupted_idle=true` reports until the broker reports false or the log/session resets; otherwise `/api/sessions` can project idle while the transcript log is non-idle. Every state-refresh path (broker, prune, discovery) must use `set_session_interrupted_idle()` rather than assigning `interrupted_idle` or `interrupted_idle_log_off` directly. Docker/API/browser evidence on port 19250 proves the log-only stale-true case: a fake broker kept returning `interrupted_idle:true` while the same log advanced, and `/api/sessions` plus the sidebar stayed busy across repeated polls.
-- Source-text tests and internal monkeypatch seams (e.g. patching `server.MANAGER`) hide live-contract breaks; prefer executable behavior tests with injected deps.
-- Coordinator method signatures with required keyword-only args can break legacy manager call sites silently until a live route hits them.
-- Stale docs propagate: sessiond schema docs omitted `token` and masked a parity gap for one review round.
-- Model/provider access is operational configuration. Read `~/.pi/agent/models.json` for available providers, base URLs, models, and configured API-key presence; choose a working configured route rather than declaring a credential/gateway boundary. If a live backend condition affects what the browser renders, Codoxear must project it explicitly and verification must use configured provider routes or deterministic reproduction.
+| State | Entry | Allowed operations | Exit |
+|-------|-------|-------------------|------|
+| LIVE | After openSession, after send | appendEvents, scrollToBottom | User scrolls up → BROWSING |
+| BROWSING | User scrolled up | appendEvents (no scroll), loadOlderMessages | User scrolls to bottom → LIVE, older load → LOADING_OLDER |
+| LOADING_OLDER | Top edge hit or click | prependEvents on success, stay on failure | Load completes → BROWSING |
+| REPLACING | Session switch, jump-to-latest force | replaceWith(new events) | Render complete → LIVE |
 
+**Forbidden:** DOM clearing outside REPLACING. Poll/SSE triggering REPLACING.
+Send triggering REPLACING.
 
-## Resolved interrupt readiness authority
+### File Structure
 
-- Readiness paths must split broker-state authority at the interrupted-idle boundary. Raw broker `busy` and `queue_len` remain authoritative and validated, but the interrupted-idle override used for send/queue/attachment/unattended readiness must come from the stored suppression-aware `Session.interrupted_idle`, matching listing/sidebar. Failing evidence on port 19260 showed direct send and queue promotion delivered while `/api/sessions` and sidebar were busy; fixed evidence on port 19264 proves direct send now returns busy/not-ready, queue remains queued, attachment is disabled, and broker call logs contain zero sends while the raw broker still reports stale `interrupted_idle:true`. Follow-on proof on port 19268 proves the real unattended sweep also polls but does not inject/decrement while the same stale-true/busy condition holds and the unattended tail gate is otherwise eligible.
+Target: ~20 focused domain modules. Each module has one clear responsibility.
 
-## Resolved post-log-bound lifecycle recovery
+```
+app.js                          — boot (34 lines)
+app_application.js              — factory + deps assembly (854)
+app_application_composition.js  — renderApp + wiring (~1400)
+app_state.js                    — SessionStore, UIStore
+app_transcript_view.js          — TranscriptViewController (state machine)
+app_transcript.js               — transcript data model, message normalization
+app_transcript_render.js        — DOM rendering, row construction
+app_transcript_scroll.js        — scroll position, jump button, auto-load trigger
+app_message_flow.js             — poll/SSE transport, send lifecycle
+app_message_history.js          — older message paging, cursor management
+app_sessions.js                 — sidebar rendering, session actions
+app_session_lifecycle.js        — open/select/spawn/delete sessions
+app_session_refresh.js          — session list refresh, sidebar reconciliation
+app_file_viewer.js              — file viewer orchestration (737 lines after decomposition)
+app_file_picker.js              — file candidate picker, search, navigation
+app_file_editor.js              — Monaco editor integration, save/dirty
+app_composer.js                 — message input, draft persistence, attachments
+app_modal.js                    — dialog framework, keyboard handling
+app_wiring.js                   — options selectors for all modules
+app_shell.js                    — DOM construction, element references
+app_display.js                  — formatting, truncation, display helpers
+app_api.js                      — HTTP client, ETag caching
+```
 
-- A backend death after log bind is lifecycle recovery, not backend-log normalization. Backend logs remain immutable; Codoxear records a durable failed launch-ledger recovery row that points at the bound log and appends a lifecycle assistant error in the transcript projection.
-- Recovery row identity is split deliberately: `session_id` is the browser route/socket id, `thread_id` is the backend log/thread id, and `launch_id` remains the durable ledger deduplication key. Pre-log failed launches still route by launch id.
-- Lifecycle drop paths that can discover a dead web-owned bound-log session (broker exit, stale discovery, prune, session-control dead-process drop) must check the bound log with the same idle reducer. Incomplete/non-idle logs get a post-log recovery record; completed/idle logs do not get false stopped errors.
-- Missing-session message routes must preserve one transcript contract across tail/history/live/search/export: read the bound log read-only, append exactly one lifecycle assistant error (`The backend process stopped before completing this turn.`), keep the recovered row idle, and block send/queue/attachment/unattended through failed-row/no-active-session semantics rather than a new busy category.
-- Large recovered logs have route-specific read semantics. Tail/live project a recent tail window and must carry usable history cursors when older content exists. A truncated recovery payload needs a signed cursor at the truncation boundary, and if no retained real chat row has a cursor, the lifecycle error row carries it so browser `Load older messages` can retrieve older context. History pages the bound log by cursor. Search must search the real bound log with the same whole-log, per-line-bounded search primitive as live sessions, then merge the Codoxear lifecycle error from the recovery payload for the full/latest recovered transcript. Do not set `has_older:true` without a usable cursor.
+### CSS Design System
 
-## Codex live settings strategy (investigation 2026-08-02)
+Two control sizes, defined by role:
 
-Codex CLI 0.133.0 added experimental app-server `thread/settings/update` with typed `model` and `effort` fields. Current TUI already uses that method internally and consumes `thread/settings/updated`. Config hot reload deliberately keeps model/effort session-static, SIGHUP is app-server lifecycle shutdown, invocation flags only affect a new process, and the native picker is a non-searchable, catalog-ordered, multi-stage UI without deterministic PTY identity/readback.
+| Token | Value | Use |
+|-------|-------|-----|
+| `--ctl` | 44px | Primary actions (Send, Start session, dialog confirm) |
+| `--ctl-chrome` | 32px | Secondary chrome (topbar nav, sidebar hover, composer secondary) |
 
-For a capable Codex binary, the broker starts a private app-server Unix socket, copies compatible `-c`/feature flags into that sibling process, probes the method with `experimentalApi:true`, and launches the shared TUI with `--remote unix://...`. Browser `/model` and `/effort` use the broker's typed `settings` command. The app-server owns Codex JSONL file handles in this topology, so log discovery scans the sibling app-server process as well as the TUI process. The broker stops both process groups and removes the private socket. Unsupported versions fall back to embedded TUI mode and advertise no Codex live-setting commands.
+Rules:
+- All `.icon-btn` default to `--ctl-chrome` (32px)
+- `.icon-btn.primary` overrides to `--ctl` (44px)
+- Touch hit area is handled by `::after` pseudo-element, not visual size
+- No hardcoded control dimensions anywhere in the stylesheet
 
-The API acknowledgement proves acceptance; the subscribed TUI receives effective settings immediately. Codoxear continues to display model/effort from the next JSONL `turn_context`, preserving the existing log-authority rule rather than adding an optimistic cache. Detailed evidence and upstream links: `docs/codex-live-control.md`.
+## What This Fixes
 
-## Pi integration strategy (investigation 2026-08-01)
+1. **"Messages disappear on send"** — TranscriptViewController's REPLACING
+   state is the only path that can clear. Poll, send, and SSE cannot trigger it.
 
-### Current mechanism
-Codoxear wraps Pi (and all backends) in a PTY. For Pi specifically:
-- Prompts use bracketed-paste + Enter injection into the shared PTY.
-- Busy/state is inferred from JSONL log reconstruction.
-- `/model` is Pi's shared native command; the browser picker selects an option by sending that command into the same TUI.
-- `pi_active_session_bridge.ts` supplies `/effort` and its `/thinking` alias from inside the live TUI process, calling `pi.setThinkingLevel()` and reading back the effective level. It writes a PID-bound `.caps` marker at load so a reload can advertise capability before another session event.
-- Pi bridge marker state is observable through the selected session's `/api/sessions/<id>/diagnostics` response as `pi_bridge_marker`. It projects marker/caps presence, PID ownership, validated log binding, capabilities, and command registry; broker/sessiond log PID handover, marker deletion, and a command registry without current thinking capability once per transition.
-- Extension load must remain passive: write capability metadata and register lifecycle listeners only. Command registration and other runtime action methods are deferred to `session_start`/`session_switch`, with later lifecycle retries if Pi is not ready.
+2. **"Load older messages broken"** — The cursor is owned by one controller.
+   Poll responses cannot overwrite it. The history endpoint accepts stale
+   cursors via `decode_message_cursor_target`.
 
-### No web-only RPC path — PTY sharing is the core invariant
-The whole point of Codoxear is web and terminal share the **same PTY session**. Pi native RPC mode (`pi --mode rpc`) cannot coexist with the interactive TUI: it is a separate headless mode. Splitting transport by ownership (web=RPC, terminal=PTY) would break that invariant.
+3. **"Hover buttons misplaced"** — The two-branch DOM split is locked
+   (AGENTS.md). Desktop uses `sessionActionsInline`, touch uses `sessionSwipe`.
+   `.session` has `position: relative` so absolutely-positioned children
+   are contained within the card.
 
-- All sessions stay on PTY; do not add a web-owned-only RPC adapter.
-- Shared-session effort control belongs in the live extension bridge, where it can call Pi's runtime API without hiding the action from the terminal. Keep model control on Pi's shared native `/model` command unless Pi exposes an equally shared authoritative path.
+4. **"Sidebar model name wrong"** — `apply_run_settings_backfill` respects
+   the bridge-live priority. The bridge reads `pi.getModel()` on every
+   `turn_end` and writes it to the caps file. No log scan needed for
+   active sessions.
 
-### Future: official Pi remote-session protocol
-Pi upstream merged experimental `pi-protocol`/`pi-client`/`pi-server` packages
-(PRs #7344, #7386, #7409). CBOR-based, authoritative snapshots, lease ownership.
-Not yet published or production-ready. Coding-agent backend (#7396) still draft.
-Track for future adoption IF it supports TUI coexistence — if the TUI becomes
-a client of the server protocol, both web and terminal could share the same
-authoritative session. Depends on upstream evolution.
+5. **"Button sizes inconsistent"** — Two tokens, one rule. Base button
+   is `--ctl-chrome`. Primary is `--ctl`. No exceptions.
 
-### Competitor landscape
-- **Wherever** (@wherever-dev/pi, AGPL-3.0): direct competitor. Multi-session web dashboard + Pi extension bridge + headless SDK sessions. Architecture reference for terminal/headless handover.
-- **remote-pi**: mobile control + daemon supervisor + agent mesh. Reference for typed mobile actions, correlated delivery, persistent daemon patterns.
+## Verification
 
----
+Each architectural claim must be verified behaviorally, not by assertion:
 
-# Current architectural decisions and debt
-
-## Decisions that hold
-
-- **Committed snapshot deployment is the release boundary.** The deploy script makes the reviewed commit, not an editable checkout, the import/static root for the service.
-- **PTY sharing is the core session invariant.** Browser and terminal operate one live CLI session; Pi RPC mode remains incompatible with that contract.
-- **State authority is explicit.** Each displayed value has one writer, or a declared reconciliation rule when an exact live feed and a resumable snapshot both contribute.
-- **Normalization is shared.** Transcript search, SSE, history, export, and session counters use backend-normalized log events rather than separate parsers.
-- **Pi bridge load is passive.** Capability advertisement may occur at load; runtime command registration waits for a live Pi lifecycle event.
-
-## Remaining structural debt
-
-1. **Frontend composition has a committed owner boundary.** Keep `app.js` boot-only and preserve the six composition seams above. Future extraction should target remaining oversized focused modules only when it clarifies ownership; do not move controller state back into bootstrap/composition glue.
-2. **Width-cutoff consolidation remains unfinished.** The stylesheet still carries 520px, 700px, and 880px behavior. Consolidate the 700px behavior into the 520px phone and 880px layout axes plus pointer capability, while preserving the design constitution: tokens, visibility, layout, or an explicit component branch.
-3. **Backend boundaries need continued tightening.** The adapter package has per-backend modules, but compatibility facades and cross-backend normalization seams still need clear ownership. Keep backend recognition/launch/parser facts in `agent_backend/` or focused `pi_log`/`cc_log` modules, and keep routes/reducers backend-neutral.
-
-## Next review trigger
-
-Review again when the session-list/transcript extraction reaches a coherent controller boundary, when width-cutoff consolidation changes responsive behavior, or before adding a fourth backend.
+- TranscriptViewController: select session, send message, verify count
+  doesn't decrease. Click load-older, verify count increases. Scroll up,
+  click jump-to-bottom, verify count returns to tail.
+- Wiring checker: deploy gate must pass with 0 definite bugs.
+- CSS: computed styles of active session vs inactive must differ visibly.
+- Button sizes: all `.icon-btn` must be 32px or 44px, no other sizes.
