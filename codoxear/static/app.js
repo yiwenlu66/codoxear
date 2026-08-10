@@ -1,8 +1,12 @@
 /* Boot is deliberately small: application composition lives in app_application.js. */
-import { createApplicationController } from "./app_application.js";
+(function bootCodoxearApplication() {
+  "use strict";
 
+  const application = window.CodoxearApplication;
+  if (!application || typeof application.createApplicationController !== "function")
+    throw new Error("Codoxear application controller failed to load");
 
-  const controller = createApplicationController({
+  const controller = application.createApplicationController({
     windowTarget: window,
     documentTarget: document,
     navigatorTarget: typeof navigator === "undefined" ? undefined : navigator,
@@ -27,3 +31,4 @@ import { createApplicationController } from "./app_application.js";
       document.body.appendChild(err);
     }
   })();
+})();

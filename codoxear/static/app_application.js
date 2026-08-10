@@ -1,10 +1,9 @@
 /* Application composition runtime. This owns the former app.js shell,
  * lifecycle, and controller wiring; app.js intentionally remains only bootstrap. */
-import { createApplicationComposition } from "./app_application_composition.js";
+(function installCodoxearApplication(global) {
+  "use strict";
 
-const global = window;
-
-export function createElement(tag, attrs = {}, children = [], defaultButtonTooltip = null) {
+  function createElement(tag, attrs = {}, children = [], defaultButtonTooltip = null) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
       if (k === "class") n.className = v;
@@ -20,7 +19,7 @@ export function createElement(tag, attrs = {}, children = [], defaultButtonToolt
     return n;
   }
 
-export function computeAppBaseUrl(locationLike) {
+  function computeAppBaseUrl(locationLike) {
     const here = new URL(locationLike.href);
     const p0 = String(here.pathname || "/");
     if (p0.endsWith("/static/index.html")) {
@@ -34,20 +33,20 @@ export function computeAppBaseUrl(locationLike) {
 
   const appBaseUrl = computeAppBaseUrl(global.location);
 
-function resolveAppUrlForAppBase(path) {
+  function resolveAppUrl(path) {
     const s = String(path ?? "");
     const rel = s.startsWith("/") ? s.slice(1) : s;
     return new URL(rel, appBaseUrl).toString();
   }
 
-export function sessionIdFromHash(locationLike = global.location) {
+  function sessionIdFromHash(locationLike = global.location) {
     const raw = String(locationLike.hash || "").startsWith("#") ? String(locationLike.hash || "").slice(1) : String(locationLike.hash || "");
     const params = new URLSearchParams(raw);
     const sid = params.get("session");
     return sid && sid.trim() ? sid.trim() : "";
   }
 
-export function setSessionHash(sessionId, { locationLike = global.location, historyLike = global.history } = {}) {
+  function setSessionHash(sessionId, { locationLike = global.location, historyLike = global.history } = {}) {
     const raw = String(locationLike.hash || "").startsWith("#") ? String(locationLike.hash || "").slice(1) : String(locationLike.hash || "");
     const params = new URLSearchParams(raw);
     if (sessionId) params.set("session", sessionId);
@@ -58,7 +57,7 @@ export function setSessionHash(sessionId, { locationLike = global.location, hist
     return target;
   }
 
-export function createApplicationController(deps = {}) {
+  function createApplicationController(deps = {}) {
     const window = deps.windowTarget || global;
     const document = deps.documentTarget || window.document;
     if (!window || !document) throw new Error("Codoxear application requires a browser window and document");
@@ -144,8 +143,9 @@ export function createApplicationController(deps = {}) {
       if (!codoxearVoice || typeof codoxearVoice.createVoiceDom !== "function" || typeof codoxearVoice.createVoiceController !== "function")
         throw new Error("Codoxear voice controller failed to load");
 
-      const codoxearDom = Object.freeze({ createElement });
-      const el = (tag, attrs = {}, children = []) => createElement(tag, attrs, children, defaultButtonTooltip);
+      const codoxearDom = window.CodoxearDom;
+      if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
+      const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
       const codoxearShell = window.CodoxearShell;
       if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
         throw new Error("Codoxear shell module failed to load");
@@ -194,9 +194,16 @@ export function createApplicationController(deps = {}) {
 
       window.codoxearPerf = summarizePerf;
 
-      const codoxearUrls = Object.freeze({ resolveAppUrl: resolveAppUrlForAppBase, sessionIdFromHash, setSessionHash });
+      const codoxearUrls = window.CodoxearUrls;
+      if (
+        !codoxearUrls ||
+        typeof codoxearUrls.resolveAppUrl !== "function" ||
+        typeof codoxearUrls.sessionIdFromHash !== "function" ||
+        typeof codoxearUrls.setSessionHash !== "function"
+      )
+        throw new Error("Codoxear URL helpers failed to load");
       function resolveAppUrl(path) {
-        return resolveAppUrlForAppBase(path);
+        return codoxearUrls.resolveAppUrl(path);
       }
       function versionedShellAssetPath(path) {
         const version = String(window.CODOXEAR_ASSET_VERSION || "").trim();
@@ -845,7 +852,10 @@ export function createApplicationController(deps = {}) {
         if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
       }
 
-	      const applicationComposition = createApplicationComposition({
+	      const codoxearApplicationComposition = window.CodoxearApplicationComposition;
+      if (!codoxearApplicationComposition || typeof codoxearApplicationComposition.createApplicationComposition !== "function")
+        throw new Error("Codoxear application composition failed to load");
+      const applicationComposition = codoxearApplicationComposition.createApplicationComposition({
         window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
         requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
         isTextEntryElement, updateAppHeightVar,
@@ -894,11 +904,12 @@ export function createApplicationController(deps = {}) {
     return Object.freeze({ api, cleanupActiveApp, renderApp, renderLogin });
   }
 
-export { resolveAppUrlForAppBase as resolveAppUrl };
-
-export const codoxearUrls = Object.freeze({
-  appBaseHref: appBaseUrl.toString(),
-  resolveAppUrl: resolveAppUrlForAppBase,
-  sessionIdFromHash,
-  setSessionHash,
-});
+  global.CodoxearDom = Object.freeze({ createElement });
+  global.CodoxearUrls = Object.freeze({
+    appBaseHref: appBaseUrl.toString(),
+    resolveAppUrl,
+    sessionIdFromHash,
+    setSessionHash,
+  });
+  global.CodoxearApplication = Object.freeze({ createApplicationController });
+})(window);

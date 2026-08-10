@@ -97,14 +97,6 @@ update_snapshot || {
   exit 1
 }
 
-# Build the committed snapshot's frontend before syntax and wiring checks. The
-# source checkout supplies the installed esbuild binary; output stays inside
-# the detached snapshot that will be deployed.
-if ! (cd "$DEPLOY_DIR" && ESBUILD="${ESBUILD:-$SOURCE_ROOT/node_modules/.bin/esbuild}" bash scripts/build_static.sh); then
-  echo "frontend bundle build failed; service was not reinstalled or restarted" >&2
-  exit 1
-fi
-
 # Parse every exact immutable static asset before changing the installed package
 # or restarting the service. Grammar validation cannot detect a bare call whose
 # declaration was lost during extraction, so the reference checker examines the

@@ -93,13 +93,12 @@ UI_IMAGE_ASSET_FILES = (
     "logos/pi.svg",
     "logos/cc.svg",
 )
-STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + ("dist/app.bundle.js",) + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES
+STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES
 MONACO_ASSET_ROOT = "monaco"
 TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
     ("/service-worker.js", "service-worker.js"),
-    ("/dist/app.bundle.js", "dist/app.bundle.js"),
     ("/pdf.mjs", "vendor/pdf.mjs"),
     ("/pdf.worker.mjs", "vendor/pdf.worker.mjs"),
     *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
