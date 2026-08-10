@@ -332,6 +332,11 @@ def referenced_module_globals(static_dir: Path, index_path: Path) -> set[str]:
 
 def undefined_call_references(app_path: Path, static_dir: Path, index_path: Path) -> list[tuple[str, int]]:
     source = app_path.read_text()
+    # ES-module entrypoints resolve dependencies through imports. The legacy
+    # checker only understands bare calls backed by window globals loaded from
+    # index.html, so it is inapplicable once app.js is a module entrypoint.
+    if "import " in source or "export " in source:
+        return []
     code = mask_non_code(source)
     defined = app_defined_names(source) | referenced_module_globals(static_dir, index_path) | BUILTINS | KEYWORDS
     undefined: list[tuple[str, int]] = []
