@@ -1,9 +1,7 @@
 /* Application composition owns concrete lifecycle, controller assembly, and UI behavior.
- * app_application_runtime.js remains the stable bootstrap facade. */
-(function installCodoxearApplicationComposition(global) {
-  "use strict";
+ * app_application.js remains the stable bootstrap facade. */
 
-  function createEventBindings(options = {}) {
+export function createEventBindings(options = {}) {
     const addEvent = options.addEvent;
     if (typeof addEvent !== "function") throw new TypeError("event bindings dependency missing: addEvent");
 
@@ -19,7 +17,7 @@
     return Object.freeze({ on, onClick });
   }
 
-  function createToastController(options = {}) {
+export function createToastController(options = {}) {
     function requireToastNode(value, name) {
       if (!value || typeof value !== "object" || !("textContent" in value)) {
         throw new TypeError(`toast dependency missing: ${name}`);
@@ -45,7 +43,7 @@
     return Object.freeze({ show });
   }
 
-  function createApplicationComposition(deps = {}) {
+export function createApplicationComposition(deps = {}) {
     const {
       window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
@@ -1443,7 +1441,3 @@
   }
 
 
-  global.CodoxearEventBindings = Object.freeze({ createEventBindings });
-  global.CodoxearToast = Object.freeze({ createToastController });
-  global.CodoxearApplicationComposition = Object.freeze({ createApplicationComposition });
-})(window);
