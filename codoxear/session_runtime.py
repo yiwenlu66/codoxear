@@ -310,14 +310,19 @@ def session_run_settings_from_meta(
     # beats the log replay, which lags a terminal change (a native-selector change
     # is logged at the next turn, not immediately). Only a dead/stale broker falls
     # back to the log for settings the sidecar never recorded.
+    # The log's model_change events are authoritative for model/provider —
+    # they record what Pi actually switched to. The bridge reports effort
+    # live but does NOT report model, so a running session's sidecar model
+    # is the stale launch value. Override it with log evidence.
+    # Effort: bridge live value wins (it reports current thinking level).
     broker_alive = _pid_alive(meta.get("broker_pid"))
     if log_path is not None and log_path.exists():
         log_provider, log_model, log_effort = read_run_settings_from_log(log_path, agent_backend=backend_name)
-        if log_provider is not None and not live_provider and not broker_alive:
+        if log_provider is not None and not live_provider:
             model_provider = log_provider
-        if log_model is not None and not live_model and not broker_alive:
+        if log_model is not None and not live_model:
             model = log_model
-        if log_effort is not None and not live_effort and not broker_alive:
+        if log_effort is not None and not live_effort:
             reasoning_effort = log_effort
     return model_provider, preferred_auth_method, model, reasoning_effort
 
