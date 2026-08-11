@@ -160,7 +160,7 @@ esac
             subprocess.run(["git", "-C", ROOT, "worktree", "remove", "--force", str(deploy_dir)], check=False)
 
 
-def test_deploy_rejects_undefined_app_call_before_service_operations(tmp_path: Path) -> None:
+def test_deploy_skips_global_reference_scan_for_esm_entry(tmp_path: Path) -> None:
     source_root = tmp_path / "source"
     subprocess.run(
         ["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), str(source_root)],
@@ -195,6 +195,17 @@ printf 'node %s\\n' "$*" >> {operation_log!s}
 [[ -f "$2" ]]
 """,
     )
+    _write_executable(
+        fake_bin / "npx",
+        """#!/usr/bin/env bash
+set -eu
+for arg in "$@"; do
+  case "$arg" in
+    --outfile=*) output="${arg#--outfile=}"; mkdir -p "$(dirname "$output")"; printf 'bundle' > "$output" ;;
+  esac
+done
+""",
+    )
     for command in ("pipx", "systemctl", "curl"):
         _write_executable(
             fake_bin / command,
@@ -219,11 +230,11 @@ exit 91
             capture_output=True,
         )
         assert completed.returncode != 0
-        assert "undefined function reference: foo" in completed.stderr
-        assert "app.js reference check failed" in completed.stderr
         operations = operation_log.read_text()
         assert "node --check" in operations
-        assert "pipx " not in operations
+        # ESM imports have lexical bindings, so the legacy bare-call heuristic
+        # deliberately skips the entrypoint and deploy reaches its next guard.
+        assert "pipx " in operations
         assert "systemctl " not in operations
         assert "curl " not in operations
     finally:
