@@ -797,6 +797,8 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex-shrink: 1;
+        min-width: 0;
         max-width: min(34vw, 420px);
       }
       .titleRow #threadTitle {
@@ -862,8 +864,7 @@
         align-items: center;
         gap: var(--space-1);
         overflow: hidden;
-        flex-shrink: 1;
-        min-width: 0;
+        flex-shrink: 0;
       }
       .chatNavRail {
         display: none;
