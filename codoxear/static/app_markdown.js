@@ -19,16 +19,14 @@ import * as CodoxearUrls from "./app_application.js";
     script.defer = true;
     // Monaco's loader.js installs an AMD define() globally. KaTeX's UMD
     // wrapper checks typeof define === "function" and takes the AMD path
-    // instead of setting window.katex. Temporarily remove define so KaTeX
-    // falls through to the browser global path.
+    // instead of setting window.katex. Remove define while katex loads;
+    // the load event restores it.
     const savedDefine = window.define;
+    delete window.define;
     script.addEventListener("load", () => {
       if (savedDefine !== undefined) window.define = savedDefine;
-      else delete window.define;
     });
-    window.define = undefined;
     document.head.appendChild(script);
-    if (savedDefine !== undefined) window.define = savedDefine;
   })();
 
   const codoxearUrls = CodoxearUrls;
