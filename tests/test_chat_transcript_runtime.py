@@ -179,14 +179,14 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         # Block counts remain state for reconciliation, but the bubble renders
         # only authoritative reasoning-token counts; it must not imply that
         # opaque blocks and tokens are equivalent.
-        self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: ", "stats": {"thinking": 1, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 2}})
-        self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: ", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["incremented"], {"text": "tools: 2", "stats": {"thinking": 1, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 2}})
+        self.assertEqual(out["replaced"], {"text": "tools: 7", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["token999"], {"text": "tools: 7 · thinking: 999", "stats": {"thinking": 3, "thinkingTokens": 999, "thinkingMode": "tokens", "tools": 7}})
         self.assertEqual(out["token1200"], {"text": "tools: 7 · thinking: 1.2k", "stats": {"thinking": 3, "thinkingTokens": 1200, "thinkingMode": "tokens", "tools": 7}})
         self.assertEqual(out["tokenMillion"], {"text": "tools: 7 · thinking: 1.5M", "stats": {"thinking": 0, "thinkingTokens": 1500000, "thinkingMode": "tokens", "tools": 7}})
-        self.assertEqual(out["nonPiBlocks"], {"text": "tools: 7 · thinking: ", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
-        self.assertEqual(out["withGauge"], {"text": "tools: 7 · thinking:  · subagents: 2", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
-        self.assertEqual(out["gaugeCleared"], {"text": "tools: 7 · thinking: ", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["nonPiBlocks"], {"text": "tools: 7", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["withGauge"], {"text": "tools: 7 · subagents: 2", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["gaugeCleared"], {"text": "tools: 7", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
 
     def test_typing_token_mode_requires_authoritative_positive_tokens(self) -> None:
