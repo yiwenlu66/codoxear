@@ -407,9 +407,11 @@
     function renderTypingStats() {
       if (!typingStatsNode) return;
       const { thinking, thinkingTokens, thinkingMode, tools } = typingStats;
-      const thinkingValue = thinkingMode === "tokens" && thinkingTokens > 0 ? formatThinkingTokens(thinkingTokens) : "";
       const hasThinking = thinkingMode === "tokens" && thinkingTokens > 0;
-      const activity = tools || hasThinking ? `tools: ${tools} · thinking: ${thinkingValue}` : "";
+      const parts = [];
+      if (tools) parts.push(`tools: ${tools}`);
+      if (hasThinking) parts.push(`thinking: ${formatThinkingTokens(thinkingTokens)}`);
+      const activity = parts.join(" · ");
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
       const text = [activity, subagents].filter(Boolean).join(" · ");
       typingStatsNode.textContent = text || (typingRowVisible ? "working" : "");
