@@ -228,12 +228,7 @@ browser eval '(() => {
   const sessions = document.querySelector("#sessions");
   const sidebar = document.querySelector(".sidebar");
   const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : 0;
-  const moduleGlobals = [
-    ["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"],
-    ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"],
-    ["CodoxearMessageFlow", "createMessageFlowController"], ["CodoxearComposer", "createComposerController"]
-  ];
-  const missingModules = moduleGlobals.filter(([host, method]) => !window[host] || typeof window[host][method] !== "function").map(([host]) => host);
+  const bundleLoaded = Boolean(document.querySelector('script[type="module"][src*="dist/app.bundle.js"]'));
   return {
     appBootstrapped: window.__codoxearAppBootstrapped === true,
     loadError: window.__codoxearLoadError ?? null,
@@ -241,7 +236,7 @@ browser eval '(() => {
     sessionListRendered: Boolean(sessions && sessions.dataset.codoxearSessionsRendered === "true"),
     sidebarVisible: visible(sidebar),
     sidebarContent: String(sidebar?.innerText || "").trim().length,
-    missingModules,
+    bundleLoaded,
     visibleLoadFailure: /codoxear failed to load|error: unable to contact server/i.test(String(document.body?.innerText || ""))
   };
 })()' --json > "$artifacts/browser-report.json" 2>&1 || fail "DOM verification evaluation failed"
@@ -291,7 +286,7 @@ checks = {
     "session_list_rendered": report.get("sessionListRendered") is True,
     "sidebar_visible": report.get("sidebarVisible") is True,
     "sidebar_has_content": isinstance(report.get("sidebarContent"), int) and report["sidebarContent"] > 0,
-    "no_missing_modules": report.get("missingModules") == [],
+    "bundle_loaded": report.get("bundleLoaded") is True,
     "no_visible_load_failure": report.get("visibleLoadFailure") is False,
     "no_page_errors": errors == [],
 }
