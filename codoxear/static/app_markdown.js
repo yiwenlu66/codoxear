@@ -2,32 +2,9 @@ import * as CodoxearUrls from "./app_application.js";
 
   "use strict";
 
-  // KaTeX loads independently because rendered transcript rows can arrive before
-  // the library does. Until then, renderMath leaves readable source in place.
-  (function loadKatex() {
-    if (window.__codoxearKatexLoading) return;
-    window.__codoxearKatexLoading = true;
-    if (typeof document === "undefined" || !document.createElement) return;
-    const base = (typeof window !== "undefined" && window.location && window.location.origin ? window.location.origin : "") + "/vendor/";
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = base + "katex.min.css";
-    link.crossOrigin = "anonymous";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = base + "katex.min.js";
-    script.defer = true;
-    // Monaco's loader.js installs an AMD define() globally. KaTeX's UMD
-    // wrapper checks typeof define === "function" and takes the AMD path
-    // instead of setting window.katex. Remove define while katex loads;
-    // the load event restores it.
-    const savedDefine = window.define;
-    delete window.define;
-    script.addEventListener("load", () => {
-      if (savedDefine !== undefined) window.define = savedDefine;
-    });
-    document.head.appendChild(script);
-  })();
+  // KaTeX is loaded via index.html <script> BEFORE Monaco's loader.js.
+  // This ordering ensures KaTeX's UMD wrapper takes the browser global
+  // path (window.katex) instead of the AMD path (define).
 
   const codoxearUrls = CodoxearUrls;
   if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");

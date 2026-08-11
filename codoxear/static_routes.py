@@ -34,7 +34,7 @@ TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
     ("/service-worker.js", "service-worker.js"),
-    ("/pdf.mjs", "vendor/pdf.mjs"),
+    ("/pdf.mjs", "vendor/katex.min.css", "vendor/katex.min.js", "vendor/pdf.mjs"),
     ("/pdf.worker.mjs", "vendor/pdf.worker.mjs"),
     *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
     ("/favicon.png", "favicon.png"),
