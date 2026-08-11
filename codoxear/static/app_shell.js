@@ -100,7 +100,7 @@ import * as CodoxearQueue from "./app_queue.js";
     const msgPh = el("div", { class: "ph", id: "msgPh", text: "Message" });
     const modelPicker = el("div", { class: "modelPicker", id: "modelPicker", role: "listbox", "aria-label": "Available Pi models" });
     modelPicker.style.display = "none";
-    const imgInput = el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", "data-hint-excluded": "hidden-file-input", style: "display:none" });
+    const imgInput = el("input", { id: "imgInput", type: "file", multiple: "multiple", "data-hint-excluded": "hidden-file-input", style: "display:none" });
     const attachBtn = el("button", { class: "icon-btn", id: "attachBtn", type: "button", title: "Attach file", "aria-label": "Attach file", "data-hint": "a", html: iconSvg("paperclip") });
     const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", "data-hint": "q", html: iconSvg("queue") });
     const sendBtn = el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", "data-hint": "e", html: iconSvg("send") });
