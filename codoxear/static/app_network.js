@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function requireNode(value, name) {
@@ -49,5 +48,4 @@
     return Object.freeze({ browserOffline, sync, reportFailure, reportSuccess });
   }
 
-  window.CodoxearNetwork = Object.freeze({ browserOffline, createNetworkStatusController });
-})();
+export { browserOffline, createNetworkStatusController };

@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPERS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
+HELPERS = module_path("app_voice_helpers.js")
 
 
 def eval_playback_support() -> dict:

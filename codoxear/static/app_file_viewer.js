@@ -1,4 +1,15 @@
-(function () {
+import * as CodoxearFileCandidates from "./app_file_candidates.js";
+import * as CodoxearFileDownload from "./app_file_download.js";
+import * as CodoxearFileMode from "./app_file_mode.js";
+import * as CodoxearFilePasteDialog from "./app_file_paste_dialog.js";
+import * as CodoxearFilePdf from "./app_file_pdf.js";
+import * as CodoxearFileRenderSurface from "./app_file_render_surface.js";
+import * as CodoxearFileUnsavedDialog from "./app_file_unsaved_dialog.js";
+import * as CodoxearFileVideo from "./app_file_video.js";
+import * as CodoxearFileViewerController from "./app_file_viewer_controller.js";
+import * as CodoxearFileViewerLifecycle from "./app_file_viewer_lifecycle.js";
+import * as CodoxearFileViewerPanel from "./app_file_viewer_panel.js";
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -142,17 +153,17 @@
     return value;
   }
 
-  const { createFileCandidateRefreshRuntime } = window.CodoxearFileCandidates;
-  const { createFileDownloadRuntime } = window.CodoxearFileDownload;
-  const { createFileViewerLifecycleRuntime } = window.CodoxearFileViewerLifecycle;
-  const { createFileViewerPanelRuntime } = window.CodoxearFileViewerPanel;
-  const { createFileUnsavedDialogRuntime } = window.CodoxearFileUnsavedDialog;
-  const { createFilePasteDialogRuntime } = window.CodoxearFilePasteDialog;
-  const { createFilePdfRenderRuntime } = window.CodoxearFilePdf;
-  const { createFileVideoPreviewRuntime } = window.CodoxearFileVideo;
-  const { createFileModeControlsRuntime } = window.CodoxearFileMode;
-  const { createFileRenderSurfaceRuntime } = window.CodoxearFileRenderSurface;
-  const { createFileViewerController } = window.CodoxearFileViewerController;
+  const { createFileCandidateRefreshRuntime } = CodoxearFileCandidates;
+  const { createFileDownloadRuntime } = CodoxearFileDownload;
+  const { createFileViewerLifecycleRuntime } = CodoxearFileViewerLifecycle;
+  const { createFileViewerPanelRuntime } = CodoxearFileViewerPanel;
+  const { createFileUnsavedDialogRuntime } = CodoxearFileUnsavedDialog;
+  const { createFilePasteDialogRuntime } = CodoxearFilePasteDialog;
+  const { createFilePdfRenderRuntime } = CodoxearFilePdf;
+  const { createFileVideoPreviewRuntime } = CodoxearFileVideo;
+  const { createFileModeControlsRuntime } = CodoxearFileMode;
+  const { createFileRenderSurfaceRuntime } = CodoxearFileRenderSurface;
+  const { createFileViewerController } = CodoxearFileViewerController;
 
   function createFileViewerModalRuntime(options = {}) {
     const backdrop = requireStyledNode(options.backdrop, "fileBackdrop");
@@ -1022,27 +1033,4 @@
     return Object.freeze({ sessionId, path });
   }
 
-  window.CodoxearFileViewer = Object.freeze({
-    bindFileTouchClick,
-    bindFileTouchPress,
-    createFileDownloadRuntime,
-    createFileFallbackRuntime,
-    createFileInspectRuntime,
-    createFileLoadResultRuntime,
-    createFileCandidateRefreshRuntime,
-    createFileVideoPreviewRuntime,
-    createFileViewerPanelRuntime,
-    createFileViewerLifecycleRuntime,
-    createFileModeControlsRuntime,
-    createFilePasteDialogRuntime,
-    createFilePdfRenderRuntime,
-    createFileViewerModalRuntime,
-    createFileReferenceRuntime,
-    createFileRenderSurfaceRuntime,
-    createOpenedFileRuntime,
-    createFileTouchToolbarRuntime,
-    createFileUnsavedDialogRuntime,
-    createFileViewerController,
-    createPdfLoader,
-  });
-})();
+export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileVideoPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };

@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   const POLLING_INTERVALS = Object.freeze({
@@ -91,15 +90,4 @@
     return Math.max(safeRequested, errorDelay);
   }
 
-  window.CodoxearSecondaryPoll = Object.freeze({ createSecondaryPollController });
-  window.CodoxearPolling = Object.freeze({
-    POLLING_INTERVALS,
-    sessionsPollDelayMs,
-    secondaryPollDelayMs,
-    browserOffline,
-    messagePollErrorDelayMs,
-    networkRetryDelayMs,
-    messagePollDelayMs,
-    normalizeMessagePollKickDelay,
-  });
-})();
+export { createSecondaryPollController, POLLING_INTERVALS, sessionsPollDelayMs, secondaryPollDelayMs, browserOffline, messagePollErrorDelayMs, networkRetryDelayMs, messagePollDelayMs, normalizeMessagePollKickDelay };

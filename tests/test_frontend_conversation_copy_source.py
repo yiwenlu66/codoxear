@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import re
 import subprocess
@@ -7,10 +8,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
-APP_GUARD_JS = ROOT / "codoxear" / "static" / "app_application.js"
-APP_FILE_OPS_JS = ROOT / "codoxear" / "static" / "app_file_ops.js"
-APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy.js"
+APP_JS = module_path("app_application_composition.js")
+APP_GUARD_JS = module_path("app_application.js")
+APP_FILE_OPS_JS = module_path("app_file_ops.js")
+APP_CONVERSATION_COPY_JS = module_path("app_conversation_copy.js")
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 

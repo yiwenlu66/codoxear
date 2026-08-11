@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function isModalTargetOpen(node) {
@@ -70,11 +69,4 @@
     };
   }
 
-  window.CodoxearModal = Object.freeze({
-    isModalTargetOpen,
-    syncModalIsolation,
-    restoreModalFocus,
-    focusModalCloseButton,
-    createModalKeyboardHandler,
-  });
-})();
+export { isModalTargetOpen, syncModalIsolation, restoreModalFocus, focusModalCloseButton, createModalKeyboardHandler };

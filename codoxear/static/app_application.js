@@ -1,6 +1,39 @@
+import * as CodoxearApi from "./app_api.js";
+import * as CodoxearApplicationComposition from "./app_application_composition.js";
+import * as CodoxearAttachments from "./app_attachments.js";
+import * as CodoxearComposer from "./app_composer.js";
+import * as CodoxearConversationCopy from "./app_conversation_copy.js";
+import * as CodoxearDialogMenus from "./app_dialog_menu.js";
+import * as CodoxearDisplay from "./app_display.js";
+import * as CodoxearFileEditMode from "./app_file_ops.js";
+import * as CodoxearFileEditor from "./app_file_editor.js";
+import * as CodoxearFileHelpers from "./app_file_helpers.js";
+import * as CodoxearFilePicker from "./app_file_picker.js";
+import * as CodoxearFileTouch from "./app_file_ops.js";
+import * as CodoxearFileViewer from "./app_file_viewer.js";
+import * as CodoxearInterrupt from "./app_session_lifecycle.js";
+import * as CodoxearLaunch from "./app_launch.js";
+import * as CodoxearMarkdown from "./app_markdown.js";
+import * as CodoxearMessageFlow from "./app_message_flow.js";
+import * as CodoxearNavigationPulse from "./app_transcript_render.js";
+import * as CodoxearNetwork from "./app_network.js";
+import * as CodoxearNewSession from "./app_new_session.js";
+import * as CodoxearPendingUser from "./app_transcript.js";
+import * as CodoxearPerf from "./app_api.js";
+import * as CodoxearPolling from "./app_polling.js";
+import * as CodoxearSecondaryPoll from "./app_polling.js";
+import * as CodoxearSessionHelpers from "./app_session_helpers.js";
+import * as CodoxearSessions from "./app_sessions.js";
+import * as CodoxearShell from "./app_shell.js";
+import * as CodoxearStorage from "./app_storage.js";
+import * as CodoxearViewport from "./app_viewport.js";
+import * as CodoxearVoice from "./app_voice.js";
+import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
+
+const global = window;
+
 /* Application composition runtime. This owns the former app.js shell,
  * lifecycle, and controller wiring; app.js intentionally remains only bootstrap. */
-(function installCodoxearApplication(global) {
   "use strict";
 
   function createElement(tag, attrs = {}, children = [], defaultButtonTooltip = null) {
@@ -77,7 +110,7 @@
 	        if (!Number.isFinite(raw) || raw <= 0) return 16 * 1024 * 1024;
 	        return Math.max(1, Math.floor(raw));
 	      })();
-      const codoxearViewport = window.CodoxearViewport;
+      const codoxearViewport = CodoxearViewport;
       if (
         !codoxearViewport ||
         typeof codoxearViewport.isMobile !== "function" ||
@@ -96,7 +129,7 @@
       }
       updateAppHeightVar();
       window.addEventListener("resize", updateAppHeightVar);
-      const codoxearDisplay = window.CodoxearDisplay;
+      const codoxearDisplay = CodoxearDisplay;
       if (
         !codoxearDisplay ||
         typeof codoxearDisplay.defaultButtonTooltip !== "function" ||
@@ -127,7 +160,7 @@
       // (loaded after app_voice_helpers.js and before app.js). app.js fails
       // loud here if either module is missing; the controller itself
       // additionally validates every helper API it consumes.
-      const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
+      const codoxearVoiceHelpers = CodoxearVoiceHelpers;
       if (
         !codoxearVoiceHelpers ||
         typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function" ||
@@ -139,51 +172,51 @@
         typeof codoxearVoiceHelpers.notificationDeviceClass !== "function"
       )
         throw new Error("Codoxear voice helpers failed to load");
-      const codoxearVoice = window.CodoxearVoice;
+      const codoxearVoice = CodoxearVoice;
       if (!codoxearVoice || typeof codoxearVoice.createVoiceDom !== "function" || typeof codoxearVoice.createVoiceController !== "function")
         throw new Error("Codoxear voice controller failed to load");
 
-      const codoxearDom = window.CodoxearDom;
+      const codoxearDom = CodoxearDom;
       if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
       const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
-      const codoxearShell = window.CodoxearShell;
+      const codoxearShell = CodoxearShell;
       if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
         throw new Error("Codoxear shell module failed to load");
-      const codoxearSessions = window.CodoxearSessions;
+      const codoxearSessions = CodoxearSessions;
       if (!codoxearSessions || typeof codoxearSessions.createSessionsController !== "function")
         throw new Error("Codoxear sessions controller failed to load");
-      const codoxearComposer = window.CodoxearComposer;
+      const codoxearComposer = CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
         throw new Error("Codoxear composer module failed to load");
-      const codoxearAttachments = window.CodoxearAttachments;
+      const codoxearAttachments = CodoxearAttachments;
       if (!codoxearAttachments || typeof codoxearAttachments.createAttachmentsController !== "function")
         throw new Error("Codoxear attachments module failed to load");
-      const codoxearMessageFlow = window.CodoxearMessageFlow;
+      const codoxearMessageFlow = CodoxearMessageFlow;
       if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
         throw new Error("Codoxear message flow module failed to load");
-      const codoxearSecondaryPoll = window.CodoxearSecondaryPoll;
+      const codoxearSecondaryPoll = CodoxearSecondaryPoll;
       if (!codoxearSecondaryPoll || typeof codoxearSecondaryPoll.createSecondaryPollController !== "function")
         throw new Error("Codoxear secondary poll controller failed to load");
-      const codoxearInterrupt = window.CodoxearInterrupt;
+      const codoxearInterrupt = CodoxearInterrupt;
       if (!codoxearInterrupt || typeof codoxearInterrupt.createInterruptController !== "function")
         throw new Error("Codoxear interrupt controller failed to load");
-      const codoxearDialogMenus = window.CodoxearDialogMenus;
+      const codoxearDialogMenus = CodoxearDialogMenus;
       if (!codoxearDialogMenus || typeof codoxearDialogMenus.createDialogMenusController !== "function")
         throw new Error("Codoxear dialog menus controller failed to load");
-      const codoxearFileEditMode = window.CodoxearFileEditMode;
+      const codoxearFileEditMode = CodoxearFileEditMode;
       if (!codoxearFileEditMode || typeof codoxearFileEditMode.createFileEditModeController !== "function")
         throw new Error("Codoxear file edit mode controller failed to load");
-      const codoxearPendingUser = window.CodoxearPendingUser;
+      const codoxearPendingUser = CodoxearPendingUser;
       if (!codoxearPendingUser || typeof codoxearPendingUser.createPendingUserController !== "function")
         throw new Error("Codoxear pending user controller failed to load");
-      const codoxearNavigationPulse = window.CodoxearNavigationPulse;
+      const codoxearNavigationPulse = CodoxearNavigationPulse;
       if (!codoxearNavigationPulse || typeof codoxearNavigationPulse.createNavigationPulseController !== "function")
         throw new Error("Codoxear navigation pulse controller failed to load");
-      const codoxearFileTouch = window.CodoxearFileTouch;
+      const codoxearFileTouch = CodoxearFileTouch;
       if (!codoxearFileTouch || typeof codoxearFileTouch.createFileTouchController !== "function")
         throw new Error("Codoxear file touch controller failed to load");
 
-      const codoxearPerfHelpers = window.CodoxearPerf;
+      const codoxearPerfHelpers = CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
       function pushPerfSample(name, valueMs) {
         return codoxearPerfHelpers.pushSample(name, valueMs);
@@ -194,7 +227,7 @@
 
       window.codoxearPerf = summarizePerf;
 
-      const codoxearUrls = window.CodoxearUrls;
+      const codoxearUrls = CodoxearUrls;
       if (
         !codoxearUrls ||
         typeof codoxearUrls.resolveAppUrl !== "function" ||
@@ -211,7 +244,7 @@
         return `${path}?v=${encodeURIComponent(version)}`;
       }
 
-      const codoxearStorage = window.CodoxearStorage;
+      const codoxearStorage = CodoxearStorage;
       if (!codoxearStorage || typeof codoxearStorage.getItem !== "function" || typeof codoxearStorage.setItem !== "function" || typeof codoxearStorage.removeItem !== "function") throw new Error("Codoxear storage helpers failed to load");
       function optionalLocalStorage() {
         return typeof codoxearStorage.optionalLocalStorage === "function" ? codoxearStorage.optionalLocalStorage() : null;
@@ -235,7 +268,7 @@
         },
       };
       let latestSessions = [];
-      const codoxearLaunch = window.CodoxearLaunch;
+      const codoxearLaunch = CodoxearLaunch;
       if (
         !codoxearLaunch ||
         typeof codoxearLaunch.lastProviderKey !== "function" ||
@@ -265,7 +298,7 @@
         typeof codoxearLaunch.redactedLaunchErrorText !== "function"
       )
         throw new Error("Codoxear launch helpers failed to load");
-      const codoxearNewSession = window.CodoxearNewSession;
+      const codoxearNewSession = CodoxearNewSession;
       if (
         !codoxearNewSession ||
         typeof codoxearNewSession.createNewSessionController !== "function" ||
@@ -300,7 +333,7 @@
         return codoxearLaunch.rememberProviderModelChoice(backend, provider, model, options);
       }
 
-      const codoxearApi = window.CodoxearApi;
+      const codoxearApi = CodoxearApi;
       if (!codoxearApi || typeof codoxearApi.api !== "function" || typeof codoxearApi.apiResponseNotModified !== "function" || typeof codoxearApi.clearApiCache !== "function") throw new Error("Codoxear API helpers failed to load");
       function apiResponseNotModified(obj) {
         return codoxearApi.apiResponseNotModified(obj);
@@ -320,7 +353,7 @@
         return codoxearDisplay.fmtBytes(n);
       }
 
-      const codoxearFileHelpers = window.CodoxearFileHelpers;
+      const codoxearFileHelpers = CodoxearFileHelpers;
       if (
         !codoxearFileHelpers ||
         typeof codoxearFileHelpers.listFromFilesField !== "function" ||
@@ -425,7 +458,7 @@
         codoxearUrls.setSessionHash(sessionId);
       }
 
-      const codoxearSessionHelpers = window.CodoxearSessionHelpers;
+      const codoxearSessionHelpers = CodoxearSessionHelpers;
       if (
         !codoxearSessionHelpers ||
         !Array.isArray(codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS) ||
@@ -504,7 +537,7 @@
         return codoxearSessionHelpers.normalizeQueueItems(data);
       }
 
-      const codoxearPolling = window.CodoxearPolling;
+      const codoxearPolling = CodoxearPolling;
       if (
         !codoxearPolling ||
         !codoxearPolling.POLLING_INTERVALS ||
@@ -518,11 +551,11 @@
       )
         throw new Error("Codoxear polling helpers failed to load");
 
-      const codoxearNetwork = window.CodoxearNetwork;
+      const codoxearNetwork = CodoxearNetwork;
       if (!codoxearNetwork || typeof codoxearNetwork.createNetworkStatusController !== "function")
         throw new Error("Codoxear network status helpers failed to load");
 
-      const codoxearConversationCopy = window.CodoxearConversationCopy;
+      const codoxearConversationCopy = CodoxearConversationCopy;
       if (
         !codoxearConversationCopy ||
         typeof codoxearConversationCopy.formatConversationForCopy !== "function" ||
@@ -717,7 +750,7 @@
         return codoxearFileHelpers.bytesToBase64(bytes, btoa);
       }
 
-      const codoxearFilePicker = window.CodoxearFilePicker;
+      const codoxearFilePicker = CodoxearFilePicker;
       if (
         !codoxearFilePicker ||
         typeof codoxearFilePicker.appendDraftFileMenuItem !== "function" ||
@@ -736,7 +769,7 @@
       )
         throw new Error("Codoxear file picker helpers failed to load");
 
-      const codoxearFileViewer = window.CodoxearFileViewer;
+      const codoxearFileViewer = CodoxearFileViewer;
       if (
         !codoxearFileViewer ||
         typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
@@ -763,7 +796,7 @@
       )
         throw new Error("Codoxear file viewer controller failed to load");
 
-      const codoxearFileEditor = window.CodoxearFileEditor;
+      const codoxearFileEditor = CodoxearFileEditor;
       if (
         !codoxearFileEditor ||
         typeof codoxearFileEditor.createFileEditorRuntime !== "function" ||
@@ -772,7 +805,7 @@
       )
         throw new Error("Codoxear file editor runtime failed to load");
 
-      const codoxearMarkdown = window.CodoxearMarkdown;
+      const codoxearMarkdown = CodoxearMarkdown;
       if (
         !codoxearMarkdown ||
         typeof codoxearMarkdown.normalizeLineNumber !== "function" ||
@@ -852,7 +885,7 @@
         if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
       }
 
-	      const codoxearApplicationComposition = window.CodoxearApplicationComposition;
+	      const codoxearApplicationComposition = CodoxearApplicationComposition;
       if (!codoxearApplicationComposition || typeof codoxearApplicationComposition.createApplicationComposition !== "function")
         throw new Error("Codoxear application composition failed to load");
       const applicationComposition = codoxearApplicationComposition.createApplicationComposition({
@@ -904,12 +937,8 @@
     return Object.freeze({ api, cleanupActiveApp, renderApp, renderLogin });
   }
 
-  global.CodoxearDom = Object.freeze({ createElement });
-  global.CodoxearUrls = Object.freeze({
-    appBaseHref: appBaseUrl.toString(),
-    resolveAppUrl,
-    sessionIdFromHash,
-    setSessionHash,
-  });
-  global.CodoxearApplication = Object.freeze({ createApplicationController });
-})(window);
+const appBaseHref = appBaseUrl.toString();
+const CodoxearDom = { createElement };
+const CodoxearUrls = { appBaseHref, resolveAppUrl, sessionIdFromHash, setSessionHash };
+
+export { createElement, appBaseHref, resolveAppUrl, sessionIdFromHash, setSessionHash, createApplicationController };

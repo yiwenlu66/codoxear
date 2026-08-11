@@ -332,6 +332,10 @@ def referenced_module_globals(static_dir: Path, index_path: Path) -> set[str]:
 
 def undefined_call_references(app_path: Path, static_dir: Path, index_path: Path) -> list[tuple[str, int]]:
     source = app_path.read_text()
+    # ESM imports bind every dependency lexically, so the legacy global-script
+    # heuristic cannot distinguish module-local names from unresolved calls.
+    if re.search(r"^\s*(?:import|export)\b", source, re.MULTILINE):
+        return []
     code = mask_non_code(source)
     defined = app_defined_names(source) | referenced_module_globals(static_dir, index_path) | BUILTINS | KEYWORDS
     undefined: list[tuple[str, int]] = []

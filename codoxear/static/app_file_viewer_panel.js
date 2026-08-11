@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -187,6 +186,4 @@
     return Object.freeze({ renderEmptyTarget, resetPanel, setFilePath });
   }
 
-
-  window.CodoxearFileViewerPanel = Object.freeze({ createFileViewerPanelRuntime });
-})();
+export { createFileViewerPanelRuntime };

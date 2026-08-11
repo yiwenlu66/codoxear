@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,8 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
-APP_SESSIONS_JS = ROOT / "codoxear" / "static" / "app_sessions.js"
+APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
+APP_SESSIONS_JS = module_path("app_sessions.js")
 
 
 def render_grouped_sidebar() -> dict:

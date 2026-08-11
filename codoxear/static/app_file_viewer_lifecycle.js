@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -328,6 +327,4 @@
     return Object.freeze({ ensureCurrentSession, hide, isSelectionCurrent, isSessionCurrent, show });
   }
 
-
-  window.CodoxearFileViewerLifecycle = Object.freeze({ createFileViewerLifecycleRuntime });
-})();
+export { createFileViewerLifecycleRuntime };

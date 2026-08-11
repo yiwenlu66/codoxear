@@ -1,4 +1,5 @@
-(function installCodoxearSessionRefresh(global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -125,5 +126,4 @@
     return Object.freeze({ refreshSessions });
   }
 
-  global.CodoxearSessionRefresh = Object.freeze({ createSessionRefreshController });
-})(window);
+export { createSessionRefreshController };

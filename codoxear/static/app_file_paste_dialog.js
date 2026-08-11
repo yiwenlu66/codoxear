@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -185,6 +184,4 @@
     return Object.freeze({ hide, isOpen, show });
   }
 
-
-  window.CodoxearFilePasteDialog = Object.freeze({ createFilePasteDialogRuntime });
-})();
+export { createFilePasteDialogRuntime };

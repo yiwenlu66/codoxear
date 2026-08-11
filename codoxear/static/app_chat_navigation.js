@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function requireFunction(value, name) {
@@ -207,5 +206,4 @@
     });
   }
 
-  window.CodoxearChatNavigation = Object.freeze({ createChatNavigationController });
-})();
+export { createChatNavigationController };

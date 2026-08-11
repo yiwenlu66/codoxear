@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_FILE_EDITOR_JS = ROOT / "codoxear" / "static" / "app_file_editor.js"
+APP_FILE_EDITOR_JS = module_path("app_file_editor.js")
 
 
 def run_file_editor_runtime_probe() -> dict[str, object]:

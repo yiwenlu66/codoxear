@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function requireFunction(value, name) {
@@ -701,5 +700,4 @@
     });
   }
 
-  window.CodoxearComposer = Object.freeze({ createComposerController });
-})();
+export { createComposerController };

@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,8 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
-APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
+APP_JS = module_path("app_application.js")
+APP_VIEWPORT_JS = module_path("app_viewport.js")
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 

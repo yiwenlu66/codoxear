@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function createSessionEditController(options = {}) {
@@ -241,5 +242,4 @@
     };
   }
 
-  global.CodoxearSessionEdit = { createSessionEditController };
-})(window);
+export { createSessionEditController };

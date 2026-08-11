@@ -8,6 +8,7 @@ validation exercises the localStorage draft separately.
 """
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -24,10 +25,10 @@ from codoxear.unattended import unattended_config_key
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
-APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
-APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
-APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
+APP_POLLING_JS = module_path("app_polling.js")
+APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_COMPOSER_JS = module_path("app_composer.js")
 
 
 def test_composer_draft_is_session_scoped_across_controller_recreation() -> None:

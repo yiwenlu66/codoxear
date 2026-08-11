@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
+TRANSCRIPT_JS = module_path("app_transcript.js")
 
 
 def run_vm(script: str) -> dict:

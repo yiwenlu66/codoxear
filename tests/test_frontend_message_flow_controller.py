@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,9 +6,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
-APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
-APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
+APP_POLLING_JS = module_path("app_polling.js")
+APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 
 
 def run_flow(body: str) -> dict:

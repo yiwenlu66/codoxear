@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import re
 import subprocess
@@ -8,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
+APP_STORAGE_JS = module_path("app_storage.js")
 
 
 def eval_storage_helpers(storage_expression: str) -> dict:

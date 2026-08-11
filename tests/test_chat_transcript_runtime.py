@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -7,13 +8,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app_message_history.js"
-APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
-APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
-APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
-APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
-APP_SESSION_LIFECYCLE_JS = ROOT / "codoxear" / "static" / "app_session_lifecycle.js"
-APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
+APP_JS = module_path("app_message_history.js")
+APP_POLLING_JS = module_path("app_polling.js")
+APP_COMPOSER_JS = module_path("app_composer.js")
+APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
+APP_MESSAGE_IDENTITY_JS = module_path("app_transcript.js")
 
 
 MESSAGE_FLOW_HARNESS_JS = """

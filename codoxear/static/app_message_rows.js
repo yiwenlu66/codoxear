@@ -1,4 +1,3 @@
-(() => {
   "use strict";
 
   function requireFunction(value, name) {
@@ -393,24 +392,4 @@
     return rows.slice(0, removable);
   }
 
-  window.CodoxearMessageRows = Object.freeze({
-    makeRow,
-    safeMakeRow,
-    messageCopyButtonForRow,
-    renderedMessageRows,
-    loadedUserMessageRows,
-    loadedCopyMessageRows,
-    activeElementIsMessageCopyButton,
-    createMessageCopyNavigationRuntime,
-    rowSearchText,
-    compareRowsInDomOrder,
-    loadedUserJumpTarget,
-    loadedCopyJumpTarget,
-    clearChatSearchMarks,
-    applyChatSearchMarks,
-    oldestRenderedHistoryCursor,
-    firstVisibleMessageRow,
-    trimRenderedRowTargets,
-    trimRowsBeforeViewportTargets,
-  });
-})();
+export { makeRow, safeMakeRow, messageCopyButtonForRow, renderedMessageRows, loadedUserMessageRows, loadedCopyMessageRows, activeElementIsMessageCopyButton, createMessageCopyNavigationRuntime, rowSearchText, compareRowsInDomOrder, loadedUserJumpTarget, loadedCopyJumpTarget, clearChatSearchMarks, applyChatSearchMarks, oldestRenderedHistoryCursor, firstVisibleMessageRow, trimRenderedRowTargets, trimRowsBeforeViewportTargets };

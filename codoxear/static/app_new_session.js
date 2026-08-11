@@ -1,7 +1,9 @@
-(function () {
+import * as CodoxearDisplay from "./app_display.js";
+import * as CodoxearLaunch from "./app_launch.js";
+
   "use strict";
 
-  const codoxearLaunch = window.CodoxearLaunch;
+  const codoxearLaunch = CodoxearLaunch;
   if (
     !codoxearLaunch ||
     typeof codoxearLaunch.normalizeAgentBackendName !== "function" ||
@@ -22,7 +24,7 @@
   )
     throw new Error("Codoxear launch helpers failed to load");
 
-  const codoxearDisplay = window.CodoxearDisplay;
+  const codoxearDisplay = CodoxearDisplay;
   if (
     !codoxearDisplay ||
     typeof codoxearDisplay.baseName !== "function" ||
@@ -61,7 +63,7 @@
   // Selection state (backend/provider/reasoningEffort/literalModel/launchPresetProviderAbsent)
   // is owned by app.js and exposed to this controller through accessor + mutator
   // closures; DOM nodes the controller writes to are injected directly. Pure
-  // launch helpers come from window.CodoxearLaunch.
+  // launch helpers come from CodoxearLaunch.
   function createNewSessionController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("new session controller dependency missing: options");
 
@@ -1057,5 +1059,4 @@
     return Object.freeze({ viewer, open, close, isOpen: () => isModalTargetOpen(viewer), closeMenus, applyMenus, refreshDefaults: () => { if (!isModalTargetOpen(viewer)) return; const text = String(status.textContent || "").trim(); controller.syncNewSessionTmuxUi(); renderModelMenu(); renderReasoningMenu(); syncRunConfigUi(); if (!text || text.startsWith("Launch defaults degraded for ")) status.textContent = controller.newSessionDefaultsWarningText(); } });
   }
 
-  window.CodoxearNewSession = Object.freeze({ createNewSessionController, createNewSessionDialogController });
-})();
+export { createNewSessionController, createNewSessionDialogController };

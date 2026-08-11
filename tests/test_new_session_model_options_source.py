@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,9 +7,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LAUNCH = ROOT / "codoxear" / "static" / "app_launch.js"
-DISPLAY = ROOT / "codoxear" / "static" / "app_display.js"
-NEW_SESSION = ROOT / "codoxear" / "static" / "app_new_session.js"
+LAUNCH = module_path("app_launch.js")
+DISPLAY = module_path("app_display.js")
+NEW_SESSION = module_path("app_new_session.js")
 
 
 def eval_model_options(

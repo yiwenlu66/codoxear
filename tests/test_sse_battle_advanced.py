@@ -6,6 +6,7 @@ that a broker binds, so reconnect recovery proves the production cursor and
 normalization path rather than a synthetic in-memory event bus.
 """
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import http.client
 import json
@@ -32,10 +33,10 @@ from codoxear.session_model import Session
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SSE_CONTROLLER = ROOT / "codoxear" / "static" / "app_sse.js"
-MESSAGE_FLOW_CONTROLLER = ROOT / "codoxear" / "static" / "app_message_flow.js"
-POLLING_HELPERS = ROOT / "codoxear" / "static" / "app_polling.js"
-TRANSCRIPT_HELPERS = ROOT / "codoxear" / "static" / "app_transcript.js"
+SSE_CONTROLLER = module_path("app_sse.js")
+MESSAGE_FLOW_CONTROLLER = module_path("app_message_flow.js")
+POLLING_HELPERS = module_path("app_polling.js")
+TRANSCRIPT_HELPERS = module_path("app_transcript.js")
 _CURSOR_SECRET = b"sse-battle-test-cursor-secret"
 
 

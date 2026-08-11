@@ -1,4 +1,3 @@
-(() => {
   "use strict";
 
   const VIEW_STATES = Object.freeze({
@@ -234,5 +233,4 @@
     });
   }
 
-  window.CodoxearTranscriptView = Object.freeze({ createTranscriptViewController, VIEW_STATES });
-})();
+export { createTranscriptViewController, VIEW_STATES };

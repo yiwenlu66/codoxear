@@ -5,6 +5,7 @@ browser module in a Node VM).  The commit comment on each test identifies the
 change whose user-visible contract it preserves.
 """
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import importlib.util
 import json
@@ -173,7 +174,7 @@ def test_busy_send_choice_now_later_cancel_are_distinct() -> None:
 
 # 1cdba92b — keyboard dispatch is scoped to the topmost nested dialog.
 def test_nested_dialog_keyboard_activates_inner_button() -> None:
-    source = (ROOT / "codoxear/static/app_modal.js").read_text(encoding="utf-8")
+    source = (module_path("app_modal.js")).read_text(encoding="utf-8")
     script = f"""
 const vm = require('vm'); const clicks = [];
 const button = {{ textContent: 'Proceed', disabled: false, hidden: false, getAttribute: () => null,

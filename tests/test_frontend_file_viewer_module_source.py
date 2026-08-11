@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER_SCRIPTS = [
-    ROOT / "codoxear" / "static" / name
+    module_path(name)
     for name in (
         "app_file_candidates.js", "app_file_candidate_state.js", "app_file_viewer_operations.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
         "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",

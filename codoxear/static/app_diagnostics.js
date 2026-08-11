@@ -1,4 +1,6 @@
-(function () {
+import * as CodoxearModal from "./app_modal.js";
+import * as CodoxearSessionHelpers from "./app_session_helpers.js";
+
   "use strict";
 
   // Details/diagnostics modal authority. Owns every piece of Details/diagnostics
@@ -8,22 +10,22 @@
   // no API), live sessions (fetch /diagnostics, ignore stale responses), and the
   // error path.
   //
-  // Pure helpers (sessionLaunchFailed) come from window.CodoxearSessionHelpers;
-  // modal focus/isolation helpers come from window.CodoxearModal. Everything
+  // Pure helpers (sessionLaunchFailed) come from CodoxearSessionHelpers;
+  // modal focus/isolation helpers come from CodoxearModal. Everything
   // that touches app-level runtime state (selected session, session index, API,
   // clipboard, toasts, recovery-text helpers, DOM element factory, modal
   // open/close coordination) is injected through createDiagnosticsController(options)
   // so the controller has no hidden coupling to app.js globals and can be exercised
   // in a VM with fakes.
 
-  const codoxearSessionHelpers = window.CodoxearSessionHelpers;
+  const codoxearSessionHelpers = CodoxearSessionHelpers;
   if (
     !codoxearSessionHelpers ||
     typeof codoxearSessionHelpers.sessionLaunchFailed !== "function"
   )
     throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = window.CodoxearModal;
+  const codoxearModal = CodoxearModal;
   if (
     !codoxearModal ||
     typeof codoxearModal.isModalTargetOpen !== "function" ||
@@ -301,5 +303,4 @@
     });
   }
 
-  window.CodoxearDiagnostics = Object.freeze({ createDiagnosticsController });
-})();
+export { createDiagnosticsController };

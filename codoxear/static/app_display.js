@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function defaultButtonTooltip(attrs = {}, node = null) {
@@ -263,23 +262,4 @@
     return "";
   }
 
-  window.CodoxearDisplay = Object.freeze({
-    defaultButtonTooltip,
-    fmtTs,
-    ymd,
-    dayLabel,
-    time24,
-    fmtBytes,
-    baseName,
-    shortSessionId,
-    sessionDisplayName,
-    fmtIdleAge,
-    fmtRelativeAge,
-    sessionTitleWithId,
-    recoveryPromptPreview,
-    fuzzyRecentCwdScore,
-    compactChatSearchSnippet,
-    chatSearchTranscriptHint,
-    iconSvg,
-  });
-})();
+export { defaultButtonTooltip, fmtTs, ymd, dayLabel, time24, fmtBytes, baseName, shortSessionId, sessionDisplayName, fmtIdleAge, fmtRelativeAge, sessionTitleWithId, recoveryPromptPreview, fuzzyRecentCwdScore, compactChatSearchSnippet, chatSearchTranscriptHint, iconSvg };

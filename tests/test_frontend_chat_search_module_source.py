@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,8 +6,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSCRIPT = ROOT / "codoxear" / "static" / "app_transcript.js"
-CHAT_SEARCH = ROOT / "codoxear" / "static" / "app_chat_search.js"
+TRANSCRIPT = module_path("app_transcript.js")
+CHAT_SEARCH = module_path("app_chat_search.js")
 
 
 def run_chat(body: str) -> dict:

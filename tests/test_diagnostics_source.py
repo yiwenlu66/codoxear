@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -7,8 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
-APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
+APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
+APP_DIAGNOSTICS_JS = module_path("app_diagnostics.js")
 
 
 def eval_diagnostics_helpers() -> dict:

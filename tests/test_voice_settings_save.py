@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,9 +6,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VOICE_SOURCE = (ROOT / "codoxear" / "static" / "app_voice.js").read_text(encoding="utf-8")
-VOICE_HELPERS_SOURCE = (ROOT / "codoxear" / "static" / "app_voice_helpers.js").read_text(encoding="utf-8")
-MODAL_SOURCE = (ROOT / "codoxear" / "static" / "app_modal.js").read_text(encoding="utf-8")
+VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
+VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 
 
 def run_voice_settings_save_harness() -> dict:

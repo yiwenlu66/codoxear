@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -288,6 +287,4 @@
     return Object.freeze({ refresh });
   }
 
-
-  window.CodoxearFileCandidates = Object.freeze({ createFileCandidateRefreshRuntime });
-})();
+export { createFileCandidateRefreshRuntime };

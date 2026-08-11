@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
+APP_MODAL_JS = module_path("app_modal.js")
 
 
 def test_nested_file_dialogs_own_keyboard_targets_before_file_viewer() -> None:

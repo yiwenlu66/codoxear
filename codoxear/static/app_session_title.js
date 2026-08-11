@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -51,5 +52,4 @@
     return Object.freeze({ syncTitleEditState });
   }
 
-  global.CodoxearSessionTitle = { createSessionTitleController };
-})(window);
+export { createSessionTitleController };

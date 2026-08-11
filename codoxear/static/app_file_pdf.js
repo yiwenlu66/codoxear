@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -277,6 +276,4 @@
     return Object.freeze({ render });
   }
 
-
-  window.CodoxearFilePdf = Object.freeze({ createFilePdfRenderRuntime });
-})();
+export { createFilePdfRenderRuntime };

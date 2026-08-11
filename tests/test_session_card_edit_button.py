@@ -3,15 +3,15 @@ for normal (non-failed, non-pending, non-lost) sessions and clicking it invokes 
 Uses Node VM to execute the real shipped modules.
 """
 import json, subprocess, sys, tempfile, textwrap
+from frontend_module_loader import module_path
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
 JS = textwrap.dedent("""
-    const fs = require('fs');
     const vm = require('vm');
-    const helpers = fs.readFileSync('codoxear/static/app_session_helpers.js', 'utf8');
-    const sessions = fs.readFileSync('codoxear/static/app_sessions.js', 'utf8');
+    const helpers = __HELPERS__;
+    const sessions = __SESSIONS__;
 
     function el(tag, attrs, children) {
       const node = { tag, attrs: attrs || {}, children: [], dataset: {}, style: {},
@@ -91,6 +91,9 @@ JS = textwrap.dedent("""
     }
     console.log(JSON.stringify(results));
     """)
+
+
+JS = JS.replace("__HELPERS__", json.dumps(module_path("app_session_helpers.js").read_text(encoding="utf-8"))).replace("__SESSIONS__", json.dumps(module_path("app_sessions.js").read_text(encoding="utf-8")))
 
 
 class TestSidebarEditButton:

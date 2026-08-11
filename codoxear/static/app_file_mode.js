@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -176,6 +175,4 @@
     return Object.freeze({ apply });
   }
 
-
-  window.CodoxearFileMode = Object.freeze({ createFileModeControlsRuntime });
-})();
+export { createFileModeControlsRuntime };

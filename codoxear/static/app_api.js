@@ -1,7 +1,8 @@
-(function () {
+import * as CodoxearUrls from "./app_application.js";
+
   "use strict";
 
-  const codoxearUrls = window.CodoxearUrls;
+  const codoxearUrls = CodoxearUrls;
   if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
 
   const perfWindow = 200;
@@ -93,10 +94,4 @@
     return obj;
   }
 
-  window.CodoxearPerf = Object.freeze({ pushSample, summarize });
-  window.CodoxearApi = Object.freeze({
-    api,
-    apiResponseNotModified,
-    clearApiCache,
-  });
-})();
+export { pushSample, summarize, api, apiResponseNotModified, clearApiCache };

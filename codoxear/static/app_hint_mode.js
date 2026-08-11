@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   const SESSION_HINTS = Object.freeze(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
@@ -294,5 +293,4 @@
     });
   }
 
-  window.CodoxearHintMode = Object.freeze({ createHintModeController });
-})();
+export { createHintModeController };

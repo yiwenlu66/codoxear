@@ -1,4 +1,6 @@
-(function () {
+import * as CodoxearPolling from "./app_polling.js";
+import * as CodoxearTranscript from "./app_transcript.js";
+
   "use strict";
 
   // Message data-flow authority. Owns confirmed sends, initial-tail/poll request
@@ -7,7 +9,7 @@
   // selection itself remains in app.js; selected id + generation are injected
   // so every asynchronous result is rejected after a selection change.
 
-  const codoxearPolling = window.CodoxearPolling;
+  const codoxearPolling = CodoxearPolling;
   if (
     !codoxearPolling ||
     typeof codoxearPolling.messagePollDelayMs !== "function" ||
@@ -16,7 +18,7 @@
   )
     throw new Error("Codoxear polling helpers failed to load");
 
-  const codoxearTranscript = window.CodoxearTranscript;
+  const codoxearTranscript = CodoxearTranscript;
   if (
     !codoxearTranscript ||
     typeof codoxearTranscript.startsTypingCountWindow !== "function" ||
@@ -764,5 +766,4 @@
     });
   }
 
-  window.CodoxearMessageFlow = Object.freeze({ createMessageFlowController });
-})();
+export { createMessageFlowController };

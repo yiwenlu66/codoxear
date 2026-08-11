@@ -1,5 +1,6 @@
+const global = window;
+
 /* File-picker menu, search, entry identity, and selection operations. */
-(function installCodoxearFilePickerOps(global) {
   "use strict";
   function requireObject(value, name) {
     if (!value || typeof value !== "object") throw new TypeError(`file picker dependency missing: ${name}`);
@@ -202,5 +203,5 @@ addAppEvent(document, "click", (e) => {
       },
     });
   }
-  global.CodoxearFilePickerOps = Object.freeze({ createFilePickerOpsController, createFilePickerOperationDelegates, bindFilePickerInteractions });
-})(window);
+
+export { createFilePickerOpsController, createFilePickerOperationDelegates, bindFilePickerInteractions };

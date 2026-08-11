@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   // Attachment staging authority. Owns the selected session's local staged-list
@@ -485,5 +484,4 @@
     });
   }
 
-  window.CodoxearAttachments = Object.freeze({ createAttachmentsController });
-})();
+export { createAttachmentsController };

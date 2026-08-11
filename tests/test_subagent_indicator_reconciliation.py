@@ -1,4 +1,5 @@
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import os
@@ -17,9 +18,9 @@ from codoxear.util import scan_active_cc_subagents
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_SESSIONS_JS = ROOT / "codoxear" / "static" / "app_sessions.js"
-APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
-APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
+APP_SESSIONS_JS = module_path("app_sessions.js")
+APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 CC_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 
 

@@ -6,6 +6,7 @@ state and delivery decisions instead of asserting implementation text.
 """
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -15,11 +16,11 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPOSER_SOURCE = (ROOT / "codoxear" / "static" / "app_composer.js").read_text(encoding="utf-8")
-ATTACHMENTS_SOURCE = (ROOT / "codoxear" / "static" / "app_attachments.js").read_text(encoding="utf-8")
-QUEUE_SOURCE = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
-MODAL_SOURCE = (ROOT / "codoxear" / "static" / "app_modal.js").read_text(encoding="utf-8")
-SESSION_HELPERS_SOURCE = (ROOT / "codoxear" / "static" / "app_session_helpers.js").read_text(encoding="utf-8")
+COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
+ATTACHMENTS_SOURCE = (module_path("app_attachments.js")).read_text(encoding="utf-8")
+QUEUE_SOURCE = (module_path("app_queue.js")).read_text(encoding="utf-8")
+MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
+SESSION_HELPERS_SOURCE = (module_path("app_session_helpers.js")).read_text(encoding="utf-8")
 
 
 def run_controller_harness() -> dict[str, Any]:

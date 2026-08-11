@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -200,6 +199,4 @@
     return Object.freeze({ handleButtonPress, loadCompatibleVideoPreview, loadCompatibleVideoPreviewDom, prepareCompatibleVideoPreview });
   }
 
-
-  window.CodoxearFileVideo = Object.freeze({ createFileVideoPreviewRuntime });
-})();
+export { createFileVideoPreviewRuntime };

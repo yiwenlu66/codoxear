@@ -97,6 +97,11 @@ update_snapshot || {
   exit 1
 }
 
+# Rebuild the browser artifact from the reviewed ESM source in the detached
+# snapshot; deployment never serves files from the editable checkout.
+npx esbuild "$DEPLOY_DIR/codoxear/static/app.js" --bundle --minify \
+  --outfile="$DEPLOY_DIR/codoxear/static/dist/app.bundle.js" --format=esm
+
 # Parse every exact immutable static asset before changing the installed package
 # or restarting the service. Grammar validation cannot detect a bare call whose
 # declaration was lost during extraction, so the reference checker examines the

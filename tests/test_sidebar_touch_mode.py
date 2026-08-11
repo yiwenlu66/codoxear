@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -7,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
+APP_VIEWPORT_JS = module_path("app_viewport.js")
 
 
 def eval_use_desktop_session_actions(query_matches: dict[str, bool]) -> bool:

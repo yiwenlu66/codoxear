@@ -1,4 +1,6 @@
-(function () {
+import * as CodoxearModal from "./app_modal.js";
+import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
+
   "use strict";
 
   // Voice / Settings / Notifications / Announcement orchestration authority.
@@ -26,10 +28,10 @@
   // can be exercised in a VM with fakes.
   //
   // Pure helpers (browserSupports*/base64UrlToUint8Array/isMobileNotificationDevice/
-  // notificationDeviceClass) come from window.CodoxearVoiceHelpers; the modal
-  // open-state + focus-restore helpers come from window.CodoxearModal.
+  // notificationDeviceClass) come from CodoxearVoiceHelpers; the modal
+  // open-state + focus-restore helpers come from CodoxearModal.
 
-  const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
+  const codoxearVoiceHelpers = CodoxearVoiceHelpers;
   if (
     !codoxearVoiceHelpers ||
     typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function" ||
@@ -42,7 +44,7 @@
   )
     throw new Error("Codoxear voice helpers failed to load");
 
-  const codoxearModal = window.CodoxearModal;
+  const codoxearModal = CodoxearModal;
   if (
     !codoxearModal ||
     typeof codoxearModal.isModalTargetOpen !== "function" ||
@@ -1332,5 +1334,4 @@
     });
   }
 
-  window.CodoxearVoice = Object.freeze({ createVoiceDom, createVoiceController });
-})();
+export { createVoiceDom, createVoiceController };

@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NETWORK_JS = ROOT / "codoxear" / "static" / "app_network.js"
+NETWORK_JS = module_path("app_network.js")
 
 
 def render_network_status(on_line: bool) -> dict:

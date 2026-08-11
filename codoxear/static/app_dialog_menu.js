@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireWindowTarget(value) {
@@ -75,6 +76,4 @@
     return Object.freeze({ positionDialogMenu });
   }
 
-  global.CodoxearDialogMenus = Object.freeze({ createDialogMenusController });
-  global.CodoxearDialogMenu = { createDialogMenuController };
-})(window);
+export { createDialogMenusController, createDialogMenuController };

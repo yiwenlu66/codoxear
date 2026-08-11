@@ -1,5 +1,6 @@
+const global = window;
+
 /* Confirmed send, staged attachments, queue coordination, and live delivery. */
-(function installCodoxearSendLifecycle(global) {
   "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`send lifecycle dependency missing: ${name}`);
@@ -211,5 +212,5 @@ function openMessageEventSource(sessionId = getSelected(), generation = getPollG
       openMessageEventSource,
     });
   }
-  global.CodoxearSendLifecycle = Object.freeze({ createSendLifecycleController });
-})(window);
+
+export { createSendLifecycleController };

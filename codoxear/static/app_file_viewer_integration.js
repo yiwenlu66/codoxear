@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -70,5 +71,4 @@
     });
   }
 
-  global.CodoxearFileViewerIntegration = Object.freeze({ createFileViewerIntegration });
-})(window);
+export { createFileViewerIntegration };

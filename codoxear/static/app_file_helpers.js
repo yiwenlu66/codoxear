@@ -1,7 +1,8 @@
-(function () {
+import * as CodoxearDisplay from "./app_display.js";
+
   "use strict";
 
-  const codoxearDisplay = window.CodoxearDisplay;
+  const codoxearDisplay = CodoxearDisplay;
   if (!codoxearDisplay || typeof codoxearDisplay.fmtBytes !== "function" || typeof codoxearDisplay.baseName !== "function") throw new Error("Codoxear display helpers failed to load");
 
   function listFromFilesField(val) {
@@ -419,38 +420,4 @@
     return btoaFunc(bin);
   }
 
-  window.CodoxearFileHelpers = Object.freeze({
-    listFromFilesField,
-    listFromFileRecords,
-    stripPathLocationSuffix,
-    isTextFileKind,
-    isDiffableFileKind,
-    blockedFileMessage,
-    formatPriorityOffset,
-    fileVideoPreviewErrorText,
-    fileSearchScore,
-    normalizeDraftFilePath,
-    filePickerFoldedSearchText,
-    filePickerOriginalRangeForFolded,
-    filePickerMatchRanges,
-    filePickerMatchRangesForQuery,
-    filePickerCandidateScore,
-    compareFilePickerEntries,
-    normalizeFileCandidateSource,
-    filePickerSectionLabel,
-    duplicateFilePickerPaths,
-    rawByteDuplicatePaths,
-    filePickerIdentityHint,
-    filePickerTitle,
-    positionAfterInsertedText,
-    fileEditorDeleteCommandForKey,
-    dataTransferHasFiles,
-    extractFilesFromClipboardData,
-    extractFilesFromDropData,
-    attachmentSafeStem,
-    attachmentExtensionLower,
-    attachmentIsLikelyHeic,
-    attachmentLooksLikeImage,
-    bytesToBase64,
-  });
-})();
+export { listFromFilesField, listFromFileRecords, stripPathLocationSuffix, isTextFileKind, isDiffableFileKind, blockedFileMessage, formatPriorityOffset, fileVideoPreviewErrorText, fileSearchScore, normalizeDraftFilePath, filePickerFoldedSearchText, filePickerOriginalRangeForFolded, filePickerMatchRanges, filePickerMatchRangesForQuery, filePickerCandidateScore, compareFilePickerEntries, normalizeFileCandidateSource, filePickerSectionLabel, duplicateFilePickerPaths, rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle, positionAfterInsertedText, fileEditorDeleteCommandForKey, dataTransferHasFiles, extractFilesFromClipboardData, extractFilesFromDropData, attachmentSafeStem, attachmentExtensionLower, attachmentIsLikelyHeic, attachmentLooksLikeImage, bytesToBase64 };

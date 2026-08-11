@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function mediaQueryMatches(query) {
@@ -46,12 +45,4 @@
     document.documentElement.style.setProperty("--vvBottom", `${visualBottom}px`);
   }
 
-  window.CodoxearViewport = Object.freeze({
-    isMobile,
-    prefersReducedMotion,
-    useDesktopSessionActions,
-    useTouchFileEditorControls,
-    isTextEntryElement,
-    updateAppHeightVar,
-  });
-})();
+export { isMobile, prefersReducedMotion, useDesktopSessionActions, useTouchFileEditorControls, isTextEntryElement, updateAppHeightVar };

@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -7,9 +8,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_VOICE_JS = ROOT / "codoxear" / "static" / "app_voice.js"
-APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
-APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
+APP_VOICE_JS = module_path("app_voice.js")
+APP_VOICE_HELPERS_JS = module_path("app_voice_helpers.js")
+APP_MODAL_JS = module_path("app_modal.js")
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 

@@ -1,5 +1,6 @@
+const global = window;
+
 /* Session display authority: status, context pressure, and interrupt visibility. */
-(function installCodoxearSessionDisplay(global) {
   "use strict";
 
   function requireFunction(value, name) {
@@ -80,5 +81,4 @@
     return Object.freeze({ renderStatusChip, setStatus, setContext });
   }
 
-  global.CodoxearSessionDisplay = Object.freeze({ createSessionDisplayController });
-})(window);
+export { createSessionDisplayController };

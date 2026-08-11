@@ -1,6 +1,7 @@
 """Behavioral state-machine tests for the transcript view authority."""
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VIEW_JS = ROOT / "codoxear/static/app_transcript_view.js"
+VIEW_JS = module_path("app_transcript_view.js")
 
 
 def run_node(script: str) -> dict:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -15,9 +16,9 @@ from codoxear.voice_routes import handle_voice_get_route
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VOICE_SOURCE = (ROOT / "codoxear" / "static" / "app_voice.js").read_text(encoding="utf-8")
-VOICE_HELPERS_SOURCE = (ROOT / "codoxear" / "static" / "app_voice_helpers.js").read_text(encoding="utf-8")
-MODAL_SOURCE = (ROOT / "codoxear" / "static" / "app_modal.js").read_text(encoding="utf-8")
+VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
+VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 
 
 class _RouteHandler:

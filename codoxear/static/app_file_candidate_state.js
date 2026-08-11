@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function requireFunction(value, name) {
@@ -219,5 +218,4 @@
     });
   }
 
-  window.CodoxearFileCandidateState = Object.freeze({ createFileCandidateStateRuntime });
-})();
+export { createFileCandidateStateRuntime };

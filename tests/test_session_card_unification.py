@@ -8,6 +8,7 @@ and metadata while retaining their intentionally distinct interaction DOM.
 import json
 import subprocess
 import textwrap
+from frontend_module_loader import module_path
 from pathlib import Path
 
 
@@ -16,9 +17,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 HARNESS = textwrap.dedent(
     r"""
-    const fs = require("fs");
     const vm = require("vm");
-    const source = fs.readFileSync("codoxear/static/app_sessions.js", "utf8");
+    const source = __SESSIONS__;
 
     function classes(node) {
       return String(node.attrs.class || "").split(/\s+/).filter(Boolean).sort();
@@ -99,6 +99,8 @@ HARNESS = textwrap.dedent(
     process.stdout.write(JSON.stringify({ touch: renderVariant(true), desktop: renderVariant(false) }));
     """
 )
+
+HARNESS = HARNESS.replace("__SESSIONS__", json.dumps(module_path("app_sessions.js").read_text(encoding="utf-8")))
 
 
 def run_harness() -> dict:

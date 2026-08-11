@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function conversationCopyParts(events) {
@@ -57,9 +56,4 @@
     return `Conversation too large to copy${limit ? ` (max ${limit})` : ""}. Use search or copy a smaller range.`;
   }
 
-  window.CodoxearConversationCopy = Object.freeze({
-    formatConversationForCopy,
-    formatConversationForCopyResult,
-    transcriptExportTooLargeCopyMessage,
-  });
-})();
+export { formatConversationForCopy, formatConversationForCopyResult, transcriptExportTooLargeCopyMessage };

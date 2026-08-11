@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -11,15 +12,15 @@ STATIC = ROOT / "codoxear" / "static"
 
 def run_vm(body: str) -> dict:
     sources = {
-        "TOAST": STATIC / "app_application_composition.js",
-        "MODAL": STATIC / "app_modal.js",
-        "HELPERS": STATIC / "app_session_helpers.js",
-        "QUEUE": STATIC / "app_queue.js",
-        "DIAGNOSTICS": STATIC / "app_diagnostics.js",
-        "VOICE_HELPERS": STATIC / "app_voice_helpers.js",
-        "VOICE": STATIC / "app_voice.js",
+        "TOAST": module_path("app_application_composition.js"),
+        "MODAL": module_path("app_modal.js"),
+        "HELPERS": module_path("app_session_helpers.js"),
+        "QUEUE": module_path("app_queue.js"),
+        "DIAGNOSTICS": module_path("app_diagnostics.js"),
+        "VOICE_HELPERS": module_path("app_voice_helpers.js"),
+        "VOICE": module_path("app_voice.js"),
         "FILE_VIEWER_SCRIPTS": [
-            STATIC / name
+            module_path(name)
             for name in (
                 "app_file_candidates.js", "app_file_candidate_state.js", "app_file_viewer_operations.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
                 "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",

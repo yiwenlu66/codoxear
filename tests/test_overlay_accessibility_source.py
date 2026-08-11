@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,9 +7,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODAL = ROOT / "codoxear" / "static" / "app_modal.js"
-VOICE = ROOT / "codoxear" / "static" / "app_voice.js"
-VOICE_HELPERS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
+MODAL = module_path("app_modal.js")
+VOICE = module_path("app_voice.js")
+VOICE_HELPERS = module_path("app_voice_helpers.js")
 
 
 def run_modal_behavior() -> dict:

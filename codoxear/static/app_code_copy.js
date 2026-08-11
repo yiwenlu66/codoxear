@@ -1,4 +1,3 @@
-(() => {
   "use strict";
 
   function requireFunction(value, name) {
@@ -87,10 +86,4 @@
     });
   }
 
-  window.CodoxearCodeCopy = Object.freeze({
-    createCodeBlockCopyRuntime,
-    codeCopyButtonFromEvent,
-    codePreFromTarget,
-    codeTextForCopyButton,
-  });
-})();
+export { createCodeBlockCopyRuntime, codeCopyButtonFromEvent, codePreFromTarget, codeTextForCopyButton };

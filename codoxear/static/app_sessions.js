@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function requireFunction(value, name) {
@@ -343,6 +342,4 @@
     });
   }
 
-
-  window.CodoxearSessions = Object.freeze({ createSessionsController });
-})();
+export { createSessionsController };

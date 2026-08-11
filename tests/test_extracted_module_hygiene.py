@@ -1,6 +1,7 @@
 """Runtime API checks for focused frontend extraction modules."""
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -15,7 +16,7 @@ EXTRACTED_MODULES = {
     "app_session_edit.js": "CodoxearSessionEdit",
     "app_unattended.js": "CodoxearUnattended",
 }
-if (STATIC / "app_attachments.js").is_file():
+if (module_path("app_attachments.js")).is_file():
     EXTRACTED_MODULES["app_attachments.js"] = "CodoxearAttachments"
 
 
@@ -55,7 +56,7 @@ def _load_exports(path: Path, global_name: str) -> dict[str, str]:
 
 def test_extracted_modules_publish_callable_public_apis() -> None:
     for filename, global_name in EXTRACTED_MODULES.items():
-        exports = _load_exports(STATIC / filename, global_name)
+        exports = _load_exports(module_path(filename), global_name)
         assert exports, f"{filename} did not publish {global_name}"
         assert set(exports.values()) == {"function"}, (
             f"{filename} has a non-callable public API: {exports}"

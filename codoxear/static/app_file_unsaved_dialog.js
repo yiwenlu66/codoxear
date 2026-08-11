@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -219,6 +218,4 @@
     return Object.freeze({ focusInitialControl, hide, promptChoice, syncMode });
   }
 
-
-  window.CodoxearFileUnsavedDialog = Object.freeze({ createFileUnsavedDialogRuntime });
-})();
+export { createFileUnsavedDialogRuntime };

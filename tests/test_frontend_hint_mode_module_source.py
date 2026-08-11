@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -7,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_HINT_MODE_JS = ROOT / "codoxear" / "static" / "app_hint_mode.js"
+APP_HINT_MODE_JS = module_path("app_hint_mode.js")
 
 
 def run_node_json(js: str) -> dict:

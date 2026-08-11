@@ -1,7 +1,8 @@
-(function () {
+import * as CodoxearFileHelpers from "./app_file_helpers.js";
+
   "use strict";
 
-  const fileHelpers = window.CodoxearFileHelpers;
+  const fileHelpers = CodoxearFileHelpers;
   if (
     !fileHelpers ||
     typeof fileHelpers.normalizeDraftFilePath !== "function" ||
@@ -962,23 +963,4 @@
     });
   }
 
-  window.CodoxearFilePicker = Object.freeze({
-    appendDraftFileMenuItem,
-    appendFilePickerEntryItem,
-    appendFilePickerGitStatusRow,
-    appendFilePickerSection,
-    appendFilePickerStatusRow,
-    appendHighlightedFileMenuPath,
-    createEntryRuntime,
-    createInputRuntime,
-    createMenuDomRuntime,
-    createMenuRenderRuntime,
-    createMenuState,
-    createSearchState,
-    localFilePickerSearchEntries,
-    normalizeSamePathFilePickerScores,
-    pendingSessionPathEntry,
-    prependPendingSessionPathEntry,
-    visibleFilePickerEntries,
-  });
-})();
+export { appendDraftFileMenuItem, appendFilePickerEntryItem, appendFilePickerGitStatusRow, appendFilePickerSection, appendFilePickerStatusRow, appendHighlightedFileMenuPath, createEntryRuntime, createInputRuntime, createMenuDomRuntime, createMenuRenderRuntime, createMenuState, createSearchState, localFilePickerSearchEntries, normalizeSamePathFilePickerScores, pendingSessionPathEntry, prependPendingSessionPathEntry, visibleFilePickerEntries };

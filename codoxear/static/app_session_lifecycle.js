@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -393,6 +394,4 @@
     });
   }
 
-  global.CodoxearInterrupt = Object.freeze({ createInterruptController });
-  global.CodoxearSessionLifecycle = Object.freeze({ createSessionLifecycleController });
-})(window);
+export { createInterruptController, createSessionLifecycleController };

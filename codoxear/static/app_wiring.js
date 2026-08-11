@@ -1,5 +1,6 @@
+const global = window;
+
 /* Controller option factories: one named contract per controller/runtime seam. */
-(function installCodoxearWiring(global) {
   "use strict";
 
   function select(deps, keys) {
@@ -87,5 +88,4 @@
     });
   }
 
-  global.CodoxearWiring = Object.freeze({ createWiring });
-})(window);
+export { createWiring };

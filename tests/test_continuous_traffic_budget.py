@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLLING_SOURCE = (ROOT / "codoxear" / "static" / "app_polling.js").read_text(encoding="utf-8")
-API_SOURCE = (ROOT / "codoxear" / "static" / "app_api.js").read_text(encoding="utf-8")
+POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
+API_SOURCE = (module_path("app_api.js")).read_text(encoding="utf-8")
 
 
 def run_idle_traffic_window() -> dict:

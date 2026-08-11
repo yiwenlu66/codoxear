@@ -5,6 +5,7 @@ contract before browser-only post-processing (image hydration and table wrapping
 """
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -13,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_MARKDOWN_JS = module_path("app_markdown.js")
 MARKED_JS = ROOT / "codoxear" / "static" / "vendor" / "marked.min.js"
 
 

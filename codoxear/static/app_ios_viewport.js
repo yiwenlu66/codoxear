@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -141,5 +142,4 @@
     });
   }
 
-  global.CodoxearIOSViewport = { createIOSViewportController };
-})(window);
+export { createIOSViewportController };

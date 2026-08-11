@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import tempfile
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_ATTACHMENTS_JS = ROOT / "codoxear" / "static" / "app_attachments.js"
+APP_ATTACHMENTS_JS = module_path("app_attachments.js")
 
 
 def run_attachments(body: str) -> dict:

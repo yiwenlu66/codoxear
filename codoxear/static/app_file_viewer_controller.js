@@ -1,4 +1,7 @@
-(function () {
+import * as CodoxearFileCandidateState from "./app_file_candidate_state.js";
+import * as CodoxearFileHelpers from "./app_file_helpers.js";
+import * as CodoxearFileViewerOperations from "./app_file_viewer_operations.js";
+
   "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`);
@@ -55,7 +58,7 @@
     const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
     const applyFileEditorSelection = requireFunction(deps && deps.applyFileEditorSelection, "applyFileEditorSelection");
     const isCollapsedFileSelection = requireFunction(deps && deps.isCollapsedFileSelection, "isCollapsedFileSelection");
-    const fileHelpers = window.CodoxearFileHelpers || {};
+    const fileHelpers = CodoxearFileHelpers || {};
     const positionAfterInsertedText =
       typeof (deps && deps.positionAfterInsertedText) === "function"
         ? deps.positionAfterInsertedText
@@ -247,7 +250,7 @@
     function currentActiveFileLine() {
       return activeFileLine;
     }
-    const { createFileCandidateStateRuntime } = window.CodoxearFileCandidateState;
+    const { createFileCandidateStateRuntime } = CodoxearFileCandidateState;
     const candidateState = createFileCandidateStateRuntime({
       normalizeFileApiPath,
       normalizeLineNumber,
@@ -547,7 +550,7 @@
     function activeFileEditModeAllowedInCurrentView() {
       return activeFileEditorCapabilities().editModeAllowedInCurrentView;
     }
-    const { createFileViewerOperationsRuntime } = window.CodoxearFileViewerOperations;
+    const { createFileViewerOperationsRuntime } = CodoxearFileViewerOperations;
     const operations = createFileViewerOperationsRuntime({ ...deps,
       normalizeSessionId, isUnavailable, blockUnavailableFileAction,
       currentFileViewMode, currentFileNonDiffMode, setFileViewMode, currentFileEditMode, currentFileEditorKind, setFileEditorKind, setFileEditMode,
@@ -734,5 +737,5 @@
       renderDraftFileOpenError,
     });
   }
-  window.CodoxearFileViewerController = Object.freeze({ createFileViewerController });
-})();
+
+export { createFileViewerController };

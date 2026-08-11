@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_MARKDOWN_JS = module_path("app_markdown.js")
 
 
 def run_renderer_with_marked_stub(markdown: str) -> tuple[str, str]:

@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,9 +6,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DISPLAY = ROOT / "codoxear" / "static" / "app_display.js"
-HELPERS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
-PICKER = ROOT / "codoxear" / "static" / "app_file_picker.js"
+DISPLAY = module_path("app_display.js")
+HELPERS = module_path("app_file_helpers.js")
+PICKER = module_path("app_file_picker.js")
 
 
 def run_picker(body: str) -> dict:

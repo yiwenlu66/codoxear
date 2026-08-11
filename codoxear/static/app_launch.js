@@ -1,9 +1,11 @@
-(function () {
+import * as CodoxearStorage from "./app_storage.js";
+import * as CodoxearUrls from "./app_application.js";
+
   "use strict";
 
-  const codoxearUrls = window.CodoxearUrls;
+  const codoxearUrls = CodoxearUrls;
   if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
-  const codoxearStorage = window.CodoxearStorage;
+  const codoxearStorage = CodoxearStorage;
   if (
     !codoxearStorage ||
     typeof codoxearStorage.getItem !== "function" ||
@@ -270,31 +272,4 @@
     return text;
   }
 
-  window.CodoxearLaunch = Object.freeze({
-    lastProviderKey,
-    lastProviderModelKey,
-    loadRememberedBackendChoice,
-    rememberBackendChoice,
-    loadRememberedProviderChoice,
-    rememberProviderChoice,
-    loadRememberedProviderModelChoice,
-    rememberedProviderModelAbsentChoice,
-    rememberProviderModelChoice,
-    normalizeAgentBackendName,
-    agentBackendDisplayName,
-    agentBackendLogoPath,
-    sessionAgentBackend,
-    legacyCodexLaunchDefaults,
-    emptyPiLaunchDefaults,
-    emptyCcLaunchDefaults,
-    defaultsForAgentBackend,
-    providerChoicesForBackend,
-    reasoningChoicesForBackend,
-    backendSupportsFast,
-    providerChoiceToSettings,
-    sessionProviderChoice,
-    modelOptionMatches,
-    providerModelDisplay,
-    redactedLaunchErrorText,
-  });
-})();
+export { lastProviderKey, lastProviderModelKey, loadRememberedBackendChoice, rememberBackendChoice, loadRememberedProviderChoice, rememberProviderChoice, loadRememberedProviderModelChoice, rememberedProviderModelAbsentChoice, rememberProviderModelChoice, normalizeAgentBackendName, agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults, emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend, reasoningChoicesForBackend, backendSupportsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches, providerModelDisplay, redactedLaunchErrorText };

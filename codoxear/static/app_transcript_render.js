@@ -1,5 +1,14 @@
+import * as CodoxearChatNavigation from "./app_chat_navigation.js";
+import * as CodoxearChatSearch from "./app_chat_search.js";
+import * as CodoxearHintMode from "./app_hint_mode.js";
+import * as CodoxearMessageIdentity from "./app_transcript.js";
+import * as CodoxearMessageRows from "./app_message_rows.js";
+import * as CodoxearTranscript from "./app_transcript.js";
+import * as CodoxearTranscriptView from "./app_transcript_view.js";
+
+const global = window;
+
 /* Transcript rendering, viewport state, search wiring, and row projection. */
-(function installCodoxearTranscriptRender(global) {
   "use strict";
 
   function requireFunction(value, name) {
@@ -128,8 +137,8 @@ function setOlderState({ hasMore, isLoading }) {
   getHistoryController().olderLoadRuntime.setState({ hasMore, isLoading });
 }
 
-const codoxearMessageRows = window.CodoxearMessageRows;
-const codoxearTranscriptView = window.CodoxearTranscriptView;
+const codoxearMessageRows = CodoxearMessageRows;
+const codoxearTranscriptView = CodoxearTranscriptView;
 if (
   !codoxearMessageRows ||
   !codoxearTranscriptView ||
@@ -257,7 +266,7 @@ const navigationPulseController = codoxearNavigationPulse.createNavigationPulseC
 }));
 
 const hintModeController = (function instantiateHintModeController() {
-  const codoxearHintMode = window.CodoxearHintMode;
+  const codoxearHintMode = CodoxearHintMode;
   if (!codoxearHintMode || typeof codoxearHintMode.createHintModeController !== "function")
     throw new Error("Codoxear hint mode controller failed to load");
   return codoxearHintMode.createHintModeController(wiring.createHintModeOptions({
@@ -357,7 +366,7 @@ addAppEvent(document, "keydown", (e) => {
 // helpers exist; it wires the prev/next button handlers and the
 // document keydown listener itself. Chat search internals stay here.
 const chatNavigationController = (function instantiateChatNavigationController() {
-  const codoxearChatNavigation = window.CodoxearChatNavigation;
+  const codoxearChatNavigation = CodoxearChatNavigation;
   if (!codoxearChatNavigation || typeof codoxearChatNavigation.createChatNavigationController !== "function")
     throw new Error("Codoxear chat navigation controller failed to load");
   return codoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
@@ -438,12 +447,12 @@ function stepChatSearch(delta) {
 // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
 // wired via chatNavigationController above.
 
-const codoxearTranscript = window.CodoxearTranscript;
+const codoxearTranscript = CodoxearTranscript;
 if (!codoxearTranscript || typeof codoxearTranscript.createTranscriptSlotRuntime !== "function")
   throw new Error("Codoxear transcript helpers failed to load");
 
 chatSearchController = (function instantiateChatSearchController() {
-  const codoxearChatSearch = window.CodoxearChatSearch;
+  const codoxearChatSearch = CodoxearChatSearch;
   if (!codoxearChatSearch || typeof codoxearChatSearch.createChatSearchController !== "function")
     throw new Error("Codoxear chat search controller failed to load");
   return codoxearChatSearch.createChatSearchController(wiring.createChatSearchOptions({
@@ -723,7 +732,7 @@ function messageRowDeps() {
   };
 }
 
-      const codoxearMessageIdentity = window.CodoxearMessageIdentity;
+      const codoxearMessageIdentity = CodoxearMessageIdentity;
       if (
 !codoxearMessageIdentity ||
 typeof codoxearMessageIdentity.normalizeTextForPendingMatch !== "function" ||
@@ -873,6 +882,4 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
     });
   }
 
-  global.CodoxearNavigationPulse = Object.freeze({ createNavigationPulseController });
-  global.CodoxearTranscriptRender = Object.freeze({ createTranscriptRenderController });
-})(window);
+export { createNavigationPulseController, createTranscriptRenderController };

@@ -1,4 +1,6 @@
-(function () {
+import * as CodoxearModal from "./app_modal.js";
+import * as CodoxearSessionHelpers from "./app_session_helpers.js";
+
   "use strict";
 
   // Queue orchestration authority. Owns every piece of queue state that used to
@@ -8,14 +10,14 @@
   // logic, the queue viewer modal behavior, and the rendered queue list.
   //
   // Pure helpers (normalizeQueueItems + the launch/recovery predicates) come
-  // from window.CodoxearSessionHelpers; modal focus/isolation helpers come from
-  // window.CodoxearModal. Everything that touches app-level runtime state
+  // from CodoxearSessionHelpers; modal focus/isolation helpers come from
+  // CodoxearModal. Everything that touches app-level runtime state
   // (selected session, session index, polling, recovery UI, toasts, auth loss,
   // modal open/close coordination, DOM element factory) is injected through
   // createQueueController(options) so the controller has no hidden coupling to
   // app.js globals and can be exercised in a VM with fakes.
 
-  const codoxearSessionHelpers = window.CodoxearSessionHelpers;
+  const codoxearSessionHelpers = CodoxearSessionHelpers;
   if (
     !codoxearSessionHelpers ||
     typeof codoxearSessionHelpers.normalizeQueueItems !== "function" ||
@@ -26,7 +28,7 @@
   )
     throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = window.CodoxearModal;
+  const codoxearModal = CodoxearModal;
   if (
     !codoxearModal ||
     typeof codoxearModal.isModalTargetOpen !== "function" ||
@@ -593,5 +595,5 @@
 
   const queueApi = { createQueueController };
   Object.defineProperty(queueApi, "createQueueDom", { value: createQueueDom, enumerable: false });
-  window.CodoxearQueue = Object.freeze(queueApi);
-})();
+
+export { createQueueController, createQueueDom };

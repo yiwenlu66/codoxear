@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function optionalLocalStorage() {
@@ -42,10 +41,4 @@
     }
   }
 
-  window.CodoxearStorage = Object.freeze({
-    optionalLocalStorage,
-    getItem,
-    setItem,
-    removeItem,
-  });
-})();
+export { optionalLocalStorage, getItem, setItem, removeItem };

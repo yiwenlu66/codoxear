@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -11,7 +12,7 @@ STATIC = ROOT / "codoxear" / "static"
 
 def run_controller_harness() -> dict:
     sources = {
-        name: (STATIC / name).read_text(encoding="utf-8")
+        name: module_path(name).read_text(encoding="utf-8")
         for name in (
             "app_session_title.js",
             "app_file_unsaved.js",
@@ -188,7 +189,7 @@ def test_extracted_controller_behavior() -> None:
 
 
 def run_file_viewer_integration_harness() -> dict:
-    source = (STATIC / "app_file_viewer_integration.js").read_text(encoding="utf-8")
+    source = (module_path("app_file_viewer_integration.js")).read_text(encoding="utf-8")
     program = textwrap.dedent(
         """
         const vm = require("vm");

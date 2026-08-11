@@ -1,4 +1,5 @@
-(function () {
+import * as CodoxearUrls from "./app_application.js";
+
   "use strict";
 
   // KaTeX loads independently because rendered transcript rows can arrive before
@@ -19,7 +20,7 @@
     document.head.appendChild(script);
   })();
 
-  const codoxearUrls = window.CodoxearUrls;
+  const codoxearUrls = CodoxearUrls;
   if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
   function resolveAppUrl(path) {
     return codoxearUrls.resolveAppUrl(path);
@@ -625,17 +626,4 @@
     });
   }
 
-  window.CodoxearMarkdown = Object.freeze({
-    escapeHtml,
-    mdToHtml,
-    mdToHtmlCached,
-    normalizeLineNumber,
-    parseLocalFileRef,
-    isMarkdownPreviewable,
-    markdownPreviewHtml,
-    chatMarkdownHtmlCached,
-    prepareImageForDisplay,
-    rememberImageDimensions,
-    hydrateMarkedImages,
-  });
-})();
+export { escapeHtml, mdToHtml, mdToHtmlCached, normalizeLineNumber, parseLocalFileRef, isMarkdownPreviewable, markdownPreviewHtml, chatMarkdownHtmlCached, prepareImageForDisplay, rememberImageDimensions, hydrateMarkedImages };

@@ -1,5 +1,8 @@
+import * as CodoxearTranscript from "./app_transcript.js";
+
+const global = window;
+
 /* Older-message paging, cursor state, and transcript lifecycle rendering. */
-(function installCodoxearMessageHistory(global) {
   "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`message history dependency missing: ${name}`);
@@ -32,7 +35,7 @@
     const kickPoll = (delay = 0) => getSendLifecycleController().kickPoll(delay);
     let pendingHashSessionId = "";
     let pendingHashSessionSelectInFlight = false;
-    const olderLoadRuntime = window.CodoxearTranscript.createOlderLoadRuntime(wiring.createOlderLoadOptions({
+    const olderLoadRuntime = CodoxearTranscript.createOlderLoadRuntime(wiring.createOlderLoadOptions({
       olderWrap, olderButton: olderBtn, olderError, olderErrorText, AbortControllerCtor: AbortController,
       nowMs: () => performance.now(), autoCooldownMs: OLDER_AUTO_COOLDOWN_MS,
     }));
@@ -60,7 +63,7 @@
       return OLDER_PAGE_LIMIT;
     }
 
-    const codoxearTranscript = window.CodoxearTranscript;
+    const codoxearTranscript = CodoxearTranscript;
     if (
       !codoxearTranscript ||
       typeof codoxearTranscript.normalizeTailEvent !== "function" ||
@@ -417,5 +420,5 @@ function maybeSelectPendingHashSession() {
       applyLiveMessageData, pollMessages, jumpToLatest, rememberPendingHashSession, maybeSelectPendingHashSession,
     });
   }
-  global.CodoxearMessageHistory = Object.freeze({ createMessageHistoryController });
-})(window);
+
+export { createMessageHistoryController };

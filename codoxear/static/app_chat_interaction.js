@@ -1,5 +1,10 @@
+import * as CodoxearMessageHistory from "./app_message_history.js";
+import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
+import * as CodoxearTranscriptRender from "./app_transcript_render.js";
+
+const global = window;
+
 /* Chat interaction composition: transcript rendering, message history, and send lifecycle. */
-(function installCodoxearChatInteraction(global) {
   "use strict";
 
   function requireFunction(value, name) {
@@ -23,9 +28,9 @@
       fmtRelativeAge, sidebarEffortCode, sidebarModelText, baseName, sessionIsFast, agentBackendLogoPath,
       agentBackendDisplayName, sessionAgentBackend, sessionLaunchIcon, sessionLaunchLabel, confirmApp, api,
       setToast, sessionProviderChoice, renderStatusChip, queueViewer, refreshQueueViewer } = options;
-    const transcriptModule = options.codoxearTranscriptRender || window.CodoxearTranscriptRender;
-    const historyModule = options.codoxearMessageHistory || window.CodoxearMessageHistory;
-    const sendModule = options.codoxearSendLifecycle || window.CodoxearSendLifecycle;
+    const transcriptModule = options.codoxearTranscriptRender || CodoxearTranscriptRender;
+    const historyModule = options.codoxearMessageHistory || CodoxearMessageHistory;
+    const sendModule = options.codoxearSendLifecycle || CodoxearSendLifecycle;
     if (!transcriptModule || typeof transcriptModule.createTranscriptRenderController !== "function")
       throw new Error("Codoxear transcript render controller failed to load");
     if (!historyModule || typeof historyModule.createMessageHistoryController !== "function")
@@ -123,5 +128,4 @@
     });
   }
 
-  global.CodoxearChatInteraction = Object.freeze({ createChatInteractionController });
-})(window);
+export { createChatInteractionController };

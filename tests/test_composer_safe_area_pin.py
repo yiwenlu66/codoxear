@@ -8,6 +8,7 @@ matching stylesheet text.
 """
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 from html.parser import HTMLParser
 import json
@@ -21,7 +22,7 @@ from tinycss2 import parse_declaration_list, parse_rule_list, parse_stylesheet, 
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
-APP_SHELL_JS = ROOT / "codoxear" / "static" / "app_shell.js"
+APP_SHELL_JS = module_path("app_shell.js")
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 

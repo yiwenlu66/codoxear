@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -225,6 +224,4 @@
     return Object.freeze({ clearImage, clearVideo, clearVideoHandlers, reset, setSurface, showImage, showVideo });
   }
 
-
-  window.CodoxearFileRenderSurface = Object.freeze({ createFileRenderSurfaceRuntime });
-})();
+export { createFileRenderSurfaceRuntime };

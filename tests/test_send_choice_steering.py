@@ -1,6 +1,7 @@
 """Behavioral pin for steering a running session from the send-choice dialog."""
 
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 import json
 import subprocess
@@ -11,10 +12,10 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLLING_SOURCE = (ROOT / "codoxear" / "static" / "app_polling.js").read_text(encoding="utf-8")
-TRANSCRIPT_SOURCE = (ROOT / "codoxear" / "static" / "app_transcript.js").read_text(encoding="utf-8")
-MESSAGE_FLOW_SOURCE = (ROOT / "codoxear" / "static" / "app_message_flow.js").read_text(encoding="utf-8")
-COMPOSER_SOURCE = (ROOT / "codoxear" / "static" / "app_composer.js").read_text(encoding="utf-8")
+POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
+TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
+MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
+COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 
 
 def _run_node(script: str) -> dict[str, Any]:

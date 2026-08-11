@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   const DEFAULT_RETRY_MS = 1000;
@@ -106,5 +105,4 @@
     return Object.freeze({ close, open, resume });
   }
 
-  window.CodoxearSse = Object.freeze({ DEFAULT_RETRY_MS, createMessageEventSourceController });
-})();
+export { DEFAULT_RETRY_MS, createMessageEventSourceController };

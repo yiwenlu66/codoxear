@@ -1,4 +1,5 @@
-(function () {
+import * as CodoxearQueue from "./app_queue.js";
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -352,7 +353,7 @@
     root.appendChild(appConfirmBackdrop);
     root.appendChild(appConfirm);
 
-    const codoxearQueue = window.CodoxearQueue;
+    const codoxearQueue = CodoxearQueue;
     if (!codoxearQueue || typeof codoxearQueue.createQueueDom !== "function")
       throw new Error("Codoxear queue DOM failed to load");
     const {
@@ -608,5 +609,4 @@
     });
   }
 
-  window.CodoxearShell = Object.freeze({ createShellDOM, createApplicationModalDOM });
-})();
+export { createShellDOM, createApplicationModalDOM };

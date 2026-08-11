@@ -1,5 +1,6 @@
+const global = window;
+
 /* File editor save/unsaved-dialog keyboard and modal coordination. */
-(function installCodoxearFileEditorOps(global) {
   "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file editor dependency missing: ${name}`);
@@ -67,5 +68,5 @@
       if (newSessionDialogController.isOpen()) newSessionDialogController.close();
     });
   }
-  global.CodoxearFileEditorOps = Object.freeze({ createFileEditorOpsController });
-})(window);
+
+export { createFileEditorOpsController };

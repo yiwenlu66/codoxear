@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
 
@@ -167,6 +166,4 @@
     return Object.freeze({ download });
   }
 
-
-  window.CodoxearFileDownload = Object.freeze({ createFileDownloadRuntime });
-})();
+export { createFileDownloadRuntime };

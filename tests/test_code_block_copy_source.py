@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_CODE_COPY_JS = ROOT / "codoxear" / "static" / "app_code_copy.js"
+APP_CODE_COPY_JS = module_path("app_code_copy.js")
 
 
 def eval_code_copy_runtime() -> dict:

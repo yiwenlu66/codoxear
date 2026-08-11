@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function normalizeTextForPendingMatch(s) {
@@ -1546,39 +1545,4 @@
     });
   }
 
-  window.CodoxearPendingUser = Object.freeze({ createPendingUserController });
-  window.CodoxearMessageIdentity = Object.freeze({
-    normalizeTextForPendingMatch,
-    pendingMatchKey,
-    eventKey,
-    chatAssistantDedupeKey,
-  });
-
-  window.CodoxearTranscript = Object.freeze({
-    normalizeTailEvent,
-    normalizeTranscriptState,
-    transcriptKey,
-    historyCursorFromPayload,
-    hasUsableOlderHistory,
-    transcriptSnapshotFromData,
-    transcriptIdentityFromData,
-    tailCacheMatchesSession,
-    rememberTailSnapshot,
-    appendTailSnapshotEvents,
-    createTranscriptSlotRuntime,
-    isAgentInternalDeliveryUserEvent,
-    hasHumanOriginatedUserEvent,
-    startsTypingCountWindow,
-    thinkingModeForTokens,
-    createTypingRowRuntime,
-    normalizedTranscriptEvents,
-    firstUnreadMessageRow,
-    createTranscriptRenderRuntime,
-    createTranscriptDomRuntime,
-    createTranscriptScrollRuntime,
-    createTranscriptEventRuntime,
-    createOlderLoadRuntime,
-    createLoadedChatSearchRuntime,
-    createChatSearchAllRuntime,
-  });
-})();
+export { createPendingUserController, normalizeTextForPendingMatch, pendingMatchKey, eventKey, chatAssistantDedupeKey, normalizeTailEvent, normalizeTranscriptState, transcriptKey, historyCursorFromPayload, hasUsableOlderHistory, transcriptSnapshotFromData, transcriptIdentityFromData, tailCacheMatchesSession, rememberTailSnapshot, appendTailSnapshotEvents, createTranscriptSlotRuntime, isAgentInternalDeliveryUserEvent, hasHumanOriginatedUserEvent, startsTypingCountWindow, thinkingModeForTokens, createTypingRowRuntime, normalizedTranscriptEvents, firstUnreadMessageRow, createTranscriptRenderRuntime, createTranscriptDomRuntime, createTranscriptScrollRuntime, createTranscriptEventRuntime, createOlderLoadRuntime, createLoadedChatSearchRuntime, createChatSearchAllRuntime };

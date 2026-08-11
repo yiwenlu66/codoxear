@@ -1,5 +1,11 @@
+import * as CodoxearFileEditorOps from "./app_file_editor_ops.js";
+import * as CodoxearFilePickerOps from "./app_file_picker_ops.js";
+import * as CodoxearFileUnsaved from "./app_file_unsaved.js";
+import * as CodoxearSessionEdit from "./app_session_edit.js";
+
+const global = window;
+
 /* File operations composition: viewer, editor, picker, unsaved-change, and touch keyboard. */
-(function installCodoxearFileOps(global) {
   "use strict";
 
   function requireFunction(value, name) {
@@ -95,7 +101,7 @@ const dialogMenusController = codoxearDialogMenus.createDialogMenusController(wi
 }));
 
 const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
-    const filePickerOpsModule = codoxearFilePickerOps || window.CodoxearFilePickerOps;
+    const filePickerOpsModule = codoxearFilePickerOps || CodoxearFilePickerOps;
     if (!filePickerOpsModule || typeof filePickerOpsModule.createFilePickerOpsController !== "function")
       throw new Error("Codoxear file picker operations controller failed to load");
     const filePickerController = filePickerOpsModule.createFilePickerOpsController({
@@ -124,7 +130,7 @@ const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
     });
     const { menuState: filePickerMenuState, domRuntime: filePickerDomRuntime, searchState: filePickerSearchState,
       entryRuntime: filePickerEntryRuntime, renderRuntime: filePickerRenderRuntime, inputRuntime: filePickerInputRuntime } = filePickerController;
-    const fileEditorOpsModule = codoxearFileEditorOps || window.CodoxearFileEditorOps;
+    const fileEditorOpsModule = codoxearFileEditorOps || CodoxearFileEditorOps;
     if (!fileEditorOpsModule || typeof fileEditorOpsModule.createFileEditorOpsController !== "function")
       throw new Error("Codoxear file editor operations controller failed to load");
     const fileEditorOpsController = fileEditorOpsModule.createFileEditorOpsController({
@@ -256,7 +262,7 @@ const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRunti
   takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
   isUnavailable: () => isFileViewerSessionUnavailable(),
 }));
-const codoxearFileUnsaved = window.CodoxearFileUnsaved;
+const codoxearFileUnsaved = CodoxearFileUnsaved;
 if (!codoxearFileUnsaved || typeof codoxearFileUnsaved.createFileUnsavedController !== "function")
   throw new Error("Codoxear file unsaved controller failed to load");
 const fileUnsavedController = codoxearFileUnsaved.createFileUnsavedController(wiring.createFileUnsavedOptions({
@@ -552,7 +558,7 @@ const fileViewerController = codoxearFileViewer.createFileViewerController(wirin
   historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
   renderFilePickerMenu: () => renderFilePickerMenu(),
 }));
-const sessionEditController = window.CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
+const sessionEditController = CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
   documentTarget: document,
   ElementCtor: HTMLElement,
   el,
@@ -793,8 +799,4 @@ fileEditorOpsController.bindInteractions({
     });
   }
 
-  global.CodoxearClipboard = Object.freeze({ copyToClipboard });
-  global.CodoxearFileEditMode = Object.freeze({ createFileEditModeController });
-  global.CodoxearFileTouch = Object.freeze({ createFileTouchController });
-  global.CodoxearFileOps = Object.freeze({ createFileOpsController });
-})(window);
+export { copyToClipboard, createFileEditModeController, createFileTouchController, createFileOpsController };

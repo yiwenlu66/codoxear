@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function browserSupportsNativeLiveAudioPlayback(liveAudio) {
@@ -47,13 +46,4 @@
     return isMobileNotificationDevice(navigatorLike) ? "mobile" : "desktop";
   }
 
-  window.CodoxearVoiceHelpers = Object.freeze({
-    browserSupportsNativeLiveAudioPlayback,
-    browserSupportsMseLiveAudioPlayback,
-    shouldPreferNativeLiveAudioPlayback,
-    browserSupportsLiveAudioPlayback,
-    base64UrlToUint8Array,
-    isMobileNotificationDevice,
-    notificationDeviceClass,
-  });
-})();
+export { browserSupportsNativeLiveAudioPlayback, browserSupportsMseLiveAudioPlayback, shouldPreferNativeLiveAudioPlayback, browserSupportsLiveAudioPlayback, base64UrlToUint8Array, isMobileNotificationDevice, notificationDeviceClass };

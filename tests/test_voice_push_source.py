@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -11,9 +12,9 @@ from codoxear.voice_push import VoicePushCoordinator
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VOICE = ROOT / "codoxear" / "static" / "app_voice.js"
-HELPERS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
-MODAL = ROOT / "codoxear" / "static" / "app_modal.js"
+VOICE = module_path("app_voice.js")
+HELPERS = module_path("app_voice_helpers.js")
+MODAL = module_path("app_modal.js")
 
 
 def eval_desktop_notification() -> dict:

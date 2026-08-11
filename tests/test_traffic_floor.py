@@ -6,6 +6,7 @@ window rather than sleeping, so the wire protocol and conditional list
 responses are real while the test remains suitable for CI.
 """
 from __future__ import annotations
+from frontend_module_loader import module_path
 
 from dataclasses import dataclass
 import hashlib
@@ -36,7 +37,7 @@ MAX_WIRE_BYTES = 50 * 1024
 MAX_SESSIONS_RESPONSE_BYTES = 10 * 1024
 MIN_ENDPOINT_AVERAGE_INTERVAL_SECONDS = 5
 ROOT = Path(__file__).resolve().parents[1]
-POLLING_MODULE = ROOT / "codoxear" / "static" / "app_polling.js"
+POLLING_MODULE = module_path("app_polling.js")
 
 
 class _TrafficLaunchError(RuntimeError):

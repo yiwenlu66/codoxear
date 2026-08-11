@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   function safeDispose(value) {
@@ -692,9 +691,4 @@
     });
   }
 
-  window.CodoxearFileEditor = Object.freeze({
-    createFileEditorRenderer,
-    createFileEditorRuntime,
-    createMonacoLoader,
-  });
-})();
+export { createFileEditorRenderer, createFileEditorRuntime, createMonacoLoader };

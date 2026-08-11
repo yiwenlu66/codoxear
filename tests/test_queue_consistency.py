@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -5,9 +6,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
-APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
-APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
+APP_QUEUE_JS = module_path("app_queue.js")
+APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
+APP_MODAL_JS = module_path("app_modal.js")
 
 
 def run_node_json(script: str) -> dict:

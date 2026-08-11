@@ -1,8 +1,9 @@
+import { createApplicationController } from "./app_application.js";
+
 /* Boot is deliberately small: application composition lives in app_application.js. */
-(function bootCodoxearApplication() {
   "use strict";
 
-  const application = window.CodoxearApplication;
+  const application = { createApplicationController };
   if (!application || typeof application.createApplicationController !== "function")
     throw new Error("Codoxear application controller failed to load");
 
@@ -31,4 +32,3 @@
       document.body.appendChild(err);
     }
   })();
-})();

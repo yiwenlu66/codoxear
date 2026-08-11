@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import tempfile
@@ -6,12 +7,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VOICE_SOURCE = (ROOT / "codoxear" / "static" / "app_voice.js").read_text(encoding="utf-8")
-VOICE_HELPERS_SOURCE = (ROOT / "codoxear" / "static" / "app_voice_helpers.js").read_text(encoding="utf-8")
-MODAL_SOURCE = (ROOT / "codoxear" / "static" / "app_modal.js").read_text(encoding="utf-8")
-POLLING_SOURCE = (ROOT / "codoxear" / "static" / "app_polling.js").read_text(encoding="utf-8")
-TRANSCRIPT_SOURCE = (ROOT / "codoxear" / "static" / "app_transcript.js").read_text(encoding="utf-8")
-MESSAGE_FLOW_SOURCE = (ROOT / "codoxear" / "static" / "app_message_flow.js").read_text(encoding="utf-8")
+VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
+VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
+POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
+TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
+MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
 
 
 def run_voice_announcement_resume_harness() -> dict:

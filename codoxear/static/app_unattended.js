@@ -1,4 +1,6 @@
-(function () {
+import * as CodoxearModal from "./app_modal.js";
+import * as CodoxearSessionHelpers from "./app_session_helpers.js";
+
   "use strict";
 
   // Unattended mode popover authority. Owns every piece of unattended-menu
@@ -12,8 +14,8 @@
   // menu show/hide/toggle positioning + focus behavior, and the button/menu/
   // input + document Escape/click/window resize event handling.
   //
-  // Pure helpers (sessionLaunchFailed) come from window.CodoxearSessionHelpers;
-  // modal focus helper (restoreModalFocus) comes from window.CodoxearModal.
+  // Pure helpers (sessionLaunchFailed) come from CodoxearSessionHelpers;
+  // modal focus helper (restoreModalFocus) comes from CodoxearModal.
   // Everything that touches app-level runtime state (selected session, session
   // index, app disposed flag, API, session refresh, auth loss, toasts, event
   // registration, animation frame, timers, document/window targets, optional
@@ -21,14 +23,14 @@
   // (options) so the controller has no hidden coupling to app.js globals and
   // can be exercised in a VM with fakes.
 
-  const codoxearSessionHelpers = window.CodoxearSessionHelpers;
+  const codoxearSessionHelpers = CodoxearSessionHelpers;
   if (
     !codoxearSessionHelpers ||
     typeof codoxearSessionHelpers.sessionLaunchFailed !== "function"
   )
     throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = window.CodoxearModal;
+  const codoxearModal = CodoxearModal;
   if (
     !codoxearModal ||
     typeof codoxearModal.restoreModalFocus !== "function"
@@ -809,5 +811,5 @@
 
   const unattendedApi = { createUnattendedController };
   Object.defineProperty(unattendedApi, "createUnattendedDom", { value: createUnattendedDom });
-  window.CodoxearUnattended = Object.freeze(unattendedApi);
-})();
+
+export { createUnattendedController, createUnattendedDom };

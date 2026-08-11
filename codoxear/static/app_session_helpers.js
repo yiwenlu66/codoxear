@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   const SESSION_SIDEBAR_GROUPS = Object.freeze([
@@ -131,22 +130,4 @@
     return [];
   }
 
-  window.CodoxearSessionHelpers = Object.freeze({
-    SESSION_SIDEBAR_GROUPS,
-    sessionLaunchFailed,
-    sessionLaunchPending,
-    sessionLaunchKind,
-    sessionLaunchIcon,
-    sessionHasUnknownSend,
-    sessionIsOrphanRecovery,
-    sessionHasOrphanQueueRecovery,
-    sessionSidebarGroupKey,
-    sidebarSessionEntries,
-    sidebarRenderSignature,
-    sessionSelectable,
-    sessionIsFast,
-    diagnosticsProviderDisplay,
-    diagnosticsCopyText,
-    normalizeQueueItems,
-  });
-})();
+export { SESSION_SIDEBAR_GROUPS, sessionLaunchFailed, sessionLaunchPending, sessionLaunchKind, sessionLaunchIcon, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionHasOrphanQueueRecovery, sessionSidebarGroupKey, sidebarSessionEntries, sidebarRenderSignature, sessionSelectable, sessionIsFast, diagnosticsProviderDisplay, diagnosticsCopyText, normalizeQueueItems };

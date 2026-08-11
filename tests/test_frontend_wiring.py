@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import os
 import subprocess
@@ -10,7 +11,7 @@ STATIC = ROOT / "codoxear" / "static"
 
 def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
     sources = {
-        name: (STATIC / name).read_text(encoding="utf-8")
+        name: module_path(name).read_text(encoding="utf-8")
         for name in ("app_wiring.js", "app_application_composition.js")
     }
     program = """

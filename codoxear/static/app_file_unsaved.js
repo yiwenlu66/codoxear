@@ -1,4 +1,5 @@
-(function (global) {
+const global = window;
+
   "use strict";
 
   function requireFunction(value, name) {
@@ -59,5 +60,4 @@
     });
   }
 
-  global.CodoxearFileUnsaved = { createFileUnsavedController };
-})(window);
+export { createFileUnsavedController };

@@ -1,4 +1,3 @@
-(function () {
   "use strict";
 
   const SEARCH_DEBOUNCE_MS = 300;
@@ -334,5 +333,4 @@
     });
   }
 
-  window.CodoxearChatSearch = Object.freeze({ createChatSearchController });
-})();
+export { createChatSearchController };

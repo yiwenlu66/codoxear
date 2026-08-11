@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -5,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "codoxear" / "static" / "app_chat_navigation.js"
+MODULE = module_path("app_chat_navigation.js")
 
 
 def run_node(body: str) -> dict:

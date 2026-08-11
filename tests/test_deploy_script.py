@@ -79,6 +79,18 @@ printf 'node %s\\n' "$*" >> {operation_log!s}
 """,
     )
     _write_executable(
+        fake_bin / "npx",
+        f"""#!/usr/bin/env bash
+set -eu
+printf 'npx %s\\n' "$*" >> {operation_log!s}
+for arg in "$@"; do
+  case "$arg" in
+    --outfile=*) output="${{arg#--outfile=}}"; mkdir -p "$(dirname "$output")"; printf 'bundle' > "$output" ;;
+  esac
+done
+""",
+    )
+    _write_executable(
         fake_bin / "agent-browser",
         f"""#!/usr/bin/env bash
 set -eu

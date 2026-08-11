@@ -1,3 +1,4 @@
+from frontend_module_loader import module_path
 import json
 import subprocess
 import textwrap
@@ -6,8 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLLING = ROOT / "codoxear" / "static" / "app_polling.js"
-API = ROOT / "codoxear" / "static" / "app_api.js"
+POLLING = module_path("app_polling.js")
+API = module_path("app_api.js")
 
 
 def eval_polling_and_cache() -> dict:
