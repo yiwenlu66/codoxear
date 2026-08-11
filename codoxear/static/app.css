@@ -902,7 +902,6 @@
       button.primary,
       .composer .icon-btn.primary {
         min-height: var(--ctl) !important;
-        min-width: var(--ctl) !important;
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
@@ -2730,6 +2729,7 @@ select {
         width: min(92vw, 560px);
       }
       .formDialog {
+        background: var(--wash);
         border: 0;
         padding: var(--space-5);
         position: fixed;
