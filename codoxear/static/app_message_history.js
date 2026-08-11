@@ -114,7 +114,7 @@ function prependOlderEvents(allEvents, { preserveViewport = false, historyCursor
   return transcriptView().prependEvents(allEvents, { preserveViewport, cursor: historyCursor, nextHasMore: hasMore });
 }
 
-async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
+async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {
   const state = olderLoadRuntime.snapshot();
   if (!getSelected() || !state.hasMore || state.isLoading) return false;
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
@@ -138,9 +138,9 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
     const nextHasOlder = Boolean(nextCursor);
     clearOlderLoadError();
     if (evs.length) {
-      if (view) view.prependEvents(evs, { preserveViewport: auto, cursor: nextCursor, nextHasMore: nextHasOlder });
+      if (view) view.prependEvents(evs, { preserveViewport: forcePreserveViewport !== null ? forcePreserveViewport : auto, cursor: nextCursor, nextHasMore: nextHasOlder });
       else {
-        prependOlderEvents(evs, { preserveViewport: auto, historyCursor: nextCursor, hasMore: nextHasOlder });
+        prependOlderEvents(evs, { preserveViewport: forcePreserveViewport !== null ? forcePreserveViewport : auto, historyCursor: nextCursor, hasMore: nextHasOlder });
         setOlderState({ hasMore: nextHasOlder, isLoading: false });
       }
       return true;

@@ -118,7 +118,7 @@
       while (true) {
         const row = loadedUserMessageRows().find((item) => item.dataset && item.dataset.messageId === targetId) || null;
         if (row) return row;
-        if (!(await loadOlderMessages({ auto: false, cancelOnScroll: false }))) return null;
+        if (!(await loadOlderMessages({ auto: false, cancelOnScroll: false, forcePreserveViewport: true }))) return null;
       }
     }
 
