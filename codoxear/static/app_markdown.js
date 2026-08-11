@@ -500,24 +500,31 @@ import * as CodoxearUrls from "./app_application.js";
       store.push({ latex: String(latex).trim(), display: !!display });
       return mathToken(id);
     };
+    // Heuristic: a $...$ span is math only if its content looks like LaTeX.
+    // Reject currency like "$72 to $102" by requiring at least one LaTeX-ish
+    // character inside: backslash, brace, ^, _, or a recognized math function.
+    function looksLikeLatex(body) {
+      return /[\\{}^_]|\\(?:frac|sqrt|sum|prod|int|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|Delta|Sigma|Omega|nabla|partial|infty|times|div|pm|mp|le|ge|ne|approx|equiv|propto|cdot|text|mathrm|mathbf|mathbb|left|right|begin|end)\b/.test(body);
+    }
     return String(text)
       .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true))
-      .replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true))
-      .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false))
-      .replace(/\$(?!\$|\s)([^$\n]*?\S)\$(?!\$)/g, (_m, body) => push(body, false));
+      .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
   }
 
   function extractMathFromText(input, store) {
-    const lines = String(input ?? "").split("\n");
+    // First pass: extract \[...\] and \(...\) from the FULL text, including
+    // multi-line display math. Code fence detection runs on the result.
+    let text = String(input ?? "").replaceAll("\r\n", "\n");
+    text = extractMathFromPlainText(text, store);
+    // Second pass: code fence detection on the math-stripped text.
+    // Only $$...$$ and remaining $...$ need per-line code-fence protection.
+    const lines = text.split("\n");
     const out = [];
     let fence = null;
     for (const line of lines) {
       const openOrClose = line.match(/^\s{0,3}(`{3,}|~{3,})/);
       if (fence) {
         out.push(line);
-        // CommonMark permits a closing fence only when it uses the same
-        // delimiter and is at least as long as its opening fence. Keeping the
-        // length protects a ``` example nested inside a ```` code block.
         if (openOrClose && openOrClose[1][0] === fence.delimiter && openOrClose[1].length >= fence.length) fence = null;
         continue;
       }
@@ -527,9 +534,23 @@ import * as CodoxearUrls from "./app_application.js";
         continue;
       }
       const parts = line.split(/(`+[^`]*`+)/g);
-      out.push(parts.map((part, index) => (index % 2 ? part : extractMathFromPlainText(part, store))).join(""));
+      out.push(parts.map((part, index) => (index % 2 ? part : extractDollarMath(part, store))).join(""));
     }
     return out.join("\n");
+  }
+
+  function extractDollarMath(text, store) {
+    const push = (latex, display) => {
+      const id = store.length;
+      store.push({ latex: String(latex).trim(), display: !!display });
+      return mathToken(id);
+    };
+    function looksLikeLatex(body) {
+      return /[\\{}^_]|\\(?:frac|sqrt|sum|prod|int|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|Delta|Sigma|Omega|nabla|partial|infty|times|div|pm|mp|le|ge|ne|approx|equiv|propto|cdot|text|mathrm|mathbf|mathbb|left|right|begin|end)\b/.test(body);
+    }
+    return String(text)
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true))
+      .replace(/\$(?!\$|\s)([^$\n]*?\S)\$(?!\$)/g, (_m, body) => looksLikeLatex(body) ? push(body, false) : _m);
   }
 
   function substituteMath(html, store) {
