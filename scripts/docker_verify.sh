@@ -228,7 +228,7 @@ browser eval '(() => {
   const sessions = document.querySelector("#sessions");
   const sidebar = document.querySelector(".sidebar");
   const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : 0;
-  const bundleLoaded = Boolean(document.querySelector('script[type="module"][src*="dist/app.bundle.js"]'));
+  const bundleLoaded = Boolean(document.querySelector("script[type=\"module\"][src*=\"dist/app.bundle.js\"]"));
   return {
     appBootstrapped: window.__codoxearAppBootstrapped === true,
     loadError: window.__codoxearLoadError ?? null,

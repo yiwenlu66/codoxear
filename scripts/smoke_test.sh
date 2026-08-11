@@ -58,7 +58,7 @@ check_rendered_app() {
     const sessions = document.querySelector("#sessions");
     const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : 0;
     const sessionListRendered = Boolean(sessions && sessions.dataset.codoxearSessionsRendered === "true");
-    const bundleLoaded = Boolean(document.querySelector('script[type="module"][src*="dist/app.bundle.js"]'));
+    const bundleLoaded = Boolean(document.querySelector("script[type=\"module\"][src*=\"dist/app.bundle.js\"]"));
     const checks = {
       noVisibleLoadCaption: !visibleErrorCaption,
       noRecordedLoadError: typeof window.__codoxearLoadError === "undefined",
