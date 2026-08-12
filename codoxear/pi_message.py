@@ -55,25 +55,11 @@ def pi_user_text(obj: dict[str, Any]) -> str | None:
 # Pi's harness writes these envelopes when it delivers subagent/intercom state
 # into the parent conversation. The row still has role=user, but it represents
 # agent-internal continuation rather than a human message boundary.
-_PI_AGENT_INTERNAL_DELIVERY_PREFIXES = (
-    "**📨 From ",
-    "Subagent progress update.",
-    "Background task completed:",
-    "Subagent needs attention",
-    "subagent needs attention",
-    "Subagent result",
-    "subagent result",
-    "Subagent-control",
-    "subagent-control",
-    "subagent progress update.",
-    "background task completed:",
-)
-
 # These fields identify transport metadata, never human-authored text. A tag
 # is deliberately exact after tokenization so a user asking about an
 # "intercom" is still a transcript message.
 _PI_TRANSCRIPT_EXCLUDED_TAGS = frozenset({"intercom", "harness", "test"})
-_PI_TRANSCRIPT_TAG_FIELDS = ("tag", "tags", "source", "channel", "origin", "kind", "customType")
+_PI_TRANSCRIPT_TAG_FIELDS = ("tag", "tags", "source", "channel", "origin", "kind")
 
 
 def _contains_transcript_excluded_tag(value: Any) -> bool:
@@ -95,55 +81,13 @@ def _mapping_has_transcript_excluded_tag(value: Any) -> bool:
 
 
 
-def _strip_harness_prefix(text: str) -> str:
-    """Remove harness delivery prefixes. Returns remaining user text, or '' if pure harness.
-
-    Pi concatenates harness notifications with the user's actual message into
-    a single log row. The harness content is one or more paragraphs at the
-    start. User text follows after a blank line separator (\n\n).
-
-    To distinguish user text from harness continuation (e.g. 'intercom
-    delivery' after '**\u2800 From supervisor**'), we check whether the
-    remaining text itself starts with a harness prefix. If it does, it's
-    harness continuation, not user text.
-    """
-    result = text.lstrip()
-    is_harness = any(result.startswith(p) for p in _PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
-    if not is_harness:
-        return result
-    # Split on \n\n to separate harness blocks from potential user text
-    parts = result.split("\n\n")
-    if len(parts) < 2:
-        return ""  # No separator — pure harness
-    # The last part might be user text. Check if IT starts with a harness
-    # prefix — if so, it's harness continuation, not user input.
-    last = parts[-1].strip()
-    if not last or len(last) <= 3:
-        return ""
-    # Check if the last part looks like harness continuation
-    last_starts_harness = any(last.startswith(p) for p in _PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
-    if last_starts_harness:
-        return ""
-    # Check if the last part looks like harness metadata (short, structured)
-    # e.g. "Run: 576640dd", "Agent: executor", "intercom delivery"
-    harness_metadata_patterns = (
-        "Run:", "Agent:", "Mode:", "Progress:", "Status:", "Child ",
-        "intercom ", "subagent-", "Background task",
-    )
-    if any(last.startswith(p) for p in harness_metadata_patterns):
-        return ""
-    return last
-
-
 def pi_log_row_is_transcript_excluded(obj: dict[str, Any]) -> bool:
     """Whether a Pi log row is agent plumbing rather than user transcript.
 
-    This is the shared recording boundary: tail, history, live SSE, search,
-    and export all normalize log rows through it. Structured tags are checked
-    only in transport metadata on the row/message/envelope, while known Pi
-    delivery envelopes remain covered for older extension versions.
+    Structural exclusion only — no text prefix matching.
+    All custom_message rows are Pi harness coordination traffic.
     """
-    if obj.get("type") == "active_long_running":
+    if obj.get("type") in ("active_long_running", "custom_message"):
         return True
     if _mapping_has_transcript_excluded_tag(obj):
         return True
@@ -155,30 +99,12 @@ def pi_log_row_is_transcript_excluded(obj: dict[str, Any]) -> bool:
             return True
     if _mapping_has_transcript_excluded_tag(obj.get("metadata")):
         return True
-    if not pi_user_is_agent_internal_delivery(obj):
-        return False
-    text = pi_user_text(obj) or ""
-    remaining = _strip_harness_prefix(text)
-    if remaining:
-        message = obj.get("message")
-        if isinstance(message, dict):
-            parts = message.get("content")
-            if isinstance(parts, list):
-                for part in parts:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        part["text"] = remaining
-                        break
-            elif isinstance(parts, str):
-                message["content"] = remaining
-        return False
-    return True
+    return False
 
 
 def pi_user_is_agent_internal_delivery(obj: dict[str, Any]) -> bool:
-    text = pi_user_text(obj)
-    if not isinstance(text, str):
-        return False
-    return text.lstrip().startswith(_PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
+    """Deprecated: structural exclusion now uses customType. Returns False."""
+    return False
 
 
 def pi_assistant_content_parts(obj: dict[str, Any]) -> list[dict[str, Any]]:

@@ -143,14 +143,9 @@ class TestServerChatFlags(unittest.TestCase):
         events, _meta, flags, _diag = _extract_chat_events(
             [
                 {
-                    "type": "message",
-                    "message": {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n"},
-                            {"type": "text", "text": "subagent results"},
-                        ],
-                    },
+                    "type": "custom_message",
+                    "customType": "subagent_control_notice",
+                    "content": "**📨 From subagent-result** (/workspace)\nsubagent results",
                 }
             ]
         )

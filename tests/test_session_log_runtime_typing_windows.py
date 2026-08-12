@@ -94,14 +94,9 @@ def _pi_final(text: str) -> dict:
 
 def _pi_subagent_result() -> dict:
     return {
-        "type": "message",
-        "message": {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n\n"},
-                {"type": "text", "text": "subagent results"},
-            ],
-        },
+        "type": "custom_message",
+        "customType": "subagent_control_notice",
+        "content": "**📨 From subagent-result** (/workspace)\n\nsubagent results",
     }
 
 
@@ -148,8 +143,7 @@ def test_subagent_delivery_reopens_turn_without_resetting_episode_counters(tmp_p
     assert session.meta_turn_open is False
     assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (1, 20, 2)
 
-    # The subagent result is a Pi user-role row but an episode-internal
-    # delivery: it reopens busy/turn state and adds to the same counters.
+    # Custom delivery resumes the parent agent without producing a transcript row.
     _append(log_path, _pi_subagent_result(), _pi_thinking("second", 16), _pi_tool("three"))
     runtime.update_meta_counters()
     assert session.meta_turn_open is True

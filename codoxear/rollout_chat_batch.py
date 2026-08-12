@@ -114,6 +114,12 @@ def _extract_chat_events(
                 cc_pending_tool_ids.clear()
                 continue
 
+        if typ == "custom_message":
+            # Harness delivery resumes the parent agent after a subagent update,
+            # but is structurally excluded from every transcript projection.
+            turn_start = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:

@@ -48,7 +48,7 @@ def test_pi_backend_normalizes_subagent_notices_but_excludes_generic_coordinatio
     assert pi.chat_event_from_log_row({"type": "custom_message", "customType": "other", "content": "x"}) is None
 
 
-def test_pi_subagent_events_dedupe_in_batch_and_positioned_transcript() -> None:
+def test_pi_subagent_events_are_excluded_from_batch_and_positioned_transcript() -> None:
     notice = {
         "type": "custom_message",
         "customType": "subagent_control_notice",
@@ -58,7 +58,7 @@ def test_pi_subagent_events_dedupe_in_batch_and_positioned_transcript() -> None:
     }
 
     batch_events, _meta, _flags, _diag = _extract_chat_events([notice, notice])
-    assert [event["message_id"] for event in batch_events] == ["pi-subagent:notice-1"]
+    assert batch_events == []
 
     positioned_events = _extract_positioned_chat_events([_record(notice, 10), _record(notice, 20)])
-    assert [event["message_id"] for event in positioned_events] == ["pi-subagent:notice-1"]
+    assert positioned_events == []

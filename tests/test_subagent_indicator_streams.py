@@ -33,7 +33,7 @@ def _write_pi_status(root: Path, *, run_id: str, parent_log: Path, pid: int) -> 
     )
 
 
-def test_pi_subagent_indicator_requires_live_worker_and_emits_progress_event(tmp_path: Path, monkeypatch) -> None:
+def test_pi_subagent_indicator_requires_live_worker_and_excludes_progress_transcript(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "pi-runs"
     parent_log = tmp_path / "pi-parent.jsonl"
     parent_log.write_text("", encoding="utf-8")
@@ -55,15 +55,7 @@ def test_pi_subagent_indicator_requires_live_worker_and_emits_progress_event(tmp
             }
         ]
     )
-    assert events == [
-        {
-            "role": "assistant",
-            "text": "Subagent progress update — executor (run live): inspected the repository",
-            "message_class": "narration",
-            "message_id": "pi-subagent:pi-progress-1",
-            "ts": 1_785_888_000.0,
-        }
-    ]
+    assert events == []
 
 
 def test_codex_child_header_drives_count_source_and_normalized_event(tmp_path: Path) -> None:

@@ -572,14 +572,9 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
                 "message": {"role": "assistant", "content": [{"type": "text", "text": "first response"}], "stopReason": "stop"},
             },
             {
-                "type": "message",
-                "message": {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n"},
-                        {"type": "text", "text": "subagent results"},
-                    ],
-                },
+                "type": "custom_message",
+                "customType": "subagent_control_notice",
+                "content": "**📨 From subagent-result** (/workspace)\nsubagent results",
             },
             {
                 "type": "message",

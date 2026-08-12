@@ -26,9 +26,9 @@ class TestPiMessageSource(unittest.TestCase):
         progress_delivery = user([{"type": "text", "text": "Subagent progress update.\nRun: abc"}])
         human_message = user([{"type": "text", "text": "Please inspect the result."}])
 
-        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(result_delivery))
-        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(control_delivery))
-        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(progress_delivery))
+        self.assertFalse(pi_message.pi_user_is_agent_internal_delivery(result_delivery))
+        self.assertFalse(pi_message.pi_user_is_agent_internal_delivery(control_delivery))
+        self.assertFalse(pi_message.pi_user_is_agent_internal_delivery(progress_delivery))
         self.assertFalse(pi_message.pi_user_is_agent_internal_delivery(human_message))
 
     def test_pi_terminal_no_visible_response_predicate_semantics(self) -> None:

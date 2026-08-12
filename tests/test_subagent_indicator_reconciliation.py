@@ -271,7 +271,7 @@ def test_subagent_indicator_reconciles_native_sources_to_every_surface(tmp_path:
     pi_events, _meta, _flags, _diagnostics = _extract_chat_events(_read_jsonl(pi_log))
     codex_event = get_agent_backend("codex").chat_event_from_log_row(_read_jsonl(codex_child_log)[0])
     cc_runs = scan_active_cc_subagents(parent_broker_pids={CC_SESSION_ID: os.getpid()})
-    assert [event["message_id"] for event in pi_events] == ["pi-subagent:pi-progress-1"]
+    assert pi_events == []
     assert codex_event is not None and codex_event["message_id"] == "codex-subagent:codex-child"
     assert cc_runs[CC_SESSION_ID][0]["event"]["message_id"] == "cc-subagent:cc-child"
 

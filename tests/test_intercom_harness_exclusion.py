@@ -20,6 +20,15 @@ def _pi_user_post(text: str, **transport: object) -> dict[str, object]:
     }
 
 
+def _pi_custom_post(custom_type: str, content: str, **extra: object) -> dict[str, object]:
+    return {
+        "type": "custom_message",
+        "customType": custom_type,
+        "content": content,
+        **extra,
+    }
+
+
 def _write_posts(path: Path, posts: list[dict[str, object]]) -> None:
     path.write_text(
         "".join(json.dumps(post, separators=(",", ":")) + "\n" for post in posts),
@@ -33,8 +42,8 @@ def _texts(events: list[dict[str, object]]) -> list[str]:
 
 def test_intercom_harness_and_test_posts_are_excluded_from_every_transcript_projection(tmp_path: Path) -> None:
     log_path = tmp_path / "pi-session.jsonl"
-    intercom_post = _pi_user_post("intercom traffic", source="intercom")
-    intercom_delivery_post = _pi_user_post("**📨 From supervisor**\n\nintercom delivery")
+    intercom_post = _pi_custom_post("intercom_message", "intercom traffic")
+    intercom_delivery_post = _pi_custom_post("subagent_control_notice", "**📨 From supervisor**\n\nintercom delivery")
     harness_post = _pi_user_post("harness traffic", metadata={"tags": ["harness"]})
     test_post = _pi_user_post("test traffic", tag="test")
     real_user_post = _pi_user_post("real user message")
