@@ -137,11 +137,6 @@
         return;
       }
       const cursor = typeof match.before_byte === "string" ? match.before_byte : "";
-      if (direction < 0) {
-        const target = await loadHistoryUntilEventId(match.message_id);
-        if (target) scrollToRow(target);
-        return;
-      }
       if (!cursor || !(await loadTranscriptWindowAtCursor(cursor))) return;
       scrollToRow(rowForMatch(match));
     }
