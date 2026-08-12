@@ -115,11 +115,14 @@
     async function loadHistoryUntilEventId(eventId) {
       const targetId = typeof eventId === "string" ? eventId : "";
       if (!targetId) return null;
-      while (true) {
+      const maxPages = 20;
+      for (let i = 0; i < maxPages; i++) {
         const row = loadedUserMessageRows().find((item) => item.dataset && item.dataset.messageId === targetId) || null;
         if (row) return row;
-        if (!(await loadOlderMessages({ auto: false, cancelOnScroll: false, forcePreserveViewport: true }))) return null;
+        const loaded = await loadOlderMessages({ auto: false, cancelOnScroll: false, forcePreserveViewport: true });
+        if (!loaded) return null;
       }
+      return null;
     }
 
     async function jumpToLoadedUserMessage(direction) {
@@ -137,6 +140,13 @@
         return;
       }
       const cursor = typeof match.before_byte === "string" ? match.before_byte : "";
+      if (direction < 0) {
+        // Previous user message beyond loaded range: incrementally prepend
+        // older pages until the target appears, preserving viewport each time.
+        const target = await loadHistoryUntilEventId(match.message_id);
+        if (target) scrollToRow(target);
+        return;
+      }
       if (!cursor || !(await loadTranscriptWindowAtCursor(cursor))) return;
       scrollToRow(rowForMatch(match));
     }
