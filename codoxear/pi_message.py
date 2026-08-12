@@ -94,6 +94,47 @@ def _mapping_has_transcript_excluded_tag(value: Any) -> bool:
     )
 
 
+
+def _strip_harness_prefix(text: str) -> str:
+    """Remove harness delivery prefixes. Returns remaining user text, or '' if pure harness.
+
+    Pi concatenates harness notifications with the user's actual message into
+    a single log row. The harness content is one or more paragraphs at the
+    start. User text follows after a blank line separator (\n\n).
+
+    To distinguish user text from harness continuation (e.g. 'intercom
+    delivery' after '**\u2800 From supervisor**'), we check whether the
+    remaining text itself starts with a harness prefix. If it does, it's
+    harness continuation, not user text.
+    """
+    result = text.lstrip()
+    is_harness = any(result.startswith(p) for p in _PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
+    if not is_harness:
+        return result
+    # Split on \n\n to separate harness blocks from potential user text
+    parts = result.split("\n\n")
+    if len(parts) < 2:
+        return ""  # No separator — pure harness
+    # The last part might be user text. Check if IT starts with a harness
+    # prefix — if so, it's harness continuation, not user input.
+    last = parts[-1].strip()
+    if not last or len(last) <= 3:
+        return ""
+    # Check if the last part looks like harness continuation
+    last_starts_harness = any(last.startswith(p) for p in _PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
+    if last_starts_harness:
+        return ""
+    # Check if the last part looks like harness metadata (short, structured)
+    # e.g. "Run: 576640dd", "Agent: executor", "intercom delivery"
+    harness_metadata_patterns = (
+        "Run:", "Agent:", "Mode:", "Progress:", "Status:", "Child ",
+        "intercom ", "subagent-", "Background task",
+    )
+    if any(last.startswith(p) for p in harness_metadata_patterns):
+        return ""
+    return last
+
+
 def pi_log_row_is_transcript_excluded(obj: dict[str, Any]) -> bool:
     """Whether a Pi log row is agent plumbing rather than user transcript.
 
@@ -114,7 +155,23 @@ def pi_log_row_is_transcript_excluded(obj: dict[str, Any]) -> bool:
             return True
     if _mapping_has_transcript_excluded_tag(obj.get("metadata")):
         return True
-    return pi_user_is_agent_internal_delivery(obj)
+    if not pi_user_is_agent_internal_delivery(obj):
+        return False
+    text = pi_user_text(obj) or ""
+    remaining = _strip_harness_prefix(text)
+    if remaining:
+        message = obj.get("message")
+        if isinstance(message, dict):
+            parts = message.get("content")
+            if isinstance(parts, list):
+                for part in parts:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        part["text"] = remaining
+                        break
+            elif isinstance(parts, str):
+                message["content"] = remaining
+        return False
+    return True
 
 
 def pi_user_is_agent_internal_delivery(obj: dict[str, Any]) -> bool:

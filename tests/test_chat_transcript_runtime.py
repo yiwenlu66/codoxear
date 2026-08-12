@@ -1452,7 +1452,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["matchesOld"])
 
     def test_history_request_cursor_comes_from_oldest_rendered_row(self) -> None:
-        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {", "function maybeAutoLoadOlder()")
         js = textwrap.dedent(
             f"""
             const ctx = {{
@@ -1524,7 +1524,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["prepended"]["events"][0]["text"], "older")
 
     def test_history_failure_preserves_has_older_and_shows_retry_error(self) -> None:
-        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {", "function maybeAutoLoadOlder()")
         js = textwrap.dedent(
             f"""
             const ctx = {{
@@ -1593,7 +1593,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["prepended"])
 
     def test_history_401_triggers_auth_loss_without_retry_error(self) -> None:
-        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {", "function maybeAutoLoadOlder()")
         js = textwrap.dedent(
             f"""
             const ctx = {{
@@ -1663,7 +1663,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["prepended"])
 
     def test_stale_history_401_still_triggers_auth_loss(self) -> None:
-        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {", "function maybeAutoLoadOlder()")
         js = textwrap.dedent(
             f"""
             const ctx = {{

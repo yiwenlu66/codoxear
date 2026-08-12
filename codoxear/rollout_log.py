@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .pi_log import pi_log_row_is_transcript_excluded
+
 import threading
 from pathlib import Path
 from typing import Any
@@ -211,6 +213,8 @@ def _extract_positioned_chat_events(
     events: list[dict[str, Any]] = []
     cc_pending_tool_ids = set(initial_cc_pending_tool_ids or set())
     for record in records:
+        if pi_log_row_is_transcript_excluded(record.obj):
+            continue
         event = _single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         if event is not None:
             events.append(_with_chat_position(event, before_byte=record.start))
