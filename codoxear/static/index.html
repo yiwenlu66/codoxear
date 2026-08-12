@@ -138,16 +138,11 @@
           // before deciding the app failed to load.
           window.setTimeout(function () {
             if (window.__codoxearAppBootstrapped) return;
-            // Check if the module is still loading (type=module)
-            var moduleScripts = document.querySelectorAll("script[type=\"module\"]");
-            if (moduleScripts.length > 0 && !window.__codoxearAppBootstrapped) {
-              // Module hasn't finished yet — wait longer before showing error
-              window.setTimeout(function () {
-                renderLoadErrorFallback(window.__codoxearLoadError);
-              }, 3000);
-              return;
-            }
-            renderLoadErrorFallback(window.__codoxearLoadError);
+            // ES module scripts execute after the load event. Give the
+            // module ample time to load and bootstrap before showing error.
+            window.setTimeout(function () {
+              renderLoadErrorFallback(window.__codoxearLoadError);
+            }, 5000);
           }, 100);
         });
       })();
