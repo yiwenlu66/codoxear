@@ -547,6 +547,7 @@ const fileViewerController = codoxearFileViewer.createFileViewerController(wirin
   getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind()),
   copyToClipboard: (text) => copyToClipboard(text),
   focusActiveFileCodeEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+  fileEditorDeleteCommandForKey: (key) => codoxearFileHelpers.fileEditorDeleteCommandForKey(key),
   nowMs: () => Date.now(),
   setToast: (message) => setToast(message),
   setFileViewMode: (mode) => setFileViewMode(mode),
