@@ -86,7 +86,7 @@ import * as CodoxearQueue from "./app_queue.js";
     prevUserBtn.disabled = nextUserBtn.disabled = chatSearchBtn.disabled = fileBtn.disabled = true;
     const voiceHost = el("div", { class: "actions voiceActions", id: "voiceActions" });
     sidebarHeaderActions.appendChild(voiceHost);
-    const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
+    const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
     const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
     const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
     const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [prevUserBtn, nextUserBtn]);

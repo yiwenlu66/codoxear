@@ -24,7 +24,8 @@ const global = window;
 
     function renderStatusChip() {
       const queueLen = getQueueLen();
-      const base = getRunning() ? "Busy" : queueLen ? `Queue ${queueLen}` : "Idle";
+      const state = getRunning() ? "Busy" : "Idle";
+      const base = queueLen ? `${state} · Queue ${queueLen}` : state;
       statusChip.style.display = "inline-flex";
       const subagentsRunning = getSubagentsRunning();
       statusChip.textContent = subagentsRunning > 0 ? `${base} · ▸${subagentsRunning}` : base;
