@@ -220,7 +220,7 @@
           };
           const deleteBtn = el("button", { class: "icon-btn danger sessionDel", title: lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", "aria-label": lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", type: "button", html: iconSvg("trash") });
           deleteBtn.onclick = (event) => void doDelete(event);
-          const stateDot = el("span", { class: `stateDot${launchPending ? " pending" : session.busy ? " busy" : " idle"}` });
+          const stateDot = el("span", { class: `stateDot${launchPending ? " pending" : session.blocked ? " suppressed" : session.busy ? " busy" : " idle"}` });
           const subagentsRunning = Number(session.subagents_running);
           const subagentMarker = Number.isFinite(subagentsRunning) && subagentsRunning > 0
             ? el("span", { class: "muted subagentMarker", text: `▸${Math.floor(subagentsRunning)}` })
