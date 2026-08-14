@@ -1,0 +1,6 @@
+# Operations evidence
+
+- 2026-08-04T10:17:00Z — Recovered no exact prior task ledger. Working tree already contained an untracked `tests/test_unattended_prompt_preservation.py`; unrelated launcher, unread-state, CSS, transcript, and route edits are present and must remain untouched.
+- 2026-08-04T10:18:00Z — Prediction before inspection: committed queue/Unattended JSON state and localStorage composer drafts should survive a server-only restart; the highest-risk gap is browser-only state that has not crossed its persistence boundary.
+- 2026-08-04T10:27:00Z — Read-only executor localized a violation: `flushUnattendedSave()` removes the pending patch before POST, and on transient non-401 failure only toasts. The last user-authored copy is discarded instead of restored/retried. Composer input is synchronously localStorage-backed; committed queue and thread-scoped Unattended config reload correctly. See EPISTEMIC.md.
+- 2026-08-04T10:35:00Z — Revised intervention before implementation: durable whole-config replay would duplicate the server's budget authority. Across tabs, a second replay of `remaining_injections` can regrant budget consumed after the first replay. Durable browser state is therefore narrowed to revisioned `request` text; replay sends only `{request}` and compare-deletes only the acknowledged revision.

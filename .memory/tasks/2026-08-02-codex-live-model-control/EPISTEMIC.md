@@ -25,3 +25,9 @@ PTY driving is unjustified. `/model` takes no inline arguments and opens a non-s
 
 ## Current claim
 An honest external mechanism exists for released Codex 0.133+ when the TUI shares a reachable app-server. Broker-owned Unix-socket app-server transport is the smallest mechanism that preserves Codoxear's terminal/browser shared-session invariant.
+
+## Docker provider proof
+An isolated Docker run with Codex CLI 0.146.1 and the `dexgem-responses` OpenAI-compatible endpoint launched a web-owned session, completed `READY`, opened the browser `/effort` picker, accepted `max`, then completed a next turn. The sidebar consequently rendered `gpt-5.6-sol ·max`. The browser `/model` picker offered configured `gpt-5.6-terra`, accepted it, and a subsequent turn rendered `gpt-5.6-terra ·max`.
+
+The run exposed two defects. Session listing discarded broker-advertised Codex capability rows by projecting the empty default set, so browser controls never appeared. It now preserves the broker's live capabilities. Discovery also scanned root `socks/*.sock` and deleted the private app-server socket because it has no session sidecar; the socket now lives at `socks/private/`, outside discovery. Focused behavioral tests cover both ownership boundaries.
+
