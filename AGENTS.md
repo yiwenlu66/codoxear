@@ -126,6 +126,13 @@ The sanctioned component branches are:
 - If the user provides a simpler design that preserves the invariant more directly, prefer that design over a more elaborate agent-invented state machine.
 - For broker/server/session/tmux verification, Docker is the isolation boundary. A host-side throwaway `HOME` only redirects files; it does not isolate the process table, tmux socket, `/tmp`, signals, or systemd. Do not use host throwaway-HOME repros for broker/server/session work.
 - Never use pattern-based process cleanup (`pkill -f`, `killall`, broad `pgrep | xargs kill`) in agent-run verification. If a host process is explicitly started for a non-session task, record its exact PID and clean up only that PID; prefer Docker container teardown for anything session-related.
+- **Experience the product.** Unit tests and source checks verify structure, not behavior. Before claiming any user-facing feature works, exercise it through the real interface (browser, API, CLI) and observe the actual outcome.
+- **Never claim completion without behavioral verification.** "Tests pass" and "code looks right" are not evidence. The evidence is: the user does the thing and the expected result appears.
+- **Never swallow a user request.** Every request gets tracked, investigated, and either resolved or explicitly deferred with the user's knowledge. Silence is not a resolution.
+- **When the user states a design rule, implement exactly that.** Do not add logic the user didn't ask for. Do not "improve" their rule with additional conditions.
+- **When the user reports a bug, investigate their specific case.** "It works for me" is not a valid response. Reproduce their exact scenario. If you can't, say so and ask what they see.
+- **Verify the interface before diagnosing the implementation.** Check the exact URL, API key names, parameter names, and response schema against the source before concluding anything is broken.
+- **Test in Docker only.** Never probe, test, or verify against the live deployment (127.0.0.1:8743). All behavioral testing uses `scripts/docker_verify.sh` or Docker-isolated agent-browser sessions.
 - Local dev:
   - Install: `python3 -m pip install -e .`
   - Run server: `codoxear-server` or `python3 -m codoxear.server`
