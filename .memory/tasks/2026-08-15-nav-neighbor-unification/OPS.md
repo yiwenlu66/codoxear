@@ -60,3 +60,20 @@ Anomalies preserved:
   unittest are an artifact of missing conftest aliases; pytest is the runner.
 - docker/iso-broker-16447.json is a stale untracked artifact from a previous
   session's docker run (predates this task); left in place.
+
+2026-08-15 (audit follow-up run) Independent audit (opus-4-8) confirmed the
+four fixes at mechanism level; two follow-ups implemented:
+- 4eddff37 Neighbor endpoint serves launch-payload sessions (mirrors
+  handle_messages_search's missing-session path) and returns 200
+  {neighbor:null,same_log:false} when a known session has no readable log
+  (was 404 with boundary-shaped body). Tests:
+  test_messages_neighbor_missing_session_uses_launch_payload,
+  test_messages_neighbor_without_transcript_log_is_boundary_not_404.
+- 0a81b927 fetchNeighbor distinguishes {stale} (selection/poll-generation
+  moved mid-flight -> silent) from {error} (genuine failure -> toast). VM
+  test test_stale_session_switch_is_silent_not_a_failure_toast.
+- 871c1a34 bundle rebuild; 935336ff issue #52 in
+  .memory/project/ISSUES_TRACKER.md records the pre-existing next-direction
+  geometry gate (out of scope; VM tests stub that geometry).
+Full suite: 1663 passed + 103 subtests (was 1660; +3 new tests). No Docker
+re-verification: endpoint logic handler-tested, toast race VM-tested.
