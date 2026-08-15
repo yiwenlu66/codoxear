@@ -29,6 +29,7 @@ const deps = {
   api: async (url) => {
     events.push(`api:${url}`);
     if (apiMode === 'error') throw Object.assign(new Error('failed'), { status: 500 });
+    if (apiMode === 'stale' && url.includes('/messages/neighbor')) { selected = 'sid-other'; return { neighbor: { message_id: 'u0', history_cursor: 'c0', before_byte: 'c0', same_log: true } }; }
     if (url.includes('/messages/neighbor')) {
       if (apiMode === 'boundary') return { neighbor: { message_id: 'u0', history_cursor: 'c0', before_byte: 'c0', same_log: true } };
       if (apiMode === 'cross') return { neighbor: { message_id: 'u0', history_cursor: 'c0', before_byte: 'c0', same_log: false } };
@@ -151,6 +152,19 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertEqual(result["events"].count("toast:Could not reach that message"), 2)
         self.assertNotIn("toast:At first user message", result["events"])
         self.assertNotIn("toast:At last user message", result["events"])
+
+    def test_stale_session_switch_is_silent_not_a_failure_toast(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u1', 'c1', 0)]; apiMode = 'stale';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertFalse(any(item.startswith("toast:") for item in result["events"]))
+        self.assertNotIn("older", result["events"])
+        self.assertFalse(any(item.startswith("window:") for item in result["events"]))
+        self.assertFalse(any(item.startswith("scroll:") for item in result["events"]))
 
     def test_server_boundary_toasts_have_no_window_qualifier(self) -> None:
         result = run_node(HARNESS + r'''

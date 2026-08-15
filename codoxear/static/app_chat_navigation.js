@@ -92,18 +92,23 @@
     }
 
     async function fetchNeighbor(direction, rows) {
+      // stale means the selected session or poll generation moved on while the
+      // request was in flight: the answer no longer applies, so the caller
+      // stays silent. error means this navigation genuinely failed and the
+      // caller should say so.
       const sid = getSelected();
       const gen = getPollGen();
-      if (!sid) return { error: true };
+      if (!sid) return { stale: true };
       const anchorRow = direction < 0 ? rows[0] : rows[rows.length - 1];
       const cursor = anchorRow && anchorRow.dataset ? String(anchorRow.dataset.historyCursor || "") : "";
       if (!cursor) return { error: true };
       try {
         const data = await api(`/api/sessions/${sid}/messages/neighbor?role=user&direction=${direction < 0 ? "previous" : "next"}&cursor=${encodeURIComponent(cursor)}`);
-        if (getSelected() !== sid || getPollGen() !== gen) return { error: true };
+        if (getSelected() !== sid || getPollGen() !== gen) return { stale: true };
         return { data, match: data && data.neighbor ? data.neighbor : null };
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
+        if (getSelected() !== sid || getPollGen() !== gen) return { stale: true };
         return { error: true };
       }
     }
@@ -142,6 +147,7 @@
         return;
       }
       const result = await fetchNeighbor(direction, rows);
+      if (result.stale) return;
       if (result.error) {
         setToast("Could not reach that message");
         return;
