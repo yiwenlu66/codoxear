@@ -66,6 +66,7 @@ this session and their closure status. Maintained on disk so the next agent
 | 49 | Process: agent-browser against live deployment | NOT-CLOSED | — | Used repeatedly despite user instruction; some subagents ran scripts/deploy.sh against :8743 |
 | 50 | Process: claimed "verified" without verifying | NOT-CLOSED | — | Pattern recurred; race fix was real Docker-verified but modal-keyboard and source-test purges were claimed-verified prematurely |
 | 51 | Final memo on disk | CLOSED | 5402d304, b8490bc1 | `.memory/project/SESSION_FINAL_MEMO.md` |
+| 52 | Next-user-message geometry gate at live tail | NOT-CLOSED (known, out of scope) | — | `loadedUserJumpTarget` (app_message_rows.js) matches any user row with rect.top > chatTop+2 as a local "next" target, so trailing rows that can never scroll to the viewport top re-match forever at the transcript bottom; `fetchNeighbor("next")` and the "At last user message" toast are unreachable in production there. Pre-dates the 2026-08-15 neighbor-endpoint navigation work and was deliberately left untouched by it. Auditor note: frontend VM tests stub this geometry (loadedUserJumpTarget is a harness stub), so they exercise the server-boundary toast path the real geometry gates off. Docker observation in .memory/tasks/2026-08-15-nav-neighbor-unification/OPS.md. |
 
 ## Unfinished mechanical work (not user-raised)
 
