@@ -103,6 +103,7 @@ The UI follows a single “paper” design language. These rules are invariants,
 - **No decorative shadows.** `box-shadow`/`outline` is allowed only for functional focus/state indication, never for depth. No `backdrop-filter`.
 - **Design constitution for viewport behavior.** New viewport behavior may retune shared tokens, flip visibility, or switch layout mode. When a component needs genuinely different behavior, add an explicit sanctioned branch rather than a viewport-specific restyle.
 - **Hit area is not visual size.** A 44px touch target does not require a 44px icon or chrome control: compact secondary controls use an `::after` hit area, while frequent primary composer/dialog actions may use the larger visible control.
+- **Hover-reveal groups must not use `:focus-within`.** A mouse click leaves DOM focus on the clicked button, so `:focus-within` pins the group visible after the pointer leaves. Reveal on `:hover`, and keep keyboard accessibility with `:has(<group> :focus-visible)` — mouse clicks never trigger `:focus-visible`. Hover-revealed controls over text need an opaque `background: var(--paper)` fill so content does not bleed through.
 
 ### Media-query branching rule
 
