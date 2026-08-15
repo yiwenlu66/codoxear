@@ -592,14 +592,20 @@
           height: var(--ctl-chrome);
           min-width: var(--ctl-chrome);
           min-height: var(--ctl-chrome);
+          /* Opaque paper fill: session title/meta text must not bleed
+             through the hover-revealed action buttons. */
+          background: var(--paper);
         }
+        /* Keep the actions pinned only for keyboard focus (:focus-visible).
+           A mouse click also focuses the button, so plain :focus-within
+           would leave the group stuck visible after the pointer leaves. */
         .session.desktop:hover .sessionContent,
-        .session.desktop:focus-within .sessionContent {
+        .session.desktop:has(.sessionActionsInline :focus-visible) .sessionContent {
           padding-right: calc(var(--ctl-chrome) * 3 + var(--space-4));
         }
 
         .session.desktop:hover .sessionActionsInline,
-        .session.desktop:focus-within .sessionActionsInline {
+        .session.desktop:has(.sessionActionsInline :focus-visible) .sessionActionsInline {
           opacity: 1;
           visibility: visible;
           pointer-events: auto;
