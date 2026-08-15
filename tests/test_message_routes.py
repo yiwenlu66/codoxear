@@ -1097,6 +1097,86 @@ def test_messages_window_straddles_search_cursor_and_stays_bounded() -> None:
         assert all(isinstance(event.get("history_cursor"), str) for event in window["events"])
 
 
+def test_messages_neighbor_and_window_reach_rotated_logs_for_all_backends() -> None:
+    """Full server-side navigation chain against real rotated-log discovery.
+
+    search resolves user matches, neighbor resolves the cross-log previous
+    target with same_log False, and window materializes the rotated log via
+    the production cursor-target wiring (allowed paths come from
+    session_log_paths_for_search, exactly as server.py wires it).
+    """
+    import os
+
+    from codoxear.transcript_search import session_log_paths_for_search
+
+    def _codex_rows(_sid: str, texts: list[str]) -> list[dict]:
+        return [{"type": "event_msg", "payload": {"type": "user_message", "message": text}, "ts": float(index)} for index, text in enumerate(texts)]
+
+    def _pi_rows(sid: str, texts: list[str]) -> list[dict]:
+        rows: list[dict] = [{"type": "session", "id": sid, "cwd": "/repo"}]
+        rows.extend({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": text}]}} for text in texts)
+        return rows
+
+    def _cc_rows(sid: str, texts: list[str]) -> list[dict]:
+        rows: list[dict] = [{"type": "system", "sessionId": sid, "cwd": "/repo"}]
+        rows.extend({"type": "user", "sessionId": sid, "timestamp": "2026-06-11T00:00:00.000Z", "cwd": "/repo", "message": {"role": "user", "content": text}} for text in texts)
+        return rows
+
+    codex_sid = "12345678-1234-1234-1234-123456789abc"
+    cases = [
+        ("codex", codex_sid, ("sessions", f"rollout-2026-01-01T00-00-00-{codex_sid}.jsonl"), ("sessions", f"rollout-2026-01-02T00-00-00-{codex_sid}.jsonl"), _codex_rows),
+        ("pi", "pi-session-1", (".pi/agent/sessions/--repo--", "2026-01-01_old.jsonl"), (".pi/agent/sessions/--repo--", "2026-01-02_cur.jsonl"), _pi_rows),
+        ("cc", "cc-session-1", ("projects/-repo", "old.jsonl"), ("projects/-repo", "cur.jsonl"), _cc_rows),
+    ]
+    for backend, sid, (old_dir, old_name), (cur_dir, cur_name), rows_fn in cases:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            old_path = root / old_dir / old_name
+            cur_path = root / cur_dir / cur_name
+            for path, text in ((old_path, f"old {backend}"), (cur_path, f"new {backend}")):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("".join(json.dumps(row) + "\n" for row in rows_fn(sid, [text])), encoding="utf-8")
+            os.utime(old_path, (1, 1))
+            os.utime(cur_path, (2, 2))
+            session = Session(
+                session_id="s1",
+                thread_id=sid,
+                broker_pid=1,
+                codex_pid=1,
+                agent_backend=backend,
+                owned=False,
+                start_ts=0.0,
+                cwd=td,
+                log_path=cur_path,
+                sock_path=root / "s1.sock",
+            )
+
+            def _production_decode_target(token: str, *, kind: str, session=session):
+                paths = session_log_paths_for_search(session.log_path, agent_backend=session.agent_backend, session_id=session.thread_id)
+                return decode_message_cursor_target(token, kind=kind, session=session, allowed_log_paths=paths, secret=_SECRET)
+
+            deps, responses, _metrics = _deps()
+            object.__setattr__(deps, "decode_message_cursor_target", _production_decode_target)
+            manager = _TailManager(session)
+
+            handle_messages_search(_FakeHandler(), session_id="s1", query="q=*&role=user&limit=20", manager=manager, deps=deps)
+            _status, search = responses.pop()
+            texts = [match["text"] for match in search["matches"]]
+            assert texts == [f"old {backend}", f"new {backend}"], backend
+            current_anchor = search["matches"][1]["history_cursor"]
+
+            handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=previous&cursor={current_anchor}", manager=manager, deps=deps)
+            _status, neighbor = responses.pop()
+            assert neighbor["neighbor"]["text"] == f"old {backend}", backend
+            assert neighbor["same_log"] is False, backend
+
+            handle_messages_window(_FakeHandler(), session_id="s1", query=f"cursor={neighbor['neighbor']['history_cursor']}", manager=manager, deps=deps)
+            status, window = responses.pop()
+            assert status == 200, backend
+            assert window["jumped_window"] is True, backend
+            assert any(event.get("role") == "user" and event.get("text") == f"old {backend}" for event in window["events"]), backend
+
+
 def test_streaming_search_scans_five_megabytes_with_exact_count(record_property) -> None:
     import time
 
