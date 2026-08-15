@@ -105,7 +105,7 @@ def search_chat_logs_bounded(
             max_line_bytes=max_line_bytes,
             before_byte=before_byte if index == len(log_paths) - 1 else None,
             after_byte=after_byte if index == len(log_paths) - 1 else 0,
-            order="first",
+            order=order,
             count_limit=remaining,
             role=role,
             match_all=match_all,

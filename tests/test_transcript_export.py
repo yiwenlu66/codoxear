@@ -52,6 +52,16 @@ def _write_assistant_rows(path: Path, count: int) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
+def _write_user_rows(path: Path, texts: list[str]) -> list[int]:
+    offsets: list[int] = []
+    with path.open("wb") as stream:
+        for index, text in enumerate(texts):
+            offsets.append(stream.tell())
+            row = {"type": "event_msg", "payload": {"type": "user_message", "message": text}, "ts": float(index)}
+            stream.write((json.dumps(row) + "\n").encode())
+    return offsets
+
+
 class TestTranscriptExport(unittest.TestCase):
     def test_export_reads_all_chat_events_in_order(self) -> None:
         with TemporaryDirectory() as td:
@@ -94,6 +104,49 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertFalse(truncated)
         self.assertEqual([match["text"] for match in matches], ["needle in rotated log", "needle in active log"])
         self.assertEqual([Path(match["_log_path"]) for match in matches], [old_path, current_path])
+
+    def test_multi_log_latest_keeps_latest_matches_before_active_anchor(self) -> None:
+        with TemporaryDirectory() as td:
+            old_path = Path(td) / "old.jsonl"
+            current_path = Path(td) / "current.jsonl"
+            _write_user_rows(old_path, ["old 0", "old 1"])
+            offsets = _write_user_rows(current_path, ["current 0", "current 1", "anchor"])
+
+            count, matches, truncated = search_chat_logs_bounded(
+                [old_path, current_path], "*", limit=3, before_byte=offsets[2], order="latest", role="user", match_all=True
+            )
+
+        self.assertEqual(count, 4)
+        self.assertFalse(truncated)
+        self.assertEqual([match["text"] for match in matches], ["old 1", "current 0", "current 1"])
+
+    def test_single_log_latest_returns_immediate_user_before_anchor(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "active.jsonl"
+            offsets = _write_user_rows(path, [f"user msg {index}" for index in range(5)])
+
+            count, matches, truncated = search_chat_logs_bounded(
+                [path], "*", limit=1, before_byte=offsets[3], order="latest", role="user", match_all=True
+            )
+
+        self.assertEqual(count, 3)
+        self.assertFalse(truncated)
+        self.assertEqual([match["text"] for match in matches], ["user msg 2"])
+
+    def test_multi_log_first_order_and_count_remain_global(self) -> None:
+        with TemporaryDirectory() as td:
+            first = Path(td) / "first.jsonl"
+            second = Path(td) / "second.jsonl"
+            _write_user_rows(first, ["first 0", "first 1"])
+            _write_user_rows(second, ["second 0", "second 1"])
+
+            count, matches, truncated = search_chat_logs_bounded(
+                [first, second], "*", limit=2, order="first", role="user", match_all=True
+            )
+
+        self.assertEqual(count, 4)
+        self.assertFalse(truncated)
+        self.assertEqual([match["text"] for match in matches], ["first 0", "first 1"])
 
     def test_streaming_search_can_bound_count_without_changing_default(self) -> None:
         with TemporaryDirectory() as td:
