@@ -150,7 +150,7 @@ scripts/deploy.sh <commit-ish>
 
 The script resolves the commit, creates or updates the detached worktree at `~/.local/share/codoxear/deploy`, verifies it reached that exact commit, runs `pipx install --force` against the snapshot, rewrites only the service's `WorkingDirectory` and `ExecStart`, then reloads and restarts **only** `codoxear-server.service`. It preserves the existing unit's `Environment=` and `EnvironmentFile=` settings, so the password/config remains external to the code snapshot and all runtime data remains under `~/.local/share/codoxear/` (`socks/`, uploads, queues, session stores, and so on).
 
-The script refuses to reinstall or restart when the snapshot path is not this repository's clean worktree or the worktree cannot be updated to the requested commit. Its health boundary is `/` → `200` and unauthenticated `/api/sessions` → `401`.
+The script refuses to reinstall or restart when the snapshot path is not this repository's clean worktree or the worktree cannot be updated to the requested commit. The single exemption is the tracked `codoxear/static/dist/app.bundle.js`: every deploy rebuilds it from the reviewed source, so the script restores a stale rebuild left by a previous deploy before the dirtiness guard; all other dirty or untracked paths still block the deploy. Its health boundary is `/` → `200` and unauthenticated `/api/sessions` → `401`.
 
 To roll back, deploy the previous release commit:
 

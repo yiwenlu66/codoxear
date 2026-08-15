@@ -71,6 +71,15 @@ update_snapshot() {
       echo "deploy worktree belongs to a different repository: $DEPLOY_DIR" >&2
       return 1
     fi
+    # The tracked bundle is a derived artifact: every deploy rebuilds it from
+    # the reviewed source below, so a stale rebuild left by a previous deploy
+    # carries no signal. Restore it before the dirtiness guard, which keeps
+    # protecting every other path (including staged bundle changes, which
+    # checkout does not clear and porcelain still reports).
+    local bundle_rel="codoxear/static/dist/app.bundle.js"
+    if git -C "$DEPLOY_DIR" ls-files --error-unmatch -- "$bundle_rel" >/dev/null 2>&1; then
+      git -C "$DEPLOY_DIR" checkout -- "$bundle_rel"
+    fi
     if [[ -n "$(git -C "$DEPLOY_DIR" status --porcelain)" ]]; then
       echo "refusing to replace a dirty deploy worktree: $DEPLOY_DIR" >&2
       return 1

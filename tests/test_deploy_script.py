@@ -155,6 +155,23 @@ esac
         assert failed.returncode != 0
         assert "refusing to replace a dirty deploy worktree" in failed.stderr
         assert operation_log.read_text() == ""
+
+        # A stale bundle rebuild left by a previous deploy is the one exempt
+        # artifact: the deploy restores it, rebuilds it, and proceeds.
+        (deploy_dir / "must-stay-unmodified").unlink()
+        bundle_path = deploy_dir / "codoxear" / "static" / "dist" / "app.bundle.js"
+        bundle_path.write_text("stale-rebuild")
+        operation_log.write_text("")
+        redeployed = subprocess.run(
+            [str(DEPLOY_SCRIPT), commit],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert f"deployed {commit}" in redeployed.stdout
+        assert bundle_path.read_text() == "bundle"
     finally:
         if deploy_dir.exists():
             subprocess.run(["git", "-C", ROOT, "worktree", "remove", "--force", str(deploy_dir)], check=False)
