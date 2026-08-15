@@ -166,8 +166,6 @@ def test_messages_neighbor_returns_previous_and_next_without_search_query() -> N
         session = _session(td, log_path)
         deps, responses, _metrics = _deps()
         manager = _TailManager(session)
-        rows = []
-        _write_search_rows(log_path, [("user", "u0"), ("assistant", "a0"), ("user", "u1"), ("user", "u2")])
         handle_messages_search(_FakeHandler(), session_id="s1", query="q=*&role=user&limit=20", manager=manager, deps=deps)
         _status, body = responses.pop()
         cursors = [match["history_cursor"] for match in body["matches"]]
@@ -225,7 +223,7 @@ def test_messages_neighbor_reaches_rotated_log_in_both_directions() -> None:
     assert previous_result["same_log"] is False
 
 
-
+def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "rollout.jsonl"
         rows = [
