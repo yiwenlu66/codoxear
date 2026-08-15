@@ -962,6 +962,14 @@
         background: var(--ink);
         color: var(--paper);
       }
+      .icon-btn.active:disabled,
+      .icon-btn.active:disabled:hover {
+        border-color: var(--ink-disabled);
+        background: var(--ink-disabled);
+        color: var(--paper);
+        opacity: 1;
+        cursor: not-allowed;
+      }
       /* Announcement audio/HLS error state (see app_voice.js updateVoiceUi).
          The danger treatment distinguishes an armed-but-broken state from
          both the inverted active state and default chrome. */

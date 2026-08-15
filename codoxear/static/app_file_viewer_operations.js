@@ -298,8 +298,9 @@
       const editMode = Boolean(currentFileEditMode());
       const dirty = Boolean(currentFileDirty());
       const saveStyle = editMode || savePending;
+      // Compact 32px toolbar chrome: .active supplies the ink-on-paper inversion;
+      // .primary would also impose the 44px full-size primary min-height.
       fileEditButton.classList.toggle("active", saveStyle);
-      fileEditButton.classList.toggle("primary", saveStyle);
       fileEditButton.classList.toggle("dirty", dirty);
       if (savePending) fileEditButton.innerHTML = iconSvg("save");
       else if (editMode) fileEditButton.innerHTML = iconSvg("save");
