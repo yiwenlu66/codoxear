@@ -142,12 +142,15 @@
         return;
       }
       const result = await fetchNeighbor(direction, rows);
-      if (result.error) return;
+      if (result.error) {
+        setToast("Could not reach that message");
+        return;
+      }
       if (!result.match) {
         setToast(direction < 0 ? "At first user message" : "At last user message");
         return;
       }
-      await materializeNeighbor(direction, result.match);
+      if (!(await materializeNeighbor(direction, result.match))) setToast("Could not reach that message");
     }
 
     function jumpToLoadedMessage(direction) {

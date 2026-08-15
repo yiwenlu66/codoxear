@@ -138,6 +138,20 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertIn("window:c0", result["events"])
         self.assertIn("scroll:u0", result["events"])
 
+    def test_navigation_failure_toast_is_distinct_from_boundary(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u1', 'c1', 0)]; apiMode = 'cross'; windowMode = 'failure';
+  await controller.jumpToLoadedUserMessage(1);
+  apiMode = 'error';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertEqual(result["events"].count("toast:Could not reach that message"), 2)
+        self.assertNotIn("toast:At first user message", result["events"])
+        self.assertNotIn("toast:At last user message", result["events"])
+
     def test_server_boundary_toasts_have_no_window_qualifier(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
