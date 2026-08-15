@@ -21,19 +21,24 @@ const ctx = {{ window: {{}}, document: {{}}, console }}; vm.createContext(ctx); 
 
 
 HARNESS = r'''
-const events = []; let selected = 'sid-1'; let rows = []; let apiMode = 'total'; let keyHandler = null;
+const events = []; let selected = 'sid-1'; let rows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null;
 function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor: cursor }, offsetTop: top, scrollIntoView() { events.push(`scroll:${id}`); } }; }
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
 const deps = {
   prevUserBtn: prev, nextUserBtn: next, getSelected: () => selected, getPollGen: () => 1,
   api: async (url) => {
     events.push(`api:${url}`);
+    if (apiMode === 'error') throw Object.assign(new Error('failed'), { status: 500 });
+    if (url.includes('/messages/neighbor')) {
+      if (apiMode === 'boundary') return { neighbor: { message_id: 'u0', history_cursor: 'c0', before_byte: 'c0', same_log: true } };
+      if (apiMode === 'cross') return { neighbor: { message_id: 'u0', history_cursor: 'c0', before_byte: 'c0', same_log: false } };
+      return { neighbor: null, same_log: false };
+    }
     if (apiMode === 'zero') return { total: 0, matches: [] };
-    if (apiMode === 'boundary') return { total: 3, matches: [{ message_id: 'u0', before_byte: 'c0' }] };
     return { total: rows.length, matches: [] };
   },
-  loadTranscriptWindowAtCursor: async (cursor) => { events.push(`window:${cursor}`); rows = [row('u0', 'c0', 0)]; return { jumped_window: true }; },
-  loadOlderMessages: async () => { events.push('older'); rows = [row('u0', 'c0', 0), ...rows]; return true; },
+  loadTranscriptWindowAtCursor: async (cursor) => { events.push(`window:${cursor}`); if (windowMode === 'failure') return null; rows = [row('u0', 'c0', 0)]; return { jumped_window: true }; },
+  loadOlderMessages: async () => { events.push('older'); if (olderMode === 'failure') return false; if (olderMode === 'success') rows = [row('u0', 'c0', 0), ...rows]; return true; },
   loadedUserMessageRows: () => rows, loadedCopyMessageRows: () => rows,
   loadedUserJumpTarget: (items, direction) => direction > 0 && items.length > 1 ? { target: items[1], reason: 'target' } : { target: null, reason: direction < 0 ? 'first' : 'last' },
   loadedCopyJumpTarget: () => ({ target: null, reason: 'last' }), getScrollTop: () => 0,
@@ -79,7 +84,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
   process.stdout.write(JSON.stringify({ events }));
 })();
 ''')
-        self.assertTrue(any("direction=previous" in item and "anchor=c1" in item for item in result["events"]))
+        self.assertTrue(any("/messages/neighbor" in item and "direction=previous" in item and "cursor=c1" in item for item in result["events"]))
         self.assertIn("older", result["events"])
         self.assertNotIn("window:c0", result["events"])
         self.assertIn("scroll:u0", result["events"])
@@ -95,6 +100,42 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertEqual(result["ids"], ["u0", "u2"])
         self.assertEqual(result["events"].count("older"), 1)
         self.assertNotIn("window:c0", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+
+    def test_cross_log_previous_uses_detached_window_without_prepend(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u1', 'c1', 0)]; apiMode = 'cross';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("window:c0", result["events"])
+        self.assertNotIn("older", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+
+    def test_next_boundary_uses_detached_window(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u1', 'c1', 0)]; apiMode = 'cross';
+  await controller.jumpToLoadedUserMessage(1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("window:c0", result["events"])
+        self.assertNotIn("older", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+
+    def test_same_log_prepend_exhaustion_falls_back_to_window(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u2', 'c2', 100)]; apiMode = 'boundary'; olderMode = 'failure';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertEqual(result["events"].count("older"), 1)
+        self.assertIn("window:c0", result["events"])
         self.assertIn("scroll:u0", result["events"])
 
     def test_server_boundary_toasts_have_no_window_qualifier(self) -> None:

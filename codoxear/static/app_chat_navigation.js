@@ -49,7 +49,7 @@
     function rowForMatch(match) {
       if (!match) return null;
       const id = typeof match.message_id === "string" ? match.message_id : "";
-      const cursor = typeof match.before_byte === "string" ? match.before_byte : "";
+      const cursor = typeof match.history_cursor === "string" ? match.history_cursor : (typeof match.before_byte === "string" ? match.before_byte : "");
       return loadedUserMessageRows().find((row) => (id && row.dataset && row.dataset.messageId === id) || (cursor && row.dataset && row.dataset.historyCursor === cursor)) || null;
     }
 
@@ -91,38 +91,45 @@
       return true;
     }
 
-    async function fetchBoundaryUserMessage(direction, rows) {
+    async function fetchNeighbor(direction, rows) {
       const sid = getSelected();
       const gen = getPollGen();
-      if (!sid) return null;
+      if (!sid) return { error: true };
       const anchorRow = direction < 0 ? rows[0] : rows[rows.length - 1];
-      const anchor = anchorRow && anchorRow.dataset ? String(anchorRow.dataset.historyCursor || "") : "";
-      let suffix;
-      if (anchor) suffix = `&direction=${direction < 0 ? "previous" : "next"}&anchor=${encodeURIComponent(anchor)}`;
-      else suffix = `&order=${direction < 0 ? "latest" : "first"}`;
+      const cursor = anchorRow && anchorRow.dataset ? String(anchorRow.dataset.historyCursor || "") : "";
+      if (!cursor) return { error: true };
       try {
-        const data = await api(`/api/sessions/${sid}/search?q=*&role=user&limit=1${suffix}`);
-        if (getSelected() !== sid || getPollGen() !== gen) return null;
-        userTotals.set(sid, Math.max(userTotals.get(sid) || 0, Number(data.total) || 0));
-        const matches = Array.isArray(data.matches) ? data.matches : [];
-        return matches[0] || null;
+        const data = await api(`/api/sessions/${sid}/messages/neighbor?role=user&direction=${direction < 0 ? "previous" : "next"}&cursor=${encodeURIComponent(cursor)}`);
+        if (getSelected() !== sid || getPollGen() !== gen) return { error: true };
+        return { data, match: data && data.neighbor ? data.neighbor : null };
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
-        return null;
+        return { error: true };
       }
     }
 
-    async function loadHistoryUntilEventId(eventId) {
-      const targetId = typeof eventId === "string" ? eventId : "";
-      if (!targetId) return null;
-      const maxPages = 20;
-      for (let i = 0; i < maxPages; i++) {
-        const row = loadedUserMessageRows().find((item) => item.dataset && item.dataset.messageId === targetId) || null;
-        if (row) return row;
-        const loaded = await loadOlderMessages({ auto: false, cancelOnScroll: false, forcePreserveViewport: true });
-        if (!loaded) return null;
+    async function materializeNeighbor(direction, match) {
+      // One owner for resolve → materialize → scroll. The transcript store is
+      // anchored at the live tail and only pages backward; therefore a
+      // previous/same-log target may prepend at most 20 pages while preserving
+      // the live tail. Next, cross-log, and exhausted prepend targets use a
+      // detached window centered on the target cursor.
+      const existing = rowForMatch(match);
+      if (existing) return scrollToRow(existing);
+      const cursor = typeof match.history_cursor === "string" ? match.history_cursor : (typeof match.before_byte === "string" ? match.before_byte : "");
+      const sameLog = match.same_log === true;
+      if (direction < 0 && sameLog) {
+        for (let page = 0; page < 20; page++) {
+          if (!(await loadOlderMessages({ auto: false, cancelOnScroll: false, forcePreserveViewport: true }))) break;
+          const row = rowForMatch(match);
+          if (row) return scrollToRow(row);
+        }
       }
-      return null;
+      if (!cursor) return false;
+      const loaded = await loadTranscriptWindowAtCursor(cursor);
+      if (!loaded) return false;
+      const target = rowForMatch(match);
+      return target ? scrollToRow(target) : false;
     }
 
     async function jumpToLoadedUserMessage(direction) {
@@ -134,21 +141,13 @@
         scrollToRow(local.target);
         return;
       }
-      const match = await fetchBoundaryUserMessage(direction, rows);
-      if (!match) {
+      const result = await fetchNeighbor(direction, rows);
+      if (result.error) return;
+      if (!result.match) {
         setToast(direction < 0 ? "At first user message" : "At last user message");
         return;
       }
-      const cursor = typeof match.before_byte === "string" ? match.before_byte : "";
-      if (direction < 0) {
-        // Previous user message beyond loaded range: incrementally prepend
-        // older pages until the target appears, preserving viewport each time.
-        const target = await loadHistoryUntilEventId(match.message_id);
-        if (target) scrollToRow(target);
-        return;
-      }
-      if (!cursor || !(await loadTranscriptWindowAtCursor(cursor))) return;
-      scrollToRow(rowForMatch(match));
+      await materializeNeighbor(direction, result.match);
     }
 
     function jumpToLoadedMessage(direction) {

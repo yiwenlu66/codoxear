@@ -86,6 +86,8 @@ Currently supported agent backends:
 
 Every displayed state has one declared authoritative writer. When multiple feeds can update one displayed value, the owning module must document the reconciliation rule and make it explicit in code; do not add a second cache or derive the value independently. The typing row is the canonical dual-feed case: live SSE deltas are exact, session-list snapshots are resumable, and while a turn is open the snapshot can only raise counts in the shared `typingRowRuntime` store.
 
+User-message navigation has one owner for resolve → materialize → scroll: `materializeNeighbor` in `app_chat_navigation.js`, fed by the first-class `GET /api/sessions/<id>/messages/neighbor` endpoint (never a degenerate search query). The materialization rule, dictated by the transcript store's asymmetry (anchored at the live tail, pages backward only): (a) target already rendered → scroll; (b) previous-direction and `same_log` → bounded incremental prepend preserving the live tail, falling through on exhaustion; (c) everything else (next-direction misses, cross-log targets, prepend exhaustion) → detached window load at the target cursor. The search endpoint remains legitimate only where a total count is needed.
+
 ## Design language
 
 The UI follows a single “paper” design language. These rules are invariants, not preferences.
