@@ -826,6 +826,83 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
     deps.json_response(handler, 200, {**transcript, **_search_result_fields(search_query, match_count, match_count_truncated, matches)})
 
 
+def _same_log_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left.absolute() == right.absolute()
+
+
+def handle_messages_neighbor(handler: Any, *, session_id: str, query: str, manager: Any, deps: MessageRouteDeps) -> None:
+    """Resolve exactly one positional user-message neighbor.
+
+    This endpoint deliberately has no text query, ordering mode, or count
+    semantics.  The cursor identifies the rendered anchor; the bounded search
+    only scans the files on the requested side of that anchor.
+    """
+    if not deps.require_auth(handler):
+        handler._unauthorized()
+        return
+    manager.refresh_session_meta(session_id)
+    session = manager.get_session(session_id)
+    if not session or session.log_path is None or not session.log_path.exists():
+        deps.json_response(handler, 404, {"error": "unknown session"} if not session else {"neighbor": None, "same_log": False})
+        return
+    qs = urllib.parse.parse_qs(query)
+    role = (qs.get("role") or ["user"])[0]
+    direction = (qs.get("direction") or [""])[0]
+    cursor_values = qs.get("cursor")
+    if role != "user":
+        deps.json_response(handler, 400, {"error": "role must be user"})
+        return
+    if direction not in {"previous", "next"}:
+        deps.json_response(handler, 400, {"error": "direction must be previous or next"})
+        return
+    if not cursor_values or not cursor_values[0].strip():
+        deps.json_response(handler, 400, {"error": "cursor required"})
+        return
+    log_paths = _session_log_paths_for_search(session.log_path, agent_backend=session.agent_backend, session_id=session.thread_id)
+    try:
+        anchor_path, anchor_position = _decode_cursor_target(
+            deps,
+            cursor_values[0],
+            kind="history",
+            session=session,
+        )
+    except MessageCursorError as exc:
+        deps.json_response(handler, 409, {"error": str(exc)})
+        return
+    if anchor_path is None:
+        deps.json_response(handler, 409, {"error": "cursor_invalid"})
+        return
+    anchor_index = next((index for index, path in enumerate(log_paths) if _same_log_path(path, anchor_path)), None)
+    if anchor_index is None:
+        deps.json_response(handler, 409, {"error": "cursor_invalid"})
+        return
+    if direction == "previous":
+        _count, matches, _truncated = _search_chat_logs_bounded(
+            log_paths[: anchor_index + 1], "*", limit=1, before_byte=anchor_position,
+            order="latest", role=role, match_all=True,
+        )
+    else:
+        next_position = _next_jsonl_record_byte(anchor_path, anchor_position)
+        _count, matches, _truncated = _search_chat_logs_bounded(
+            [anchor_path], "*", limit=1, after_byte=next_position,
+            order="first", role=role, match_all=True,
+        )
+        if not matches:
+            _count, matches, _truncated = _search_chat_logs_bounded(
+                log_paths[anchor_index + 1 :], "*", limit=1,
+                order="first", role=role, match_all=True,
+            )
+    if not matches:
+        deps.json_response(handler, 200, {"neighbor": None, "same_log": False})
+        return
+    target = _attach_search_load_cursors(matches, session=session, encode_cursor=deps.encode_message_cursor, query="")[0]
+    target["same_log"] = _same_log_path(Path(matches[0].get("_log_path", "")), session.log_path)
+    deps.json_response(handler, 200, {"neighbor": target, "same_log": bool(target["same_log"])})
+
+
 def handle_messages_window(handler: Any, *, session_id: str, query: str, manager: Any, deps: MessageRouteDeps) -> None:
     if not deps.require_auth(handler):
         handler._unauthorized()
@@ -1193,6 +1270,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
 MESSAGE_GET_ROUTES = (
     ("export", handle_messages_export),
     ("search", handle_messages_search),
+    ("neighbor", handle_messages_neighbor),
     ("window", handle_messages_window),
     ("tail", handle_messages_tail),
     ("history", handle_messages_history),

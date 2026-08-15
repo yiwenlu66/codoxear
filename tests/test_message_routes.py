@@ -12,12 +12,14 @@ from codoxear.launch_ledger import POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES
 from codoxear.launch_ledger import launch_attempt_transcript_payload
 from codoxear.message_cursor import MessageCursorError
 from codoxear.message_cursor import decode_message_cursor
+from codoxear.message_cursor import decode_message_cursor_target
 from codoxear.message_cursor import encode_message_cursor
 from codoxear.message_routes import MessageRouteDeps
 from codoxear.message_routes import handle_messages_export
 from codoxear.message_routes import handle_messages_history
 from codoxear.message_routes import handle_messages_live
 from codoxear.message_routes import handle_messages_live_stream
+from codoxear.message_routes import handle_messages_neighbor
 from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
 from codoxear.message_routes import handle_messages_window
@@ -157,7 +159,73 @@ def _deps(**overrides):
     return deps, responses, metrics
 
 
-def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
+def test_messages_neighbor_returns_previous_and_next_without_search_query() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "neighbor.jsonl"
+        _write_search_rows(log_path, [("user", "u0"), ("assistant", "a0"), ("user", "u1"), ("user", "u2")])
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps()
+        manager = _TailManager(session)
+        rows = []
+        _write_search_rows(log_path, [("user", "u0"), ("assistant", "a0"), ("user", "u1"), ("user", "u2")])
+        handle_messages_search(_FakeHandler(), session_id="s1", query="q=*&role=user&limit=20", manager=manager, deps=deps)
+        _status, body = responses.pop()
+        cursors = [match["history_cursor"] for match in body["matches"]]
+
+        handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=previous&cursor={cursors[2]}", manager=manager, deps=deps)
+        _status, previous = responses.pop()
+        handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=next&cursor={cursors[0]}", manager=manager, deps=deps)
+        _status, following = responses.pop()
+
+    assert previous["same_log"] is True
+    assert previous["neighbor"]["text"] == "u1"
+    assert following["same_log"] is True
+    assert following["neighbor"]["text"] == "u1"
+    assert set(previous["neighbor"]) >= {"message_id", "history_cursor", "text", "ts", "same_log"}
+
+
+def test_messages_neighbor_returns_none_at_boundary() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "neighbor.jsonl"
+        _write_search_rows(log_path, [("user", "u0"), ("user", "u1")])
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps()
+        manager = _TailManager(session)
+        handle_messages_search(_FakeHandler(), session_id="s1", query="q=*&role=user&limit=20", manager=manager, deps=deps)
+        _status, body = responses.pop()
+        cursor = body["matches"][0]["history_cursor"]
+        handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=previous&cursor={cursor}", manager=manager, deps=deps)
+        _status, result = responses.pop()
+    assert result == {"neighbor": None, "same_log": False}
+
+
+def test_messages_neighbor_reaches_rotated_log_in_both_directions() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        old_path = Path(td) / "old.jsonl"
+        current_path = Path(td) / "current.jsonl"
+        _write_search_rows(old_path, [("user", "old 0"), ("user", "old 1")])
+        _write_search_rows(current_path, [("user", "current 0"), ("user", "current 1")])
+        session = _session(td, current_path)
+        deps, responses, _metrics = _deps()
+        object.__setattr__(deps, "decode_message_cursor_target", lambda token, *, kind, session: decode_message_cursor_target(
+            token, kind=kind, session=session, allowed_log_paths=[old_path, current_path], secret=_SECRET
+        ))
+        manager = _TailManager(session)
+        old_anchor = encode_message_cursor(kind="history", session=SimpleNamespace(thread_id=session.thread_id, log_path=old_path), pos=0, secret=_SECRET)
+        current_anchor = encode_message_cursor(kind="history", session=session, pos=0, secret=_SECRET)
+        with mock.patch.object(message_routes_module, "_session_log_paths_for_search", return_value=[old_path, current_path]):
+            handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=next&cursor={old_anchor}", manager=manager, deps=deps)
+            _status, next_result = responses.pop()
+            handle_messages_neighbor(_FakeHandler(), session_id="s1", query=f"role=user&direction=previous&cursor={current_anchor}", manager=manager, deps=deps)
+            _status, previous_result = responses.pop()
+
+    assert next_result["neighbor"]["text"] == "old 1"
+    assert next_result["same_log"] is False
+    assert previous_result["neighbor"]["text"] == "old 1"
+    assert previous_result["same_log"] is False
+
+
+
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "rollout.jsonl"
         rows = [
