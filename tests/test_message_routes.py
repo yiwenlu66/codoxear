@@ -197,6 +197,69 @@ def test_messages_neighbor_returns_none_at_boundary() -> None:
     assert result == {"neighbor": None, "same_log": False}
 
 
+def test_messages_neighbor_missing_session_uses_launch_payload() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "recovered.jsonl"
+        _write_search_rows(log_path, [("user", "u0"), ("assistant", "a0"), ("user", "u1"), ("user", "u2")])
+        payload = {
+            "transcript_state": "recovered",
+            "thread_id": "launch-thread",
+            "log_path": str(log_path),
+            "agent_backend": "codex",
+            "live_cursor": None,
+            "history_cursor": None,
+            "events": [],
+            "has_older": False,
+            "busy": False,
+            "queue_len": 0,
+            "token": None,
+        }
+        deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
+        manager = _MissingManager()
+
+        handle_messages_search(_FakeHandler(), session_id="gone", query="q=*&role=user&limit=20", manager=manager, deps=deps)
+        _status, body = responses.pop()
+        cursors = [match["history_cursor"] for match in body["matches"]]
+        assert len(cursors) == 3
+
+        handle_messages_neighbor(_FakeHandler(), session_id="gone", query=f"role=user&direction=previous&cursor={cursors[2]}", manager=manager, deps=deps)
+        status, previous = responses.pop()
+        handle_messages_neighbor(_FakeHandler(), session_id="gone", query=f"role=user&direction=next&cursor={cursors[0]}", manager=manager, deps=deps)
+        _status, following = responses.pop()
+
+    assert status == 200
+    assert previous["neighbor"]["text"] == "u1"
+    assert previous["same_log"] is True
+    assert following["neighbor"]["text"] == "u1"
+    assert following["same_log"] is True
+
+
+def test_messages_neighbor_without_transcript_log_is_boundary_not_404() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        cursor = encode_message_cursor(kind="history", session=SimpleNamespace(thread_id="thread-1", log_path=Path(td) / "gone.jsonl"), pos=0, secret=_SECRET)
+        query = f"role=user&direction=previous&cursor={cursor}"
+
+        # Known session whose log is missing: a boundary, not an unknown session.
+        session = _session(td, None)
+        deps, responses, _metrics = _deps()
+        handle_messages_neighbor(_FakeHandler(), session_id="s1", query=query, manager=_TailManager(session), deps=deps)
+        status, body = responses.pop()
+        assert (status, body) == (200, {"neighbor": None, "same_log": False})
+
+        # Missing session with a pre-log launch payload: same boundary shape.
+        payload = {"transcript_state": "failed", "thread_id": "thread-1", "log_path": None, "events": [], "has_older": False, "busy": False, "queue_len": 0, "token": None}
+        deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
+        handle_messages_neighbor(_FakeHandler(), session_id="gone", query=query, manager=_MissingManager(), deps=deps)
+        status, body = responses.pop()
+        assert (status, body) == (200, {"neighbor": None, "same_log": False})
+
+        # Missing session without any launch record stays 404.
+        deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: None)
+        handle_messages_neighbor(_FakeHandler(), session_id="gone", query=query, manager=_MissingManager(), deps=deps)
+        status, body = responses.pop()
+        assert status == 404
+
+
 def test_messages_neighbor_reaches_rotated_log_in_both_directions() -> None:
     with tempfile.TemporaryDirectory() as td:
         old_path = Path(td) / "old.jsonl"

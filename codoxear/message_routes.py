@@ -845,8 +845,9 @@ def handle_messages_neighbor(handler: Any, *, session_id: str, query: str, manag
         return
     manager.refresh_session_meta(session_id)
     session = manager.get_session(session_id)
-    if not session or session.log_path is None or not session.log_path.exists():
-        deps.json_response(handler, 404, {"error": "unknown session"} if not session else {"neighbor": None, "same_log": False})
+    launch_payload = None if session is not None else _launch_payload_for_missing_session(deps, session_id)
+    if session is None and launch_payload is None:
+        deps.json_response(handler, 404, {"error": "unknown session"})
         return
     qs = urllib.parse.parse_qs(query)
     role = (qs.get("role") or ["user"])[0]
@@ -861,13 +862,26 @@ def handle_messages_neighbor(handler: Any, *, session_id: str, query: str, manag
     if not cursor_values or not cursor_values[0].strip():
         deps.json_response(handler, 400, {"error": "cursor required"})
         return
-    log_paths = _session_log_paths_for_search(session.log_path, agent_backend=session.agent_backend, session_id=session.thread_id)
+    if session is not None:
+        scan_session: Any = session
+        agent_backend = session.agent_backend
+        current_log = session.log_path if session.log_path is not None and session.log_path.exists() else None
+    else:
+        scan_session = _launch_payload_cursor_session(launch_payload)
+        agent_backend = launch_payload.get("agent_backend") if isinstance(launch_payload.get("agent_backend"), str) else None
+        current_log = _launch_payload_existing_log_path(launch_payload)
+    if current_log is None:
+        # A known session without a readable transcript log has no neighbors;
+        # that is a boundary, not an unknown session.
+        deps.json_response(handler, 200, {"neighbor": None, "same_log": False})
+        return
+    log_paths = _session_log_paths_for_search(current_log, agent_backend=agent_backend, session_id=scan_session.thread_id)
     try:
         anchor_path, anchor_position = _decode_cursor_target(
             deps,
             cursor_values[0],
             kind="history",
-            session=session,
+            session=scan_session,
         )
     except MessageCursorError as exc:
         deps.json_response(handler, 409, {"error": str(exc)})
@@ -898,8 +912,8 @@ def handle_messages_neighbor(handler: Any, *, session_id: str, query: str, manag
     if not matches:
         deps.json_response(handler, 200, {"neighbor": None, "same_log": False})
         return
-    target = _attach_search_load_cursors(matches, session=session, encode_cursor=deps.encode_message_cursor, query="")[0]
-    target["same_log"] = _same_log_path(Path(matches[0].get("_log_path", "")), session.log_path)
+    target = _attach_search_load_cursors(matches, session=scan_session, encode_cursor=deps.encode_message_cursor, query="")[0]
+    target["same_log"] = _same_log_path(Path(matches[0].get("_log_path", "")), current_log)
     deps.json_response(handler, 200, {"neighbor": target, "same_log": bool(target["same_log"])})
 
 
