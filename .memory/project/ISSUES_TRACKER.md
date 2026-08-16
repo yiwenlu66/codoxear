@@ -28,6 +28,8 @@ this session and their closure status. Maintained on disk so the next agent
 | 11 | Pi error/retry busy-lock | CLOSED | d12839e5, db029b04 | PTY Retrying probe |
 | 12 | Unattended config by thread scope | CLOSED | c5f0d8d4, 9342bc63 | Restart-stable |
 | 13 | Continuous traffic optimization | PARTIAL | 1ea5b5d8, f8c4d531, 6e03120b, c0f35009 | Floor 19 req/10KB/60s, but never measured on live during real work |
+| 20 | Pi /new hidden from menu; window not cleared after rebind | CLOSED | 93412211, ed65bfe3 | Identity-keyed replacement in openSession; Docker-verified (scripts/docker_new_flow.sh) |
+| 21 | Bridge caps lose Pi builtins after /new | CLOSED | b4d13209, fc515c15 | Root cause: pi getCommands() is the extension registry only (never builtins); projection replaced instead of unioning, and caps commands were written only on first registration + wiped by any settings-changing refreshCaps. Fixed: union projection (builtins first, interactive filter scoped to extras), bridge caches a fresh registry snapshot across refreshes, registration retried on turn_end. Docker-verified: menu keeps builtins+/effort after rebind |
 | 14 | Page-load performance | CLOSED | 46fce5a3, vendor marked+KaTeX | 1.79s → 291ms |
 | 15 | CC effort fully done | CLOSED-MECHANISM | 5c94a3b1, ff345242 | settings.json observer; no logged-in CC binary on host |
 | 16 | Codex /effort fully done | CLOSED-MECHANISM | 8d30a3c1, d6cf3ba5, ff345242 | typed RPC; no logged-in Codex binary on host |
