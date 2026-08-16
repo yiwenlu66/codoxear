@@ -66,8 +66,18 @@ change single-module by construction.
   globals) is out of its scope and covered by per-phase adversarial review.
 
 ## Question that would most change the model
-Does the Phase 2 wiring-discipline work reveal that controllers genuinely need
-far fewer cross-module values than the bag implies? If the true dependency
-surface is small, Phase 3's store shrinks and Phase 5's composition residual
-nearly vanishes; if it is large, the state mesh is worse than estimated and
-Phase 3 becomes the critical path.
+ANSWERED (Phase 2a): the chat subtree's true dependency surface is ~140
+keys — large, so Phase 3's store is the critical path, and Phase 2's
+explicit contracts are the map Phase 3 will shrink. Confirmed further by
+pruning: ~40-50% of mechanically derived contract keys were dead.
+
+## Phase 2 lessons absorbed
+- Under-selection and unbound values in giant option literals are the
+  silent-failure classes of explicit wiring; both are now guarded
+  statically (select-undercoverage, unbound-option-value) and the
+  post-login boot path surfaces failures in the live UI.
+- Behavior verification gates EVERY product-code commit, including
+  review revisions — the one time it didn't (4d50c9c4), a boot crash
+  shipped forward.
+- Token-blind text scanning is unsafe for identifier analysis (the '$'
+  misprune); use token-aware scans.

@@ -111,3 +111,54 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   PROCESS NOTE (valid, no code action): (4) the Phase 0 Counter fix rode in
   the Phase 1 commit — future phase commits stay scope-pure.
 - 01:2x — Phase 1 revision dispatched (resume, run 20aacf75).
+- 01:4x — Phase 1 revision complete: loader wrapper now emits "use strict"
+  (tests/frontend_module_loader.py:139) + behavioral ReferenceError test;
+  all five misdiagnosed dead-guard clusters removed; stale comment fixed;
+  suite 1678 green. COMMITS: 4d50c9c4 (revision), ad69e491 (strictness
+  test), e89dbdc0 (task memory; PROMPT.md stays local per .gitignore:4).
+  PHASE 1 COMPLETE — gates: suite green, guards clean, Docker behavior
+  parity judged identical, adversarial review adjudicated.
+
+## 2026-08-17
+
+- Phase 2 sub-phases committed: 4a44af21 (2a chat subtree, select lists
+  139/141/137/34 keys — the honest dependency surface is LARGE, answering
+  EPISTEMIC's open question: Phase 3 is the critical path), 0d3c963c (2b
+  session display 11 + file ops 127), 982d3dc4 (2c file subtree incl.
+  hooks-bag dissolution, 94/35/24/15/48), aafbfbb0 (2d transcript
+  leftovers). Allowlist reached end state: 0 bag spreads, 0 pass-throughs,
+  8 reviewed-benign boot globals.
+- Phase 2 adversarial review (critic sol, run 1de1c0bd; fable attempt
+  986e6569 timed out at 30m — model override applied): 3 objections, all
+  ACCEPTED: (1) guard accepts direct bag argument createX(options);
+  (2) select() under-selection is silent — later proven in production;
+  (3) contracts ~40-50% dead keys (57/141, 74/137, 1/127 measured).
+- REGRESSION HUNT (the big one): Docker gate failed at HEAD with cards:0,
+  ZERO browser errors, bootstrapped=true. Deterministic. Instrumented
+  debugging executor (sol, run 36dbf0b2) localized: 4a44af21 introduced
+  two case-typo'd shorthand values (codoxearCodeCopy/codoxearModal vs
+  CodoxearCodeCopy/CodoxearModal) in composition's deps map; ReferenceError
+  aborted chat-interaction construction; the login form's catch wrote the
+  error into a DOM node renderApp had ALREADY DETACHED — total boot
+  failure invisible to every deterministic gate. Fixed in 8f46c325 (after
+  an earlier same-class boot crash, codoxearDom, fixed in 8f8b1e04).
+  Docker verify PASS at 8f46c325.
+- PROCESS CORRECTION (main agent error): the Phase 1 revision commit
+  4d50c9c4 was gated suite-only; the codoxearDom boot crash it introduced
+  reached Phase 2's gate. Behavior verification now gates EVERY
+  product-code commit including review revisions.
+- Phase 2 revision (parallel executors, run 97d4273f): guard hardening —
+  direct-bag-argument, select-undercoverage, unbound-option-value checks
+  (the last catches the boot-crash class statically); dead-key pruning
+  57+75+1 keys; boot-error surfacing fix (app.js: post-login bootstrap
+  failure now console.errors AND replaces #root with a role=alert panel).
+  Commits ce760533, 4988b72d. Parallel executors raced on the bundle —
+  caught by main agent, rebuilt from combined sources before commit.
+- Second regression: pruning mis-scanned '$' (token-blind regex) in
+  send_lifecycle; getTray $("#stagedAttachments") threw at boot — and the
+  NEW failure surfacing made it loud in the Docker gate (console showed
+  the exact ReferenceError). Token-aware audit of all 133 pruned keys:
+  exactly one misprune. Fixed 70a12140.
+- PHASE 2 COMPLETE: suite 1681 green, guards clean, docker_verify PASS
+  (70a12140), docker_ui_flows OBSERVED (queue + /model picker flows
+  correct).
