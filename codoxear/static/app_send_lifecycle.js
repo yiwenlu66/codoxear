@@ -28,7 +28,7 @@
     const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
     const upgradeCandidateFileRefs = requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
     const { setStatus, setContext,
-      ATTACH_UPLOAD_MAX_BYTES, AbortController, EventSource, addAppEvent, api, attachBtn, b64FromBytes, chatInner, codoxearAttachments, codoxearMessageFlow, composer,
+      ATTACH_UPLOAD_MAX_BYTES, AbortController, EventSource, $, addAppEvent, api, attachBtn, b64FromBytes, chatInner, codoxearAttachments, codoxearMessageFlow, composer,
       confirmApp, dataTransferHasFiles, document, el,
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
       imgInput, isLikelyHeic, looksLikeImage, navigator, networkStatus,
