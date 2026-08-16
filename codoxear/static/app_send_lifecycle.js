@@ -46,6 +46,7 @@
     const { renderPendingTranscriptSlot, renderSessionTail, applySessionRuntimeFromTail,
       syncRecoveryUiForSession } = history;
 attachmentsController = codoxearAttachments.createAttachmentsController(wiring.createAttachmentsOptions({
+  sessionState,
   attachBtn,
   imgInput,
   composer,
