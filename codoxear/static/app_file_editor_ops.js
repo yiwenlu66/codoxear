@@ -7,24 +7,26 @@
   function createFileEditorOpsController(options = {}) {
     const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
     const { wiring, codoxearFileEditor, resolveAppUrl, fileDiff, normalizeLineNumber, requestAnimationFrame,
-      setTimeout, hooks } = options;
+      setTimeout, isCurrentFileOpenRequest, renderPlainTextFallback, disposeFileEditor, currentEditorKind,
+      setEditorKind, currentFileEditMode, currentActiveFileEditable, isUnavailable, isProgrammaticChange,
+      currentTouchSelectMode, resetTouchSelectionState, currentActiveFileText, setDirty, runProgrammaticChange,
+      syncReadOnly, updateTouchToolbar } = options;
     if (!codoxearFileEditor || typeof codoxearFileEditor.createFileEditorRuntime !== "function")
       throw new TypeError("file editor dependency missing: codoxearFileEditor");
-    if (!hooks || typeof hooks !== "object") throw new TypeError("file editor dependency missing: hooks");
     const runtime = codoxearFileEditor.createFileEditorRuntime();
     const monacoLoader = codoxearFileEditor.createMonacoLoader(wiring.createMonacoLoaderOptions({
       resolveAppUrl, timeoutMs: 4000,
     }));
     const renderer = codoxearFileEditor.createFileEditorRenderer(wiring.createFileEditorRendererOptions({
       runtime, monacoLoader, host: fileDiff, normalizeLineNumber, requestAnimationFrame, setTimeout,
-      isCurrentFileOpenRequest: hooks.isCurrentFileOpenRequest, renderPlainTextFallback: hooks.renderPlainTextFallback,
-      disposeFileEditor: hooks.disposeFileEditor, currentEditorKind: hooks.currentEditorKind,
-      setEditorKind: hooks.setEditorKind, currentFileEditMode: hooks.currentFileEditMode,
-      currentActiveFileEditable: hooks.currentActiveFileEditable, isUnavailable: hooks.isUnavailable,
-      isProgrammaticChange: hooks.isProgrammaticChange, currentTouchSelectMode: hooks.currentTouchSelectMode,
-      resetTouchSelectionState: hooks.resetTouchSelectionState, currentActiveFileText: hooks.currentActiveFileText,
-      setDirty: hooks.setDirty, runProgrammaticChange: hooks.runProgrammaticChange,
-      syncReadOnly: hooks.syncReadOnly, updateTouchToolbar: hooks.updateTouchToolbar,
+      isCurrentFileOpenRequest: isCurrentFileOpenRequest, renderPlainTextFallback: renderPlainTextFallback,
+      disposeFileEditor: disposeFileEditor, currentEditorKind: currentEditorKind,
+      setEditorKind: setEditorKind, currentFileEditMode: currentFileEditMode,
+      currentActiveFileEditable: currentActiveFileEditable, isUnavailable: isUnavailable,
+      isProgrammaticChange: isProgrammaticChange, currentTouchSelectMode: currentTouchSelectMode,
+      resetTouchSelectionState: resetTouchSelectionState, currentActiveFileText: currentActiveFileText,
+      setDirty: setDirty, runProgrammaticChange: runProgrammaticChange,
+      syncReadOnly: syncReadOnly, updateTouchToolbar: updateTouchToolbar,
     }));
     return Object.freeze({
       runtime, monacoLoader, renderer,

@@ -6,56 +6,61 @@
   }
   function createFilePickerOpsController(options = {}) {
     const { wiring, codoxearFilePicker, normalizeLineNumber, filePickerField, filePickerMenu, filePickerInput,
-      api, document, el, hooks } = options;
+      api, document, el, getSelected, blockUnavailableFileAction, currentFileViewerSessionId, fileViewerController,
+      fileCandidateKey, currentActiveFileDraft, activeFilePathValue, normalizeFileApiPath, renderFilePickerMenu,
+      applyFileMenuState, normalizeDraftFilePath, filePickerSectionLabel, duplicateFilePickerPaths,
+      rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle, currentActiveFileIdentity,
+      openDraftFilePathWithGuard, openFilePathWithResolvedMode, filePickerSelectionLine,
+      ensureCurrentFileViewerSession, resetFilePickerInput, closeFilePickerMenu, resetFileSearchState,
+      setFileStatus, requestAnimationFrame } = options;
     requireObject(wiring, "wiring");
     requireObject(codoxearFilePicker, "codoxearFilePicker");
-    requireObject(hooks, "hooks");
     const menuState = codoxearFilePicker.createMenuState(wiring.createMenuStateOptions({ normalizeLineNumber }));
     const domRuntime = codoxearFilePicker.createMenuDomRuntime(wiring.createMenuDomOptions({
       field: filePickerField, menu: filePickerMenu, input: filePickerInput, menuState,
     }));
     const searchState = codoxearFilePicker.createSearchState(wiring.createSearchStateOptions({
-      blocked: () => hooks.blockUnavailableFileAction(),
-      currentSessionId: () => hooks.currentFileViewerSessionId() || hooks.getSelected() || "",
+      blocked: () => blockUnavailableFileAction(),
+      currentSessionId: () => currentFileViewerSessionId() || getSelected() || "",
       api, inputValue: () => filePickerInput.value, isMenuOpen: () => menuState.isOpen(),
-      renderMenu: () => hooks.renderFilePickerMenu(), applyMenuState: () => hooks.applyFileMenuState(),
-      normalizeFileApiPath: (value) => hooks.normalizeFileApiPath(value),
+      renderMenu: () => renderFilePickerMenu(), applyMenuState: () => applyFileMenuState(),
+      normalizeFileApiPath: (value) => normalizeFileApiPath(value),
     }));
     const entryRuntime = codoxearFilePicker.createEntryRuntime(wiring.createEntryOptions({
-      menuState, inputValue: () => filePickerInput.value, candidateKeys: () => hooks.fileViewerController().currentFileCandidateKeys(),
-      entryForKey: (key) => hooks.fileViewerController().fileEntryForKey(key),
-      pickerEntryForKey: (key, options) => hooks.fileViewerController().pickerEntryForKey(key, options),
-      pickerEntryForPath: (path, options) => hooks.fileViewerController().pickerEntryForPath(path, options),
-      keyForPath: (path, gitPath, apiPath) => hooks.fileCandidateKey(path, gitPath, apiPath),
-      activeFileDraft: () => hooks.currentActiveFileDraft(), activeFilePath: () => hooks.activeFilePathValue(),
-      searchSnapshot: () => searchState.snapshot(), normalizeFileApiPath: (value) => hooks.normalizeFileApiPath(value),
+      menuState, inputValue: () => filePickerInput.value, candidateKeys: () => fileViewerController().currentFileCandidateKeys(),
+      entryForKey: (key) => fileViewerController().fileEntryForKey(key),
+      pickerEntryForKey: (key, options) => fileViewerController().pickerEntryForKey(key, options),
+      pickerEntryForPath: (path, options) => fileViewerController().pickerEntryForPath(path, options),
+      keyForPath: (path, gitPath, apiPath) => fileCandidateKey(path, gitPath, apiPath),
+      activeFileDraft: () => currentActiveFileDraft(), activeFilePath: () => activeFilePathValue(),
+      searchSnapshot: () => searchState.snapshot(), normalizeFileApiPath: (value) => normalizeFileApiPath(value),
     }));
     const renderRuntime = codoxearFilePicker.createMenuRenderRuntime(wiring.createMenuRenderOptions({
       menu: filePickerMenu, menuState, inputValue: () => filePickerInput.value, visibleEntries: () => entryRuntime.visibleEntries(),
-      searchSnapshot: () => searchState.snapshot(), normalizeDraftFilePath: (query) => hooks.normalizeDraftFilePath(query),
+      searchSnapshot: () => searchState.snapshot(), normalizeDraftFilePath: (query) => normalizeDraftFilePath(query),
       draftSuppressed: () => searchState.draftSuppressed(filePickerInput.value), draftEntry: (path) => entryRuntime.draftEntry(path),
-      syncActiveDescendant: (focusIndex) => domRuntime.syncActiveDescendant(focusIndex), sectionLabel: (source) => hooks.filePickerSectionLabel(source),
-      duplicatePaths: (entries) => hooks.duplicateFilePickerPaths(entries), rawByteDuplicatePaths: (entries) => hooks.rawByteDuplicatePaths(entries),
-      identityHint: (entry, duplicatePaths, options) => hooks.filePickerIdentityHint(entry, duplicatePaths, options),
-      titleForEntry: (entry, hint) => hooks.filePickerTitle(entry, hint), normalizeFileApiPath: (value) => hooks.normalizeFileApiPath(value),
-      activeIdentity: () => hooks.currentActiveFileIdentity(), gitStatusMessage: () => hooks.fileViewerController().currentFileCandidateGitStateMessage(),
-      openDraftFilePath: (draftPath) => hooks.openDraftFilePathWithGuard(draftPath),
+      syncActiveDescendant: (focusIndex) => domRuntime.syncActiveDescendant(focusIndex), sectionLabel: (source) => filePickerSectionLabel(source),
+      duplicatePaths: (entries) => duplicateFilePickerPaths(entries), rawByteDuplicatePaths: (entries) => rawByteDuplicatePaths(entries),
+      identityHint: (entry, duplicatePaths, options) => filePickerIdentityHint(entry, duplicatePaths, options),
+      titleForEntry: (entry, hint) => filePickerTitle(entry, hint), normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+      activeIdentity: () => currentActiveFileIdentity(), gitStatusMessage: () => fileViewerController().currentFileCandidateGitStateMessage(),
+      openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
       openEntry: async (selectedEntry) => {
-        try { await hooks.openFilePathWithResolvedMode(selectedEntry.path, { line: hooks.filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath }); }
-        catch (error) { hooks.setFileStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`); }
+        try { await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath }); }
+        catch (error) { setFileStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`); }
       }, el, createTextNode: (value) => document.createTextNode(value),
     }));
     const inputRuntime = codoxearFilePicker.createInputRuntime(wiring.createInputOptions({
-      input: filePickerInput, menuState, ensureCurrentSession: () => hooks.ensureCurrentFileViewerSession(),
-      renderMenu: () => hooks.renderFilePickerMenu(), applyMenuState: () => hooks.applyFileMenuState(),
-      resetInput: () => hooks.resetFilePickerInput(), closeMenu: (opts) => hooks.closeFilePickerMenu(opts),
-      currentSessionId: () => hooks.currentFileViewerSessionId(), selectedSessionId: () => hooks.getSelected(),
-      resetSearchState: () => hooks.resetFileSearchState(), setSearchSessionId: (sid) => searchState.setSessionId(sid),
-      scheduleSearch: (query) => searchState.schedule(query), selectionLine: () => hooks.filePickerSelectionLine(),
-      openDraftFilePathWithGuard: (path) => hooks.openDraftFilePathWithGuard(path),
-      openFilePathWithResolvedMode: (path, opts) => hooks.openFilePathWithResolvedMode(path, opts),
-      setStatus: (status) => hooks.setFileStatus(status), optionElementById: (id) => document.getElementById(id),
-      isFocusInsideField: () => filePickerField.contains(document.activeElement), requestAnimationFrame: hooks.requestAnimationFrame,
+      input: filePickerInput, menuState, ensureCurrentSession: () => ensureCurrentFileViewerSession(),
+      renderMenu: () => renderFilePickerMenu(), applyMenuState: () => applyFileMenuState(),
+      resetInput: () => resetFilePickerInput(), closeMenu: (opts) => closeFilePickerMenu(opts),
+      currentSessionId: () => currentFileViewerSessionId(), selectedSessionId: () => getSelected(),
+      resetSearchState: () => resetFileSearchState(), setSearchSessionId: (sid) => searchState.setSessionId(sid),
+      scheduleSearch: (query) => searchState.schedule(query), selectionLine: () => filePickerSelectionLine(),
+      openDraftFilePathWithGuard: (path) => openDraftFilePathWithGuard(path),
+      openFilePathWithResolvedMode: (path, opts) => openFilePathWithResolvedMode(path, opts),
+      setStatus: (status) => setFileStatus(status), optionElementById: (id) => document.getElementById(id),
+      isFocusInsideField: () => filePickerField.contains(document.activeElement), requestAnimationFrame: requestAnimationFrame,
     }));
     return Object.freeze({ menuState, domRuntime, searchState, entryRuntime, renderRuntime, inputRuntime });
   }

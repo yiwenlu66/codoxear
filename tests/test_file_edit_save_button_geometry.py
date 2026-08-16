@@ -128,6 +128,7 @@ def _update_file_edit_button_states() -> dict[str, dict]:
         const noop = () => {{}};
         const falsy = () => false;
         const runtime = ctx.window.CodoxearFileViewerOperations.createFileViewerOperationsRuntime(new Proxy({{
+          wiring: {{ createFileViewerOperationsOptions: (deps) => deps }},
           el: (tag) => ({{ tag }}),
           fileEditButton: button,
           fileStatus: {{ textContent: "" }},

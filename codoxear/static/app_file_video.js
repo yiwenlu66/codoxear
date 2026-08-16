@@ -181,9 +181,9 @@
       return true;
     }
 
-    async function loadCompatibleVideoPreview(expectedToken = "", options = {}) {
+    async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
       return await controller.loadCompatibleVideoPreview(expectedToken, {
-        ...options,
+        explicit,
         preparePreview: (previewUrl) => prepareCompatibleVideoPreview(previewUrl),
         loadPreviewDom: (previewUrl) => loadCompatibleVideoPreviewDom(previewUrl),
         errorText,

@@ -2,21 +2,6 @@
   "violations": [
     {
       "check": "bag-spread",
-      "file": "app_file_ops.js",
-      "name": "fileViewerModalRuntime.show"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_file_video.js",
-      "name": "loadCompatibleVideoPreview"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_file_viewer_controller.js",
-      "name": "createFileViewerOperationsRuntime"
-    },
-    {
-      "check": "bag-spread",
       "file": "app_transcript.js",
       "name": "appendTailEvents"
     },

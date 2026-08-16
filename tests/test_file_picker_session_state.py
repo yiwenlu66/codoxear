@@ -41,6 +41,7 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
         const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
         const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}}, disabled: false }};
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          wiring: {{ createFileViewerOperationsOptions: (deps) => deps }},
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus,
           fileEditButton,

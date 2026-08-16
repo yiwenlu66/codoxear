@@ -41,6 +41,23 @@ process.stdout.write(JSON.stringify({ frozen: Object.isFrozen(module), error }))
         self.assertTrue(result["frozen"])
         self.assertEqual(result["error"], "file viewer dependency missing: el")
 
+    def test_controller_requires_operations_wiring_after_base_dependencies(self) -> None:
+        result = run_vm(
+            """
+const module = ctx.window.CodoxearFileViewer;
+const noop = () => {};
+const required = new Proxy({
+  el: noop,
+  fileStatus: { replaceChildren() {} },
+  fileEditButton: { classList: { toggle() {} }, setAttribute() {} },
+  iconSvg: noop,
+}, { get: (target, key) => key in target ? target[key] : noop });
+let error = ''; try { module.createFileViewerController(required); } catch (e) { error = e.message; }
+process.stdout.write(JSON.stringify({ error }));
+"""
+        )
+        self.assertEqual(result["error"], "file viewer dependency missing: wiring")
+
     def test_file_inspection_routes_tokens_and_treats_404_as_missing(self) -> None:
         result = run_vm(
             r'''
