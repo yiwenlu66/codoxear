@@ -639,7 +639,8 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     const resetInput = requireFunction(options, "resetInput");
     const closeMenu = requireFunction(options, "closeMenu");
     const currentSessionId = requireFunction(options, "currentSessionId");
-    const selectedSessionId = requireFunction(options, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new Error("Codoxear file picker host missing sessionState");
     const resetSearchState = requireFunction(options, "resetSearchState");
     const setSearchSessionId = requireFunction(options, "setSearchSessionId");
     const scheduleSearch = requireFunction(options, "scheduleSearch");
@@ -695,7 +696,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       handleInputState(rawQuery);
       const query = rawQuery.trim();
       openRenderedMenu();
-      const sessionId = currentSessionId() || selectedSessionId() || "";
+      const sessionId = currentSessionId() || sessionState.get("selected") || "";
       if (!query || !sessionId) {
         resetSearchState();
         setSearchSessionId(sessionId);

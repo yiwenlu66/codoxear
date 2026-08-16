@@ -54,7 +54,6 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
           focus() {{}} blur() {{}}
         }}
         const storage = new Map();
-        let selected = "sid-1";
         const form = new Node(); form.requestSubmit = () => {{}};
         const textarea = new Node();
         const nodes = Array.from({{ length: 8 }}, () => new Node());
@@ -67,16 +66,17 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         vm.runInContext({json.dumps(session_state_source)}, ctx);
         vm.runInContext({json.dumps(composer_source)}, ctx);
         const noop = () => {{}};
+        const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        sessionState.set("selected", "sid-1");
         function createMessageFlow() {{
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
             updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
-            getSelected: () => selected, getGeneration: () => 1, isAppDisposed: () => false,
-            getTurnOpen: () => false, setTurnOpen: noop,
-            getSessionInfo: () => ({{ session_id: selected, agent_backend: "pi" }}), patchSessionInfo: noop,
+            sessionState, getGeneration: () => 1, isAppDisposed: () => false,
+
+            getSessionInfo: () => ({{ session_id: sessionState.get("selected"), agent_backend: "pi" }}), patchSessionInfo: noop,
             sessionLaunchFailed: () => false, api: async () => ({{ queued: false, queue_len: 0 }}),
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
             refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
@@ -86,7 +86,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
             resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop,
             appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
             setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
-            getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop,
+             getCurrentRunning: () => false, setCurrentRunning: noop,
             getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
             syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
             confirmAction: async () => false, setToast: noop, isTranscriptRenewalCommand: () => false,
@@ -102,11 +102,11 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         const makeController = () => {{
           const messageFlowController = createMessageFlow();
           return ctx.window.CodoxearComposer.createComposerController({{
-          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
+          sessionState,
           form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
           sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn, modelPicker,
-          getSelected: () => selected, getSessionInfo: () => ({{}}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
-          getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop, setTurnOpen: noop, resetTypingStats: noop,
+          getSessionInfo: () => ({{}}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+           getCurrentRunning: () => false, setCurrentRunning: noop, setTurnOpen: noop, resetTypingStats: noop,
           getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
           syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,
           api: async () => ({{}}), setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [], setPollFastUntilMs: noop, kickPoll: noop,
@@ -130,10 +130,10 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         const second = makeController();
         second.loadSessionDraft("sid-1");
         const restored = textarea.value;
-        selected = "sid-2";
+        sessionState.set("selected", "sid-2");
         textarea.value = "other session";
         textarea.dispatch("input");
-        selected = "sid-1";
+        sessionState.set("selected", "sid-1");
         second.clearComposer();
         process.stdout.write(JSON.stringify({{ wrote, restored, sid1: storage.has("codexweb.draft.sid-1"), sid2: storage.get("codexweb.draft.sid-2") }}));
         """

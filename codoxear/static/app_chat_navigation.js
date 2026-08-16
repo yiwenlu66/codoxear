@@ -19,7 +19,8 @@
 
     const prevUserBtn = requireNode(options.prevUserBtn, "prevUserBtn");
     const nextUserBtn = requireNode(options.nextUserBtn, "nextUserBtn");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat navigation controller dependency missing: sessionState");
     const getPollGen = typeof options.getPollGen === "function" ? options.getPollGen : () => 0;
     const api = typeof options.api === "function" ? options.api : async () => ({ total: loadedUserMessageRows().length, matches: [] });
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
@@ -59,7 +60,7 @@
       totalRequests.set(sessionId, request);
       try {
         const data = await request;
-        if (getSelected() !== sessionId || getPollGen() !== gen) return;
+        if (sessionState.get("selected") !== sessionId || getPollGen() !== gen) return;
         userTotals.set(sessionId, Math.max(0, Number(data.total) || 0));
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
@@ -70,7 +71,7 @@
     }
 
     function syncButtons() {
-      const sid = getSelected();
+      const sid = sessionState.get("selected");
       if (!sid) {
         prevUserBtn.disabled = true;
         nextUserBtn.disabled = true;
@@ -95,7 +96,7 @@
       // request was in flight: the answer no longer applies, so the caller
       // stays silent. error means this navigation genuinely failed and the
       // caller should say so.
-      const sid = getSelected();
+      const sid = sessionState.get("selected");
       const gen = getPollGen();
       if (!sid) return { stale: true };
       const anchorRow = direction < 0 ? rows[0] : rows[rows.length - 1];
@@ -103,11 +104,11 @@
       if (!cursor) return { error: true };
       try {
         const data = await api(`/api/sessions/${sid}/messages/neighbor?role=user&direction=${direction < 0 ? "previous" : "next"}&cursor=${encodeURIComponent(cursor)}`);
-        if (getSelected() !== sid || getPollGen() !== gen) return { stale: true };
+        if (sessionState.get("selected") !== sid || getPollGen() !== gen) return { stale: true };
         return { data, match: data && data.neighbor ? data.neighbor : null };
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
-        if (getSelected() !== sid || getPollGen() !== gen) return { stale: true };
+        if (sessionState.get("selected") !== sid || getPollGen() !== gen) return { stale: true };
         return { error: true };
       }
     }
@@ -139,7 +140,7 @@
     async function jumpToLoadedUserMessage(direction) {
       const rows = loadedUserMessageRows();
       syncButtons();
-      if (!getSelected()) return;
+      if (!sessionState.get("selected")) return;
       const local = rows.length ? loadedUserJumpTarget(rows, direction, getScrollTop() + 24) : { target: null, reason: "none" };
       if (local.target) {
         scrollToRow(local.target);
@@ -184,7 +185,7 @@
     };
 
     function chatNavigationShortcutBlocked(target) {
-      if (!getSelected()) return true;
+      if (!sessionState.get("selected")) return true;
       if (isTextEntryElement(target)) return true;
       if (isSidebarOpen()) return true;
       return modalIsolationTargets.some(isModalTargetOpen);

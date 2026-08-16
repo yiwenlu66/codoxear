@@ -108,7 +108,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const requestEl = options.requestEl == null ? null : options.requestEl;
 
     // App-level runtime state accessors and effects.
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("unattended controller dependency missing: sessionState");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const api = requireFunction(options.api, "api");
@@ -150,7 +151,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const unattendedSaveRetryPaused = new Set();
 
     function selectedSessionLaunchFailed() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       return sessionLaunchFailed(selected ? getSessionInfo(selected) : null);
     }
 
@@ -209,11 +210,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       if (!Number.isInteger(data.remaining_injections) || data.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
     }
 
-    async function loadUnattendedCfgForSelected({ sid = getSelected(), openToken = null } = {}) {
+    async function loadUnattendedCfgForSelected({ sid = sessionState.get("selected"), openToken = null } = {}) {
       if (!sid) return;
       sid = String(sid);
       const d = await api(`/api/sessions/${sid}/unattended`);
-      if (getSelected() !== sid) return;
+      if (sessionState.get("selected") !== sid) return;
       if (openToken !== null && (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || !unattendedMenuOpen)) return;
       validateUnattendedPayload(d);
       const reconciled = reconcileUnattendedServerPayload(d, sid);
@@ -411,7 +412,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     function applySavedUnattendedCfg(saved, sid) {
-      if (getSelected() !== sid) return;
+      if (sessionState.get("selected") !== sid) return;
       if (unattendedMenuOpen && unattendedMenuSessionId !== sid) return;
       unattendedCfg = {
         enabled: saved.enabled,
@@ -472,11 +473,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         // bounded exponentially rather than recursively spinning on outage.
         const newer = unattendedSavePending.get(sid);
         unattendedSavePending.set(sid, newer || snapshot);
-        if (getSelected() === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
+        if (sessionState.get("selected") === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
       } finally {
         unattendedSaveInFlight.delete(sid);
         if (!isAppDisposed()) {
-          if (outcome === "retry" && getSelected() === sid) {
+          if (outcome === "retry" && sessionState.get("selected") === sid) {
             scheduleUnattendedFlush(sid, retryDelayForUnattendedSave(sid));
           } else if (outcome === "success" && unattendedSavePending.has(sid)) {
             // This is a newer local edit that arrived while the prior POST
@@ -484,7 +485,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
             // for a stale response to rewrite the controls.
             void flushUnattendedSave(sid);
           }
-          if (getSelected() === sid) {
+          if (sessionState.get("selected") === sid) {
             // Mirror the pre-extraction finally, which called app.js
             // updateUnattendedBtnState (full shell projection). When app.js wires
             // requestShellProjection that re-runs the whole shell projection
@@ -498,7 +499,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     function scheduleUnattendedSave(patch = {}) {
-      const sid = getSelected();
+      const sid = sessionState.get("selected");
       if (!sid) return;
       const patchSnapshot = unattendedSaveSnapshot(patch);
       if (!Object.keys(patchSnapshot).length) return;
@@ -532,7 +533,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     // control only; the app-shell projection (attach/file/send/queue/diag,
     // context bar, chat nav) stays in app.js and calls syncButtonState().
     function projectButtonState() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       if (selected) {
         applyPersistedUnattendedPatch(selected);
         resumePersistedUnattendedSave(selected);
@@ -619,7 +620,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     async function showUnattendedMenu({ opener = null } = {}) {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       if (!selected) return;
       if (selectedSessionLaunchFailed()) {
         setToast("failed launch has no unattended mode");
@@ -644,12 +645,12 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       unattendedMenu.style.left = `${left}px`;
       try {
         await loadUnattendedCfgForSelected({ sid, openToken });
-        if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && getSelected() === sid) {
+        if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && sessionState.get("selected") === sid) {
           setUnattendedControlsDisabled(false);
           focusUnattendedInitialControl();
         }
       } catch (e) {
-        if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || getSelected() !== sid) return;
+        if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || sessionState.get("selected") !== sid) return;
         console.error("load unattended mode failed", e);
         setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
         setUnattendedControlsDisabled(false);
@@ -688,7 +689,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     if (enabledEl) {
       enabledEl.onchange = (e) => {
-        const selected = getSelected();
+        const selected = sessionState.get("selected");
         if (!selected) return;
         const requested = Boolean(e.target.checked);
         unattendedCfg.enabled = requested && Number(unattendedCfg.remaining_injections) > 0;
@@ -705,7 +706,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
     if (cooldownEl) {
       cooldownEl.oninput = (e) => {
-        const selected = getSelected();
+        const selected = sessionState.get("selected");
         if (!selected) return;
         unattendedNumberDraft.cooldown_minutes = String(e.target.value ?? "");
         unattendedNumberDirty.cooldown_minutes = true;
@@ -721,7 +722,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
     if (remainingEl) {
       remainingEl.oninput = (e) => {
-        const selected = getSelected();
+        const selected = sessionState.get("selected");
         if (!selected) return;
         unattendedNumberDraft.remaining_injections = String(e.target.value ?? "");
         unattendedNumberDirty.remaining_injections = true;
@@ -748,7 +749,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
     if (requestEl) {
       requestEl.oninput = (e) => {
-        const selected = getSelected();
+        const selected = sessionState.get("selected");
         if (!selected) return;
         unattendedCfg.request = String(e.target.value ?? "");
         scheduleUnattendedSave({ request: unattendedCfg.request });

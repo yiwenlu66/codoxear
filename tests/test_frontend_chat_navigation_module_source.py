@@ -24,8 +24,9 @@ HARNESS = r'''
 const events = []; let selected = 'sid-1'; let rows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null;
 function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor: cursor }, offsetTop: top, scrollIntoView() { events.push(`scroll:${id}`); } }; }
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
+const sessionState = { get: () => selected };
 const deps = {
-  prevUserBtn: prev, nextUserBtn: next, getSelected: () => selected, getPollGen: () => 1,
+  prevUserBtn: prev, nextUserBtn: next, sessionState, getPollGen: () => 1,
   api: async (url) => {
     events.push(`api:${url}`);
     if (apiMode === 'error') throw Object.assign(new Error('failed'), { status: 500 });

@@ -48,7 +48,7 @@ def run_controller_harness() -> dict:
         const opened = [];
         const titleController = ctx.window.CodoxearSessionTitle.createSessionTitleController({
           titleLabel: title,
-          getSelected: () => selected,
+          sessionState: { get: () => selected, subscribe: () => () => {} },
           openEditSession: (sessionId) => opened.push(sessionId),
         });
         const disabledTitle = {

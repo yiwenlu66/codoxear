@@ -61,11 +61,11 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
           updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
-        sessionState.applyRuntime({{ running: true }});
+        sessionState.applyRuntime({{ selected: "busy-session", running: true, turnOpen: true }});
         const messageFlow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
           sessionState,
-          getSelected: () => "busy-session", getGeneration: () => 1, isAppDisposed: () => false,
-          getTurnOpen: () => true, setTurnOpen: noop,
+          getGeneration: () => 1, isAppDisposed: () => false,
+
           getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
           sessionLaunchFailed: () => false,
           api: async (path, options) => {{
@@ -81,7 +81,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
           resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop,
           appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
           setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
-          getSending: () => state.sending, setSending: (value) => {{ state.sending = Boolean(value); }},
+
           getCurrentRunning: () => {{ state.busyChecks.push(true); return true; }}, setCurrentRunning: noop,
           getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
           syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
@@ -100,7 +100,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         const composer = ctx.window.CodoxearComposer.createComposerController({{
           form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
           sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
-          getSelected: () => "busy-session", getSessionInfo: () => ({{ agent_backend: "pi" }}), sessionLaunchFailed: () => false,
+          getSessionInfo: () => ({{ agent_backend: "pi" }}), sessionLaunchFailed: () => false,
           getSending: () => state.sending,
           sessionState, getStagedAttachments: () => [],
           api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,

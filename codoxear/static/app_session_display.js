@@ -13,7 +13,6 @@ function requireSessionState(value) {
 }
 
 function createSessionDisplayController(options = {}) {
-  const getSelected = requireFunction(options.getSelected, "getSelected");
   const setToast = requireFunction(options.setToast, "setToast");
   const sessionState = requireSessionState(options.sessionState);
   const { statusChip, interruptBtn, ctxChip, eventBindings } = options;
@@ -33,7 +32,7 @@ function createSessionDisplayController(options = {}) {
       statusChip.style.display = "none";
       statusChip.textContent = "";
     }
-    const canInterrupt = Boolean(sessionState.get("running") && getSelected());
+    const canInterrupt = Boolean(sessionState.get("running") && sessionState.get("selected"));
     interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
     interruptBtn.disabled = !canInterrupt;
   }
@@ -72,6 +71,7 @@ function createSessionDisplayController(options = {}) {
   }
 
   const unsubscribers = [
+    sessionState.subscribe("selected", renderStatus),
     sessionState.subscribe("running", renderStatus),
     sessionState.subscribe("queueLen", renderStatus),
     sessionState.subscribe("token", renderContext),

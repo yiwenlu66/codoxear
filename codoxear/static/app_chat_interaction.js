@@ -11,12 +11,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
   }
 
   function createChatInteractionController(options = {}) {
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
-    const getSending = requireFunction(options.getSending, "getSending");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function" || typeof sessionState.subscribe !== "function") {
       throw new TypeError("chat interaction dependency missing: sessionState");
@@ -43,15 +41,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     let sendLifecycleController = null;
     let attachmentsController = null;
     const transcript = transcriptModule.createTranscriptRenderController(wiring.createTranscriptRenderOptions({
-      getSelected: options.getSelected,
       getPollGeneration: options.getPollGeneration,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
-      getSending: options.getSending,
-      setSending: options.setSending,
-      getTurnOpen: options.getTurnOpen,
-      setTurnOpen: options.setTurnOpen,
       sessionState,
       isAppDisposed: options.isAppDisposed,
       getSessionEditController: options.getSessionEditController,
@@ -181,7 +174,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       wiring: options.wiring,
     }));
     historyController = historyModule.createMessageHistoryController(wiring.createMessageHistoryOptions({
-      getSelected: options.getSelected,
       getPollGeneration: options.getPollGeneration,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
@@ -200,7 +192,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       OLDER_PAGE_LIMIT: options.OLDER_PAGE_LIMIT,
       api: options.api,
       handleAppAuthLoss: options.handleAppAuthLoss,
-      setTurnOpen: options.setTurnOpen,
       sessionState,
       syncQueueSubmitState: options.syncQueueSubmitState,
       syncComposerSendButton: options.syncComposerSendButton,
@@ -215,15 +206,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       sessionSelectable: options.sessionSelectable,
     }));
     sendLifecycleController = sendModule.createSendLifecycleController(wiring.createSendLifecycleOptions({
-      getSelected: options.getSelected,
       getPollGeneration: options.getPollGeneration,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
-      getSending: options.getSending,
-      setSending: options.setSending,
-      getTurnOpen: options.getTurnOpen,
-      setTurnOpen: options.setTurnOpen,
       sessionState,
       isAppDisposed: options.isAppDisposed,
       getSessionEditController: options.getSessionEditController,

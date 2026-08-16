@@ -11,7 +11,8 @@
       return value;
     }
 
-    const selectedSessionId = requireInterruptFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("interrupt controller dependency missing: sessionState");
     const setToast = requireInterruptFunction(options.setToast, "setToast");
     const api = requireInterruptFunction(options.api, "api");
     const now = requireInterruptFunction(options.now, "now");
@@ -19,7 +20,7 @@
     const kickPoll = requireInterruptFunction(options.kickPoll, "kickPoll");
 
     async function interruptSelectedSession() {
-      const sessionId = selectedSessionId();
+      const sessionId = sessionState.get("selected");
       if (!sessionId) return;
       try {
         setToast("interrupting...");
@@ -40,8 +41,6 @@
     const nextPollGeneration = get("nextPollGeneration");
     const incrementPollGeneration = get("incrementPollGeneration");
     const prepareSessionOpen = get("prepareSessionOpen");
-    const getSelected = get("getSelected");
-    const setSelected = get("setSelected");
     const setActiveSession = get("setActiveSession");
     const saveComposerDraft = get("saveComposerDraft");
     const loadComposerDraft = get("loadComposerDraft");
@@ -56,7 +55,7 @@
     const syncAttachmentButton = get("syncAttachmentButton");
     const updateQueueBadge = get("updateQueueBadge");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.applyRuntime !== "function") {
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("session lifecycle dependency missing: sessionState");
     }
     const resetChatRenderState = get("resetChatRenderState");
@@ -65,7 +64,6 @@
     const setTitle = get("setTitle");
     const setNoSessionTitle = get("setNoSessionTitle");
     const markClickLoad = get("markClickLoad");
-    const setTurnOpen = get("setTurnOpen");
     const updateTypingStats = get("updateTypingStats");
     const beginFileViewerSync = get("beginFileViewerSync");
     const finishFileViewerSync = get("finishFileViewerSync");
@@ -120,15 +118,15 @@
     const consoleError = get("consoleError");
 
     function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {}) {
-      if (getSelected() !== sessionId) return false;
+      if (sessionState.get("selected") !== sessionId) return false;
       handleFileViewerSessionUnavailable(sessionId);
-      setSelected(null);
+      sessionState.set("selected", null);
       messageFlow().abortMessagePollRequest();
       if (incrementPollGen) incrementPollGeneration();
       if (clearPollState) messageFlow().clearPollSchedule();
       setActiveTranscriptPending();
       clearTranscriptForRemovedSession();
-      setTurnOpen(false);
+      sessionState.set("turnOpen", false);
       removePersistedSelected();
       setSessionHash("");
       setNoSessionTitle();
@@ -155,10 +153,10 @@
     async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, forceRender = false } = {}) {
       const generation = nextPollGeneration();
       messageFlow().prepareSessionOpen();
-      const oldSelected = getSelected();
+      const oldSelected = sessionState.get("selected");
       const reloadingSelectedSession = oldSelected === sessionId;
       if (oldSelected && oldSelected !== sessionId) saveSessionScrollPosition(oldSelected);
-      setSelected(sessionId);
+      sessionState.set("selected", sessionId);
       setActiveSession(sessionId);
       if (oldSelected && oldSelected !== sessionId) saveComposerDraft(oldSelected);
       loadComposerDraft(sessionId);
@@ -180,7 +178,7 @@
       const optimisticBusy = Boolean(session && session.busy);
       const optimisticQueueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
       const optimisticSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
-      setTurnOpen(optimisticBusy);
+      sessionState.set("turnOpen", optimisticBusy);
       updateTypingStats(session, { updateSubagents: false });
       sessionState.applyRuntime({
         running: optimisticBusy,
@@ -289,7 +287,7 @@
         rememberPendingHashSession("");
         return;
       }
-      if (sid === getSelected()) {
+      if (sid === sessionState.get("selected")) {
         rememberPendingHashSession("");
         return;
       }
@@ -330,7 +328,7 @@
         setToast("unknown send marker cleared");
         await refreshSessions();
         updateQueueBadge();
-        if (getSelected() === sessionId) syncRecoveryUiForSession(sessionId);
+        if (sessionState.get("selected") === sessionId) syncRecoveryUiForSession(sessionId);
         return true;
       } catch (error) {
         if (error && error.status === 401) {

@@ -27,7 +27,7 @@ def eval_navigation() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const controller = ctx.window.CodoxearChatNavigation.createChatNavigationController({{
-          prevUserBtn: prev, nextUserBtn: next, getSelected: () => selected,
+          prevUserBtn: prev, nextUserBtn: next, sessionState: {{ get: () => selected }},
           loadedUserMessageRows: () => userRows, loadedCopyMessageRows: () => copyRows,
           loadOlderMessages: async () => false,
           loadedUserJumpTarget: (_rows, direction) => direction < 0 ? {{ target: null, reason: "first" }} : {{ target: userRows[0] }},

@@ -12,6 +12,7 @@ APP_JS = module_path("app_application_composition.js")
 APP_GUARD_JS = module_path("app_application.js")
 APP_FILE_OPS_JS = module_path("app_file_ops.js")
 APP_CONVERSATION_COPY_JS = module_path("app_conversation_copy.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
@@ -130,6 +131,9 @@ def eval_app_copy_conversation_success(events) -> dict:
         ctx.setToast = (text) => {{ ctx.toastText = text; }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+        ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        ctx.sessionState.set("selected", "session-1");
         vm.runInContext({json.dumps(runtime_source)}, ctx);
         vm.runInContext("__copyConversation()", ctx).then(() => {{
           process.stdout.write(JSON.stringify({{

@@ -14,16 +14,17 @@
 
   function createSessionTitleController(options = {}) {
     const titleLabel = requireNode(options.titleLabel, "titleLabel");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("session title controller dependency missing: sessionState");
     const openEditSession = requireFunction(options.openEditSession, "openEditSession");
 
     function openSelectedSessionEditor() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       if (sessionId) openEditSession(sessionId);
     }
 
     function syncTitleEditState() {
-      const interactive = Boolean(getSelected());
+      const interactive = Boolean(sessionState.get("selected"));
       titleLabel.style.cursor = interactive ? "pointer" : "default";
       titleLabel.title = interactive ? "Edit conversation" : "No session selected";
       titleLabel.tabIndex = interactive ? 0 : -1;
@@ -41,13 +42,17 @@
     titleLabel.onclick = openSelectedSessionEditor;
     titleLabel.onkeydown = (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
-      if (!getSelected()) return;
+      if (!sessionState.get("selected")) return;
       event.preventDefault();
       openSelectedSessionEditor();
     };
+    const unsubscribeSelected = sessionState.subscribe("selected", syncTitleEditState);
     syncTitleEditState();
 
-    return Object.freeze({ syncTitleEditState });
+    return Object.freeze({
+      syncTitleEditState,
+      dispose() { unsubscribeSelected(); },
+    });
   }
 
 export { createSessionTitleController };

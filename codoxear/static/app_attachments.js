@@ -22,10 +22,11 @@
     const imgInput = requireNode(options.imgInput, "imgInput");
     const composer = requireNode(options.composer, "composer");
     const textarea = requireNode(options.textarea, "textarea");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("attachments controller dependency missing: sessionState");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
-    const getSending = requireFunction(options.getSending, "getSending");
+
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const sessionHasUnknownSend = requireFunction(options.sessionHasUnknownSend, "sessionHasUnknownSend");
     const sessionIsOrphanRecovery = requireFunction(options.sessionIsOrphanRecovery, "sessionIsOrphanRecovery");
@@ -109,7 +110,7 @@
     }
 
     function setSelectedSessionStagedAttachments(list) {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       if (sessionId) {
         const normalized = normalizedStagedAttachments(list);
         patchSessionInfo(sessionId, {
@@ -121,7 +122,7 @@
     }
 
     function syncStagedAttachmentsFromSelectedSession() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const info = sessionId ? getSessionInfo(sessionId) : null;
       setStagedAttachments(info && Array.isArray(info.staged_attachments) ? info.staged_attachments : []);
     }
@@ -149,11 +150,11 @@
         chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size || 0) }));
         const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
         removeBtn.onclick = async () => {
-          const sessionId = getSelected();
+          const sessionId = sessionState.get("selected");
           if (!sessionId) return;
           try {
             const response = await api(`/api/sessions/${sessionId}/attachments/delete`, { method: "POST", body: { id: item.id } });
-            if (getSelected() === sessionId) {
+            if (sessionState.get("selected") === sessionId) {
               setSelectedSessionStagedAttachments(response && Array.isArray(response.attachments) ? response.attachments : []);
               setToast("attachment removed");
               refreshAfterAttachmentMutation();
@@ -163,7 +164,7 @@
               handleAppAuthLoss();
               return;
             }
-            if (getSelected() === sessionId) setToast(`remove attachment error: ${error && error.message ? error.message : "unknown error"}`);
+            if (sessionState.get("selected") === sessionId) setToast(`remove attachment error: ${error && error.message ? error.message : "unknown error"}`);
           }
         };
         chip.appendChild(removeBtn);
@@ -171,11 +172,11 @@
       }
       const clearBtn = el("button", { class: "stagedAttachmentsClear", type: "button", text: "Clear", title: "Clear staged attachments", "aria-label": "Clear staged attachments" });
       clearBtn.onclick = async () => {
-        const sessionId = getSelected();
+        const sessionId = sessionState.get("selected");
         if (!sessionId) return;
         try {
           const response = await api(`/api/sessions/${sessionId}/attachments/clear`, { method: "POST", body: {} });
-          if (getSelected() === sessionId) {
+          if (sessionState.get("selected") === sessionId) {
             setSelectedSessionStagedAttachments(response && Array.isArray(response.attachments) ? response.attachments : []);
             setToast("attachments cleared");
             refreshAfterAttachmentMutation();
@@ -185,14 +186,14 @@
             handleAppAuthLoss();
             return;
           }
-          if (getSelected() === sessionId) setToast(`clear attachments error: ${error && error.message ? error.message : "unknown error"}`);
+          if (sessionState.get("selected") === sessionId) setToast(`clear attachments error: ${error && error.message ? error.message : "unknown error"}`);
         }
       };
       tray.appendChild(clearBtn);
     }
 
     function projectSelectedAttachmentIndicator() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const sessionInfo = sessionId ? getSessionInfo(sessionId) : null;
       const serverListCount = sessionInfo && Array.isArray(sessionInfo.staged_attachments) ? normalizedStagedAttachments(sessionInfo.staged_attachments).length : 0;
       const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
@@ -207,7 +208,7 @@
     }
 
     function setSelectedSessionPendingAttachment(sessionId, value) {
-      if (!sessionId || getSelected() !== sessionId) return false;
+      if (!sessionId || sessionState.get("selected") !== sessionId) return false;
       const info = getSessionInfo(sessionId);
       if (!info) return false;
       patchSessionInfo(sessionId, {
@@ -226,7 +227,7 @@
       if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
       if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
       if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
-      if (getSending()) return "Wait for the current send to finish before attaching a file";
+      if (sessionState.get("sending")) return "Wait for the current send to finish before attaching a file";
       return "";
     }
 
@@ -235,7 +236,7 @@
     }
 
     function syncAttachButtonState() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const attachBlocker = attachmentBlockerForSession(sessionId, sessionId ? getSessionInfo(sessionId) || null : null);
       const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(uploadMaxBytes)})`;
       attachBtn.disabled = Boolean(attachBlocker);
@@ -293,8 +294,8 @@
       return ext ? `${base}.${ext}` : base;
     }
 
-    async function stageFiles(files, { sid = getSelected(), source = "picker" } = {}) {
-      const sessionId = sid || getSelected();
+    async function stageFiles(files, { sid = sessionState.get("selected"), source = "picker" } = {}) {
+      const sessionId = sid || sessionState.get("selected");
       const uploadFiles = Array.from(files || []).filter(Boolean);
       if (!uploadFiles.length) return false;
 
@@ -307,7 +308,7 @@
       for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
         const file = uploadFiles[fileIndex];
         try {
-          if (getSelected() !== sessionId) break;
+          if (sessionState.get("selected") !== sessionId) break;
           const attachBlocker = latestAttachmentBlockerForSession(sessionId);
           if (attachBlocker) {
             stoppedByBlocker = attachBlocker;
@@ -341,7 +342,7 @@
             method: "POST",
             body: { filename: uploadName, data_b64: b64FromBytes(new Uint8Array(bytes)) },
           });
-          if (getSelected() === sessionId && response && response.ok) {
+          if (sessionState.get("selected") === sessionId && response && response.ok) {
             successes += 1;
             setSelectedSessionStagedAttachments(Array.isArray(response.attachments) ? response.attachments : []);
           }
@@ -353,7 +354,7 @@
           failures.push(`${file && file.name ? file.name : "file"}: ${error && error.message ? error.message : "unknown error"}`);
         }
       }
-      if (getSelected() === sessionId) {
+      if (sessionState.get("selected") === sessionId) {
         if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
         else if (successes && stoppedByBlocker) setToast(`attached ${successes}; stopped: ${stoppedByBlocker}`);
         else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
@@ -400,7 +401,7 @@
     }
 
     attachBtn.onclick = () => {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const attachBlocker = attachmentBlockerForSession(sessionId, sessionId ? getSessionInfo(sessionId) || null : null);
       if (attachBlocker) {
         setToast(attachBlocker);
@@ -410,7 +411,7 @@
       imgInput.click();
     };
     addEventListener(imgInput, "change", async () => {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       if (!sessionId) return;
       const files = Array.from(imgInput.files || []);
       imgInput.value = "";
@@ -422,7 +423,7 @@
       const pastedText = clipboardPlainText(event.clipboardData);
       event.preventDefault();
       if (pastedText) insertComposerPastedText(pastedText);
-      void stageFiles(files, { sid: getSelected(), source: "paste" });
+      void stageFiles(files, { sid: sessionState.get("selected"), source: "paste" });
     });
     addEventListener(composer, "dragenter", (event) => {
       if (!dataTransferHasFiles(event.dataTransfer)) return;
@@ -446,7 +447,7 @@
       event.preventDefault();
       clearComposerDropActive();
       const files = extractFilesFromDropData(event.dataTransfer);
-      if (files.length) void stageFiles(files, { sid: getSelected(), source: "drop" });
+      if (files.length) void stageFiles(files, { sid: sessionState.get("selected"), source: "drop" });
     }, { passive: false });
     addEventListener(window, "dragover", (event) => {
       if (dataTransferHasFiles(event.dataTransfer)) event.preventDefault();

@@ -66,9 +66,10 @@ def test_queue_snapshots_reconcile_sidebar_header_badge_and_panel_after_each_ope
       vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
       vm.runInContext({json.dumps(APP_QUEUE_JS.read_text(encoding="utf-8"))}, ctx);
       const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+sessionState.set("selected", selected);
       const controller = ctx.window.CodoxearQueue.createQueueController({{
         queueBackdrop, queueCloseBtn, queueList, queueEmpty, queueViewer, queueBtn,
-        getSelected: () => selected,
+
         getSessionInfo: (sid) => sessions.get(sid) || null,
         sessionState,
         isAppDisposed: () => false,

@@ -154,7 +154,8 @@
     const fileCandidateKeyForEntry = requireFunction(controller.fileCandidateKeyForEntry, "controller.fileCandidateKeyForEntry").bind(controller);
     const rememberCandidateCache = requireFunction(controller.rememberFileCandidateCache, "controller.rememberFileCandidateCache").bind(controller);
     const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
-    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file viewer dependency missing: sessionState");
     const blockUnavailableFileAction = requireFunction(options.blockUnavailableFileAction, "blockUnavailableFileAction");
     const isSessionCurrent = requireFunction(options.isSessionCurrent, "isSessionCurrent");
     const collectMessageFileRefs = requireFunction(options.collectMessageFileRefs, "collectMessageFileRefs");
@@ -226,7 +227,7 @@
     async function refresh({ force = false, sessionId = null, syncToken = null } = {}) {
       const explicitSession = sessionId !== null && sessionId !== undefined && String(sessionId || "").trim() !== "";
       if (!explicitSession && blockUnavailableFileAction()) return false;
-      const sid = String(sessionId || currentSessionId() || selectedSessionId() || "").trim();
+      const sid = String(sessionId || currentSessionId() || sessionState.get("selected") || "").trim();
       const requestSeq = beginRefresh();
       const current = () => isCurrentRefresh(requestSeq) && (!explicitSession || isSessionCurrent(sid, syncToken));
       if (!sid) {

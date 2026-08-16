@@ -21,12 +21,11 @@
     const sendChoiceNowBtn = requireNode(options.sendChoiceNowBtn, "sendChoiceNowBtn");
     const sendChoiceLaterBtn = requireNode(options.sendChoiceLaterBtn, "sendChoiceLaterBtn");
     const sendChoiceCancelBtn = requireNode(options.sendChoiceCancelBtn, "sendChoiceCancelBtn");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
-    const getSending = requireFunction(options.getSending, "getSending");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("composer dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("composer dependency missing: sessionState");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const isModalOpen = typeof options.isModalOpen === "function" ? options.isModalOpen : () => false;
     const api = requireFunction(options.api, "api");
@@ -86,7 +85,7 @@
     });
 
     function selectedSession() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       return sessionId ? getSessionInfo(sessionId) || null : null;
     }
 
@@ -318,7 +317,7 @@
       hideModelPicker();
       autoGrow();
       textarea.focus();
-      saveSessionDraft(getSelected());
+      saveSessionDraft(sessionState.get("selected"));
     }
 
     function renderCommandPicker(entries) {
@@ -350,7 +349,7 @@
       syncModelPickerSelection();
     }
     async function applyCodexSetting(kind, choice, session) {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       if (!sessionId || sessionBackend(session) !== "codex") return;
       try {
         await api(`/api/sessions/${sessionId}/settings`, { method: "POST", body: { [kind]: choice } });
@@ -481,12 +480,12 @@
     }
 
     function selectedSessionLaunchFailed() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       return sessionLaunchFailed(sessionId ? getSessionInfo(sessionId) : null);
     }
 
     function syncComposerState() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const launchFailed = selectedSessionLaunchFailed();
       const blocked = !sessionId || launchFailed;
       const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Message";
@@ -497,10 +496,10 @@
     }
 
     function syncSendButtonState() {
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const launchFailed = selectedSessionLaunchFailed();
       const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
-      sendBtn.disabled = Boolean(getSending() || !sessionId || launchFailed);
+      sendBtn.disabled = Boolean(sessionState.get("sending") || !sessionId || launchFailed);
       sendBtn.title = label;
       sendBtn.setAttribute("aria-label", label);
       syncComposerState();
@@ -545,7 +544,7 @@
 
     function clearComposer({ blur = true } = {}) {
       textarea.value = "";
-      clearSessionDraft(getSelected());
+      clearSessionDraft(sessionState.get("selected"));
       autoGrow();
       if (blur) blurComposer();
     }
@@ -571,7 +570,7 @@
       prepareModalOpen();
       const focused = activeElement();
       sendChoiceReturnFocusEl = isHTMLElement(opener) ? opener : isHTMLElement(focused) ? focused : null;
-      sendChoicePending = { sid: getSelected(), text: raw, attachmentCount: getStagedAttachments().length };
+      sendChoicePending = { sid: sessionState.get("selected"), text: raw, attachmentCount: getStagedAttachments().length };
       syncSendChoiceAttachmentPolicy();
       sendChoiceBackdrop.style.display = "block";
       sendChoice.style.display = "flex";
@@ -592,7 +591,7 @@
 
     listen(textarea, "input", () => {
       autoGrow();
-      saveSessionDraft(getSelected());
+      saveSessionDraft(sessionState.get("selected"));
       modelPickerFocus = -1;
       syncModelPicker();
     });
@@ -631,11 +630,11 @@
 
     form.onsubmit = async (event) => {
       event.preventDefault();
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       if (!sessionId) { setToast("select a session first"); return; }
       if (sessionLaunchFailed(getSessionInfo(sessionId))) { setToast("failed session cannot receive messages"); return; }
       const raw = textarea.value;
-      if (!raw || !raw.trim() || getSending()) return;
+      if (!raw || !raw.trim() || sessionState.get("sending")) return;
       const sessionInfo = getSessionInfo(sessionId);
       if (unsupportedPiThinkingCommand(raw, sessionInfo)) {
         setToast("this session runs an older bridge — send /reload to enable /effort");
@@ -658,7 +657,7 @@
       if (!raw || !sessionId) return;
       const ok = await sendText(raw, { sid: sessionId });
       if (ok) blurComposer();
-      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer({ blur: false });
+      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) clearComposer({ blur: false });
     };
     sendChoiceLaterBtn.onclick = async () => {
       const raw = sendChoicePending && sendChoicePending.text;
@@ -668,11 +667,15 @@
       hideSendChoice({ restoreFocus: true });
       if (!raw || !sessionId) return;
       const ok = await enqueueComposerText(raw, { sid: sessionId });
-      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer();
+      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) clearComposer();
     };
     sendChoiceCancelBtn.onclick = () => hideSendChoice({ restoreFocus: true });
     sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
+    const unsubscribeSessionState = [
+      sessionState.subscribe("selected", syncSendButtonState),
+      sessionState.subscribe("sending", syncSendButtonState),
+    ];
     syncSendButtonState();
     autoGrow();
 
@@ -696,6 +699,7 @@
         sendChoiceBackdrop.onclick = null;
         if (modelPicker) hideModelPicker();
         while (cleanups.length) cleanups.pop()();
+        while (unsubscribeSessionState.length) unsubscribeSessionState.pop()();
       },
     });
   }

@@ -28,8 +28,9 @@ function createMessageFlow(state, overrides = {}) {
     updateSubagentGauge: noop,
     resetTypingStats: () => { state.resets = (state.resets || 0) + 1; },
   };
-  const sessionState = ctx.window.CodoxearSessionState.createSessionState({ consoleError: noop });
-  sessionState.applyRuntime({ running: Boolean(state.running) });
+  const sessionState = state.sessionState || ctx.window.CodoxearSessionState.createSessionState({ consoleError: noop });
+  state.sessionState = sessionState;
+  sessionState.applyRuntime({ selected: state.selected || "sid", running: Boolean(state.running) });
   Object.defineProperty(state, "running", {
     get: () => sessionState.get("running"),
     set: (value) => sessionState.applyRuntime({ running: Boolean(value) }),
@@ -37,8 +38,8 @@ function createMessageFlow(state, overrides = {}) {
   });
   return ctx.window.CodoxearMessageFlow.createMessageFlowController({
     sessionState,
-    getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
-    getTurnOpen: () => false, setTurnOpen: noop,
+    getGeneration: () => 1, isAppDisposed: () => false,
+
     getSessionInfo: () => ({ agent_backend: "pi" }), patchSessionInfo: noop, sessionLaunchFailed: () => false,
     api: async () => ({ queued: false, queue_len: 0 }), resolveAppUrl: (path) => `http://example.test${path}`,
     handleAppAuthLoss: noop, refreshSessions: async () => [], openSession: async () => null,
@@ -866,7 +867,6 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
             const state = {{
-              selected: "sid",
               generation: 0,
               responses: [
                 // A: direct rebind — new log identity, empty new transcript.
@@ -897,12 +897,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               markMessagePollSuccess: () => {{}},
             }};
             const defaults = () => {{}};
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            sessionState.set("selected", "sid");
             const options = new Proxy({{
-              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
+              sessionState,
               nextPollGeneration: () => ++state.generation,
-              getSelected: () => state.selected,
-              setSelected: (value) => {{ state.selected = value; }},
-              resetTranscriptForSession: () => calls.push("reset-transcript"),
+                                          resetTranscriptForSession: () => calls.push("reset-transcript"),
               resetChatRenderState: () => calls.push("reset-chat"),
               getSession: () => ({{ session_id: "sid", busy: false, queue_len: 0, token: null }}),
               isCurrent: () => true,
@@ -977,7 +977,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
-            const state = {{ selected: "sid", generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}, {{ transcript_state: "bound", events: [{{ role: "assistant", text: "latest" }}], busy: false, queue_len: 0, token: null }}] }};
+            const state = {{ generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}, {{ transcript_state: "bound", events: [{{ role: "assistant", text: "latest" }}], busy: false, queue_len: 0, token: null }}] }};
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            sessionState.set("selected", "sid");
             const messageFlow = {{
               prepareSessionOpen: () => calls.push("prepare"),
               beginOpenSessionTailRequest: (sessionId, generation) => ({{ sessionId, generation, signal: {{}} }}),
@@ -989,13 +991,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             const defaults = () => {{}};
             const options = new Proxy({{
-              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
+              sessionState,
               nextPollGeneration: () => ++state.generation,
               incrementPollGeneration: defaults,
               prepareSessionOpen: messageFlow.prepareSessionOpen,
-              getSelected: () => state.selected,
-              setSelected: (value) => {{ state.selected = value; }},
-              setActiveSession: defaults, saveComposerDraft: defaults, loadComposerDraft: defaults,
+                                          setActiveSession: defaults, saveComposerDraft: defaults, loadComposerDraft: defaults,
               closeUnattendedForOtherSession: defaults, persistSelected: defaults, removePersistedSelected: defaults, setSessionHash: defaults,
               resetTranscriptForSession: () => calls.push("reset-transcript"),
               clearTranscriptForRemovedSession: defaults, syncAttachments: defaults, clearAttachments: defaults, syncAttachmentButton: defaults,
@@ -1003,7 +1003,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               resetChatRenderState: () => calls.push("reset-chat"),
               getSession: () => ({{ session_id: "sid", busy: false, queue_len: 0, token: null }}),
               isCurrent: () => true, setTitle: defaults, setNoSessionTitle: defaults, markClickLoad: defaults,
-              setTurnOpen: defaults, updateTypingStats: defaults, beginFileViewerSync: () => false, finishFileViewerSync: defaults,
+              updateTypingStats: defaults, beginFileViewerSync: () => false, finishFileViewerSync: defaults,
               handleFileViewerSessionUnavailable: defaults, getTailCache: () => null, tailCacheMatchesSession: () => false,
               applyCachedTail: defaults, renderTranscriptLoading: () => calls.push("render-loading"), messageFlow: () => messageFlow,
               api: async () => {{ const response = state.responses.shift(); if (response instanceof Error) throw response; return response; }},
@@ -1581,7 +1581,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              getSelected: () => ctx.selected,
+              window: {{}},
               getPollGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
@@ -1632,6 +1632,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
             ctx.loadOlderMessages({{ auto: false }}).then(() => {{
               process.stdout.write(JSON.stringify({{
@@ -1653,7 +1656,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              getSelected: () => ctx.selected,
+              window: {{}},
               getPollGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
@@ -1701,6 +1704,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
             ctx.loadOlderMessages({{ auto: false }}).then(() => {{
               process.stdout.write(JSON.stringify({{
@@ -1722,7 +1728,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              getSelected: () => ctx.selected,
+              window: {{}},
               getPollGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
@@ -1771,6 +1777,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
             ctx.loadOlderMessages({{ auto: false }}).then(() => {{
               process.stdout.write(JSON.stringify({{
@@ -1792,7 +1801,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              getSelected: () => ctx.selected,
+              window: {{}},
               getPollGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
@@ -1841,6 +1850,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
             ctx.loadOlderMessages({{ auto: false }}).then(() => {{
               process.stdout.write(JSON.stringify({{
@@ -2013,9 +2025,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               const controller = ctx.window.CodoxearComposer.createComposerController({{
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-                getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "pi" }}),
+                getSessionInfo: () => ({{ agent_backend: "pi" }}),
                 sessionLaunchFailed: () => false, getSending: () => state.sending,
-                sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.applyRuntime({{ running: initialRunning }}); return store; }})(), getStagedAttachments: () => [],
+                sessionState: state.sessionState, getStagedAttachments: () => [],
                 api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
                 sendText: (...args) => messageFlowController.sendText(...args),
                 enqueueComposerText: async () => false, prepareModalOpen: noop,
@@ -2073,9 +2085,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-              getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "codex" }}),
+              getSessionInfo: () => ({{ agent_backend: "codex" }}),
               sessionLaunchFailed: () => false, getSending: () => state.sending,
-              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}), getStagedAttachments: () => [],
+              sessionState: state.sessionState, getStagedAttachments: () => [],
               api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
               sendText: (...args) => messageFlowController.sendText(...args),
               enqueueComposerText: async () => false, prepareModalOpen: noop,

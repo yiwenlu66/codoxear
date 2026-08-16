@@ -51,9 +51,9 @@ def test_composer_escape_blurs_only_without_an_open_dialog_and_successful_send_b
           ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh: node(), sendBtn: node(), sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn: node(), sendChoiceCancelBtn: node(),
-            getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}),
-            sessionLaunchFailed: () => false, getSending: () => false,
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
+            getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}),
+            sessionLaunchFailed: () => false,
+            sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.set("selected", "sid"); return store; }})(),
             getStagedAttachments: () => [], isModalOpen: () => dialogOpen, api: async () => ({{}}),
             setToast: () => {{}}, setPollFastUntilMs: () => {{}}, kickPoll: () => {{}},
             sendText: async (text) => {{ sent.push(text); return true; }}, enqueueComposerText: async () => true,
@@ -108,10 +108,12 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
           snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, tools: 0 }} }}),
           updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
         }};
+        const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        sessionState.set("selected", "sid");
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
-          getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
-          getTurnOpen: () => false, setTurnOpen: noop,
+            sessionState,
+          getGeneration: () => 1, isAppDisposed: () => false,
+
           getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
           api: async () => ({{ queued: false, queue_len: 0 }}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,
           refreshSessions: async () => {{ refreshes += 1; }}, openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
@@ -121,7 +123,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
           resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop, appendTailSnapshotEvents: noop,
           setStatus: noop, setContext: noop, setTyping: noop, setSubagentsRunning: noop, updateSessionTitle: noop,
           initPageLimit: () => 24, typingRowRuntime,
-          getSending: () => sending, setSending: (value) => {{ sending = value; }}, getCurrentRunning: () => false, setCurrentRunning: noop,
+           getCurrentRunning: () => false, setCurrentRunning: noop,
           getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
           syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
           confirmAction: async () => false, setToast: noop, isTranscriptRenewalCommand: () => false, nextLocalEchoId: () => 1,

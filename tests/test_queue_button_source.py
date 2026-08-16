@@ -81,7 +81,7 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
           queueEmpty,
           queueViewer,
           queueBtn,
-          getSelected: () => selected,
+
           getSessionInfo: (sid) => sessions.get(sid) || null,
           isAppDisposed: () => disposed,
           api,
@@ -131,10 +131,11 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
         vm.runInContext({json.dumps(session_state_source)}, ctx);
         vm.runInContext({json.dumps(queue_source)}, ctx);
         deps.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        deps.sessionState.set("selected", selected);
         const CodoxearQueue = ctx.window.CodoxearQueue;
         const controller = CodoxearQueue.createQueueController(deps);
         const session = (overrides = {{}}) => ({{ session_id: "sid-1", ...overrides }});
-        globalThis.__harness = {{ controller, deps, calls, toasts, apiCalls, sessions, selectedRef: {{ get: () => selected, set: (v) => {{ selected = v; }} }} , setApiResponses, runPendingTimers, setNow: (v) => {{ nowValue = v; }}, queueViewer, queueBtn }};
+        globalThis.__harness = {{ controller, deps, calls, toasts, apiCalls, sessions, selectedRef: {{ get: () => deps.sessionState.get("selected"), set: (v) => {{ selected = v; deps.sessionState.set("selected", v); }} }} , setApiResponses, runPendingTimers, setNow: (v) => {{ nowValue = v; }}, queueViewer, queueBtn }};
         {controller_options_overrides}
         process.stdout.write(JSON.stringify(globalThis.__result || {{}}));
         """

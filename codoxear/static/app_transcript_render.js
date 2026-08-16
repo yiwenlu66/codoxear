@@ -37,17 +37,12 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
   }
 
   function createTranscriptRenderController(options = {}) {
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
-    const getSending = requireFunction(options.getSending, "getSending");
-    const setSending = requireFunction(options.setSending, "setSending");
-    const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
-    const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function" || typeof sessionState.subscribe !== "function") {
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function" || typeof sessionState.subscribe !== "function") {
       throw new TypeError("transcript render dependency missing: sessionState");
     }
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
@@ -87,7 +82,7 @@ function invalidateOlderLoad() {
 function resetChatRenderState() {
   invalidateOlderLoad();
   transcriptScrollRuntime.enableAutoScroll();
-  setSending(false);
+  sessionState.set("sending", false);
   transcriptEventRuntime.resetRecentEvents();
   transcriptSlotRuntime.clearLiveCursor();
   transcriptScrollRuntime.markLiveTail();
@@ -266,8 +261,8 @@ addAppEvent(document, "keydown", (e) => {
     if (shifted === "D") {
       e.preventDefault();
       void (async () => {
-        if (!getSelected()) return;
-        const sid = getSelected();
+        if (!sessionState.get("selected")) return;
+        const sid = sessionState.get("selected");
         const confirmed = await confirmApp({
           title: "Delete session?",
           message: "Delete the current session? This cannot be undone.",
@@ -276,7 +271,7 @@ addAppEvent(document, "keydown", (e) => {
           destructive: true,
         });
         if (!confirmed) return;
-        if (getSelected() !== sid) return;
+        if (sessionState.get("selected") !== sid) return;
         try {
           await api(`/api/sessions/${sid}/delete`, { method: "POST", body: {} });
           getSessionLifecycleController().clearDeletedSessionClientState(sid);
@@ -325,7 +320,7 @@ const chatNavigationController = (function instantiateChatNavigationController()
   return CodoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
     prevUserBtn,
     nextUserBtn,
-    getSelected: () => getSelected(),
+    sessionState,
     getPollGen: () => getPollGeneration(),
     api,
     loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
@@ -413,7 +408,7 @@ chatSearchController = (function instantiateChatSearchController() {
     chatSearchBar,
     createLoadedChatSearchRuntime: CodoxearTranscript.createLoadedChatSearchRuntime,
     createChatSearchAllRuntime: CodoxearTranscript.createChatSearchAllRuntime,
-    getSelected: () => getSelected(),
+    sessionState,
     getPollGen: () => getPollGeneration(),
     api,
     loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
@@ -475,7 +470,7 @@ const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime
   jumpButton: jumpBtn,
   timeChip: chatTimeChip,
   requestAnimationFrame: (callback) => requestAnimationFrame(callback),
-  hasSelection: () => Boolean(getSelected()),
+  hasSelection: () => Boolean(sessionState.get("selected")),
   isSearchOpen: () => chatSearchController.isOpen(),
   firstVisibleMessageRow,
   dayLabel,
@@ -550,7 +545,7 @@ function syncActiveTranscriptSlot(sessionId) {
 function dropPendingUserRows(sessionId, predicate = null) {
   if (!sessionId) return;
   const dropped = transcriptEventRuntime.dropPendingUsers(sessionId, predicate);
-  if (getSelected() !== sessionId) return;
+  if (sessionState.get("selected") !== sessionId) return;
   for (const item of dropped) {
     if (!item || !item.id) continue;
     const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
@@ -562,7 +557,7 @@ function dropPendingUserRows(sessionId, predicate = null) {
 function updateSessionTranscriptSlot(sessionId, data) {
   const change = transcriptSlotRuntime.updateSlot(sessionId, data);
   if (change.resetPending) dropPendingUserRows(sessionId, () => true);
-  if (getSelected() === sessionId) syncActiveTranscriptSlot(sessionId);
+  if (sessionState.get("selected") === sessionId) syncActiveTranscriptSlot(sessionId);
   return change;
 }
 
@@ -570,7 +565,7 @@ function beginTranscriptRenewal(sessionId) {
   const change = transcriptSlotRuntime.beginRenewal(sessionId);
   if (!change) return;
   dropPendingUserRows(sessionId, () => true);
-  if (getSelected() === sessionId) syncActiveTranscriptSlot(sessionId);
+  if (sessionState.get("selected") === sessionId) syncActiveTranscriptSlot(sessionId);
 }
 
 function tailCacheMatchesSession(cache, session) {
@@ -604,7 +599,7 @@ function restorePendingUserRowsForSession(sessionId) {
 }
 
 function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
-  if (!sessionId || getSelected() !== sessionId || !sessionMeta) return;
+  if (!sessionId || sessionState.get("selected") !== sessionId || !sessionMeta) return;
   const currentSlot = getSessionTranscriptSlot(sessionId);
   const listedSlot = transcriptSnapshotFromData(sessionMeta);
   const requiresReplacement =
@@ -632,7 +627,7 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
   const running = Boolean(sessionMeta.busy);
   const queueLen = Number.isFinite(Number(sessionMeta.queue_len)) ? Number(sessionMeta.queue_len) : 0;
   const subagentsRunning = Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0));
-  setTurnOpen(running);
+  sessionState.set("turnOpen", running);
   sessionState.applyRuntime({ running, queueLen, token: sessionMeta.token || null, subagentsRunning });
 }
 
@@ -734,19 +729,19 @@ function pendingMatchKey(s) {
   return CodoxearMessageIdentity.pendingMatchKey(s);
 }
 
-      function isTranscriptRenewalCommand(raw, sessionId = getSelected()) {
+      function isTranscriptRenewalCommand(raw, sessionId = sessionState.get("selected")) {
 const session = sessionId ? getSessionIndex().get(sessionId) : null;
 if (!session || sessionAgentBackend(session) !== "codex") return false;
 return String(raw || "").trim() === "/new";
       }
 
-      function takePendingUserMatch(ev, sessionId = getSelected(), { allowUntimedCommit = true } = {}) {
+      function takePendingUserMatch(ev, sessionId = sessionState.get("selected"), { allowUntimedCommit = true } = {}) {
 const slot = getSessionTranscriptSlot(sessionId);
 return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });
       }
 
       const pendingUserController = codoxearPendingUser.createPendingUserController(wiring.createPendingUserOptions({
-selectedSessionId: () => getSelected(),
+sessionState,
 takePendingUserMatch,
 chatInner,
 markdownHtml: chatMarkdownHtmlCached,
@@ -762,7 +757,7 @@ transcriptViewController = CodoxearTranscriptView.createTranscriptViewController
   el,
   messageRows: CodoxearMessageRows,
   transcript: CodoxearTranscript,
-  getSelectedSessionId: () => getSelected(),
+  getSelectedSessionId: () => sessionState.get("selected"),
   getMessageRowDeps: messageRowDeps,
   policyRuntime: {
     domRuntime: transcriptDomRuntime,
@@ -782,7 +777,7 @@ transcriptViewController = CodoxearTranscriptView.createTranscriptViewController
     setOlderState,
     firstVisibleMessageRow,
     getScrollTop: () => chat.scrollTop,
-    getSelectedSessionId: () => getSelected(),
+    getSelectedSessionId: () => sessionState.get("selected"),
     domRuntime: transcriptDomRuntime,
     scrollRuntime: transcriptScrollRuntime,
     typingRowRuntime,
@@ -796,7 +791,7 @@ function appendEvent(ev) {
 function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
   return CodoxearTranscript.normalizedTranscriptEvents(events, {
     consumePending,
-    selectedSessionId: getSelected(),
+    selectedSessionId: sessionState.get("selected"),
     eventKey,
     takePendingMatch: takePendingUserMatch,
   });

@@ -458,7 +458,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           resetInput: () => {{ events.push(["resetInput"]); input.value = "active.py"; }},
           closeMenu: (options) => events.push(["close", options]),
           currentSessionId: () => currentSession,
-          selectedSessionId: () => selectedSession,
+          sessionState: {{ get: () => selectedSession }},
           resetSearchState: () => events.push(["resetSearch"]),
           setSearchSessionId: (sessionId) => events.push(["setSearchSession", sessionId]),
           scheduleSearch: (query) => events.push(["schedule", query]),

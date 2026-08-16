@@ -56,7 +56,8 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
   }
 
   function createFileOpsController(options = {}) {
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file operations dependency missing: sessionState");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const {
@@ -112,7 +113,7 @@ const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
       api: api,
       document: document,
       el: el,
-      getSelected: getSelected,
+      sessionState,
       blockUnavailableFileAction: blockUnavailableFileAction,
       currentFileViewerSessionId: currentFileViewerSessionId,
       fileViewerController: () => fileViewerController,
@@ -188,7 +189,7 @@ const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime(wiring.
   setFileEditorKind: (kind) => setFileEditorKind(kind),
   applyPlainTextFallbackState: () => fileViewerController.applyPlainTextFallbackState(),
   updateFileTouchToolbar: () => updateFileTouchToolbar(),
-  currentSessionId: () => currentFileViewerSessionId() || getSelected() || "",
+  currentSessionId: () => currentFileViewerSessionId() || sessionState.get("selected") || "",
   markdownPreviewHtml: (body, context) => markdownPreviewHtml(body, context),
   upgradeCandidateFileRefs: (node) => upgradeCandidateFileRefs(node),
   blockedFileMessage: (rel, reason, viewerMaxBytes, size) => blockedFileMessage(rel, reason, viewerMaxBytes, size),
@@ -294,7 +295,7 @@ function currentFileViewerSessionId() {
 }
 
 function currentFileSessionId() {
-  return String(currentFileViewerSessionId() || getSelected() || "").trim();
+  return String(currentFileViewerSessionId() || sessionState.get("selected") || "").trim();
 }
 
 function isFileViewerSessionUnavailable() {
@@ -507,7 +508,7 @@ const fileEditModeController = codoxearFileEditMode.createFileEditModeController
 
 const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime(wiring.createFileInspectOptions({
   currentSessionId: () => currentFileViewerSessionId(),
-  selectedSessionId: () => getSelected(),
+  sessionState,
   normalizeFileApiPath: (value) => normalizeFileApiPath(value),
   api: (url, options) => api(url, options),
 }));
@@ -598,7 +599,7 @@ const sessionEditController = CodoxearSessionEdit.createSessionEditController(wi
   editViewer,
   getSessionInfo: (sid) => getSessionIndex().get(sid),
   getSessions: () => Array.from(getSessionIndex().values()),
-  selectedSessionId: () => getSelected(),
+  sessionState,
   sessionDisplayName,
   baseName,
   formatPriorityOffset,
@@ -638,7 +639,7 @@ const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleR
   setFileSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
   updateFileTouchToolbar: () => updateFileTouchToolbar(),
   isFileViewerOpen: () => isFileViewerOpen(),
-  selectedSessionId: () => getSelected(),
+  sessionState,
   maybeHandleUnsavedFileChanges: () => fileUnsavedController.maybeHandleUnsavedFileChanges(),
   filePickerSearchSessionId: () => filePickerSearchSnapshot().sessionId,
   refreshFileCandidates: (options) => refreshFileCandidates(options),
@@ -693,7 +694,7 @@ const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime(wir
 const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime(wiring.createFileCandidateRefreshOptions({
   controller: fileViewerController,
   currentSessionId: () => currentFileViewerSessionId(),
-  selectedSessionId: () => getSelected(),
+  sessionState,
   blockUnavailableFileAction: () => blockUnavailableFileAction(),
   isSessionCurrent: (sessionId, syncToken) => fileViewerLifecycleRuntime.isSessionCurrent(sessionId, syncToken),
   ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
@@ -714,7 +715,7 @@ const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefres
 }));
 const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime(wiring.createOpenedFileOptions({
   currentSessionId: () => currentFileViewerSessionId(),
-  selectedSessionId: () => getSelected(),
+  sessionState,
   sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
   activeIdentity: () => currentActiveFileIdentity(),
   fileEntryForPath: (rel, gitPath, apiPath) => fileViewerController.fileEntryForPath(rel, gitPath, apiPath),
@@ -725,7 +726,7 @@ const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime(wiring.crea
   deleteCandidateCache: (sessionId) => fileViewerController.deleteFileCandidateCache(sessionId),
 }));
 const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime(wiring.createFileReferenceOptions({
-  selectedSessionId: () => getSelected(),
+  sessionState,
   sessionById: (sessionId) => getSessionIndex().get(sessionId) || null,
   sessions: () => Array.from(getSessionIndex().values()),
   chatRoot: chatInner,
@@ -757,7 +758,7 @@ const filePickerOperations = filePickerOpsModule.createFilePickerOperationDelega
   filePickerSearchState: filePickerSearchState,
   filePickerRenderRuntime: filePickerRenderRuntime,
   fileViewerPanelRuntime: fileViewerPanelRuntime,
-  getSelected: getSelected,
+  sessionState,
   getSessionIndex: getSessionIndex,
   stripPathLocationSuffix: stripPathLocationSuffix,
 }));

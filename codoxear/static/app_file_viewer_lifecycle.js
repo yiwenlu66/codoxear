@@ -185,7 +185,11 @@
     function ensureSessionDeps() {
       return {
         isFileViewerOpen: requireFunction(options.isFileViewerOpen, "isFileViewerOpen"),
-        selectedSessionId: requireFunction(options.selectedSessionId, "selectedSessionId"),
+        sessionState: (() => {
+          const sessionState = options.sessionState;
+          if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file viewer dependency missing: sessionState");
+          return sessionState;
+        })(),
         maybeHandleUnsavedFileChanges: requireFunction(options.maybeHandleUnsavedFileChanges, "maybeHandleUnsavedFileChanges"),
         filePickerSearchSessionId: requireFunction(options.filePickerSearchSessionId, "filePickerSearchSessionId"),
         refreshFileCandidates: requireFunction(options.refreshFileCandidates, "refreshFileCandidates"),
@@ -214,7 +218,7 @@
       return Boolean(
         sid &&
           deps.isFileViewerOpen() &&
-          String(deps.selectedSessionId() || "").trim() === sid &&
+          String(deps.sessionState.get("selected") || "").trim() === sid &&
           (token === null || transition.isCurrentSync(token))
       );
     }
@@ -228,7 +232,7 @@
     async function ensureCurrentSession() {
       const deps = ensureSessionDeps();
       if (!deps.isFileViewerOpen()) return true;
-      const sid = String(deps.selectedSessionId() || "").trim();
+      const sid = String(deps.sessionState.get("selected") || "").trim();
       if (!sid) return false;
       const transition = sessionTransitionDeps();
       if (transition.currentViewerSessionId() === sid) return true;
@@ -287,7 +291,7 @@
       ui.showModal({ wasOpen, queryOpen });
       ui.updateFileTouchToolbar();
       rememberActiveFileSelection(transition.currentViewerSessionId());
-      const sid = String(deps.selectedSessionId() || "").trim();
+      const sid = String(deps.sessionState.get("selected") || "").trim();
       const syncToken = transition.beginSessionSync();
       transition.setViewerSessionId(sid);
       transition.clearUnavailable();

@@ -27,7 +27,8 @@
 
     const createLoadedChatSearchRuntime = requireFunction(options.createLoadedChatSearchRuntime, "createLoadedChatSearchRuntime");
     const createChatSearchAllRuntime = requireFunction(options.createChatSearchAllRuntime, "createChatSearchAllRuntime");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
     const getPollGen = requireFunction(options.getPollGen, "getPollGen");
     const api = requireFunction(options.api, "api");
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
@@ -137,14 +138,14 @@
     }
 
     async function runSearch(query, { before = "", appendOlder = false } = {}) {
-      const sid = getSelected();
+      const sid = sessionState.get("selected");
       const gen = getPollGen();
       if (!sid || !query) return false;
       const request = requestRuntime.beginRequest();
       const beforePart = before ? `&before=${encodeURIComponent(before)}` : "";
       try {
         const data = await api(`/api/sessions/${sid}/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE_LIMIT}&order=latest${beforePart}`, { signal: request.signal });
-        if (getSelected() !== sid || getPollGen() !== gen || currentQuery() !== query || !requestRuntime.isCurrent(request)) return false;
+        if (sessionState.get("selected") !== sid || getPollGen() !== gen || currentQuery() !== query || !requestRuntime.isCurrent(request)) return false;
         const matches = Array.isArray(data.matches) ? data.matches : [];
         const count = Number.isFinite(Number(data.total)) ? Number(data.total) : (Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0);
         if (appendOlder) {
@@ -168,7 +169,7 @@
       } catch (error) {
         if (error && error.name === "AbortError") return false;
         if (error && error.status === 401) handleAppAuthLoss();
-        if (getSelected() === sid && getPollGen() === gen && requestRuntime.isCurrent(request)) {
+        if (sessionState.get("selected") === sid && getPollGen() === gen && requestRuntime.isCurrent(request)) {
           serverMatches = [];
           serverTotal = 0;
           serverIndex = -1;
@@ -182,7 +183,7 @@
 
     function scheduleServerSearch(query) {
       resetServerResults();
-      if (!query || !getSelected()) {
+      if (!query || !sessionState.get("selected")) {
         syncStatus();
         return;
       }
@@ -256,7 +257,7 @@
     }
 
     function open() {
-      if (!getSelected()) return;
+      if (!sessionState.get("selected")) return;
       loadedRuntime.setOpen(true);
       chatSearchBar.style.display = "flex";
       syncVisibleTimeIndicator();

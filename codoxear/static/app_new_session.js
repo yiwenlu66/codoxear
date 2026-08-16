@@ -786,7 +786,8 @@ function requireFunction(value, name) {
     const latestSessions = requireFunction(options.latestSessions, "latestSessions");
     const recentCwds = requireFunction(options.recentCwds, "recentCwds");
     const tmuxAvailable = requireFunction(options.tmuxAvailable, "tmuxAvailable");
-    const selectedSession = requireFunction(options.selectedSession, "selectedSession");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("new session dialog dependency missing: sessionState");
     const sessionForId = requireFunction(options.sessionForId, "sessionForId");
     const isMobile = requireFunction(options.isMobile, "isMobile");
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
@@ -981,7 +982,7 @@ function requireFunction(value, name) {
     }
 
     function open({ cwd = null, statusText = "", likeSession = null, returnFocusEl: opener = null } = {}) {
-      const active = selectedSession();
+      const active = sessionState.get("selected");
       const current = active ? sessionForId(active) : null;
       const like = likeSession && typeof likeSession === "object" ? likeSession : null;
       returnFocusEl = opener instanceof HTMLElement ? opener : doc.activeElement instanceof HTMLElement ? doc.activeElement : null;

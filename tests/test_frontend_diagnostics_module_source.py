@@ -73,7 +73,7 @@ const diagCopyBtn = fakeNode();
 
 const deps = {
   diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagCopyConversationBtn, diagCopyBtn,
-  getSelected: () => selected,
+  sessionState: { get: () => selected },
   getSessionInfo: (sid) => sessions.get(sid) || null,
   api: (url) => {
     calls.push(["api", url]);
@@ -227,7 +227,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               diagBackdrop: node, diagViewer: node, diagContent: node, diagStatus: node,
               diagCloseBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
-              getSelected: () => null, getSessionInfo: () => null,
+              sessionState: { get: () => null }, getSessionInfo: () => null,
               api: null,
               setToast: () => {}, copyToClipboard: () => {}, copyConversation: () => {},
               recoveryDetailsText: () => "",

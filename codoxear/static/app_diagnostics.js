@@ -52,7 +52,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const diagCopyBtn = requireNode(options.diagCopyBtn, "diagCopyBtn");
 
     // App-level runtime state accessors and effects.
-    const getSelected = requireFunction(options.getSelected, "getSelected");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("diagnostics dependency missing: sessionState");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
@@ -200,7 +201,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     async function show({ opener = null } = {}) {
-      const sid = getSelected();
+      const sid = sessionState.get("selected");
       if (!sid) return;
       diagReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
       prepareModalOpen();
@@ -220,10 +221,10 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       }
       try {
         const d = await api(`/api/sessions/${sid}/diagnostics`);
-        if (getSelected() !== sid) return;
+        if (sessionState.get("selected") !== sid) return;
         renderLiveRows(sid, d);
       } catch (e) {
-        if (getSelected() !== sid) return;
+        if (sessionState.get("selected") !== sid) return;
         showErrorState(e);
       }
     }

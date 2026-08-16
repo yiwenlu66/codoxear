@@ -38,11 +38,9 @@ def run_flow(body: str) -> dict:
             updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           const options = {{
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
-            getSelected: () => state.selected, getGeneration: () => state.generation,
-            isAppDisposed: () => state.disposed, getTurnOpen: () => state.turnOpen,
-            setTurnOpen: (value) => {{ state.turnOpen = Boolean(value); }},
-            getSessionInfo: () => state.session, patchSessionInfo: noop, sessionLaunchFailed: () => false,
+            sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }}); return store; }})(),
+            getGeneration: () => state.generation,
+            isAppDisposed: () => state.disposed,             getSessionInfo: () => state.session, patchSessionInfo: noop, sessionLaunchFailed: () => false,
             api: async () => ({{ events: [], busy: false, queue_len: 0, token: null }}),
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
             refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
@@ -54,7 +52,7 @@ def run_flow(body: str) -> dict:
             appendEvent: (event) => state.events.push(event), appendTailSnapshotEvents: noop,
             setStatus: noop, setContext: noop, setTyping: noop, setSubagentsRunning: noop,
             updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
-            getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop,
+            getCurrentRunning: () => false, setCurrentRunning: noop,
             getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
             setSelectedSessionPendingAttachment: noop, syncSendButtonState: noop, syncAttachButtonState: noop,
             syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,

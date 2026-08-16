@@ -115,7 +115,7 @@ const deps = {
   queueEmpty,
   queueViewer,
   queueBtn,
-  getSelected: () => selected,
+
   getSessionInfo: (sid) => sessions.get(sid) || null,
   isAppDisposed: () => disposed,
   api: (url, options = {}) => {
@@ -206,7 +206,7 @@ globalThis.__harness = {
   HTMLElementCtor: ctx.HTMLElement,
   setConfirm: (v) => { confirmValue = v; },
   sessions,
-  select: (sid) => { selected = sid; },
+  select: (sid) => { selected = sid; sessionState.set("selected", sid); },
   setDisposed: (v) => { disposed = v; },
   setNow: (v) => { nowValue = v; },
   setApiResponses,
@@ -306,7 +306,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               queueBackdrop: node, queueCloseBtn: node, queueList: node,
               queueEmpty: node, queueViewer: node, queueBtn: node,
-              getSelected: () => null, getSessionInfo: () => null, isAppDisposed: () => false,
+              getSessionInfo: () => null, isAppDisposed: () => false,
               sessionState: ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} }),
               api: null,
               setToast: () => {}, clearCommitUnknownSend: () => {}, refreshSessions: async () => {},

@@ -38,7 +38,7 @@ const controller = ctx.window.CodoxearChatSearch.createChatSearchController({
   ...nodes,
   createLoadedChatSearchRuntime: transcript.createLoadedChatSearchRuntime,
   createChatSearchAllRuntime: transcript.createChatSearchAllRuntime,
-  getSelected: () => 'sid-1', getPollGen: () => 1,
+  sessionState: { get: () => 'sid-1' }, getPollGen: () => 1,
   api: async (url) => { events.push(`api:${url}`); return { total: 5, matches, truncated: true }; },
   loadTranscriptWindowAtCursor: async (cursor) => { windowLoads += 1; events.push(`window:${cursor}`); rows = [{ dataset: { messageId: 'm1', historyCursor: 'c1' }, text: 'first needle', scrollIntoView() { events.push('scroll:m1'); } }]; return { jumped_window: true }; },
   handleAppAuthLoss() {}, syncVisibleTimeIndicator() {}, renderedMessageRows: () => rows,

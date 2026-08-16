@@ -11,7 +11,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
     return value;
   }
   function createMessageHistoryController(options = {}) {
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
@@ -20,11 +19,11 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const getAttachmentsController = requireFunction(options.getAttachmentsController, "getAttachmentsController");
     const transcript = requireObject(options.transcript, "transcript");
     const sessionState = requireObject(options.sessionState, "sessionState");
-    if (typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
+    if (typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("message history dependency missing: sessionState");
     }
     const { wiring, olderWrap, olderBtn, olderError, olderErrorText, AbortController, performance,
-      OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss, setTurnOpen,
+      OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss,
       syncQueueSubmitState, syncComposerSendButton, updateUnattendedBtnState,
       updateQueueBadge, sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
       sessionIdFromHash, sessionSelectable } = options;
@@ -68,20 +67,20 @@ import * as CodoxearTranscript from "./app_transcript.js";
 
 async function loadTranscriptWindowAtCursor(cursor) {
   const cleanCursor = String(cursor || "").trim();
-  if (!getSelected() || !cleanCursor) return null;
-  const sid = getSelected();
+  if (!sessionState.get("selected") || !cleanCursor) return null;
+  const sid = sessionState.get("selected");
   const gen = getPollGeneration();
   invalidateOlderLoad();
   try {
     const data = await api(`/api/sessions/${sid}/messages/window?cursor=${encodeURIComponent(cleanCursor)}&before=30&after=30`);
-    if (getSelected() !== sid || getPollGeneration() !== gen) return null;
+    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen) return null;
     const events = Array.isArray(data.events) ? data.events : [];
     const nextCursor = usableOlderHistoryCursor(data);
     transcriptView().replaceWith(events, { detached: true, cursor: nextCursor, nextHasMore: Boolean(nextCursor) });
     return data;
   } catch (error) {
     if (error && error.status === 401) handleAppAuthLoss();
-    else if (getSelected() === sid && getPollGeneration() === gen) showOlderLoadError();
+    else if (sessionState.get("selected") === sid && getPollGeneration() === gen) showOlderLoadError();
     return null;
   }
 }
@@ -92,9 +91,9 @@ function prependOlderEvents(allEvents, { preserveViewport = false, historyCursor
 
 async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePreserveViewport = null } = {}) {
   const state = olderLoadRuntime.snapshot();
-  if (!getSelected() || !state.hasMore || state.isLoading) return false;
+  if (!sessionState.get("selected") || !state.hasMore || state.isLoading) return false;
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
-  const sid = getSelected();
+  const sid = sessionState.get("selected");
   const gen = getPollGeneration();
   const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
   const view = typeof transcriptView === "function" ? transcriptView() : null;
@@ -108,7 +107,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePre
     const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
       signal: load.signal,
     });
-    if (getSelected() !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
+    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
     const evs = Array.isArray(data.events) ? data.events : [];
     const nextCursor = usableOlderHistoryCursor(data);
     const nextHasOlder = Boolean(nextCursor);
@@ -133,7 +132,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePre
       handleAppAuthLoss();
       return false;
     }
-    if (getSelected() !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
+    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
     if (e && e.status === 409) {
       await getSessionLifecycleController().openSession(sid, { useCache: false });
       return false;
@@ -173,7 +172,7 @@ function applySessionRuntimeFromTail(sessionId, data) {
     transcriptView().setHistory({ cursor: incomingCursor, nextHasMore: Boolean(incomingCursor) });
   }
   const nowBusy = Boolean(data && data.busy);
-  setTurnOpen(nowBusy);
+  sessionState.set("turnOpen", nowBusy);
   const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
   const session = getSessionIndex().get(sessionId);
   updateTypingStatsFromSession(session, { updateSubagents: false });
@@ -252,7 +251,7 @@ async function dismissFailedLaunchRecord(sessionId) {
 }
 
 function syncRecoveryUiForSession(sessionId) {
-  if (getSelected() !== sessionId) return;
+  if (sessionState.get("selected") !== sessionId) return;
   const s = getSessionIndex().get(sessionId) || null;
   if (s) {
     const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
@@ -288,11 +287,11 @@ function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false 
     onRetry: (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (getSelected() !== sessionId) return;
+      if (sessionState.get("selected") !== sessionId) return;
       void getSessionLifecycleController().openSession(sessionId, { useCache: true });
     },
   });
-  setTurnOpen(false);
+  sessionState.set("turnOpen", false);
   sessionState.applyRuntime({ running: false });
   markClickFirstPaint();
 }
@@ -321,7 +320,7 @@ function applyCachedTail(sessionId, cache, sessionMeta) {
       : Number.isFinite(Number(cache.queueLen))
         ? Number(cache.queueLen)
         : 0;
-  setTurnOpen(cachedBusy);
+  sessionState.set("turnOpen", cachedBusy);
   updateTypingStatsFromSession(sessionMeta, { updateSubagents: false });
   const subagentsRunning = sessionMeta ? Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0)) : 0;
   sessionState.applyRuntime({
@@ -336,13 +335,13 @@ async function applyLiveMessageData(sid, gen, data) {
   return getSendLifecycleController().messageFlowController.applyLiveMessageData(sid, gen, data);
 }
 
-async function pollMessages(sid = getSelected(), gen = getPollGeneration()) {
+async function pollMessages(sid = sessionState.get("selected"), gen = getPollGeneration()) {
   return getSendLifecycleController().messageFlowController.pollMessages(sid, gen);
 }
 
 async function jumpToLatest() {
-  if (!getSelected()) return;
-  const sid = getSelected();
+  if (!sessionState.get("selected")) return;
+  const sid = sessionState.get("selected");
   invalidateOlderLoad();
   const view = typeof transcriptView === "function" ? transcriptView() : null;
   if (view && typeof view.scrollToBottom === "function") view.scrollToBottom({ force: true });
@@ -354,10 +353,10 @@ async function jumpToLatest() {
       forceRender: true,
     });
   } catch (e) {
-    if (getSelected() !== sid) return;
+    if (sessionState.get("selected") !== sid) return;
     setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
   }
-  if (getSelected() !== sid) return;
+  if (sessionState.get("selected") !== sid) return;
   if (view && typeof view.scrollToBottom === "function") view.scrollToBottom();
   else transcriptScrollRuntime.scheduleScrollToBottom({ syncJump: true });
   kickPoll(0);
@@ -374,7 +373,7 @@ function maybeSelectPendingHashSession() {
     rememberPendingHashSession("");
     return;
   }
-  if (sid === getSelected()) {
+  if (sid === sessionState.get("selected")) {
     rememberPendingHashSession("");
     return;
   }

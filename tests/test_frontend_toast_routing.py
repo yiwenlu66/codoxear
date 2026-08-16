@@ -100,10 +100,11 @@ class TestFrontendToastRouting(unittest.TestCase):
 
               let selected = "s1";
               const sessionState = ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} });
+sessionState.set("selected", selected);
               const queueController = ctx.window.CodoxearQueue.createQueueController({
                 queueBackdrop: node("queueBackdrop"), queueCloseBtn: node("queueCloseBtn"),
                 queueList: node("queueList"), queueEmpty: node("queueEmpty"), queueViewer: node("queueViewer"), queueBtn: node("queueBtn"),
-                getSelected: () => selected, getSessionInfo: () => ({ launch_state: "ready" }), sessionState, isAppDisposed: () => false,
+                getSessionInfo: () => ({ launch_state: "ready" }), sessionState, isAppDisposed: () => false,
                 api: async () => ({ queued: true, queue_len: 1 }), setToast: notify("queue"),
                 clearCommitUnknownSend: async () => true, refreshSessions: async () => {}, updateQueueBadge: () => {},
                 syncRecoveryUiForSession: () => {}, kickPoll: () => {}, setPollFastUntilMs: () => {}, handleAppAuthLoss: () => {},
@@ -117,7 +118,7 @@ class TestFrontendToastRouting(unittest.TestCase):
               const diagnosticsController = ctx.window.CodoxearDiagnostics.createDiagnosticsController({
                 diagBackdrop: node("diagBackdrop"), diagViewer: node("diagViewer"), diagContent: node("diagContent"), diagStatus: node("diagStatus"),
                 diagCloseBtn: node("diagCloseBtn"), diagCopyConversationBtn: node("diagCopyConversationBtn"), diagCopyBtn: node("diagCopyBtn"),
-                getSelected: () => selected, getSessionInfo: () => ({}), api: async () => ({}), setToast: notify("diagnostics"),
+                sessionState, getSessionInfo: () => ({}), api: async () => ({}), setToast: notify("diagnostics"),
                 copyToClipboard: async () => true, copyConversation: async () => true, recoveryDetailsText: () => "", redactedLaunchErrorText: () => "",
                 sessionLaunchLabel: () => "", agentBackendDisplayName: () => "", diagnosticsProviderDisplay: () => "", diagnosticsCopyText: () => "",
                 fmtTs: () => "", fmtRelativeAge: () => "", formatPriorityOffset: () => "", prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
@@ -126,7 +127,7 @@ class TestFrontendToastRouting(unittest.TestCase):
               await diagnosticsController.onCopyClick({ preventDefault() {}, stopPropagation() {} });
 
               const fileReferences = ctx.window.CodoxearFileViewer.createFileReferenceRuntime({
-                selectedSessionId: () => selected, sessionById: () => null, sessionRelativePath: () => "", listFromFilesField: () => [], listFromFileRecords: () => [],
+                sessionState, sessionById: () => null, sessionRelativePath: () => "", listFromFilesField: () => [], listFromFileRecords: () => [],
                 normalizeFileApiPath: (value) => String(value || ""), normalizeLineNumber: () => null, api: async () => ({}),
                 el: (tag) => node(tag), setToast: notify("file-viewer"), parseLocalFileRef: () => null, showFileViewer: async () => {}, sessions: () => [], selectSession: async () => {}, openDirectorySession: () => {},
               });

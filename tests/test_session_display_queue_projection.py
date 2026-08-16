@@ -33,8 +33,8 @@ def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
     const statusChip = {{ style: {{}}, textContent: "" }};
     const interruptBtn = {{ style: {{}}, disabled: false }};
     const ctxChip = {{ style: {{}}, disabled: false, textContent: "", title: "" }};
+    sessionState.set("selected", "sid");
     const controller = ctx.window.CodoxearSessionDisplay.createSessionDisplayController({{
-      getSelected: () => "sid",
       sessionState,
       setToast: () => {{}},
       statusChip, interruptBtn, ctxChip, eventBindings: {{ on: () => {{}} }},

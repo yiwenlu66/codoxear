@@ -6,7 +6,7 @@
   }
   function createFilePickerOpsController(options = {}) {
     const { wiring, codoxearFilePicker, normalizeLineNumber, filePickerField, filePickerMenu, filePickerInput,
-      api, document, el, getSelected, blockUnavailableFileAction, currentFileViewerSessionId, fileViewerController,
+      api, document, el, sessionState, blockUnavailableFileAction, currentFileViewerSessionId, fileViewerController,
       fileCandidateKey, currentActiveFileDraft, activeFilePathValue, normalizeFileApiPath, renderFilePickerMenu,
       applyFileMenuState, normalizeDraftFilePath, filePickerSectionLabel, duplicateFilePickerPaths,
       rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle, currentActiveFileIdentity,
@@ -21,7 +21,7 @@
     }));
     const searchState = codoxearFilePicker.createSearchState(wiring.createSearchStateOptions({
       blocked: () => blockUnavailableFileAction(),
-      currentSessionId: () => currentFileViewerSessionId() || getSelected() || "",
+      currentSessionId: () => currentFileViewerSessionId() || sessionState.get("selected") || "",
       api, inputValue: () => filePickerInput.value, isMenuOpen: () => menuState.isOpen(),
       renderMenu: () => renderFilePickerMenu(), applyMenuState: () => applyFileMenuState(),
       normalizeFileApiPath: (value) => normalizeFileApiPath(value),
@@ -54,7 +54,7 @@
       input: filePickerInput, menuState, ensureCurrentSession: () => ensureCurrentFileViewerSession(),
       renderMenu: () => renderFilePickerMenu(), applyMenuState: () => applyFileMenuState(),
       resetInput: () => resetFilePickerInput(), closeMenu: (opts) => closeFilePickerMenu(opts),
-      currentSessionId: () => currentFileViewerSessionId(), selectedSessionId: () => getSelected(),
+      currentSessionId: () => currentFileViewerSessionId(), sessionState,
       resetSearchState: () => resetFileSearchState(), setSearchSessionId: (sid) => searchState.setSessionId(sid),
       scheduleSearch: (query) => searchState.schedule(query), selectionLine: () => filePickerSelectionLine(),
       openDraftFilePathWithGuard: (path) => openDraftFilePathWithGuard(path),
@@ -168,7 +168,7 @@ addAppEvent(document, "click", (e) => {
   function createFilePickerOperationDelegates(options = {}) {
     const { fileViewerController, fileModeControlsRuntime, filePickerDomRuntime, filePickerMenuState,
       filePickerInput, filePickerInputRuntime, activeFilePathValue, openedFileRuntime, fileReferenceRuntime,
-      filePickerSearchState, filePickerRenderRuntime, fileViewerPanelRuntime, getSelected, getSessionIndex,
+      filePickerSearchState, filePickerRenderRuntime, fileViewerPanelRuntime, sessionState, getSessionIndex,
       stripPathLocationSuffix } = options;
     return Object.freeze({
       openDraftFilePathWithGuard: async (path) => fileViewerController.openDraftFilePathWithGuard(path),
@@ -197,7 +197,7 @@ addAppEvent(document, "click", (e) => {
       renderFilePickerMenu: () => filePickerRenderRuntime.render(),
       upgradeCandidateFileRefs: async (root) => fileReferenceRuntime.upgradeCandidateRefs(root),
       sessionRelativePath: (rawPath, sidOverride = null) => {
-        const sid = typeof sidOverride === "string" && sidOverride ? sidOverride : getSelected();
+        const sid = typeof sidOverride === "string" && sidOverride ? sidOverride : sessionState.get("selected");
         const session = sid ? getSessionIndex().get(sid) : null;
         if (!session || !session.cwd) return null;
         const abs = stripPathLocationSuffix(rawPath), cwd = String(session.cwd || "").replace(/\/+$/, "");

@@ -188,7 +188,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         const OLDER_CANCEL_PX = 48;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollGen = 0;
-        let turnOpen = false;
 	         let sessionsTimer = null;
          let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
@@ -196,10 +195,8 @@ import * as CodoxearWiring from "./app_wiring.js";
          let sessionsPollErrorStreak = 0;
          let secondaryPollErrorStreak = 0;
         const sessionState = CodoxearSessionState.createSessionState({ consoleError: (...args) => console.error(...args) });
-        let selected = null; // selected session_id (null until chosen)
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
-	        let sending = false;
         let attachmentsController = null;
         let composerController = null;
         let messageFlowController = null;
@@ -250,10 +247,10 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
         const eventBindings = CodoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
         function stopMessagePolling() {
-          selected = null;
+          sessionState.set("selected", null);
           pollGen += 1;
           if (messageFlowController) messageFlowController.stop();
-          turnOpen = false;
+          sessionState.set("turnOpen", false);
         }
         function cleanupApp() {
           if (appDisposed) return;
@@ -268,6 +265,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           filePickerSearchState.dispose();
           if (iosViewportController) iosViewportController.dispose();
           if (chatSearchController) chatSearchController.dispose();
+          if (sessionTitleController) sessionTitleController.dispose();
           if (chatInteractionController) chatInteractionController.dispose();
           if (sessionDisplayController) sessionDisplayController.dispose();
           if (queueController) queueController.dispose();
@@ -395,7 +393,7 @@ import * as CodoxearWiring from "./app_wiring.js";
 
         const sessionTitleController = CodoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
           titleLabel,
-          getSelected: () => selected,
+          sessionState,
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
         }));
 
@@ -446,7 +444,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           latestSessions: () => latestSessions,
           recentCwds: () => recentCwds,
           tmuxAvailable: () => tmuxAvailable,
-          selectedSession: () => selected,
+          sessionState,
           sessionForId: (sessionId) => sessionIndex.get(sessionId),
           isMobile: () => codoxearViewport.isMobile(),
           prepareModalOpen,
@@ -610,11 +608,11 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
 
         async function copyConversation() {
-          if (!selected) return;
-          const sid = selected;
+          if (!sessionState.get("selected")) return;
+          const sid = sessionState.get("selected");
           try {
             const data = await api(`/api/sessions/${sid}/messages/export`);
-            if (selected !== sid) return;
+            if (sessionState.get("selected") !== sid) return;
             const events = Array.isArray(data && data.events) ? data.events : [];
             const formatted = formatConversationForCopyResult(events);
             if (!formatted.text) {
@@ -629,19 +627,16 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
 
         const sessionDisplayController = CodoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
-          getSelected: () => selected,
           sessionState,
           setToast, statusChip, interruptBtn, ctxChip, eventBindings,
         }));
         let fileOpsController = null;
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
-          getSelected: () => selected,
           getPollGeneration: () => pollGen,
           getSessionIndex: () => sessionIndex,
           getSessionLifecycleController: () => sessionLifecycleController,
           getSessionRefreshController: () => sessionRefreshController,
-          getSending: () => sending,
           sessionState,
           getSessionEditController: () => sessionEditController,
           getQueueController: () => queueController,
@@ -680,9 +675,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionProviderChoice: sessionProviderChoice,
           queueViewer: queueViewer,
           refreshQueueViewer: refreshQueueViewer,
-          setSending: (value) => { sending = Boolean(value); },
-          getTurnOpen: () => turnOpen,
-          setTurnOpen: (value) => { turnOpen = Boolean(value); },
           isAppDisposed: () => appDisposed,
           isFileViewerOpen: () => fileOpsController.isFileViewerOpen(),
           upgradeCandidateFileRefs: (...args) => fileOpsController.fileReferenceRuntime.upgradeCandidateRefs(...args),
@@ -794,7 +786,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             cooldownEl: unattendedCooldownEl,
             remainingEl: unattendedRemainingEl,
             requestEl: unattendedRequestEl,
-            getSelected: () => selected,
+            sessionState,
             getSessionInfo: (sid) => sessionIndex.get(sid),
             isAppDisposed: () => appDisposed,
             api,
@@ -821,22 +813,21 @@ import * as CodoxearWiring from "./app_wiring.js";
         // controller. Everything else (title edit, attach/file/send/queue/diag
         // buttons, context bar, chat nav, chat-search close) stays here.
         function updateUnattendedBtnState() {
-          sessionTitleController.syncTitleEditState();
           unattendedController.syncButtonState();
           attachmentsController.syncAttachButtonState();
-          const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
-          const fileViewerLabel = !selected ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
-          fileBtn.disabled = !selected || fileViewerBlocked;
+          const fileViewerBlocked = Boolean(sessionState.get("selected") && selectedSessionLaunchFailed());
+          const fileViewerLabel = !sessionState.get("selected") ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
+          fileBtn.disabled = !sessionState.get("selected") || fileViewerBlocked;
           fileBtn.title = fileViewerLabel;
           fileBtn.setAttribute("aria-label", fileViewerLabel);
-          chatSearchBtn.disabled = !selected;
-          chatNavRail.style.display = selected ? "flex" : "none";
-          chatEmptyState.style.display = selected ? "none" : "flex";
-          if (!selected && chatSearchController.isOpen()) closeChatSearch();
+          chatSearchBtn.disabled = !sessionState.get("selected");
+          chatNavRail.style.display = sessionState.get("selected") ? "flex" : "none";
+          chatEmptyState.style.display = sessionState.get("selected") ? "none" : "flex";
+          if (!sessionState.get("selected") && chatSearchController.isOpen()) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
           syncComposerSendButton();
-          diagBtn.disabled = !selected;
+          diagBtn.disabled = !sessionState.get("selected");
         }
 
         function hideUnattendedMenu(opts) {
@@ -952,7 +943,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           codeBlockCopyRuntime, appConfirm, appConfirmFocusableControls, resolveAppConfirm,
           sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
           hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog,
-          getSelected: () => selected,
+          sessionState,
           getSessionIndex: () => sessionIndex,
           getSessionLifecycleController: () => sessionLifecycleController,
         }));
@@ -971,14 +962,13 @@ import * as CodoxearWiring from "./app_wiring.js";
             queueEmpty,
             queueViewer,
             queueBtn: $("#queueBtn"),
-            getSelected: () => selected,
+            sessionState,
             getSessionInfo: (sid) => sessionIndex.get(sid),
             isAppDisposed: () => appDisposed,
             api,
             setToast,
             clearCommitUnknownSend,
             refreshSessions,
-            sessionState,
             getComposerText: () => (textarea ? textarea.value : ""),
             clearComposerInput,
             syncRecoveryUiForSession,
@@ -995,7 +985,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         })();
 
         function selectedSessionLaunchFailed() {
-          return sessionLaunchFailed(selected ? sessionIndex.get(selected) : null);
+          return sessionLaunchFailed(sessionState.get("selected") ? sessionIndex.get(sessionState.get("selected")) : null);
         }
 
         function syncQueueSubmitState() {
@@ -1051,7 +1041,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             diagCloseBtn,
             diagCopyConversationBtn,
             diagCopyBtn,
-            getSelected: () => selected,
+            sessionState,
             getSessionInfo: (sid) => sessionIndex.get(sid),
             api,
             setToast,
@@ -1090,8 +1080,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           nextPollGeneration: () => { pollGen += 1; return pollGen; },
           incrementPollGeneration: () => { pollGen += 1; },
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
-          getSelected: () => selected,
-          setSelected: (sessionId) => { selected = sessionId; },
+          sessionState,
           setActiveSession: (sessionId) => {
             sessionsWrap.querySelectorAll(".session.active").forEach((element) => element.classList.remove("active"));
             const active = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
@@ -1108,21 +1097,19 @@ import * as CodoxearWiring from "./app_wiring.js";
           resetTranscriptForSession: () => {
             transcriptSlotRuntime.setActivePending();
             clearRenderedTranscriptRange();
-            turnOpen = false;
+            sessionState.set("turnOpen", false);
           },
           clearTranscriptForRemovedSession: clearRenderedTranscriptRange,
           syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           updateQueueBadge,
-          sessionState,
           resetChatRenderState,
           getSession: (sessionId) => sessionIndex.get(sessionId),
-          isCurrent: (sessionId, generation) => selected === sessionId && pollGen === generation,
+          isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollGen === generation,
           setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
           setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
           markClickLoad: () => { clickLoadT0 = performance.now(); clickMetricPending = true; },
-          setTurnOpen: (value) => { turnOpen = Boolean(value); },
           updateTypingStats: updateTypingStatsFromSession,
           beginFileViewerSync: () => {
             const started = Boolean(isFileViewerOpen() && !currentFileDirty());
@@ -1202,7 +1189,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearFileDiscoveryCaches: () => fileReferenceRuntime.clearDiscoveryCaches(),
           useDesktopSessionActions,
           setSessionIndex: (index) => { sessionIndex = index; },
-          getSelected: () => selected,
+          sessionState,
           clearSelectedSessionAfterRemoval: (...args) => sessionLifecycleController.clearSelectedSessionAfterRemoval(...args),
           applySessionListTranscriptIdentity,
           syncRecoveryUiForSession,
@@ -1214,7 +1201,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionTitle: sessionTitleWithId,
           updateTypingStats: updateTypingStatsFromSession,
           updateUnattendedButton: updateUnattendedBtnState,
-          updateQueueBadge,
           syncComposerSendButton,
           syncQueueSubmitState,
           maybeSelectPendingHashSession,
@@ -1255,7 +1241,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           newSessionDialogController.open();
         });
         const interruptController = codoxearInterrupt.createInterruptController(wiring.createInterruptOptions({
-          selectedSessionId: () => selected,
+          sessionState,
           setToast,
           api,
           now: Date.now,
@@ -1352,12 +1338,10 @@ import * as CodoxearWiring from "./app_wiring.js";
           sendChoiceNowBtn: $("#sendChoiceNow"),
           sendChoiceLaterBtn: $("#sendChoiceLater"),
           sendChoiceCancelBtn: $("#sendChoiceCancel"),
-          getSelected: () => selected,
+          sessionState,
           getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
           getNewSessionDefaults: () => newSessionDefaults,
           sessionLaunchFailed,
-          getSending: () => sending,
-          sessionState,
           getStagedAttachments: () => attachmentsController.getStagedAttachments(),
           isModalOpen: () => modalIsolationTargets.some(isModalTargetOpen),
           api,
@@ -1434,12 +1418,12 @@ import * as CodoxearWiring from "./app_wiring.js";
               addAppEvent(document, "visibilitychange", () => {
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
-                  if (selected) messageFlowController.resumeLiveDelivery();
+                  if (sessionState.get("selected")) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
                   secondaryPollController.scheduleSecondaryPoll(0);
                   return;
                 }
-                if (selected) kickPoll(messagePollDelayMs());
+                if (sessionState.get("selected")) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
                 secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
               });
@@ -1449,7 +1433,7 @@ import * as CodoxearWiring from "./app_wiring.js";
                 messageFlowController.resetMessagePollBackoff();
                 sessionsPollErrorStreak = 0;
                 secondaryPollErrorStreak = 0;
-                if (selected) {
+                if (sessionState.get("selected")) {
                   messageFlowController.resumeLiveDelivery();
                   kickPoll(0);
                 }
@@ -1460,7 +1444,7 @@ import * as CodoxearWiring from "./app_wiring.js";
                 if (appDisposed) return;
                 networkStatus.sync();
                 messageFlowController.closeMessageEventSource();
-                if (selected) kickPoll(messagePollDelayMs());
+                if (sessionState.get("selected")) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
                 secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
               });

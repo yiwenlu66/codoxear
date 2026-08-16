@@ -58,11 +58,12 @@ def run_transport_failure_flow() -> dict:
           snapshot: () => ({{ stats: state.stats }}), updateTypingStats: noop,
           updateSubagentGauge: noop, resetTypingStats: noop,
         }};
+        const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        sessionState.set("selected", "sid");
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
-          getSelected: () => state.selected, getGeneration: () => state.generation,
-          isAppDisposed: () => state.disposed, getTurnOpen: () => state.turnOpen,
-          setTurnOpen: (value) => {{ state.turnOpen = Boolean(value); }},
+            sessionState,
+          getGeneration: () => state.generation,
+          isAppDisposed: () => state.disposed,
           getSessionInfo: () => state.session, patchSessionInfo: noop, sessionLaunchFailed: () => false,
           api: async () => {{ await fetch(); return {{ events: [], busy: false, queue_len: 0, token: null }}; }},
           resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
@@ -73,7 +74,7 @@ def run_transport_failure_flow() -> dict:
           resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: (cursor) => {{ state.active.liveCursor = cursor; }},
           appendEvent: noop, appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
           setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
-          getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop,
+           getCurrentRunning: () => false, setCurrentRunning: noop,
           getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
           setSelectedSessionPendingAttachment: noop, syncSendButtonState: noop, syncAttachButtonState: noop,
           syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,

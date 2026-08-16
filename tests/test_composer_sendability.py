@@ -77,12 +77,12 @@ def run_controller_harness() -> dict[str, Any]:
           const sendChoiceLaterBtn = node();
           const calls = [];
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
-          sessionState.applyRuntime({{ running }});
+          sessionState.applyRuntime({{ selected: "sid", running }});
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh: node(), sendBtn, sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn, sendChoiceCancelBtn: node(),
-            getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready" }}),
-            sessionLaunchFailed: () => false, getSending: () => false, sessionState,
+            getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready" }}),
+            sessionLaunchFailed: () => false, sessionState,
             getStagedAttachments: () => attachments, api: async () => ({{}}), setToast: noop,
             setPollFastUntilMs: noop, kickPoll: noop,
             sendText: async (text) => {{ calls.push(["send", text]); return true; }},
@@ -108,10 +108,12 @@ def run_controller_harness() -> dict[str, Any]:
         await queuedWithAttachment.form.onsubmit({{ preventDefault: noop }});
 
         const attachBtn = node();
+        const attachmentSessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+        attachmentSessionState.set("selected", "sid");
         const attachmentController = ctx.window.CodoxearAttachments.createAttachmentsController({{
-          attachBtn, imgInput: node(), composer: node(), textarea: node(),
-          getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready" }}),
-          patchSessionInfo: noop, getSending: () => false, sessionLaunchFailed: () => false,
+          attachBtn, imgInput: node(), composer: node(), textarea: node(), sessionState: attachmentSessionState,
+          getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready" }}),
+          patchSessionInfo: noop, sessionLaunchFailed: () => false,
           sessionHasUnknownSend: () => false, sessionIsOrphanRecovery: () => false,
           sessionHasOrphanQueueRecovery: () => false, api: async () => ({{}}), setToast: noop,
           handleAppAuthLoss: noop, refreshSessions: async () => {{}}, setPollFastUntilMs: noop, kickPoll: noop,
@@ -127,8 +129,8 @@ def run_controller_harness() -> dict[str, Any]:
         const queueBtn = node();
         const queueController = ctx.window.CodoxearQueue.createQueueController({{
           queueBackdrop: node(), queueCloseBtn: node(), queueList: node(), queueEmpty: node(), queueViewer: node(), queueBtn,
-          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
-          getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready", queue_len: 0 }}),
+          sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.set("selected", "sid"); return store; }})(),
+          getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready", queue_len: 0 }}),
           isAppDisposed: () => false, api: async () => ({{}}), setToast: noop, clearCommitUnknownSend: async () => {{}},
           refreshSessions: async () => {{}}, updateQueueBadge: noop, syncRecoveryUiForSession: noop,
           kickPoll: noop, setPollFastUntilMs: noop, handleAppAuthLoss: noop,

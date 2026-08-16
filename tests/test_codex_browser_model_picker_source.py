@@ -74,8 +74,8 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
                   reasoning_efforts: ["low", "high"], reasoning_efforts_by_model: {},
                 } } }),
                 patchSessionInfo: noop, sessionLaunchFailed: () => false,
-                getSending: () => false, setSending: noop,
-                sessionState: context.window.CodoxearSessionState.createSessionState({ consoleError: noop }),
+
+                sessionState: (() => { const store = context.window.CodoxearSessionState.createSessionState({ consoleError: noop }); store.set("selected", "codex-live"); return store; })(),
                 setTurnOpen: noop, resetTypingStats: noop, getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
                 setSelectedSessionPendingAttachment: noop, setAttachCount: noop, syncAttachButtonState: noop,
                 syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,

@@ -37,13 +37,10 @@ import * as CodoxearTranscript from "./app_transcript.js";
   function createMessageFlowController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("message flow dependency missing: options");
 
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getGeneration = requireFunction(options.getGeneration, "getGeneration");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
-    const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
-    const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("message flow dependency missing: sessionState");
     }
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
@@ -86,8 +83,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
 
     // Confirmed-send effects. The composer owns input/modal UI only and calls
     // this controller at the send boundary.
-    const getSending = requireFunction(options.getSending, "getSending");
-    const setSending = requireFunction(options.setSending, "setSending");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const normalizedStagedAttachments = requireFunction(options.normalizedStagedAttachments, "normalizedStagedAttachments");
     const setSelectedSessionPendingAttachment = requireFunction(options.setSelectedSessionPendingAttachment, "setSelectedSessionPendingAttachment");
@@ -137,7 +132,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     let pollFastUntilMs = 0;
 
     function isCurrent(sessionId, generation) {
-      return !isAppDisposed() && getSelected() === sessionId && getGeneration() === generation;
+      return !isAppDisposed() && sessionState.get("selected") === sessionId && getGeneration() === generation;
     }
 
     function abortController(controller) {
@@ -159,7 +154,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     function isCurrentOpenSessionTailRequest(request) {
-      return Boolean(request && getSelected() === request.sessionId && getGeneration() === request.generation);
+      return Boolean(request && sessionState.get("selected") === request.sessionId && getGeneration() === request.generation);
     }
 
     function isOpenSessionTailAbortError(request, error) {
@@ -202,7 +197,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         offline: browserOffline(),
         errorStreak: messagePollErrorStreak,
         pollFastUntilMs,
-        turnOpen: getTurnOpen(),
+        turnOpen: sessionState.get("turnOpen"),
       });
     }
 
@@ -231,7 +226,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         offline: browserOffline(),
         errorStreak: messagePollErrorStreak,
         pollFastUntilMs,
-        turnOpen: getTurnOpen(),
+        turnOpen: sessionState.get("turnOpen"),
       });
     }
 
@@ -255,7 +250,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       }, delay);
     }
 
-    function openMessageEventSource(sessionId = getSelected(), generation = getGeneration()) {
+    function openMessageEventSource(sessionId = sessionState.get("selected"), generation = getGeneration()) {
       if (!sessionId || !isCurrent(sessionId, generation) || visibilityState() !== "visible" || typeof EventSourceCtor !== "function") return false;
       const snapshot = activeTranscriptSnapshot();
       if (snapshot.state !== "bound" || !snapshot.liveCursor) return false;
@@ -308,7 +303,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     function resumeLiveDelivery() {
-      if (isAppDisposed() || visibilityState() !== "visible" || !getSelected()) return;
+      if (isAppDisposed() || visibilityState() !== "visible" || !sessionState.get("selected")) return;
       if (!messageSseOpen && !openMessageEventSource()) kickPoll(0);
     }
 
@@ -350,7 +345,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       // Live deltas are exact; session-list snapshots are resumable but can lag.
       // During an open turn a snapshot may recover a missed increment but may
       // never lower a counter already observed by the live feed.
-      if (!getTurnOpen()) {
+      if (!sessionState.get("turnOpen")) {
         typingRowRuntime.updateTypingStats(stats);
         return;
       }
@@ -386,7 +381,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       markMessagePollSuccess();
       const slotInfo = CodoxearTranscript.transcriptSnapshotFromData(data);
       const nowBusy = Boolean(data.busy);
-      const wasTurnOpen = getTurnOpen();
+      const wasTurnOpen = sessionState.get("turnOpen");
       const active = activeTranscriptSnapshot();
       if (active.state === "bound" && slotInfo.state === "pending_bind") {
         // Server is re-binding the log, but our existing messages are still
@@ -422,7 +417,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       if (!turnOpen && nowBusy) turnOpen = true;
       if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
       if (turnOpen && !nowBusy) turnOpen = false;
-      setTurnOpen(turnOpen);
+      sessionState.set("turnOpen", turnOpen);
       applyTypingMetaDelta(data);
       const running = Boolean(turnOpen || nowBusy);
       const queueLen = Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
@@ -441,7 +436,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       if (session) updateSessionTitle(session);
     }
 
-    async function pollMessages(sessionId = getSelected(), generation = getGeneration()) {
+    async function pollMessages(sessionId = sessionState.get("selected"), generation = getGeneration()) {
       if (isAppDisposed() || !sessionId) return;
       const reconnectSseAfterSuccess = messageTransportUnavailable;
       let pollRequest = null;
@@ -517,13 +512,13 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     async function pollLoop() {
-      if (isAppDisposed() || !getSelected() || messageSseOpen) return;
+      if (isAppDisposed() || !sessionState.get("selected") || messageSseOpen) return;
       if (pollLoopBusy) {
         pollKickPending = true;
         return;
       }
       pollLoopBusy = true;
-      const sessionId = getSelected();
+      const sessionId = sessionState.get("selected");
       const generation = getGeneration();
       try {
         await pollMessages(sessionId, generation);
@@ -561,9 +556,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     async function sendText(raw, { sid = null } = {}) {
-      const sessionId = sid || getSelected();
-      if (!sessionId || !raw || !raw.trim() || getSending()) return false;
-      const renderHere = sessionId === getSelected();
+      const sessionId = sid || sessionState.get("selected");
+      if (!sessionId || !raw || !raw.trim() || sessionState.get("sending")) return false;
+      const renderHere = sessionId === sessionState.get("selected");
       const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
       const sessionInfo = getSessionInfo(sessionId) || null;
       const isControlSlashCommand = isKnownControlSlashCommand(raw, sessionInfo);
@@ -586,7 +581,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         allowPendingAttachment = true;
       }
       const continuesOpenTurn = renderHere && sessionState.get("running");
-      setSending(true);
+      sessionState.set("sending", true);
       syncSendButtonState();
       syncAttachButtonState();
       setToast("sending...");
@@ -600,7 +595,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         const slot = getSessionTranscriptSlot(sessionId);
         addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0: startedAt });
         appendEvents([{ role: "user", text: raw, pending: true, localId, ts: startedAt }]);
-        setTurnOpen(true);
+        sessionState.set("turnOpen", true);
         sessionState.applyRuntime({ running: true });
       }
       try {
@@ -679,7 +674,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
             try {
               await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
               setToast("pending attachment state cleared");
-              if (getSelected() === sessionId) setSelectedSessionPendingAttachment(sessionId, false);
+              if (sessionState.get("selected") === sessionId) setSelectedSessionPendingAttachment(sessionId, false);
               void refreshSessions().catch((refreshError) => {
                 if (refreshError && refreshError.status === 401) handleAppAuthLoss();
                 else consoleError("refreshSessions failed", refreshError);
@@ -697,14 +692,14 @@ import * as CodoxearTranscript from "./app_transcript.js";
           dropPendingUser(sessionId, localId);
           removePendingUserRow(localId);
           if (!hasPendingForSession(sessionId)) {
-            setTurnOpen(false);
+            sessionState.set("turnOpen", false);
             sessionState.applyRuntime({ running: false });
           }
           if (commitUnknown) syncRecoveryUiForSession(sessionId);
         }
         return false;
       } finally {
-        setSending(false);
+        sessionState.set("sending", false);
         syncSendButtonState();
         syncAttachButtonState();
       }

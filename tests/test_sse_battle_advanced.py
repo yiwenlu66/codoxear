@@ -479,9 +479,9 @@ const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
 vm.createContext(ctx);
 {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
 const options = new Proxy({{
-  sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
-  getSelected: () => "sse-battle", getGeneration: () => 7, isAppDisposed: () => false,
-  getTurnOpen: () => false, setTurnOpen: noop, getSessionInfo: () => ({{ session_id: "sse-battle" }}),
+  sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.set("selected", "sse-battle"); return store; }})(),
+  getGeneration: () => 7, isAppDisposed: () => false,
+   getSessionInfo: () => ({{ session_id: "sse-battle" }}),
   activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),
   resolveAppUrl: (path) => "https://phone.tailnet.example" + path,
   visibilityState: () => visibility, EventSource: FakeEventSource,

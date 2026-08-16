@@ -27,7 +27,7 @@ const global = window;
       fileViewerController,
       getSessionInfo,
       getSessions,
-      selectedSessionId,
+      sessionState,
       sessionDisplayName,
       baseName,
       formatPriorityOffset,
@@ -186,7 +186,7 @@ const global = window;
         await refreshSessions();
         if (editSessionId !== sid) return;
         hideEditSession();
-        if (selectedSessionId() === sid) setTitle(sid, getSessionInfo(sid));
+        if (sessionState.get("selected") === sid) setTitle(sid, getSessionInfo(sid));
         setToast("conversation updated");
       } catch (error) {
         if (editSessionId === sid) editStatus.textContent = error && error.message ? error.message : "Save failed";

@@ -6,7 +6,7 @@ def test_attach_button_reflects_session_selection_and_recovery_blockers() -> Non
         """
         const states = [];
         function record(label, info) {
-          selected = label === "none" ? null : "sid";
+          sessionState.set("selected", label === "none" ? null : "sid");
           if (info) sessions.set("sid", info); else sessions.delete("sid");
           controller.syncAttachButtonState();
           states.push({ label, disabled: attachBtn.disabled, title: attachBtn.title, aria: attachBtn.attrs["aria-label"] });
@@ -50,7 +50,7 @@ def test_attach_button_reflects_session_selection_and_recovery_blockers() -> Non
 def test_attach_button_blocks_client_send_in_progress() -> None:
     result = run_attachments(
         """
-        sending = true;
+        sessionState.set("sending", true);
         controller.syncAttachButtonState();
         process.stdout.write(JSON.stringify({ disabled: attachBtn.disabled, title: attachBtn.title, aria: attachBtn.attrs["aria-label"] }));
         """

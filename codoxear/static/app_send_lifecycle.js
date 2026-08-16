@@ -9,15 +9,10 @@
     return value;
   }
   function createSendLifecycleController(options = {}) {
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
-    const getSending = requireFunction(options.getSending, "getSending");
-    const setSending = requireFunction(options.setSending, "setSending");
-    const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
-    const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("send lifecycle dependency missing: sessionState");
@@ -55,7 +50,6 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
   imgInput,
   composer,
   textarea,
-  getSelected: () => getSelected(),
   getSessionInfo: (sessionId) => getSessionIndex().get(sessionId) || null,
   patchSessionInfo: (sessionId, patch) => {
     const current = getSessionIndex().get(sessionId);
@@ -63,7 +57,6 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
     Object.assign(current, patch || {});
     getSessionIndex().set(sessionId, current);
   },
-  getSending,
   sessionLaunchFailed,
   sessionHasUnknownSend,
   sessionIsOrphanRecovery,
@@ -90,11 +83,8 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
 }));
 
 messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.createMessageFlowOptions({
-  getSelected: () => getSelected(),
   getGeneration: () => getPollGeneration(),
   isAppDisposed: () => isAppDisposed(),
-  getTurnOpen,
-  setTurnOpen,
   getSessionInfo: (sessionId) => getSessionIndex().get(sessionId) || null,
   patchSessionInfo: (sessionId, patch) => {
     const current = getSessionIndex().get(sessionId);
@@ -123,7 +113,6 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
   initPageLimit,
   typingRowRuntime,
-  getSending,
   setSending,
   getStagedAttachments: () => attachmentsController.getStagedAttachments(),
   normalizedStagedAttachments: (list) => attachmentsController.normalizedStagedAttachments(list),
@@ -177,7 +166,7 @@ function setPollFastUntilMs(value) {
   messageFlowController.setPollFastUntilMs(value);
 }
 
-function openMessageEventSource(sessionId = getSelected(), generation = getPollGeneration()) {
+function openMessageEventSource(sessionId = sessionState.get("selected"), generation = getPollGeneration()) {
   return messageFlowController.openMessageEventSource(sessionId, generation);
 }
 

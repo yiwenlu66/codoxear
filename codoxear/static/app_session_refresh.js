@@ -19,8 +19,8 @@
     const clearFileDiscoveryCaches = requireFunction(options.clearFileDiscoveryCaches, "clearFileDiscoveryCaches");
     const useDesktopSessionActions = requireFunction(options.useDesktopSessionActions, "useDesktopSessionActions");
     const setSessionIndex = requireFunction(options.setSessionIndex, "setSessionIndex");
-    const getSelected = requireFunction(options.getSelected, "getSelected");
-    const clearSelectedSessionAfterRemoval = requireFunction(options.clearSelectedSessionAfterRemoval, "clearSelectedSessionAfterRemoval");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("session refresh dependency missing: sessionState");    const clearSelectedSessionAfterRemoval = requireFunction(options.clearSelectedSessionAfterRemoval, "clearSelectedSessionAfterRemoval");
     const applySessionListTranscriptIdentity = requireFunction(options.applySessionListTranscriptIdentity, "applySessionListTranscriptIdentity");
     const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const syncAttachments = requireFunction(options.syncAttachments, "syncAttachments");
@@ -31,7 +31,6 @@
     const sessionTitle = requireFunction(options.sessionTitle, "sessionTitle");
     const updateTypingStats = requireFunction(options.updateTypingStats, "updateTypingStats");
     const updateUnattendedButton = requireFunction(options.updateUnattendedButton, "updateUnattendedButton");
-    const updateQueueBadge = requireFunction(options.updateQueueBadge, "updateQueueBadge");
     const syncComposerSendButton = requireFunction(options.syncComposerSendButton, "syncComposerSendButton");
     const syncQueueSubmitState = requireFunction(options.syncQueueSubmitState, "syncQueueSubmitState");
     const maybeSelectPendingHashSession = requireFunction(options.maybeSelectPendingHashSession, "maybeSelectPendingHashSession");
@@ -95,9 +94,9 @@
       const sessionIndex = new Map();
       for (const session of sessions) sessionIndex.set(session.session_id, session);
       setSessionIndex(sessionIndex);
-      let selected = getSelected();
+      let selected = sessionState.get("selected");
       if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
-      selected = getSelected();
+      selected = sessionState.get("selected");
       if (selected) {
         applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
         syncRecoveryUiForSession(selected);
@@ -114,7 +113,6 @@
         }
       }
       updateUnattendedButton();
-      updateQueueBadge();
       syncComposerSendButton();
       syncQueueSubmitState();
       maybeSelectPendingHashSession();

@@ -32,7 +32,8 @@
       return value;
     }
 
-    const selectedSessionId = requirePendingUserFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("pending user controller dependency missing: sessionState");
     const takePendingUserMatch = requirePendingUserFunction(options.takePendingUserMatch, "takePendingUserMatch");
     const chatInner = options.chatInner;
     if (!chatInner || typeof chatInner.querySelector !== "function") throw new TypeError("pending user controller dependency missing: chatInner");
@@ -41,7 +42,7 @@
     const rebuildDecorations = requirePendingUserFunction(options.rebuildDecorations, "rebuildDecorations");
     const markEventSeen = requirePendingUserFunction(options.markEventSeen, "markEventSeen");
 
-    function consumePendingUserIfMatches(event, sessionId = selectedSessionId()) {
+    function consumePendingUserIfMatches(event, sessionId = sessionState.get("selected")) {
       const match = takePendingUserMatch(event, sessionId);
       if (!match) return false;
       const { id } = match;

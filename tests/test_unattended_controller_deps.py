@@ -70,7 +70,7 @@ class TestUnattendedControllerStorageDependencies(unittest.TestCase):
               cooldownEl: node(),
               remainingEl: node(),
               requestEl,
-              getSelected: () => selected,
+              sessionState: {{ get: () => selected }},
               getSessionInfo: (sid) => sessions.get(sid) || null,
               isAppDisposed: () => false,
               api: async () => ({{ enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 }}),

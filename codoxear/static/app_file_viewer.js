@@ -455,12 +455,13 @@ function requireFunction(value, name) {
 
   function createFileInspectRuntime(options = {}) {
     const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
-    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file viewer dependency missing: sessionState");
     const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
     const api = requireFunction(options.api, "api");
 
     async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
-      const sid = currentSessionId() || selectedSessionId() || "";
+      const sid = currentSessionId() || sessionState.get("selected") || "";
       if (!sid) throw new Error("select a session first");
       try {
         const body = { session_id: sid, path };
@@ -487,7 +488,8 @@ function requireFunction(value, name) {
   }
 
   function createFileReferenceRuntime(options = {}) {
-    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file viewer dependency missing: sessionState");
     const sessionById = requireFunction(options.sessionById, "sessionById");
     const chatRoot = options.chatRoot;
     const ElementCtor = options.ElementCtor || null;
@@ -510,7 +512,7 @@ function requireFunction(value, name) {
     }
 
     function collectMessageFileRefs() {
-      const selected = selectedSessionId();
+      const selected = sessionState.get("selected");
       if (!selected) return [];
       const out = [];
       const seen = new Set();
@@ -568,7 +570,7 @@ function requireFunction(value, name) {
     }
 
     async function getKnownCandidates() {
-      const sid = selectedSessionId();
+      const sid = sessionState.get("selected");
       if (!sid) return [];
       const hit = candidateCache.get(sid);
       if (hit) return hit;
@@ -609,11 +611,11 @@ function requireFunction(value, name) {
     }
 
     function validationKey(path, gitPath = false) {
-      return `${selectedSessionId() || ""}|${gitPath ? "git" : "session"}|${String(path ?? "")}`;
+      return `${sessionState.get("selected") || ""}|${gitPath ? "git" : "session"}|${String(path ?? "")}`;
     }
 
     async function searchBareCandidates(rawPath) {
-      const sid = selectedSessionId() || "";
+      const sid = sessionState.get("selected") || "";
       const query = String(rawPath ?? "");
       if (!sid || query === "" || query.includes("/")) return { matches: [], truncated: false };
       const key = `${sid}|${query}`;
@@ -649,7 +651,7 @@ function requireFunction(value, name) {
       const task = (async () => {
         try {
           const body = { path: inspectPath };
-          const sid = selectedSessionId();
+          const sid = sessionState.get("selected");
           if (sid) body.session_id = sid;
           if (candidate.gitPath) body.git_path = true;
           const inspectToken = normalizeFileApiPath(candidate.apiPath);
@@ -668,7 +670,7 @@ function requireFunction(value, name) {
     }
 
     async function inspectPlainCandidates(paths) {
-      const sid = selectedSessionId() || "";
+      const sid = sessionState.get("selected") || "";
       const results = new Map();
       if (!sid) return results;
       const uniquePaths = [...new Set((Array.isArray(paths) ? paths : []).filter((path) => typeof path === "string" && path !== ""))];
@@ -719,7 +721,7 @@ function requireFunction(value, name) {
       const rawPath = String(path ?? "");
       if (rawPath === "") return { invalid: true };
       let entry = { path: rawPath, gitPath: false, apiPath: "" };
-      if (!rawPath.includes("/") && selectedSessionId()) {
+      if (!rawPath.includes("/") && sessionState.get("selected")) {
         const candidates = await getKnownCandidates();
         const matches = exactBareMatches(candidates, rawPath);
         const searched = matches.length > 1 && !entriesMayReferToSamePath(matches) ? { matches: [], truncated: false } : await searchBareCandidates(rawPath);
@@ -807,7 +809,7 @@ function requireFunction(value, name) {
     async function openAmbiguousChoice(query, line = null) {
       const rawQuery = String(query ?? "");
       if (rawQuery === "") return false;
-      if (!selectedSessionId()) {
+      if (!sessionState.get("selected")) {
         requireFunction(options.setToast, "setToast")("select a session first");
         return false;
       }
@@ -828,14 +830,14 @@ function requireFunction(value, name) {
       }
       const showFileViewer = requireFunction(options.showFileViewer, "showFileViewer");
       if (!parsed.path.startsWith("/")) {
-        if (!selectedSessionId()) {
+        if (!sessionState.get("selected")) {
           setToast("select a session first");
           return false;
         }
         await showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
         return true;
       }
-      if (selectedSessionId()) {
+      if (sessionState.get("selected")) {
         await showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
         return true;
       }
@@ -912,7 +914,8 @@ function requireFunction(value, name) {
 
   function createOpenedFileRuntime(options = {}) {
     const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
-    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file viewer dependency missing: sessionState");
     const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
     const activeIdentity = requireFunction(options.activeIdentity, "activeIdentity");
     const fileEntryForPath = requireFunction(options.fileEntryForPath, "fileEntryForPath");
@@ -941,7 +944,7 @@ function requireFunction(value, name) {
 
     function remember(relPath, absPath = null) {
       const raw = String(relPath ?? "");
-      const sid = currentSessionId() || selectedSessionId() || "";
+      const sid = currentSessionId() || sessionState.get("selected") || "";
       const rel = sessionRelativePath(raw, sid) || raw;
       if (!rel) return false;
       const identity = activeIdentity();

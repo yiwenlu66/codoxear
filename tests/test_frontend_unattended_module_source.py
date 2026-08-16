@@ -123,7 +123,7 @@ const deps = {
   cooldownEl,
   remainingEl,
   requestEl,
-  getSelected: () => selected,
+  sessionState: { get: () => selected },
   getSessionInfo: (sid) => sessions.get(sid) || null,
   isAppDisposed: () => disposed,
   api: (url, options = {}) => {
@@ -276,7 +276,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               unattendedBtn: node, unattendedMenu: node,
               enabledEl: node, cooldownEl: node, remainingEl: node, requestEl: node,
-              getSelected: () => null, getSessionInfo: () => null, isAppDisposed: () => false,
+              sessionState: { get: () => null }, getSessionInfo: () => null, isAppDisposed: () => false,
               api: null,
               refreshSessions: async () => {}, handleAppAuthLoss: () => {}, setToast: () => {},
               addAppEvent: () => {},

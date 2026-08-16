@@ -15,26 +15,26 @@ def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
         for name in ("app_wiring.js", "app_application_composition.js")
     }
     session_display_keys = [
-        "getSelected", "sessionState", "setToast", "statusChip",
+        "sessionState", "setToast", "statusChip",
         "interruptBtn", "ctxChip", "eventBindings",
     ]
     file_viewer_operations_keys = [
         "el", "fileStatus", "fileEditButton", "iconSvg", "currentSessionId", "currentFileSessionId", "normalizeSessionId", "normalizeFileApiPath", "isFileViewerOpen", "hideFileUnsavedDialog", "resetFileSearchState", "closeFilePickerMenu", "isTextFileKind", "isDiffableFileKind", "confirmReload", "promptUnsavedFileChoice", "restoreFileEditorText", "hideFileViewer", "setFilePath", "resetFileViewerPanel", "applyFileLoadResult", "normalizeDraftFilePath", "inspectSessionFilePath", "api", "focusEditor", "disposeOpenRender", "isMarkdownPreviewable", "updateFileTouchToolbar", "useTouchFileEditorControls", "hasActiveFileCodeEditor", "hasBlockingFileEditorModal", "isTextEntryTarget", "eventTargetElement", "normalizeFileEditorPosition", "applyFileEditorSelection", "isCollapsedFileSelection", "positionAfterInsertedText", "fileEditorEditSupportAvailable", "updateFileDiffEditorOptions", "showFilePasteDialog", "hideFilePasteDialog", "clipboardReadAvailable", "readClipboardText", "fileEditorDeleteCommandForKey", "isActiveFileEditorInput", "getActiveFileSelectionText", "copyToClipboard", "focusActiveFileCodeEditor", "nowMs", "setToast", "renderMonacoFile", "getFileEditorText", "fmtBytes", "applyFileMode", "rememberOpenedFile", "renderFilePickerMenu", "currentFileViewMode", "currentFileNonDiffMode", "setFileViewMode", "currentFileEditMode", "currentFileEditorKind", "setFileEditorKind", "setFileEditMode", "currentActiveFileKind", "currentActiveFileText", "currentActiveFileEditable", "currentActiveFileVersion", "currentActiveFileDraft", "applyActiveFileTextState", "applyActiveFileDiffState", "applyActiveFileNonTextState", "currentActiveFileIdentity", "currentActiveFileLine", "startFileOpenRequest", "isCurrentFileOpenRequest", "normalizeExplicitFileOpenMode", "resolveFileOpenMode", "isFileOpenAbortError", "activeFileEntry", "isGitFileCandidatePath", "currentFileCandidateGitStateFresh", "activeFileCanEnterEditMode", "activeFileEditorWritable", "activeFileEditorIdleTextWritable", "currentFileEditorState", "isUnavailable", "blockUnavailableFileAction", "fileEntryForPath", "resetActiveFileBufferState", "resolveFileOpenViewMode", "activeFileEditorIdleWritable", "isFileViewerSessionUnavailable", "rememberActiveFileSelection", "setActiveFileIdentity",
     ]
     file_picker_ops_keys = [
-        "wiring", "codoxearFilePicker", "normalizeLineNumber", "filePickerField", "filePickerMenu", "filePickerInput", "api", "document", "el", "getSelected", "blockUnavailableFileAction", "currentFileViewerSessionId", "fileViewerController", "fileCandidateKey", "currentActiveFileDraft", "activeFilePathValue", "normalizeFileApiPath", "renderFilePickerMenu", "applyFileMenuState", "normalizeDraftFilePath", "filePickerSectionLabel", "duplicateFilePickerPaths", "rawByteDuplicatePaths", "filePickerIdentityHint", "filePickerTitle", "currentActiveFileIdentity", "openDraftFilePathWithGuard", "openFilePathWithResolvedMode", "filePickerSelectionLine", "ensureCurrentFileViewerSession", "resetFilePickerInput", "closeFilePickerMenu", "resetFileSearchState", "setFileStatus", "requestAnimationFrame",
+        "wiring", "codoxearFilePicker", "normalizeLineNumber", "filePickerField", "filePickerMenu", "filePickerInput", "api", "document", "el", "sessionState", "blockUnavailableFileAction", "currentFileViewerSessionId", "fileViewerController", "fileCandidateKey", "currentActiveFileDraft", "activeFilePathValue", "normalizeFileApiPath", "renderFilePickerMenu", "applyFileMenuState", "normalizeDraftFilePath", "filePickerSectionLabel", "duplicateFilePickerPaths", "rawByteDuplicatePaths", "filePickerIdentityHint", "filePickerTitle", "currentActiveFileIdentity", "openDraftFilePathWithGuard", "openFilePathWithResolvedMode", "filePickerSelectionLine", "ensureCurrentFileViewerSession", "resetFilePickerInput", "closeFilePickerMenu", "resetFileSearchState", "setFileStatus", "requestAnimationFrame",
     ]
     file_editor_ops_keys = [
         "addAppEvent", "wiring", "codoxearFileEditor", "resolveAppUrl", "fileDiff", "normalizeLineNumber", "requestAnimationFrame", "setTimeout", "isCurrentFileOpenRequest", "renderPlainTextFallback", "disposeFileEditor", "currentEditorKind", "setEditorKind", "currentFileEditMode", "currentActiveFileEditable", "isUnavailable", "isProgrammaticChange", "currentTouchSelectMode", "resetTouchSelectionState", "currentActiveFileText", "setDirty", "runProgrammaticChange", "syncReadOnly", "updateTouchToolbar",
     ]
     file_picker_delegate_keys = [
-        "fileViewerController", "fileModeControlsRuntime", "filePickerDomRuntime", "filePickerMenuState", "filePickerInput", "filePickerInputRuntime", "activeFilePathValue", "openedFileRuntime", "fileReferenceRuntime", "filePickerSearchState", "filePickerRenderRuntime", "fileViewerPanelRuntime", "getSelected", "getSessionIndex", "stripPathLocationSuffix",
+        "fileViewerController", "fileModeControlsRuntime", "filePickerDomRuntime", "filePickerMenuState", "filePickerInput", "filePickerInputRuntime", "activeFilePathValue", "openedFileRuntime", "fileReferenceRuntime", "filePickerSearchState", "filePickerRenderRuntime", "fileViewerPanelRuntime", "sessionState", "getSessionIndex", "stripPathLocationSuffix",
     ]
     file_picker_interaction_keys = [
         "eventBindings", "fileBtn", "showFileViewer", "filePickerInput", "filePickerInputRuntime", "fileModeDiffBtn", "fileModePreviewBtn", "fileEditBtn", "handleFileDiffModeButtonPress", "handleFilePreviewModeButtonPress", "handleFileEditButtonPress", "fileVideoPreviewBtn", "fileVideoPreviewRuntime", "fileDownloadBtn", "fileDownloadRuntime", "activeFileDownloadApiPath", "codoxearFileViewer", "fileTouchSelectBtn", "fileTouchCopyBtn", "fileTouchPasteBtn", "fileTouchUpBtn", "fileTouchLeftBtn", "fileTouchDownBtn", "fileTouchRightBtn", "toggleFileTouchSelectionMode", "copyActiveFileSelection", "pasteFromClipboardIntoActiveFile", "handleFileTouchMoveButtonPress", "fileCloseBtn", "fileBackdrop", "requestHideFileViewer", "$", "fileUnsavedController", "fileUnsavedBackdrop", "filePasteInput", "handleFilePasteInsert", "hideFilePasteDialog", "filePasteBackdrop", "chatInner", "codeBlockCopyRuntime", "fileReferenceRuntime", "fileDiff", "addAppEvent", "document", "Element", "isFileViewerOpen", "menuState", "closeFilePickerMenu",
     ]
     file_ops_keys = [
-        "getSelected", "getSessionIndex", "getSessionLifecycleController", "wiring", "document", "window", "HTMLElement", "requestAnimationFrame", "setTimeout", "$", "el", "iconSvg", "resolveAppUrl", "api", "setToast", "confirmApp", "addAppEvent", "normalizeLineNumber", "markdownPreviewHtml", "blockedFileMessage", "listFromFilesField", "listFromFileRecords", "baseName", "codoxearFilePicker", "codoxearFilePickerOps", "codoxearFileViewer", "codoxearFileEditor", "codoxearFileEditorOps", "codoxearFileEditMode", "codoxearFileTouch", "codoxearDialogMenus", "prepareModalOpen", "afterModalVisibilityChanged", "focusModalCloseButton", "restoreModalFocus", "isModalTargetOpen", "newSessionDialogController", "eventBindings", "codoxearFileHelpers", "copyToClipboard", "dialogMenuController", "duplicateFilePickerPaths", "editCloseBtn", "editDependencyBtn", "editDependencyMenu", "editNameInput", "editPriorityRange", "editPriorityResetBtn", "editPriorityValue", "editSaveBtn", "editSnoozeCustomDate", "editSnoozeCustomRow", "editSnoozeCustomTime", "editSnoozeModeButtons", "editStatus", "editViewer", "fileBtn", "filePickerIdentityHint", "filePickerSectionLabel", "filePickerTitle", "fmtBytes", "formatPriorityOffset", "handleAppAuthLoss", "isDiffableFileKind", "isMarkdownPreviewable", "isTextEntryElement", "isTextFileKind", "modalIsolationTargets", "normalizeDraftFilePath", "parseLocalFileRef", "rawByteDuplicatePaths", "refreshSessions", "selectedSessionLaunchFailed", "sessionDisplayName", "sessionTitleWithId", "setPickerButtonContent", "storageGetItem", "storageSetItem", "stripPathLocationSuffix", "titleLabel", "useTouchFileEditorControls", "filePickerField", "filePickerMenu", "filePickerInput", "fileStatus", "fileDiff", "fileImage", "fileVideo", "fileVideoPreviewBtn", "fileTouchToolbar", "fileTouchActions", "fileTouchDpad", "fileTouchCopyBtn", "fileTouchPasteBtn", "fileTouchSelectBtn", "fileTouchUpBtn", "fileTouchLeftBtn", "fileTouchDownBtn", "fileTouchRightBtn", "fileModeDiffBtn", "fileModePreviewBtn", "fileDownloadBtn", "fileBackdrop", "fileViewer", "fileCloseBtn", "fileUnsavedBackdrop", "fileUnsavedDialog", "filePasteBackdrop", "filePasteDialog", "filePasteInput", "fileEditBtn", "chatInner", "codeBlockCopyRuntime", "appConfirm", "appConfirmFocusableControls", "resolveAppConfirm", "sendChoice", "closeSendChoiceDialog", "queueViewer", "hideQueueViewer", "helpViewer", "hideHelpViewer", "diagViewer", "hideDiagViewer", "voiceController", "hideVoiceSettingsDialog",
+        "sessionState", "getSessionIndex", "getSessionLifecycleController", "wiring", "document", "window", "HTMLElement", "requestAnimationFrame", "setTimeout", "$", "el", "iconSvg", "resolveAppUrl", "api", "setToast", "confirmApp", "addAppEvent", "normalizeLineNumber", "markdownPreviewHtml", "blockedFileMessage", "listFromFilesField", "listFromFileRecords", "baseName", "codoxearFilePicker", "codoxearFilePickerOps", "codoxearFileViewer", "codoxearFileEditor", "codoxearFileEditorOps", "codoxearFileEditMode", "codoxearFileTouch", "codoxearDialogMenus", "prepareModalOpen", "afterModalVisibilityChanged", "focusModalCloseButton", "restoreModalFocus", "isModalTargetOpen", "newSessionDialogController", "eventBindings", "codoxearFileHelpers", "copyToClipboard", "dialogMenuController", "duplicateFilePickerPaths", "editCloseBtn", "editDependencyBtn", "editDependencyMenu", "editNameInput", "editPriorityRange", "editPriorityResetBtn", "editPriorityValue", "editSaveBtn", "editSnoozeCustomDate", "editSnoozeCustomRow", "editSnoozeCustomTime", "editSnoozeModeButtons", "editStatus", "editViewer", "fileBtn", "filePickerIdentityHint", "filePickerSectionLabel", "filePickerTitle", "fmtBytes", "formatPriorityOffset", "handleAppAuthLoss", "isDiffableFileKind", "isMarkdownPreviewable", "isTextEntryElement", "isTextFileKind", "modalIsolationTargets", "normalizeDraftFilePath", "parseLocalFileRef", "rawByteDuplicatePaths", "refreshSessions", "selectedSessionLaunchFailed", "sessionDisplayName", "sessionTitleWithId", "setPickerButtonContent", "storageGetItem", "storageSetItem", "stripPathLocationSuffix", "titleLabel", "useTouchFileEditorControls", "filePickerField", "filePickerMenu", "filePickerInput", "fileStatus", "fileDiff", "fileImage", "fileVideo", "fileVideoPreviewBtn", "fileTouchToolbar", "fileTouchActions", "fileTouchDpad", "fileTouchCopyBtn", "fileTouchPasteBtn", "fileTouchSelectBtn", "fileTouchUpBtn", "fileTouchLeftBtn", "fileTouchDownBtn", "fileTouchRightBtn", "fileModeDiffBtn", "fileModePreviewBtn", "fileDownloadBtn", "fileBackdrop", "fileViewer", "fileCloseBtn", "fileUnsavedBackdrop", "fileUnsavedDialog", "filePasteBackdrop", "filePasteDialog", "filePasteInput", "fileEditBtn", "chatInner", "codeBlockCopyRuntime", "appConfirm", "appConfirmFocusableControls", "resolveAppConfirm", "sendChoice", "closeSendChoiceDialog", "queueViewer", "hideQueueViewer", "helpViewer", "hideHelpViewer", "diagViewer", "hideDiagViewer", "voiceController", "hideVoiceSettingsDialog",
     ]
     program = """
 const vm = require("vm");
@@ -50,15 +50,14 @@ const context = { window: {} };
 vm.createContext(context);
 for (const source of Object.values(sources)) vm.runInContext(source, context);
 const wiring = context.window.CodoxearWiring.createWiring();
-const selected = () => "s-1";
+const sessionState = { get: () => "s-1", set: () => false, applyRuntime: () => [], subscribe: () => () => {} };
 const flow = wiring.createMessageFlowOptions({
-  getSelected: selected,
+  sessionState,
   api: () => null,
   accidental: "must not reach controller",
 });
 const lifecycle = wiring.createSessionLifecycleOptions({
-  getSelected: selected,
-  setSelected: () => null,
+  sessionState,
   clearDeletedSessionClientState: "not a lifecycle dependency",
 });
 const sessionDisplayInput = Object.fromEntries(sessionDisplayKeys.map((key) => [key, key]));
@@ -92,7 +91,6 @@ const handler = () => "clicked";
 const bound = events.onClick(target, handler, { capture: true });
 process.stdout.write(JSON.stringify({
   flowKeys: Object.keys(flow).sort(),
-  flowSelected: flow.getSelected(),
   lifecycleKeys: Object.keys(lifecycle).sort(),
   sessionDisplayKeys: Object.keys(sessionDisplay).sort(),
   sessionDisplayValues: Object.values(sessionDisplay).sort(),
@@ -111,9 +109,8 @@ process.stdout.write(JSON.stringify({
     )
     result = json.loads(completed.stdout)
 
-    assert result["flowKeys"] == ["api", "getSelected"]
-    assert result["flowSelected"] == "s-1"
-    assert result["lifecycleKeys"] == ["getSelected", "setSelected"]
+    assert result["flowKeys"] == ["api", "sessionState"]
+    assert result["lifecycleKeys"] == ["sessionState"]
     assert result["sessionDisplayKeys"] == sorted(session_display_keys)
     assert result["sessionDisplayValues"] == sorted(session_display_keys)
     assert result["fileOpsKeys"] == sorted(file_ops_keys)

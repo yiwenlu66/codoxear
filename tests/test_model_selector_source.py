@@ -52,12 +52,13 @@ class TestComposerModelPicker(unittest.TestCase):
             form.requestSubmit = () => {{ state.formSubmits += 1; }};
             const state = {{ backend: "pi", thinkingCapability: true, codexCapability: true, sent: [], settingsCalls: [], toasts: [], sending: false, formSubmits: 0, ccModel: "claude-sonnet-4-6", ccEffort: "high" }};
             const noop = () => {{}};
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+            sessionState.set("selected", "sid");
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
               modelPicker,
-              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
-              getSelected: () => "sid",
+              sessionState,
               getSessionInfo: () => ({{
                 agent_backend: state.backend,
                 pi_thinking_command: state.thinkingCapability,

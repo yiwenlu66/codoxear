@@ -76,8 +76,8 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState,
-            getSelected: () => "busy-session", getGeneration: () => 1, isAppDisposed: () => false,
-            getTurnOpen: () => true, setTurnOpen: noop,
+            getGeneration: () => 1, isAppDisposed: () => false,
+
             getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push({{ path, body: options.body }}); return {{ queued: false, queue_len: 0, busy: true }}; }},
@@ -89,7 +89,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
             resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop,
             appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
             setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
-            getSending: () => state.sending, setSending: (value) => {{ state.sending = Boolean(value); }},
+
             getCurrentRunning: () => true, setCurrentRunning: noop,
             getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
             syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
@@ -111,12 +111,12 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           const state = {{ sending: false, apiCalls: [], queueCalls: [], toasts: [] }};
           const noop = () => {{}};
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
-          sessionState.applyRuntime({{ running: true }});
+          sessionState.applyRuntime({{ selected: "busy-session", running: true, turnOpen: true }});
           const messageFlowController = createMessageFlow(state, sessionState);
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
             sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-            getSelected: () => "busy-session", getSessionInfo: () => ({{ agent_backend: "pi" }}),
+            getSessionInfo: () => ({{ agent_backend: "pi" }}),
             sessionLaunchFailed: () => false, getSending: () => state.sending,
             sessionState, getStagedAttachments: () => [],
             api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,

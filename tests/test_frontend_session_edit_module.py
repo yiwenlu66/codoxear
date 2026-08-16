@@ -90,7 +90,7 @@ def eval_session_edit_lifecycle() -> dict:
               handleFileUnsavedCancelChoice: () => undefined,
             }},
             getSessionInfo: (sid) => sid === session.session_id ? session : null,
-            getSessions: () => [session], selectedSessionId: () => selected,
+            getSessions: () => [session], sessionState: {{ get: () => selected }},
             sessionDisplayName: (entry) => entry.alias || "Conversation title", baseName: (value) => value.split("/").pop(),
             formatPriorityOffset: (value) => `+${{Number(value).toFixed(2)}}`, setPickerButtonContent: () => {{}},
             api: async (path, request) => {{ calls.push({{ path, body: request.body }}); session.alias = request.body.name; return {{}}; }},

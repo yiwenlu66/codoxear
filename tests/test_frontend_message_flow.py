@@ -44,6 +44,7 @@ def _run_node(body: str) -> dict:
             apiCalls: [],
           }};
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+          sessionState.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }});
           Object.defineProperty(state, "running", {{
             get: () => sessionState.get("running"),
             set: (value) => sessionState.applyRuntime({{ running: Boolean(value) }}),
@@ -73,12 +74,9 @@ def _run_node(body: str) -> dict:
           }};
           const options = {{
             sessionState,
-            getSelected: () => state.selected,
-            getGeneration: () => state.generation,
+                        getGeneration: () => state.generation,
             isAppDisposed: () => state.disposed,
-            getTurnOpen: () => state.turnOpen,
-            setTurnOpen: (value) => {{ state.turnOpen = Boolean(value); }},
-            getSessionInfo: () => state.session,
+                        getSessionInfo: () => state.session,
             patchSessionInfo: (_sid, patch) => Object.assign(state.session, patch),
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push([path, options]); return {{}}; }},
@@ -104,9 +102,7 @@ def _run_node(body: str) -> dict:
             updateSessionTitle: noop,
             initPageLimit: () => 60,
             typingRowRuntime,
-            getSending: () => state.sending,
-            setSending: (value) => {{ state.sending = Boolean(value); }},
-            getCurrentRunning: () => state.running,
+                                    getCurrentRunning: () => state.running,
             setCurrentRunning: (value) => {{ state.running = Boolean(value); }},
             getStagedAttachments: () => [],
             normalizedStagedAttachments: (items) => Array.isArray(items) ? items : [],
@@ -161,6 +157,7 @@ def test_confirmed_send_resets_idle_typing_window_but_preserves_steer_counts() -
           });
           harness.state.running = running;
           harness.state.turnOpen = running;
+          harness.options.sessionState.applyRuntime({ running, turnOpen: running });
           harness.state.stats.tools = 4;
           const controller = harness.create();
           const ok = await controller.sendText("steer or start");
@@ -198,7 +195,7 @@ def test_control_slash_commands_do_not_open_a_conversation_turn_and_model_rechec
           const ok = await harness.create().sendText(raw);
           return {
             ok,
-            turnOpen: harness.state.turnOpen,
+            turnOpen: harness.options.sessionState.get("turnOpen"),
             running: harness.state.running,
             pendingEvents: harness.state.events.length,
             resets: harness.state.resets,

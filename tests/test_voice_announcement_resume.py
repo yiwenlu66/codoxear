@@ -115,8 +115,8 @@ def run_voice_announcement_resume_harness() -> dict:
             updateTypingStats() {{}}, updateSubagentGauge() {{}}, resetTypingStats() {{}},
           }};
           const specific = {{
-            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
-            getSelected: () => "session-a", getGeneration: () => 1, isAppDisposed: () => false,
+            sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.set("selected", "session-a"); return store; }})(),
+            getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen() {{}},
             getSessionInfo: () => ({{ session_id: "session-a", agent_backend: "pi" }}),
             activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-a", logPath: "/tmp/session-a.jsonl" }}),

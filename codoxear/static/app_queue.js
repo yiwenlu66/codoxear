@@ -88,7 +88,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const queueBtn = requireNode(options.queueBtn, "queueBtn");
 
     // App-level runtime state accessors.
-    const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
@@ -132,32 +131,33 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     queueBtn.appendChild(queueBadge);
 
     function updateQueueBadge() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       const n = selected ? Math.max(0, Number(sessionState.get("queueLen")) || 0) : 0;
       queueBadge.textContent = n > 0 ? String(n) : "";
       queueBadge.style.display = n > 0 ? "inline-flex" : "none";
     }
     const unsubscribeQueueLen = sessionState.subscribe("queueLen", updateQueueBadge);
+    const unsubscribeSelected = sessionState.subscribe("selected", updateQueueBadge);
     updateQueueBadge();
 
     function selectedSessionHasUnknownSend() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       return sessionHasUnknownSend(selected ? getSessionInfo(selected) : null);
     }
 
     function selectedSessionHasOrphanQueueRecovery() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       return sessionHasOrphanQueueRecovery(selected ? getSessionInfo(selected) : null);
     }
 
     function selectedSessionLaunchFailed() {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       return sessionLaunchFailed(selected ? getSessionInfo(selected) : null);
     }
 
     function syncQueueSubmitState() {
       if (!queueBtn) return;
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       const unknownSend = selectedSessionHasUnknownSend();
       const orphanQueueRecovery = selectedSessionHasOrphanQueueRecovery();
       const launchFailed = selectedSessionLaunchFailed();
@@ -176,7 +176,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     async function enqueueComposerText(raw, { sid = null } = {}) {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       const sessionId = sid || selected;
       const text = String(raw || "");
       if (!sessionId || !text.trim()) return false;
@@ -367,7 +367,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     function renderQueueList() {
       queueList.innerHTML = "";
-      const sid = queueViewerSid || getSelected();
+      const sid = queueViewerSid || sessionState.get("selected");
       if (!sid) {
         queueEmpty.style.display = "block";
         return;
@@ -445,7 +445,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     async function refreshQueueViewer() {
-      const sid = queueViewerSid || getSelected();
+      const sid = queueViewerSid || sessionState.get("selected");
       if (!sid) return;
       if (queueViewer.style.display === "flex" && nowFn() - queueLastEditMs < QUEUE_REFRESH_EDIT_GUARD_MS) return;
       queueEmpty.textContent = "Loading...";
@@ -488,7 +488,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     function showQueueViewer({ opener = null } = {}) {
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       if (!selected) return;
       queueReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
       prepareModalOpen();
@@ -518,7 +518,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     function onQueueButtonClick(e) {
       e.preventDefault();
       e.stopPropagation();
-      const selected = getSelected();
+      const selected = sessionState.get("selected");
       if (selectedSessionLaunchFailed()) {
         setToast("failed session cannot receive messages");
         return;
@@ -528,7 +528,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         if (!selected) return;
         const sid = selected;
         void enqueueComposerText(raw, { sid }).then((ok) => {
-          if (ok && getSelected() === sid && getComposerText() === raw) clearComposerInput();
+          if (ok && sessionState.get("selected") === sid && getComposerText() === raw) clearComposerInput();
         });
         return;
       }
@@ -545,6 +545,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     function dispose() {
       unsubscribeQueueLen();
+      unsubscribeSelected();
       queueUpdateTimers.forEach((timer) => clearTimeoutFn(timer));
       queueUpdateTimers.clear();
       queueMutationLocks.clear();
