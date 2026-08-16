@@ -604,7 +604,7 @@ const global = window;
         requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
         isTextEntryElement, updateAppHeightVar,
         codoxearViewport: CodoxearViewport, codoxearDisplay: CodoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers: CodoxearVoiceHelpers, codoxearVoice: CodoxearVoice,
-        codoxearDom, el, codoxearShell: CodoxearShell, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments,
+        codoxearDom: CodoxearDom, el, codoxearShell: CodoxearShell, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments,
         codoxearMessageFlow: CodoxearMessageFlow, codoxearSecondaryPoll: CodoxearSecondaryPoll, codoxearInterrupt: CodoxearInterrupt, codoxearDialogMenus: CodoxearDialogMenus,
         codoxearFileEditMode: CodoxearFileEditMode, codoxearPendingUser: CodoxearPendingUser, codoxearNavigationPulse: CodoxearNavigationPulse,
         codoxearFileTouch: CodoxearFileTouch, codoxearPerfHelpers: CodoxearPerf, pushPerfSample, summarizePerf, codoxearUrls: CodoxearUrls,
