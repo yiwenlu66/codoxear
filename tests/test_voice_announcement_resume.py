@@ -13,6 +13,7 @@ MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
+SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
 
 
 def run_voice_announcement_resume_harness() -> dict:
@@ -114,6 +115,7 @@ def run_voice_announcement_resume_harness() -> dict:
             updateTypingStats() {{}}, updateSubagentGauge() {{}}, resetTypingStats() {{}},
           }};
           const specific = {{
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
             getSelected: () => "session-a", getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen() {{}},
             getSessionInfo: () => ({{ session_id: "session-a", agent_backend: "pi" }}),
@@ -144,6 +146,7 @@ def run_voice_announcement_resume_harness() -> dict:
           {json.dumps(POLLING_SOURCE)},
           {json.dumps(TRANSCRIPT_SOURCE)},
           {json.dumps(MESSAGE_FLOW_SOURCE)},
+          {json.dumps(SESSION_STATE_SOURCE)},
         ]) vm.runInContext(source, ctx);
 
         (async () => {{

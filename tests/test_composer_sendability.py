@@ -21,6 +21,7 @@ ATTACHMENTS_SOURCE = (module_path("app_attachments.js")).read_text(encoding="utf
 QUEUE_SOURCE = (module_path("app_queue.js")).read_text(encoding="utf-8")
 MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 SESSION_HELPERS_SOURCE = (module_path("app_session_helpers.js")).read_text(encoding="utf-8")
+SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
 
 
 def run_controller_harness() -> dict[str, Any]:
@@ -38,6 +39,7 @@ def run_controller_harness() -> dict[str, Any]:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(MODAL_SOURCE)}, ctx, {{ filename: "app_modal.js" }});
         vm.runInContext({json.dumps(SESSION_HELPERS_SOURCE)}, ctx, {{ filename: "app_session_helpers.js" }});
+        vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx, {{ filename: "app_session_state.js" }});
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx, {{ filename: "app_composer.js" }});
         vm.runInContext({json.dumps(ATTACHMENTS_SOURCE)}, ctx, {{ filename: "app_attachments.js" }});
         vm.runInContext({json.dumps(QUEUE_SOURCE)}, ctx, {{ filename: "app_queue.js" }});
@@ -74,11 +76,13 @@ def run_controller_harness() -> dict[str, Any]:
           const sendBtn = node();
           const sendChoiceLaterBtn = node();
           const calls = [];
+          const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+          sessionState.applyRuntime({{ running }});
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh: node(), sendBtn, sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn, sendChoiceCancelBtn: node(),
             getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready" }}),
-            sessionLaunchFailed: () => false, getSending: () => false, getCurrentRunning: () => running,
+            sessionLaunchFailed: () => false, getSending: () => false, sessionState,
             getStagedAttachments: () => attachments, api: async () => ({{}}), setToast: noop,
             setPollFastUntilMs: noop, kickPoll: noop,
             sendText: async (text) => {{ calls.push(["send", text]); return true; }},
@@ -123,6 +127,7 @@ def run_controller_harness() -> dict[str, Any]:
         const queueBtn = node();
         const queueController = ctx.window.CodoxearQueue.createQueueController({{
           queueBackdrop: node(), queueCloseBtn: node(), queueList: node(), queueEmpty: node(), queueViewer: node(), queueBtn,
+          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
           getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready", queue_len: 0 }}),
           isAppDisposed: () => false, api: async () => ({{}}), setToast: noop, clearCommitUnknownSend: async () => {{}},
           refreshSessions: async () => {{}}, updateQueueBadge: noop, syncRecoveryUiForSession: noop,

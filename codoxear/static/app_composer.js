@@ -25,7 +25,8 @@
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const getSending = requireFunction(options.getSending, "getSending");
-    const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("composer dependency missing: sessionState");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const isModalOpen = typeof options.isModalOpen === "function" ? options.isModalOpen : () => false;
     const api = requireFunction(options.api, "api");
@@ -640,7 +641,7 @@
         setToast("this session runs an older bridge — send /reload to enable /effort");
         return;
       }
-      if (getCurrentRunning()) {
+      if (sessionState.get("running")) {
         const focused = activeElement();
         showSendChoice(raw, { opener: isHTMLElement(focused) ? focused : textarea });
         return;

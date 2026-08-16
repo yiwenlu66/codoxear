@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = module_path("app_composer.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 class TestComposerModelPicker(unittest.TestCase):
@@ -44,6 +45,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const document = {{ createElement: () => new Node(), activeElement: null }};
             const ctx = {{ window: {{}}, document, console, Date, Set, Object, String, Number, Promise }};
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(source)}, ctx);
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
@@ -54,6 +56,7 @@ class TestComposerModelPicker(unittest.TestCase):
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
               modelPicker,
+              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
               getSelected: () => "sid",
               getSessionInfo: () => ({{
                 agent_backend: state.backend,

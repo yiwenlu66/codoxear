@@ -71,6 +71,7 @@ MODULE_NAMESPACES = {
     "app_session_helpers.js": ["CodoxearSessionHelpers"],
     "app_session_lifecycle.js": ["CodoxearInterrupt", "CodoxearSessionLifecycle"],
     "app_session_refresh.js": ["CodoxearSessionRefresh"],
+    "app_session_state.js": ["CodoxearSessionState"],
     "app_session_title.js": ["CodoxearSessionTitle"],
     "app_sessions.js": ["CodoxearSessions"],
     "app_shell.js": ["CodoxearShell"],

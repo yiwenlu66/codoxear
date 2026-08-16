@@ -12,6 +12,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_QUEUE_JS = module_path("app_queue.js")
 APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
 APP_MODAL_JS = module_path("app_modal.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_node_json(js: str) -> dict:
@@ -35,6 +36,7 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
     queue_source = APP_QUEUE_JS.read_text(encoding="utf-8")
     helpers_source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
     modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
+    session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
     return textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -126,7 +128,9 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(modal_source)}, ctx);
         vm.runInContext({json.dumps(helpers_source)}, ctx);
+        vm.runInContext({json.dumps(session_state_source)}, ctx);
         vm.runInContext({json.dumps(queue_source)}, ctx);
+        deps.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         const CodoxearQueue = ctx.window.CodoxearQueue;
         const controller = CodoxearQueue.createQueueController(deps);
         const session = (overrides = {{}}) => ({{ session_id: "sid-1", ...overrides }});

@@ -90,19 +90,15 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     // App-level runtime state accessors.
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("queue controller dependency missing: sessionState");
+    }
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
     const clearCommitUnknownSend = requireFunction(options.clearCommitUnknownSend, "clearCommitUnknownSend");
     const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
-    const getQueueLen = typeof options.getQueueLen === "function"
-      ? options.getQueueLen
-      : () => {
-          const selected = getSelected();
-          const info = selected ? getSessionInfo(selected) : null;
-          return info && info.queue_len;
-        };
-    const notifyQueueState = typeof options.updateQueueBadge === "function" ? options.updateQueueBadge : () => {};
     const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const kickPoll = requireFunction(options.kickPoll, "kickPoll");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
@@ -137,11 +133,12 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     function updateQueueBadge() {
       const selected = getSelected();
-      const n = selected ? Math.max(0, Number(getQueueLen()) || 0) : 0;
+      const n = selected ? Math.max(0, Number(sessionState.get("queueLen")) || 0) : 0;
       queueBadge.textContent = n > 0 ? String(n) : "";
       queueBadge.style.display = n > 0 ? "inline-flex" : "none";
-      notifyQueueState();
     }
+    const unsubscribeQueueLen = sessionState.subscribe("queueLen", updateQueueBadge);
+    updateQueueBadge();
 
     function selectedSessionHasUnknownSend() {
       const selected = getSelected();
@@ -547,6 +544,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     queueBackdrop.onclick = () => hideQueueViewer();
 
     function dispose() {
+      unsubscribeQueueLen();
       queueUpdateTimers.forEach((timer) => clearTimeoutFn(timer));
       queueUpdateTimers.clear();
       queueMutationLocks.clear();

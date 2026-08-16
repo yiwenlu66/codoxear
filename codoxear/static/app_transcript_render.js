@@ -46,10 +46,10 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     const setSending = requireFunction(options.setSending, "setSending");
     const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
     const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
-    const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
-    const setCurrentRunning = requireFunction(options.setCurrentRunning, "setCurrentRunning");
-    const getCurrentSubagentsRunning = requireFunction(options.getCurrentSubagentsRunning, "getCurrentSubagentsRunning");
-    const setCurrentSubagentsRunning = requireFunction(options.setCurrentSubagentsRunning, "setCurrentSubagentsRunning");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("transcript render dependency missing: sessionState");
+    }
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const getSessionEditController = requireFunction(options.getSessionEditController, "getSessionEditController");
     const getQueueController = requireFunction(options.getQueueController, "getQueueController");
@@ -58,7 +58,7 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     const isMobile = requireFunction(options.isMobile, "isMobile");
     const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
     const jumpToLatest = requireFunction(options.jumpToLatest, "jumpToLatest");
-    const { setStatus, setContext,
+    const {
       CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
       INIT_PAGE_LIMIT, Node, OLDER_CANCEL_PX, OLDER_TOP_TRIGGER_PX, addAppEvent, api, appConfirm,
       bottomSentinel, chat, chatInner, chatMarkdownHtmlCached,
@@ -77,7 +77,6 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     let clickMetricPending = false;
     let attachmentsController = null;
     let messageFlowController = null;
-    let currentQueueLen = 0;
     const getHistoryController = requireFunction(options.getHistoryController, "getHistoryController");
     const getSendLifecycleController = requireFunction(options.getSendLifecycleController, "getSendLifecycleController");
     const getAttachmentsController = requireFunction(options.getAttachmentsController, "getAttachmentsController");
@@ -98,6 +97,7 @@ function resetChatRenderState() {
   messageCopyNavigationRuntime.reset();
       setOlderState({ hasMore: false, isLoading: false });
   typingRowRuntime.reset();
+  syncTypingRowRuntime();
   jumpBtn.style.display = "none";
       updateChatNavButtons();
       if (chatSearchController.isOpen()) closeChatSearch();
@@ -449,6 +449,27 @@ const typingRowRuntime = CodoxearTranscript.createTypingRowRuntime(wiring.create
   scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
 }));
 
+function syncTypingVisibility() {
+  const running = Boolean(sessionState.get("running"));
+  typingRowRuntime.setVisible(running);
+  typingRowRuntime.setSubagentVisible(!running);
+}
+
+function syncSubagentGauge() {
+  typingRowRuntime.updateSubagentGauge(Math.max(0, Number(sessionState.get("subagentsRunning")) || 0));
+}
+
+function syncTypingRowRuntime() {
+  syncSubagentGauge();
+  syncTypingVisibility();
+}
+
+const typingStateUnsubscribers = [
+  sessionState.subscribe("running", syncTypingVisibility),
+  sessionState.subscribe("subagentsRunning", syncSubagentGauge),
+];
+syncTypingRowRuntime();
+
 const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
   chat,
   jumpButton: jumpBtn,
@@ -610,10 +631,9 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
 
   const running = Boolean(sessionMeta.busy);
   const queueLen = Number.isFinite(Number(sessionMeta.queue_len)) ? Number(sessionMeta.queue_len) : 0;
+  const subagentsRunning = Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0));
   setTurnOpen(running);
-  setStatus({ running, queueLen });
-  setContext(sessionMeta.token || null);
-  setTyping(running);
+  sessionState.applyRuntime({ running, queueLen, token: sessionMeta.token || null, subagentsRunning });
 }
 
 function updateQueueBadge() {
@@ -633,11 +653,6 @@ function updateQueueBadge() {
 
 function updateTypingStatsFromSession(session) {
   return getSendLifecycleController().messageFlowController.updateTypingStatsFromSession(session);
-}
-
-function setTyping(show) {
-  typingRowRuntime.setVisible(show);
-  typingRowRuntime.setSubagentVisible(!show);
 }
 
 function ymd(d) {
@@ -799,6 +814,10 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
   return transcriptView().prependEvents(events, { preserveViewport, cursor: historyCursor, nextHasMore: hasMore });
 }
 
+    function dispose() {
+      while (typingStateUnsubscribers.length) typingStateUnsubscribers.pop()();
+    }
+
     return Object.freeze({
       transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime,
       transcriptEventRuntime, chatSearchController, chatNavigationController,
@@ -807,7 +826,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
       clearTranscriptDom, clearRenderedTranscriptRange: () => getHistoryController().clearRenderedTranscriptRange(),
       initPageLimit, activeTranscriptSnapshot, updateSessionTranscriptSlot, getSessionTranscriptSlot,
       beginTranscriptRenewal, tailCacheMatchesSession, rememberTailSnapshot, appendTailSnapshotEvents,
-      applySessionListTranscriptIdentity, updateTypingStatsFromSession, setTyping,
+      applySessionListTranscriptIdentity, updateTypingStatsFromSession,
       appendEvent, normalizedTranscriptEvents, renderTranscript, renderDetachedTranscriptWindow,
       prependOlderEvents, dropPendingUserRows, restorePendingUserRowsForSession,
       renderedMessageRows, loadedUserMessageRows, loadedCopyMessageRows, loadedUserJumpTarget,
@@ -816,7 +835,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
       hintModeController,
       eventKey, markEventSeen, isDuplicateEvent, isAdjacentAssistantDuplicateEvent,
       takePendingUserMatch, isTranscriptRenewalCommand,
-      transcriptView, markClickFirstPaint, syncActiveTranscriptSlot,
+      transcriptView, markClickFirstPaint, syncActiveTranscriptSlot, dispose,
     });
   }
 

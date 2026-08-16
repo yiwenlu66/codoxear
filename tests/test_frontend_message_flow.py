@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def _run_node(body: str) -> dict:
@@ -16,6 +17,7 @@ def _run_node(body: str) -> dict:
         APP_POLLING_JS.read_text(encoding="utf-8"),
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     js = textwrap.dedent(
         f"""
@@ -41,6 +43,11 @@ def _run_node(body: str) -> dict:
             statuses: [],
             apiCalls: [],
           }};
+          const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+          Object.defineProperty(state, "running", {{
+            get: () => sessionState.get("running"),
+            set: (value) => sessionState.applyRuntime({{ running: Boolean(value) }}),
+          }});
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ ...state.stats }} }}),
             updateTypingStats: (next, options = {{}}) => {{
@@ -65,6 +72,7 @@ def _run_node(body: str) -> dict:
             }},
           }};
           const options = {{
+            sessionState,
             getSelected: () => state.selected,
             getGeneration: () => state.generation,
             isAppDisposed: () => state.disposed,

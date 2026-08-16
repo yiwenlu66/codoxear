@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_flow(body: str) -> dict:
@@ -16,6 +17,7 @@ def run_flow(body: str) -> dict:
         APP_POLLING_JS.read_text(encoding="utf-8"),
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     script = textwrap.dedent(
         f"""
@@ -36,6 +38,7 @@ def run_flow(body: str) -> dict:
             updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           const options = {{
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
             getSelected: () => state.selected, getGeneration: () => state.generation,
             isAppDisposed: () => state.disposed, getTurnOpen: () => state.turnOpen,
             setTurnOpen: (value) => {{ state.turnOpen = Boolean(value); }},

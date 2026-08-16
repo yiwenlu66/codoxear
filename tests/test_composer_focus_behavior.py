@@ -14,6 +14,7 @@ COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
+SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
 
 
 def _run_node(script: str) -> dict:
@@ -28,6 +29,7 @@ def test_composer_escape_blurs_only_without_an_open_dialog_and_successful_send_b
         const vm = require("vm");
         const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
         function node() {{
@@ -50,7 +52,8 @@ def test_composer_escape_blurs_only_without_an_open_dialog_and_successful_send_b
             form, textarea, msgPh: node(), sendBtn: node(), sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn: node(), sendChoiceCancelBtn: node(),
             getSelected: () => "sid", getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}),
-            sessionLaunchFailed: () => false, getSending: () => false, getCurrentRunning: () => false,
+            sessionLaunchFailed: () => false, getSending: () => false,
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
             getStagedAttachments: () => [], isModalOpen: () => dialogOpen, api: async () => ({{}}),
             setToast: () => {{}}, setPollFastUntilMs: () => {{}}, kickPoll: () => {{}},
             sendText: async (text) => {{ sent.push(text); return true; }}, enqueueComposerText: async () => true,
@@ -96,7 +99,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
         const vm = require("vm");
         const ctx = {{ window: {{}}, console, Date }};
         vm.createContext(ctx);
-        for (const source of {json.dumps([POLLING_SOURCE, TRANSCRIPT_SOURCE, MESSAGE_FLOW_SOURCE])}) vm.runInContext(source, ctx);
+        for (const source of {json.dumps([POLLING_SOURCE, TRANSCRIPT_SOURCE, MESSAGE_FLOW_SOURCE, SESSION_STATE_SOURCE])}) vm.runInContext(source, ctx);
         const timers = [];
         let refreshes = 0;
         let sending = false;
@@ -106,6 +109,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
           updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
         }};
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
           getTurnOpen: () => false, setTurnOpen: noop,
           getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}), patchSessionInfo: noop, sessionLaunchFailed: () => false,

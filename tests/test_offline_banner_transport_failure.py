@@ -10,6 +10,7 @@ APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_NETWORK_JS = module_path("app_network.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_transport_failure_flow() -> dict:
@@ -18,6 +19,7 @@ def run_transport_failure_flow() -> dict:
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_NETWORK_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     script = textwrap.dedent(
         f"""
@@ -57,6 +59,7 @@ def run_transport_failure_flow() -> dict:
           updateSubagentGauge: noop, resetTypingStats: noop,
         }};
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           getSelected: () => state.selected, getGeneration: () => state.generation,
           isAppDisposed: () => state.disposed, getTurnOpen: () => state.turnOpen,
           setTurnOpen: (value) => {{ state.turnOpen = Boolean(value); }},

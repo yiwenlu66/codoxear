@@ -4,6 +4,7 @@ import os
 import subprocess
 
 
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_SESSION_DISPLAY_JS = module_path("app_session_display.js")
 
 
@@ -20,42 +21,67 @@ def run_node_json(script: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_status_header_projects_queue_count_only() -> None:
-    """The topbar chip shows only the queue payload; busy/idle and ▸N live elsewhere."""
+def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
+    """Store writes synchronously project queue, interrupt, and context DOM state."""
     script = f"""
     const vm = require("vm");
     const ctx = {{ window: {{}}, console }};
     vm.createContext(ctx);
+    vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
     vm.runInContext({json.dumps(APP_SESSION_DISPLAY_JS.read_text(encoding="utf-8"))}, ctx);
-    let running = false;
-    let queueLen = 0;
+    const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
     const statusChip = {{ style: {{}}, textContent: "" }};
     const interruptBtn = {{ style: {{}}, disabled: false }};
     const ctxChip = {{ style: {{}}, disabled: false, textContent: "", title: "" }};
     const controller = ctx.window.CodoxearSessionDisplay.createSessionDisplayController({{
       getSelected: () => "sid",
-      setRunning: (value) => {{ running = value; }},
-      getQueueLen: () => queueLen,
-      setQueueLen: (value) => {{ queueLen = value; }},
-      getAttachmentsController: () => null,
-      updateQueueBadge: () => {{}},
+      sessionState,
       setToast: () => {{}},
       statusChip, interruptBtn, ctxChip, eventBindings: {{ on: () => {{}} }},
     }});
-    const snap = () => ({{ text: statusChip.textContent, display: statusChip.style.display }});
-    controller.setStatus({{ running: false, queueLen: 2 }});
-    const idle = snap();
-    controller.setStatus({{ running: true, queueLen: 2 }});
-    const busy = snap();
-    controller.setStatus({{ running: true, queueLen: 0 }});
-    const busyEmpty = snap();
-    controller.setStatus({{ running: false, queueLen: 0 }});
-    const idleEmpty = snap();
-    process.stdout.write(JSON.stringify({{ idle, busy, busyEmpty, idleEmpty }}));
+    const snap = () => ({{
+      status: {{ text: statusChip.textContent, display: statusChip.style.display }},
+      interrupt: {{ display: interruptBtn.style.display, disabled: interruptBtn.disabled }},
+      context: {{ text: ctxChip.textContent, display: ctxChip.style.display, disabled: ctxChip.disabled, title: ctxChip.title }},
+    }});
+    const initial = snap();
+    sessionState.applyRuntime({{
+      running: true,
+      queueLen: 2,
+      token: {{ context_window: 100, tokens_in_context: 40, percent_remaining: 60, max_input_tokens: 80, reserved_tokens: 20 }},
+    }});
+    const active = snap();
+    sessionState.applyRuntime({{ running: false, queueLen: 0, token: null }});
+    const cleared = snap();
+    controller.dispose();
+    sessionState.applyRuntime({{ running: true, queueLen: 7 }});
+    const disposed = snap();
+    process.stdout.write(JSON.stringify({{ initial, active, cleared, disposed }}));
     """
     assert run_node_json(script) == {
-        "idle": {"text": "Queue 2", "display": "inline-flex"},
-        "busy": {"text": "Queue 2", "display": "inline-flex"},
-        "busyEmpty": {"text": "", "display": "none"},
-        "idleEmpty": {"text": "", "display": "none"},
+        "initial": {
+            "status": {"text": "", "display": "none"},
+            "interrupt": {"display": "none", "disabled": True},
+            "context": {"text": "", "display": "none", "disabled": True, "title": ""},
+        },
+        "active": {
+            "status": {"text": "Queue 2", "display": "inline-flex"},
+            "interrupt": {"display": "inline-flex", "disabled": False},
+            "context": {
+                "text": "Ctx 60%",
+                "display": "inline-flex",
+                "disabled": False,
+                "title": "Context input: 40/80 tokens (20 reserved; window 100).",
+            },
+        },
+        "cleared": {
+            "status": {"text": "", "display": "none"},
+            "interrupt": {"display": "none", "disabled": True},
+            "context": {"text": "", "display": "none", "disabled": True, "title": ""},
+        },
+        "disposed": {
+            "status": {"text": "", "display": "none"},
+            "interrupt": {"display": "none", "disabled": True},
+            "context": {"text": "", "display": "none", "disabled": True, "title": ""},
+        },
     }

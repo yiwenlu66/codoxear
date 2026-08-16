@@ -18,16 +18,16 @@
     const setSending = requireFunction(options.setSending, "setSending");
     const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
     const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
-    const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
-    const setCurrentRunning = requireFunction(options.setCurrentRunning, "setCurrentRunning");
-    const getCurrentSubagentsRunning = requireFunction(options.getCurrentSubagentsRunning, "getCurrentSubagentsRunning");
-    const setCurrentSubagentsRunning = requireFunction(options.setCurrentSubagentsRunning, "setCurrentSubagentsRunning");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
+      throw new TypeError("send lifecycle dependency missing: sessionState");
+    }
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const getSessionEditController = requireFunction(options.getSessionEditController, "getSessionEditController");
     const getQueueController = requireFunction(options.getQueueController, "getQueueController");
     const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
     const upgradeCandidateFileRefs = requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
-    const { setStatus, setContext,
+    const {
       ATTACH_UPLOAD_MAX_BYTES, AbortController, EventSource, $, addAppEvent, api, attachBtn, b64FromBytes, chatInner, codoxearAttachments, codoxearMessageFlow, composer,
       confirmApp, dataTransferHasFiles, document, el,
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
@@ -46,7 +46,7 @@
       getSessionTranscriptSlot, beginTranscriptRenewal,
       dropPendingUserRows, appendTailSnapshotEvents, initPageLimit, typingRowRuntime,
       transcriptSlotRuntime, transcriptEventRuntime, transcriptScrollRuntime, isTranscriptRenewalCommand,
-      transcriptView, setTyping, updateTypingStatsFromSession
+      transcriptView, updateTypingStatsFromSession
     } = transcript;
     const { renderPendingTranscriptSlot, renderSessionTail, applySessionRuntimeFromTail,
       syncRecoveryUiForSession } = history;
@@ -119,19 +119,12 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
   appendEvents: (events) => transcriptView().appendEvents(events),
   appendTailSnapshotEvents,
-  setStatus,
-  setContext,
-  setTyping,
-  setSubagentsRunning: (value) => {
-    setCurrentSubagentsRunning(value);
-  },
+  sessionState,
   updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
   initPageLimit,
   typingRowRuntime,
   getSending,
   setSending,
-  getCurrentRunning,
-  setCurrentRunning,
   getStagedAttachments: () => attachmentsController.getStagedAttachments(),
   normalizedStagedAttachments: (list) => attachmentsController.normalizedStagedAttachments(list),
   setSelectedSessionPendingAttachment: (sessionId, value) => attachmentsController.setSelectedSessionPendingAttachment(sessionId, value),

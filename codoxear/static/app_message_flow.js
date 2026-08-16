@@ -42,6 +42,10 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const getTurnOpen = requireFunction(options.getTurnOpen, "getTurnOpen");
     const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
+      throw new TypeError("message flow dependency missing: sessionState");
+    }
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
@@ -68,10 +72,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
         return changed;
       };
     const appendTailSnapshotEvents = requireFunction(options.appendTailSnapshotEvents, "appendTailSnapshotEvents");
-    const setStatus = requireFunction(options.setStatus, "setStatus");
-    const setContext = requireFunction(options.setContext, "setContext");
-    const setTyping = requireFunction(options.setTyping, "setTyping");
-    const setSubagentsRunning = requireFunction(options.setSubagentsRunning, "setSubagentsRunning");
     const updateSessionTitle = requireFunction(options.updateSessionTitle, "updateSessionTitle");
     const initPageLimit = requireFunction(options.initPageLimit, "initPageLimit");
     const typingRowRuntime = options.typingRowRuntime;
@@ -88,8 +88,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
     // this controller at the send boundary.
     const getSending = requireFunction(options.getSending, "getSending");
     const setSending = requireFunction(options.setSending, "setSending");
-    const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
-    const setCurrentRunning = requireFunction(options.setCurrentRunning, "setCurrentRunning");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const normalizedStagedAttachments = requireFunction(options.normalizedStagedAttachments, "normalizedStagedAttachments");
     const setSelectedSessionPendingAttachment = requireFunction(options.setSelectedSessionPendingAttachment, "setSelectedSessionPendingAttachment");
@@ -338,10 +336,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
       pollFastUntilMs = 0;
     }
 
-    function updateTypingStatsFromSession(session) {
+    function updateTypingStatsFromSession(session, { updateSubagents = true } = {}) {
       const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
-      setSubagentsRunning(subagentsRunning);
-      typingRowRuntime.updateSubagentGauge(subagentsRunning);
+      if (updateSubagents) sessionState.applyRuntime({ subagentsRunning });
       if (!session) return;
       const thinkingMode = CodoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
       const stats = {
@@ -428,9 +425,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       setTurnOpen(turnOpen);
       applyTypingMetaDelta(data);
       const running = Boolean(turnOpen || nowBusy);
-      setStatus({ running, queueLen: data.queue_len });
-      setContext(data.token);
-      setTyping(running);
+      const queueLen = Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
+      sessionState.applyRuntime({ running, queueLen, token: data.token || null });
       const session = getSessionInfo(sessionId);
       if (events.length) {
         appendTailSnapshotEvents(sessionId, events, {
@@ -589,7 +585,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         if (!confirmed) return false;
         allowPendingAttachment = true;
       }
-      const continuesOpenTurn = renderHere && getCurrentRunning();
+      const continuesOpenTurn = renderHere && sessionState.get("running");
       setSending(true);
       syncSendButtonState();
       syncAttachButtonState();
@@ -605,7 +601,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0: startedAt });
         appendEvents([{ role: "user", text: raw, pending: true, localId, ts: startedAt }]);
         setTurnOpen(true);
-        setCurrentRunning(true);
+        sessionState.applyRuntime({ running: true });
       }
       try {
         const response = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
@@ -702,7 +698,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
           removePendingUserRow(localId);
           if (!hasPendingForSession(sessionId)) {
             setTurnOpen(false);
-            setCurrentRunning(false);
+            sessionState.applyRuntime({ running: false });
           }
           if (commitUnknown) syncRecoveryUiForSession(sessionId);
         }

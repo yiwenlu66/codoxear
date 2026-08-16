@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_QUEUE_JS = module_path("app_queue.js")
 APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
 APP_MODAL_JS = module_path("app_modal.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_node_json(js: str) -> dict:
@@ -35,6 +36,7 @@ let confirmValue = false;
 const confirmCalls = [];
 const sessions = new Map();
 let selected = null;
+let sessionState = null;
 
 let apiResponseQueue = [];
 function setApiResponses(list) { apiResponseQueue = list.slice(); }
@@ -156,7 +158,10 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(MODAL_SOURCE, ctx);
 vm.runInContext(HELPERS_SOURCE, ctx);
+vm.runInContext(SESSION_STATE_SOURCE, ctx);
 vm.runInContext(QUEUE_SOURCE, ctx);
+sessionState = ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} });
+deps.sessionState = sessionState;
 
 const controller = ctx.window.CodoxearQueue.createQueueController(deps);
 
@@ -218,11 +223,13 @@ def harness_script(epilogue: str) -> str:
     queue_source = APP_QUEUE_JS.read_text(encoding="utf-8")
     helpers_source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
     modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
+    session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
     js = (
         textwrap.dedent(
             f"""
         const MODAL_SOURCE = {json.dumps(modal_source)};
         const HELPERS_SOURCE = {json.dumps(helpers_source)};
+        const SESSION_STATE_SOURCE = {json.dumps(session_state_source)};
         const QUEUE_SOURCE = {json.dumps(queue_source)};
         """
         )
@@ -277,6 +284,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
             vm.createContext(ctx);
             vm.runInContext({json.dumps(modal_source)}, ctx);
             vm.runInContext({json.dumps(helpers_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(queue_source)}, ctx);
             """
         )
@@ -299,6 +307,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
               queueBackdrop: node, queueCloseBtn: node, queueList: node,
               queueEmpty: node, queueViewer: node, queueBtn: node,
               getSelected: () => null, getSessionInfo: () => null, isAppDisposed: () => false,
+              sessionState: ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} }),
               api: null,
               setToast: () => {}, clearCommitUnknownSend: () => {}, refreshSessions: async () => {},
               updateQueueBadge: () => {}, syncRecoveryUiForSession: () => {}, kickPoll: () => {},
@@ -404,13 +413,12 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         self.assertEqual(result["apiBody"], {"text": "hello world"})
         order = result["order"]
         # api(enqueue) -> setPollFastUntilMs -> kickPoll -> refreshSessions ->
-        # updateQueueBadge -> syncRecoveryUiForSession (refreshQueueViewer is
-        # skipped because the viewer is closed).
+        # syncRecoveryUiForSession (the badge reacts to the queueLen store
+        # subscription; refreshQueueViewer is skipped because the viewer is closed).
         self.assertLess(order.index("api"), order.index("setPollFastUntilMs"))
         self.assertLess(order.index("setPollFastUntilMs"), order.index("kickPoll"))
         self.assertLess(order.index("kickPoll"), order.index("refreshSessions"))
-        self.assertLess(order.index("refreshSessions"), order.index("updateQueueBadge"))
-        self.assertLess(order.index("updateQueueBadge"), order.index("syncRecoveryUiForSession"))
+        self.assertLess(order.index("refreshSessions"), order.index("syncRecoveryUiForSession"))
 
     # --- 4. 401 handling before any queue error toast ---
 

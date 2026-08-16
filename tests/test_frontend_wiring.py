@@ -15,8 +15,7 @@ def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
         for name in ("app_wiring.js", "app_application_composition.js")
     }
     session_display_keys = [
-        "getSelected", "setRunning", "getQueueLen", "setQueueLen",
-        "getAttachmentsController", "updateQueueBadge", "setToast", "statusChip",
+        "getSelected", "sessionState", "setToast", "statusChip",
         "interruptBtn", "ctxChip", "eventBindings",
     ]
     file_viewer_operations_keys = [

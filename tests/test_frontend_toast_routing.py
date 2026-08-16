@@ -16,6 +16,7 @@ def run_vm(body: str) -> dict:
         "MODAL": module_path("app_modal.js"),
         "HELPERS": module_path("app_session_helpers.js"),
         "QUEUE": module_path("app_queue.js"),
+        "SESSION_STATE": module_path("app_session_state.js"),
         "DIAGNOSTICS": module_path("app_diagnostics.js"),
         "VOICE_HELPERS": module_path("app_voice_helpers.js"),
         "VOICE": module_path("app_voice.js"),
@@ -62,7 +63,7 @@ def run_vm(body: str) -> dict:
           clearTimeout() {{}}, setInterval: () => 0, clearInterval() {{}},
         }};
         vm.createContext(ctx);
-        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, VOICE_SOURCE]
+        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, SESSION_STATE_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, VOICE_SOURCE]
           .forEach((source) => vm.runInContext(source, ctx));
         {viewer_sources}.forEach((source) => vm.runInContext(source, ctx));
         {body}
@@ -98,10 +99,11 @@ class TestFrontendToastRouting(unittest.TestCase):
               };
 
               let selected = "s1";
+              const sessionState = ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} });
               const queueController = ctx.window.CodoxearQueue.createQueueController({
                 queueBackdrop: node("queueBackdrop"), queueCloseBtn: node("queueCloseBtn"),
                 queueList: node("queueList"), queueEmpty: node("queueEmpty"), queueViewer: node("queueViewer"), queueBtn: node("queueBtn"),
-                getSelected: () => selected, getSessionInfo: () => ({ launch_state: "ready" }), isAppDisposed: () => false,
+                getSelected: () => selected, getSessionInfo: () => ({ launch_state: "ready" }), sessionState, isAppDisposed: () => false,
                 api: async () => ({ queued: true, queue_len: 1 }), setToast: notify("queue"),
                 clearCommitUnknownSend: async () => true, refreshSessions: async () => {}, updateQueueBadge: () => {},
                 syncRecoveryUiForSession: () => {}, kickPoll: () => {}, setPollFastUntilMs: () => {}, handleAppAuthLoss: () => {},

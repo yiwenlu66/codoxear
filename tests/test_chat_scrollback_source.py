@@ -12,6 +12,7 @@ APP_COMPOSITION_JS = module_path("app_application_composition.js")
 APP_CHAT_INTERACTION_JS = module_path("app_chat_interaction.js")
 APP_MESSAGE_HISTORY_JS = module_path("app_message_history.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_DISPLAY_JS = module_path("app_display.js")
 APP_LAUNCH_JS = module_path("app_launch.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
@@ -108,8 +109,10 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
         }};
         const ctx = {{ window: {{ CodoxearTranscript: transcriptHelpers }}, console }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const controller = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
+          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           getSelected: () => "sid", getPollGeneration: () => 7, getSessionIndex: () => new Map(),
           getSessionLifecycleController: () => ({{ openSession: async (...args) => calls.push(["open", ...args]) }}),
           getSessionRefreshController: () => ({{ refreshSessions: async () => {{}} }}),
@@ -165,6 +168,7 @@ def eval_open_session_tail_request_abort() -> dict:
         }}
         const ctx = {{ window: {{}}, console, AbortController }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const sessions = new Map([
           ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
@@ -203,6 +207,7 @@ def eval_open_session_tail_request_abort() -> dict:
           }});
         }});
         const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController({{
+          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           nextPollGeneration: () => ++state.pollGen,
           incrementPollGeneration: () => ++state.pollGen,
           prepareSessionOpen: () => messageFlow.prepareSessionOpen(),
@@ -270,11 +275,13 @@ def _run_lifecycle(body: str) -> dict:
         const vm = require("vm");
         const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const calls = [];
         const noop = () => {{}};
         const selected = {{ value: "sid-1" }};
         const options = new Proxy({{
+          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           getSelected: () => selected.value,
           setSelected: (value) => {{ selected.value = value; }},
           incrementPollGeneration: () => {{ calls.push(["incrementPollGeneration"]); }},
@@ -343,7 +350,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         for expected in [
             ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementPollGeneration"], ["setActiveTranscriptPending"],
             ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""], ["setNoSessionTitle"],
-            ["setStatus", {"running": False, "queueLen": 0}], ["setContext", None], ["setTyping", False], ["clearAttachments"],
+            ["clearAttachments"],
             ["syncAttachmentButton"], ["resetChatRenderState"], ["updateQueueBadge"], ["hideUnattendedMenu"], ["updateUnattendedButton"],
             ["syncComposerSendButton"], ["syncQueueSubmitState"],
         ]:

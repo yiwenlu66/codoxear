@@ -19,14 +19,18 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const getSendLifecycleController = requireFunction(options.getSendLifecycleController, "getSendLifecycleController");
     const getAttachmentsController = requireFunction(options.getAttachmentsController, "getAttachmentsController");
     const transcript = requireObject(options.transcript, "transcript");
+    const sessionState = requireObject(options.sessionState, "sessionState");
+    if (typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function") {
+      throw new TypeError("message history dependency missing: sessionState");
+    }
     const { wiring, olderWrap, olderBtn, olderError, olderErrorText, AbortController, performance,
-      OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss, setTurnOpen, setStatus,
-      setContext, getCurrentRunning, syncQueueSubmitState, syncComposerSendButton, updateUnattendedBtnState,
+      OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss, setTurnOpen,
+      syncQueueSubmitState, syncComposerSendButton, updateUnattendedBtnState,
       updateQueueBadge, sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
       sessionIdFromHash, sessionSelectable } = options;
     const { transcriptSlotRuntime, transcriptScrollRuntime, setOlderState,
       restorePendingUserRowsForSession, markClickFirstPaint, updateSessionTranscriptSlot,
-      syncActiveTranscriptSlot, rememberTailSnapshot, updateTypingStatsFromSession, setTyping,
+      syncActiveTranscriptSlot, rememberTailSnapshot, updateTypingStatsFromSession,
       clearOlderLoadError, showOlderLoadError } = transcript;
     const transcriptView = () => transcript.transcriptView();
     const refreshSessions = () => getSessionRefreshController().refreshSessions();
@@ -172,10 +176,9 @@ function applySessionRuntimeFromTail(sessionId, data) {
   setTurnOpen(nowBusy);
   const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
   const session = getSessionIndex().get(sessionId);
-  updateTypingStatsFromSession(session);
-  setStatus({ running: nowBusy, queueLen });
-  setContext(data ? data.token : null);
-  setTyping(nowBusy);
+  updateTypingStatsFromSession(session, { updateSubagents: false });
+  const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+  sessionState.applyRuntime({ running: nowBusy, queueLen, token: data ? data.token || null : null, subagentsRunning });
   if (slot.state === "bound") {
     const s = getSessionIndex().get(sessionId);
     if (s) rememberTailSnapshot(sessionId, s, data);
@@ -253,7 +256,7 @@ function syncRecoveryUiForSession(sessionId) {
   const s = getSessionIndex().get(sessionId) || null;
   if (s) {
     const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
-    setStatus({ running: getCurrentRunning(), queueLen });
+    sessionState.applyRuntime({ queueLen });
   }
   getAttachmentsController().syncAttachButtonState();
   syncQueueSubmitState();
@@ -290,7 +293,7 @@ function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false 
     },
   });
   setTurnOpen(false);
-  setTyping(false);
+  sessionState.applyRuntime({ running: false });
   markClickFirstPaint();
 }
 
@@ -319,10 +322,14 @@ function applyCachedTail(sessionId, cache, sessionMeta) {
         ? Number(cache.queueLen)
         : 0;
   setTurnOpen(cachedBusy);
-  setStatus({ running: cachedBusy, queueLen });
-  setContext(cache.token || (sessionMeta ? sessionMeta.token : null));
-  updateTypingStatsFromSession(sessionMeta);
-  setTyping(cachedBusy);
+  updateTypingStatsFromSession(sessionMeta, { updateSubagents: false });
+  const subagentsRunning = sessionMeta ? Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0)) : 0;
+  sessionState.applyRuntime({
+    running: cachedBusy,
+    queueLen,
+    token: cache.token || (sessionMeta ? sessionMeta.token || null : null),
+    subagentsRunning,
+  });
 }
 
 async function applyLiveMessageData(sid, gen, data) {

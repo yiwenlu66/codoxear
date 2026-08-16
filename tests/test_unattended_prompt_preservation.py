@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_COMPOSER_JS = module_path("app_composer.js")
 
 
@@ -36,6 +37,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
     polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
     transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
     message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
+    session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
     composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
     script = textwrap.dedent(
         f"""
@@ -62,6 +64,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         vm.runInContext({json.dumps(polling_source)}, ctx);
         vm.runInContext({json.dumps(transcript_source)}, ctx);
         vm.runInContext({json.dumps(message_flow_source)}, ctx);
+        vm.runInContext({json.dumps(session_state_source)}, ctx);
         vm.runInContext({json.dumps(composer_source)}, ctx);
         const noop = () => {{}};
         function createMessageFlow() {{
@@ -70,6 +73,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
             updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+            sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
             getSelected: () => selected, getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen: noop,
             getSessionInfo: () => ({{ session_id: selected, agent_backend: "pi" }}), patchSessionInfo: noop,
@@ -98,6 +102,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         const makeController = () => {{
           const messageFlowController = createMessageFlow();
           return ctx.window.CodoxearComposer.createComposerController({{
+          sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
           form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
           sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn, modelPicker,
           getSelected: () => selected, getSessionInfo: () => ({{}}), patchSessionInfo: noop, sessionLaunchFailed: () => false,

@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = module_path("app_composer.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 class TestCodexBrowserModelPicker(unittest.TestCase):
@@ -46,6 +47,7 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
               const document = { createElement: (tag) => new Node(tag), activeElement: null };
               const context = { window: {}, document, console, Date, Set, Object, String, Number, Promise };
               vm.createContext(context);
+              vm.runInContext(fs.readFileSync(process.argv[2], "utf8"), context);
               vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);
               const nodes = Array.from({ length: 10 }, () => new Node());
               const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
@@ -72,7 +74,8 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
                   reasoning_efforts: ["low", "high"], reasoning_efforts_by_model: {},
                 } } }),
                 patchSessionInfo: noop, sessionLaunchFailed: () => false,
-                getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop,
+                getSending: () => false, setSending: noop,
+                sessionState: context.window.CodoxearSessionState.createSessionState({ consoleError: noop }),
                 setTurnOpen: noop, resetTypingStats: noop, getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
                 setSelectedSessionPendingAttachment: noop, setAttachCount: noop, syncAttachButtonState: noop,
                 syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,
@@ -117,7 +120,7 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
             """
         )
         result = subprocess.run(
-            ["node", "-e", script, str(APP_COMPOSER_JS)],
+            ["node", "-e", script, str(APP_COMPOSER_JS), str(APP_SESSION_STATE_JS)],
             check=False,
             capture_output=True,
             text=True,

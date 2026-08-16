@@ -35,6 +35,7 @@ from codoxear.session_model import Session
 ROOT = Path(__file__).resolve().parents[1]
 SSE_CONTROLLER = module_path("app_sse.js")
 MESSAGE_FLOW_CONTROLLER = module_path("app_message_flow.js")
+SESSION_STATE = module_path("app_session_state.js")
 POLLING_HELPERS = module_path("app_polling.js")
 TRANSCRIPT_HELPERS = module_path("app_transcript.js")
 _CURSOR_SECRET = b"sse-battle-test-cursor-secret"
@@ -461,6 +462,7 @@ class TestSseBattleAdvanced(unittest.TestCase):
             POLLING_HELPERS.read_text(encoding="utf-8"),
             TRANSCRIPT_HELPERS.read_text(encoding="utf-8"),
             MESSAGE_FLOW_CONTROLLER.read_text(encoding="utf-8"),
+            SESSION_STATE.read_text(encoding="utf-8"),
         ]
         js = f"""
 const vm = require("vm");
@@ -477,6 +479,7 @@ const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
 vm.createContext(ctx);
 {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
 const options = new Proxy({{
+  sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}),
   getSelected: () => "sse-battle", getGeneration: () => 7, isAppDisposed: () => false,
   getTurnOpen: () => false, setTurnOpen: noop, getSessionInfo: () => ({{ session_id: "sse-battle" }}),
   activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),

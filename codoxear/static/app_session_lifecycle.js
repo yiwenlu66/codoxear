@@ -55,9 +55,10 @@
     const clearAttachments = get("clearAttachments");
     const syncAttachmentButton = get("syncAttachmentButton");
     const updateQueueBadge = get("updateQueueBadge");
-    const setStatus = get("setStatus");
-    const setContext = get("setContext");
-    const setTyping = get("setTyping");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.applyRuntime !== "function") {
+      throw new TypeError("session lifecycle dependency missing: sessionState");
+    }
     const resetChatRenderState = get("resetChatRenderState");
     const getSession = get("getSession");
     const isCurrent = get("isCurrent");
@@ -131,9 +132,7 @@
       removePersistedSelected();
       setSessionHash("");
       setNoSessionTitle();
-      setStatus({ running: false, queueLen: 0 });
-      setContext(null);
-      setTyping(false);
+      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
       clearAttachments();
       syncAttachmentButton();
       resetChatRenderState();
@@ -171,9 +170,7 @@
       }
       syncAttachments();
       updateQueueBadge();
-      setStatus({ running: false, queueLen: 0 });
-      setContext(null);
-      setTyping(false);
+      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
       if (!reloadingSelectedSession) resetChatRenderState();
 
       const session = getSession(sessionId);
@@ -182,11 +179,15 @@
       markClickLoad();
       const optimisticBusy = Boolean(session && session.busy);
       const optimisticQueueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
+      const optimisticSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
       setTurnOpen(optimisticBusy);
-      setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
-      setContext(session ? session.token || null : null);
-      updateTypingStats(session);
-      setTyping(optimisticBusy);
+      updateTypingStats(session, { updateSubagents: false });
+      sessionState.applyRuntime({
+        running: optimisticBusy,
+        queueLen: optimisticQueueLen,
+        token: session ? session.token || null : null,
+        subagentsRunning: optimisticSubagentsRunning,
+      });
       const fileViewerSyncStarted = beginFileViewerSync();
 
       const cachedTail = session ? getTailCache(sessionId) : null;

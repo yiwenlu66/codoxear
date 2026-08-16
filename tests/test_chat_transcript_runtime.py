@@ -14,6 +14,7 @@ APP_COMPOSER_JS = module_path("app_composer.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_MESSAGE_IDENTITY_JS = module_path("app_transcript.js")
 
 
@@ -27,7 +28,15 @@ function createMessageFlow(state, overrides = {}) {
     updateSubagentGauge: noop,
     resetTypingStats: () => { state.resets = (state.resets || 0) + 1; },
   };
+  const sessionState = ctx.window.CodoxearSessionState.createSessionState({ consoleError: noop });
+  sessionState.applyRuntime({ running: Boolean(state.running) });
+  Object.defineProperty(state, "running", {
+    get: () => sessionState.get("running"),
+    set: (value) => sessionState.applyRuntime({ running: Boolean(value) }),
+    configurable: true,
+  });
   return ctx.window.CodoxearMessageFlow.createMessageFlowController({
+    sessionState,
     getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
     getTurnOpen: () => false, setTurnOpen: noop,
     getSessionInfo: () => ({ agent_backend: "pi" }), patchSessionInfo: noop, sessionLaunchFailed: () => false,
@@ -853,6 +862,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const ctx = {{ window: {{}}, console }};
             vm.createContext(ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
             const state = {{
@@ -888,6 +898,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             const defaults = () => {{}};
             const options = new Proxy({{
+              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
               nextPollGeneration: () => ++state.generation,
               getSelected: () => state.selected,
               setSelected: (value) => {{ state.selected = value; }},
@@ -963,6 +974,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const vm = require("vm");
             const ctx = {{ window: {{}}, console }};
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
             const state = {{ selected: "sid", generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}, {{ transcript_state: "bound", events: [{{ role: "assistant", text: "latest" }}], busy: false, queue_len: 0, token: null }}] }};
@@ -977,6 +989,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             const defaults = () => {{}};
             const options = new Proxy({{
+              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}),
               nextPollGeneration: () => ++state.generation,
               incrementPollGeneration: defaults,
               prepareSessionOpen: messageFlow.prepareSessionOpen,
@@ -1981,6 +1994,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(polling_source)}, ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(message_flow_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
             {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
@@ -2001,7 +2015,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
                 getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "pi" }}),
                 sessionLaunchFailed: () => false, getSending: () => state.sending,
-                getCurrentRunning: () => state.running, getStagedAttachments: () => [],
+                sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.applyRuntime({{ running: initialRunning }}); return store; }})(), getStagedAttachments: () => [],
                 api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
                 sendText: (...args) => messageFlowController.sendText(...args),
                 enqueueComposerText: async () => false, prepareModalOpen: noop,
@@ -2033,6 +2047,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(polling_source)}, ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(message_flow_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
             {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
@@ -2060,7 +2075,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
               getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "codex" }}),
               sessionLaunchFailed: () => false, getSending: () => state.sending,
-              getCurrentRunning: () => false, getStagedAttachments: () => [],
+              sessionState: ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}), getStagedAttachments: () => [],
               api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
               sendText: (...args) => messageFlowController.sendText(...args),
               enqueueComposerText: async () => false, prepareModalOpen: noop,

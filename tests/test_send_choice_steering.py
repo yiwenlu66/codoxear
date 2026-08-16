@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
+SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
 COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 
 
@@ -41,6 +42,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         vm.runInContext({json.dumps(POLLING_SOURCE)}, ctx);
         vm.runInContext({json.dumps(TRANSCRIPT_SOURCE)}, ctx);
         vm.runInContext({json.dumps(MESSAGE_FLOW_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
         function node() {{
@@ -58,7 +60,10 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
           snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
           updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
         }};
+        const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+        sessionState.applyRuntime({{ running: true }});
         const messageFlow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+          sessionState,
           getSelected: () => "busy-session", getGeneration: () => 1, isAppDisposed: () => false,
           getTurnOpen: () => true, setTurnOpen: noop,
           getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
@@ -97,7 +102,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
           sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
           getSelected: () => "busy-session", getSessionInfo: () => ({{ agent_backend: "pi" }}), sessionLaunchFailed: () => false,
           getSending: () => state.sending,
-          getCurrentRunning: () => {{ state.busyChecks.push(true); return true; }}, getStagedAttachments: () => [],
+          sessionState, getStagedAttachments: () => [],
           api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
           sendText: (...args) => messageFlow.sendText(...args),
           enqueueComposerText: async (...args) => {{ state.queueCalls.push(args); return true; }},
@@ -117,7 +122,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
             dialogAfterChoice: sendChoice.style.display,
             apiCalls: state.apiCalls,
             queueCalls: state.queueCalls,
-            busyChecks: state.busyChecks.length,
+            storeRunning: sessionState.get("running"),
             value: textarea.value,
           }}));
           composer.dispose();
@@ -138,6 +143,6 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
             }
         ],
         "queueCalls": [],
-        "busyChecks": 2,
+        "storeRunning": True,
         "value": "",
     }

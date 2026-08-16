@@ -14,6 +14,7 @@ import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
 import * as CodoxearSessionDisplay from "./app_session_display.js";
 import * as CodoxearSessionLifecycle from "./app_session_lifecycle.js";
 import * as CodoxearSessionRefresh from "./app_session_refresh.js";
+import * as CodoxearSessionState from "./app_session_state.js";
 import * as CodoxearSessionTitle from "./app_session_title.js";
 import * as CodoxearTranscriptRender from "./app_transcript_render.js";
 import * as CodoxearUnattended from "./app_unattended.js";
@@ -194,7 +195,7 @@ import * as CodoxearWiring from "./app_wiring.js";
          let secondaryPollingEnabled = true;
          let sessionsPollErrorStreak = 0;
          let secondaryPollErrorStreak = 0;
-         let currentRunning = false;
+        const sessionState = CodoxearSessionState.createSessionState({ consoleError: (...args) => console.error(...args) });
         let selected = null; // selected session_id (null until chosen)
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
@@ -267,6 +268,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           filePickerSearchState.dispose();
           if (iosViewportController) iosViewportController.dispose();
           if (chatSearchController) chatSearchController.dispose();
+          if (chatInteractionController) chatInteractionController.dispose();
+          if (sessionDisplayController) sessionDisplayController.dispose();
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
           if (chatNavigationController) chatNavigationController.dispose();
@@ -625,18 +628,11 @@ import * as CodoxearWiring from "./app_wiring.js";
           }
         }
 
-        let currentQueueLen = 0;
-        let currentSubagentsRunning = 0;
         const sessionDisplayController = CodoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
           getSelected: () => selected,
-          setRunning: (value) => { currentRunning = Boolean(value); },
-          getQueueLen: () => currentQueueLen,
-          setQueueLen: (value) => { currentQueueLen = value; },
-          getAttachmentsController: () => attachmentsController,
-          updateQueueBadge: () => updateQueueBadge(),
+          sessionState,
           setToast, statusChip, interruptBtn, ctxChip, eventBindings,
         }));
-        const { setStatus, setContext } = sessionDisplayController;
         let fileOpsController = null;
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
@@ -646,7 +642,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           getSessionLifecycleController: () => sessionLifecycleController,
           getSessionRefreshController: () => sessionRefreshController,
           getSending: () => sending,
-          getCurrentRunning: () => currentRunning,
+          sessionState,
           getSessionEditController: () => sessionEditController,
           getQueueController: () => queueController,
           codoxearTranscriptRender: CodoxearTranscriptRender,
@@ -687,14 +683,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           setSending: (value) => { sending = Boolean(value); },
           getTurnOpen: () => turnOpen,
           setTurnOpen: (value) => { turnOpen = Boolean(value); },
-          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
-          getCurrentSubagentsRunning: () => currentSubagentsRunning,
-          setCurrentSubagentsRunning: (value) => { currentSubagentsRunning = value; },
           isAppDisposed: () => appDisposed,
           isFileViewerOpen: () => fileOpsController.isFileViewerOpen(),
           upgradeCandidateFileRefs: (...args) => fileOpsController.fileReferenceRuntime.upgradeCandidateRefs(...args),
-          setStatus: setStatus,
-          setContext: setContext,
           $: $,
           ATTACH_UPLOAD_MAX_BYTES: ATTACH_UPLOAD_MAX_BYTES,
           AbortController: AbortController,
@@ -787,7 +778,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
           closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,
           updateSessionTranscriptSlot, tailCacheMatchesSession, applySessionListTranscriptIdentity,
-          updateQueueBadge, updateTypingStatsFromSession, setTyping, messagePollDelayMs, kickPoll,
+          updateQueueBadge, updateTypingStatsFromSession, messagePollDelayMs, kickPoll,
           setPollFastUntilMs, openMessageEventSource, isMobile, useDesktopSessionActions,
           useTouchFileEditorControls, setSidebarOpen, setSidebarCollapsed, clearCommitUnknownSend,
           refreshSessions, loadOlderMessages, applySessionRuntimeFromTail, renderSessionTail,
@@ -987,7 +978,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             setToast,
             clearCommitUnknownSend,
             refreshSessions,
-            getQueueLen: () => currentQueueLen,
+            sessionState,
             getComposerText: () => (textarea ? textarea.value : ""),
             clearComposerInput,
             syncRecoveryUiForSession,
@@ -1124,9 +1115,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           updateQueueBadge,
-          setStatus,
-          setContext,
-          setTyping,
+          sessionState,
           resetChatRenderState,
           getSession: (sessionId) => sessionIndex.get(sessionId),
           isCurrent: (sessionId, generation) => selected === sessionId && pollGen === generation,
@@ -1368,7 +1357,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           getNewSessionDefaults: () => newSessionDefaults,
           sessionLaunchFailed,
           getSending: () => sending,
-          getCurrentRunning: () => currentRunning,
+          sessionState,
           getStagedAttachments: () => attachmentsController.getStagedAttachments(),
           isModalOpen: () => modalIsolationTargets.some(isModalTargetOpen),
           api,

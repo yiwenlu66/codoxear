@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
+SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
 COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 
 
@@ -56,6 +57,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
         vm.runInContext({json.dumps(POLLING_SOURCE)}, ctx);
         vm.runInContext({json.dumps(TRANSCRIPT_SOURCE)}, ctx);
         vm.runInContext({json.dumps(MESSAGE_FLOW_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
         function node() {{
@@ -66,13 +68,14 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
             scrollHeight: 32, disabled: false, focus: () => {{}}, blur: () => {{}},
           }};
         }}
-        function createMessageFlow(state) {{
+        function createMessageFlow(state, sessionState) {{
           const noop = () => {{}};
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
             updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+            sessionState,
             getSelected: () => "busy-session", getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => true, setTurnOpen: noop,
             getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
@@ -107,13 +110,15 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           form.requestSubmit = () => {{}};
           const state = {{ sending: false, apiCalls: [], queueCalls: [], toasts: [] }};
           const noop = () => {{}};
-          const messageFlowController = createMessageFlow(state);
+          const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+          sessionState.applyRuntime({{ running: true }});
+          const messageFlowController = createMessageFlow(state, sessionState);
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
             sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
             getSelected: () => "busy-session", getSessionInfo: () => ({{ agent_backend: "pi" }}),
             sessionLaunchFailed: () => false, getSending: () => state.sending,
-            getCurrentRunning: () => true, getStagedAttachments: () => [],
+            sessionState, getStagedAttachments: () => [],
             api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
             sendText: (...args) => messageFlowController.sendText(...args),
             enqueueComposerText: async (text, options) => {{ state.queueCalls.push({{ text, sid: options.sid }}); return true; }},

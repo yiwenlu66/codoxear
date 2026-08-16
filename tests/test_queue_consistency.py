@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_QUEUE_JS = module_path("app_queue.js")
 APP_SESSION_HELPERS_JS = module_path("app_session_helpers.js")
 APP_MODAL_JS = module_path("app_modal.js")
+APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_node_json(script: str) -> dict:
@@ -62,19 +63,14 @@ def test_queue_snapshots_reconcile_sidebar_header_badge_and_panel_after_each_ope
       vm.createContext(ctx);
       vm.runInContext({json.dumps(APP_MODAL_JS.read_text(encoding="utf-8"))}, ctx);
       vm.runInContext({json.dumps(APP_SESSION_HELPERS_JS.read_text(encoding="utf-8"))}, ctx);
+      vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
       vm.runInContext({json.dumps(APP_QUEUE_JS.read_text(encoding="utf-8"))}, ctx);
+      const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
       const controller = ctx.window.CodoxearQueue.createQueueController({{
         queueBackdrop, queueCloseBtn, queueList, queueEmpty, queueViewer, queueBtn,
         getSelected: () => selected,
         getSessionInfo: (sid) => sessions.get(sid) || null,
-        getQueueLen: () => sessions.get(selected).queue_len,
-        reconcileQueueLen: (sid, value) => {{
-          const count = Number(value);
-          if (!Number.isFinite(count) || count < 0) return;
-          sessions.get(sid).queue_len = Math.floor(count);
-          shell.sidebar = Math.floor(count);
-          shell.header = Math.floor(count);
-        }},
+        sessionState,
         isAppDisposed: () => false,
         api: async () => nextResponses.shift(),
         setToast() {{}}, clearCommitUnknownSend: async () => true,
@@ -82,9 +78,10 @@ def test_queue_snapshots_reconcile_sidebar_header_badge_and_panel_after_each_ope
           const queueLen = nextSessionQueueLens.shift();
           if (queueLen === undefined) throw new Error("missing authoritative session snapshot");
           sessions.get("sid").queue_len = queueLen;
+          sessionState.applyRuntime({{ queueLen }});
           shell.sidebar = queueLen;
           shell.header = queueLen;
-        }}, updateQueueBadge() {{}},
+        }},
         syncRecoveryUiForSession() {{}}, kickPoll() {{}}, setPollFastUntilMs() {{}},
         handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
         el: (tag, attrs = {{}}, children = []) => {{

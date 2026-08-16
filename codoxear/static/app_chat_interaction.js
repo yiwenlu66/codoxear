@@ -17,7 +17,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const getSending = requireFunction(options.getSending, "getSending");
-    const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.applyRuntime !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("chat interaction dependency missing: sessionState");
+    }
     const getSessionEditController = requireFunction(options.getSessionEditController, "getSessionEditController");
     const getQueueController = requireFunction(options.getQueueController, "getQueueController");
     const { wiring, document, storageSetItem, storageRemoveItem, codoxearViewport, codoxearSessions,
@@ -49,10 +52,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       setSending: options.setSending,
       getTurnOpen: options.getTurnOpen,
       setTurnOpen: options.setTurnOpen,
-      getCurrentRunning: options.getCurrentRunning,
-      setCurrentRunning: options.setCurrentRunning,
-      getCurrentSubagentsRunning: options.getCurrentSubagentsRunning,
-      setCurrentSubagentsRunning: options.setCurrentSubagentsRunning,
+      sessionState,
       isAppDisposed: options.isAppDisposed,
       getSessionEditController: options.getSessionEditController,
       getQueueController: options.getQueueController,
@@ -64,8 +64,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       getHistoryController: () => historyController,
       getSendLifecycleController: () => sendLifecycleController,
       getAttachmentsController: () => attachmentsController,
-      setStatus: options.setStatus,
-      setContext: options.setContext,
       $: options.$,
       ATTACH_UPLOAD_MAX_BYTES: options.ATTACH_UPLOAD_MAX_BYTES,
       AbortController: options.AbortController,
@@ -203,9 +201,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       api: options.api,
       handleAppAuthLoss: options.handleAppAuthLoss,
       setTurnOpen: options.setTurnOpen,
-      setStatus: options.setStatus,
-      setContext: options.setContext,
-      getCurrentRunning: options.getCurrentRunning,
+      sessionState,
       syncQueueSubmitState: options.syncQueueSubmitState,
       syncComposerSendButton: options.syncComposerSendButton,
       updateUnattendedBtnState: options.updateUnattendedBtnState,
@@ -228,10 +224,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       setSending: options.setSending,
       getTurnOpen: options.getTurnOpen,
       setTurnOpen: options.setTurnOpen,
-      getCurrentRunning: options.getCurrentRunning,
-      setCurrentRunning: options.setCurrentRunning,
-      getCurrentSubagentsRunning: options.getCurrentSubagentsRunning,
-      setCurrentSubagentsRunning: options.setCurrentSubagentsRunning,
+      sessionState,
       isAppDisposed: options.isAppDisposed,
       getSessionEditController: options.getSessionEditController,
       getQueueController: options.getQueueController,
@@ -239,8 +232,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       upgradeCandidateFileRefs: options.upgradeCandidateFileRefs,
       transcript: transcript,
       history: historyController,
-      setStatus: options.setStatus,
-      setContext: options.setContext,
       $: options.$,
       ATTACH_UPLOAD_MAX_BYTES: options.ATTACH_UPLOAD_MAX_BYTES,
       AbortController: options.AbortController,
@@ -413,7 +404,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       dropPendingUserRows: transcript.dropPendingUserRows, updateSessionTranscriptSlot: transcript.updateSessionTranscriptSlot,
       tailCacheMatchesSession: transcript.tailCacheMatchesSession, applySessionListTranscriptIdentity: transcript.applySessionListTranscriptIdentity,
       updateQueueBadge, updateTypingStatsFromSession: transcript.updateTypingStatsFromSession,
-      setTyping: transcript.setTyping, messagePollDelayMs: sendLifecycleController.messagePollDelayMs,
+      messagePollDelayMs: sendLifecycleController.messagePollDelayMs,
       kickPoll: sendLifecycleController.kickPoll, setPollFastUntilMs: sendLifecycleController.setPollFastUntilMs,
       openMessageEventSource: sendLifecycleController.openMessageEventSource, isMobile, useDesktopSessionActions,
       useTouchFileEditorControls, setSidebarOpen, setSidebarCollapsed, clearCommitUnknownSend, refreshSessions,
@@ -424,7 +415,8 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       renderTranscriptLoading: historyController.renderTranscriptLoading, renderTranscriptLoadError: historyController.renderTranscriptLoadError,
       applyCachedTail: historyController.applyCachedTail, jumpToLatest: historyController.jumpToLatest,
       rememberPendingHashSession: historyController.rememberPendingHashSession,
-      maybeSelectPendingHashSession: historyController.maybeSelectPendingHashSession, getSending, getCurrentRunning,
+      maybeSelectPendingHashSession: historyController.maybeSelectPendingHashSession,
+      dispose: () => transcript.dispose(),
     });
   }
 
