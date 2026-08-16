@@ -2268,6 +2268,12 @@ select {
         gap: var(--space-3);
         flex-wrap: wrap;
         justify-content: flex-end;
+        /* Base .actions sets overflow-x: auto, which computes overflow-y to
+           auto as well and clips the row to the 32px button height. That cut
+           the top/bottom of the #fileEditBtn.dirty outline ring, leaving two
+           meaningless side bars. This row wraps instead of scrolling, so
+           restore visible overflow and let the dirty ring render in full. */
+        overflow: visible;
       }
       #fileEditBtn {
         min-width: var(--ctl-chrome);
