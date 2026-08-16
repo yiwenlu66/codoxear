@@ -1,16 +1,6 @@
 {
   "violations": [
     {
-      "check": "bag-spread",
-      "file": "app_transcript.js",
-      "name": "appendTailEvents"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_transcript_view.js",
-      "name": "createTranscriptViewController"
-    },
-    {
       "check": "global-registration",
       "file": "app_application.js",
       "name": "window.codoxearPerf"

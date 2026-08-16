@@ -323,7 +323,15 @@
     }
 
     function appendTailEvents(sessionId, events, options = {}) {
-      return appendTailSnapshotEvents(tailCache, sessionLookup, sessionId, events, { ...options, maxEvents: maxTailEvents });
+      return appendTailSnapshotEvents(tailCache, sessionLookup, sessionId, events, {
+        session: options.session,
+        identityData: options.identityData,
+        liveCursor: options.liveCursor,
+        busy: options.busy,
+        queueLen: options.queueLen,
+        token: options.token,
+        maxEvents: maxTailEvents,
+      });
     }
 
     function snapshot() {

@@ -24,6 +24,20 @@ def test_transcript_view_serializes_append_prepend_and_replace() -> None:
         const vm = require("vm");
         const source = __SOURCE__;
         const calls = [];
+        let renderOptions = null;
+        let safeRowDeps = null;
+        const rowDependencyBag = {
+          el: () => ({}), chatMarkdownHtmlCached: () => "", upgradeCandidateFileRefs: () => {},
+          time24: () => "", iconSvg: () => "", copyToClipboard: () => {}, setToast: () => {},
+          chatAssistantDedupeKey: () => "", setTimeout: () => {}, consoleError: () => {},
+        };
+        const renderDependencyBag = {
+          normalizeEvents: () => [], consumePendingUserIfMatches: () => false, isDuplicateEvent: () => false,
+          isAdjacentAssistantDuplicateEvent: () => false, markEventSeen: () => {}, markFirstPaint: () => {},
+          restorePendingRows: () => {}, resetRecentEvents: () => {}, setOlderState: () => {},
+          firstVisibleMessageRow: () => null, getScrollTop: () => 44, getSelectedSessionId: () => "session",
+          domRuntime: {}, scrollRuntime: null, typingRowRuntime: { anchor: () => ({}) }, historySlackRows: 1,
+        };
         let atBottom = true;
         const scroll = {
           snapshot: () => ({ renderedAtLiveTail: true }),
@@ -46,28 +60,45 @@ def test_transcript_view_serializes_append_prepend_and_replace() -> None:
           document: {},
           el: () => ({ appendChild: () => {}, dataset: {} }),
           messageRows: {
-            safeMakeRow: () => ({ row: {} }),
+            safeMakeRow: (event, rowOptions, deps) => { safeRowDeps = deps; return { row: {} }; },
             renderedMessageRows: () => [], loadedUserMessageRows: () => [], loadedCopyMessageRows: () => [],
             rowSearchText: () => "", clearChatSearchMarks: () => {}, applyChatSearchMarks: () => {},
             oldestRenderedHistoryCursor: () => null, firstVisibleMessageRow: () => null,
           },
           transcript: {
-            createTranscriptRenderRuntime: () => ({
-              appendEvent: (event) => { calls.push(["append", event.text]); return true; },
-              prependOlderEvents: (events) => { calls.push(["prepend", events.map((event) => event.text)]); return true; },
-              renderTranscript: (events) => { calls.push(["replace", events.map((event) => event.text)]); return true; },
-              renderDetachedTranscriptWindow: () => true,
-            }),
+            createTranscriptRenderRuntime: (options) => {
+              renderOptions = options;
+              return {
+                appendEvent: (event) => { calls.push(["append", event.text]); return true; },
+                prependOlderEvents: (events) => { calls.push(["prepend", events.map((event) => event.text)]); return true; },
+                renderTranscript: (events) => { calls.push(["replace", events.map((event) => event.text)]); return true; },
+                renderDetachedTranscriptWindow: () => true,
+              };
+            },
           },
           getSelectedSessionId: () => "session",
-          getMessageRowDeps: () => ({}),
+          getMessageRowDeps: () => rowDependencyBag,
           policyRuntime: { domRuntime: {}, scrollRuntime: scroll, setOlderState: (state) => calls.push(["older", state]), getScrollTop: () => 44 },
-          renderRuntime: { normalizeEvents: () => [], consumePendingUserIfMatches: () => false, isDuplicateEvent: () => false,
-            isAdjacentAssistantDuplicateEvent: () => false, markEventSeen: () => {}, markFirstPaint: () => {},
-            restorePendingRows: () => {}, resetRecentEvents: () => {}, firstVisibleMessageRow: () => null,
-            getScrollTop: () => 44, getSelectedSessionId: () => "session", domRuntime: {}, scrollRuntime: scroll,
-            typingRowRuntime: { anchor: () => ({}) }, setOlderState: () => {}, historySlackRows: 1 },
+          renderRuntime: {
+            normalizeEvents: renderDependencyBag.normalizeEvents,
+            consumePendingUserIfMatches: renderDependencyBag.consumePendingUserIfMatches,
+            isDuplicateEvent: renderDependencyBag.isDuplicateEvent,
+            isAdjacentAssistantDuplicateEvent: renderDependencyBag.isAdjacentAssistantDuplicateEvent,
+            markEventSeen: renderDependencyBag.markEventSeen,
+            markFirstPaint: renderDependencyBag.markFirstPaint,
+            restorePendingRows: renderDependencyBag.restorePendingRows,
+            resetRecentEvents: renderDependencyBag.resetRecentEvents,
+            setOlderState: renderDependencyBag.setOlderState,
+            firstVisibleMessageRow: renderDependencyBag.firstVisibleMessageRow,
+            getScrollTop: renderDependencyBag.getScrollTop,
+            getSelectedSessionId: renderDependencyBag.getSelectedSessionId,
+            domRuntime: renderDependencyBag.domRuntime,
+            scrollRuntime: scroll,
+            typingRowRuntime: renderDependencyBag.typingRowRuntime,
+            historySlackRows: renderDependencyBag.historySlackRows,
+          },
         });
+        renderOptions.safeMakeRow({ role: "assistant", text: "row" }, {});
         controller.setHistory({ cursor: "cursor-1", nextHasMore: true });
         controller.appendEvents([{ text: "live" }]);
         atBottom = false;
@@ -77,7 +108,22 @@ def test_transcript_view_serializes_append_prepend_and_replace() -> None:
         controller.prependEvents([{ text: "older" }], { cursor: "cursor-0", nextHasMore: true });
         const browsing = controller.state();
         controller.replaceWith([{ text: "latest" }]);
-        process.stdout.write(JSON.stringify({ calls, began, browsing, final: controller.state() }));
+        const renderKeys = [
+          "normalizeEvents", "consumePendingUserIfMatches", "isDuplicateEvent", "isAdjacentAssistantDuplicateEvent",
+          "markEventSeen", "markFirstPaint", "restorePendingRows", "resetRecentEvents", "setOlderState",
+          "firstVisibleMessageRow", "getScrollTop", "getSelectedSessionId", "domRuntime", "scrollRuntime",
+          "typingRowRuntime", "historySlackRows",
+        ];
+        const rowKeys = [
+          "el", "chatMarkdownHtmlCached", "upgradeCandidateFileRefs", "time24", "iconSvg", "copyToClipboard",
+          "setToast", "chatAssistantDedupeKey", "setTimeout", "consoleError",
+        ];
+        process.stdout.write(JSON.stringify({
+          calls, began, browsing, final: controller.state(),
+          renderRuntimeContract: renderKeys.every((key) => renderOptions[key] === (key === "scrollRuntime" ? scroll : renderDependencyBag[key])) &&
+            renderOptions.root === root && renderOptions.bottomSentinel !== null && typeof renderOptions.safeMakeRow === "function",
+          messageRowContract: rowKeys.every((key) => safeRowDeps[key] === rowDependencyBag[key]) && safeRowDeps.selectedSessionId === "session",
+        }));
         """
     ).replace("__SOURCE__", json.dumps(VIEW_JS.read_text(encoding="utf-8")))
     result = run_node(script)
@@ -91,6 +137,8 @@ def test_transcript_view_serializes_append_prepend_and_replace() -> None:
     }
     assert result["final"]["state"] == "LIVE"
     assert result["final"]["hasMore"] is False
+    assert result["renderRuntimeContract"] is True
+    assert result["messageRowContract"] is True
     assert ["append", "live"] in result["calls"]
     assert ["prepend", ["older"]] in result["calls"]
     assert ["append", "queued"] in result["calls"]

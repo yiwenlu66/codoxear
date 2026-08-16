@@ -32,22 +32,48 @@
     const scrollRuntime = requireObject(policyRuntime.scrollRuntime, "policyRuntime.scrollRuntime");
     const setOlderState = requireFunction(policyRuntime.setOlderState, "policyRuntime.setOlderState");
     const getScrollTop = requireFunction(policyRuntime.getScrollTop, "policyRuntime.getScrollTop");
-    const safeMakeRow = (event, rowOptions) =>
-      requireFunction(messageRows.safeMakeRow, "messageRows.safeMakeRow")(event, rowOptions, {
-        ...getMessageRowDeps(),
+    const safeMakeRow = (event, rowOptions) => {
+      const rowDeps = getMessageRowDeps();
+      return requireFunction(messageRows.safeMakeRow, "messageRows.safeMakeRow")(event, rowOptions, {
+        el: rowDeps?.el,
+        chatMarkdownHtmlCached: rowDeps?.chatMarkdownHtmlCached,
+        upgradeCandidateFileRefs: rowDeps?.upgradeCandidateFileRefs,
+        time24: rowDeps?.time24,
+        iconSvg: rowDeps?.iconSvg,
+        copyToClipboard: rowDeps?.copyToClipboard,
+        setToast: rowDeps?.setToast,
+        chatAssistantDedupeKey: rowDeps?.chatAssistantDedupeKey,
+        setTimeout: rowDeps?.setTimeout,
+        consoleError: rowDeps?.consoleError,
         selectedSessionId: getSelectedSessionId(),
       });
+    };
 
     function renderedMessageRows() {
       return requireFunction(messageRows.renderedMessageRows, "messageRows.renderedMessageRows")(root);
     }
 
     const renderRuntime = requireFunction(transcript.createTranscriptRenderRuntime, "transcript.createTranscriptRenderRuntime")({
-      ...options.renderRuntime,
       document: options.document,
       bottomSentinel,
       root,
       safeMakeRow,
+      normalizeEvents: options.renderRuntime?.normalizeEvents,
+      consumePendingUserIfMatches: options.renderRuntime?.consumePendingUserIfMatches,
+      isDuplicateEvent: options.renderRuntime?.isDuplicateEvent,
+      isAdjacentAssistantDuplicateEvent: options.renderRuntime?.isAdjacentAssistantDuplicateEvent,
+      markEventSeen: options.renderRuntime?.markEventSeen,
+      markFirstPaint: options.renderRuntime?.markFirstPaint,
+      restorePendingRows: options.renderRuntime?.restorePendingRows,
+      resetRecentEvents: options.renderRuntime?.resetRecentEvents,
+      setOlderState: options.renderRuntime?.setOlderState,
+      firstVisibleMessageRow: options.renderRuntime?.firstVisibleMessageRow,
+      getScrollTop: options.renderRuntime?.getScrollTop,
+      getSelectedSessionId: options.renderRuntime?.getSelectedSessionId,
+      domRuntime: options.renderRuntime?.domRuntime,
+      scrollRuntime: options.renderRuntime?.scrollRuntime,
+      typingRowRuntime: options.renderRuntime?.typingRowRuntime,
+      historySlackRows: options.renderRuntime?.historySlackRows,
     });
 
     let currentState = VIEW_STATES.LIVE;
