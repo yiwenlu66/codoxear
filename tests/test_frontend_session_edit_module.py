@@ -71,7 +71,6 @@ def eval_session_edit_lifecycle() -> dict:
           const snoozeButtons = new Map([["none", makeNode()], ["4h", makeNode()], ["tomorrow", makeNode()], ["custom", makeNode()]]);
           const session = {{ session_id: "session-1", alias, priority_offset: 0, snooze_until: 0, dependency_session_id: "", cwd: "/repo" }};
           const calls = [];
-          const unsavedPromptCalls = [];
           let renderedTitle = alias;
           const controller = ctx.window.CodoxearSessionEdit.createSessionEditController({{
             documentTarget: {{ activeElement: makeNode() }}, ElementCtor: ElementStub, el, iconSvg: () => "",
@@ -79,16 +78,6 @@ def eval_session_edit_lifecycle() -> dict:
             editPriorityResetBtn, editSnoozeModeButtons: snoozeButtons, editSnoozeCustomDate,
             editSnoozeCustomTime, editSnoozeCustomRow, editDependencyBtn, editDependencyMenu,
             editSaveBtn, editCancelBtn, editViewer,
-            fileUnsavedDialogRuntime: {{
-              promptChoice: (activeElement, ctor) => {{ unsavedPromptCalls.push({{ activeMatches: activeElement !== null, ctorMatches: ctor === ElementStub }}); return Promise.resolve("discard"); }},
-              hide: () => "cancel",
-            }},
-            fileViewerController: {{
-              maybeHandleUnsavedFileChanges: () => false,
-              handleFileUnsavedSaveChoice: () => undefined,
-              handleFileUnsavedDiscardChoice: () => undefined,
-              handleFileUnsavedCancelChoice: () => undefined,
-            }},
             getSessionInfo: (sid) => sid === session.session_id ? session : null,
             getSessions: () => [session], sessionState: {{ get: () => selected }},
             sessionDisplayName: (entry) => entry.alias || "Conversation title", baseName: (value) => value.split("/").pop(),
@@ -99,7 +88,7 @@ def eval_session_edit_lifecycle() -> dict:
             prepareModalOpen: () => {{}}, afterModalVisibilityChanged: () => {{}}, positionDialogMenu: () => {{}},
             addAppEvent: () => {{}}, now: () => Date.UTC(2026, 0, 1, 12, 0, 0), HTMLElementCtor: ElementStub,
           }});
-          return {{ controller, editNameInput, editSaveBtn, editCancelBtn, editViewer, calls, unsavedPromptCalls, title: () => renderedTitle }};
+          return {{ controller, editNameInput, editSaveBtn, editCancelBtn, editViewer, calls, title: () => renderedTitle }};
         }}
 
         const ctx = {{ window: {{}}, ElementStub }};
@@ -115,13 +104,10 @@ def eval_session_edit_lifecycle() -> dict:
           cancel.controller.openEditSession("session-1");
           cancel.editNameInput.value = "Discarded";
           cancel.editCancelBtn.onclick();
-          cancel.controller.promptFileUnsavedChoice().then((unsavedChoice) => {{
-            process.stdout.write(JSON.stringify({{
-              save: {{ title: save.title(), closed: !save.editViewer.open, calls: save.calls }},
-              cancel: {{ title: cancel.title(), closed: !cancel.editViewer.open, calls: cancel.calls }},
-              unsaved: {{ choice: unsavedChoice, calls: cancel.unsavedPromptCalls }},
-            }}));
-          }});
+          process.stdout.write(JSON.stringify({{
+            save: {{ title: save.title(), closed: !save.editViewer.open, calls: save.calls }},
+            cancel: {{ title: cancel.title(), closed: !cancel.editViewer.open, calls: cancel.calls }},
+          }}));
         }});
         """
     )
@@ -152,10 +138,6 @@ class TestFrontendSessionEditModule(unittest.TestCase):
         self.assertEqual(result["cancel"]["title"], "Original")
         self.assertTrue(result["cancel"]["closed"])
         self.assertEqual(result["cancel"]["calls"], [])
-    def test_unsaved_choice_returns_dialog_action(self) -> None:
-        result = eval_session_edit_lifecycle()
-        self.assertEqual(result["unsaved"]["choice"], "discard")
-        self.assertEqual(result["unsaved"]["calls"], [{"activeMatches": True, "ctorMatches": True}])
 
 
 if __name__ == "__main__":

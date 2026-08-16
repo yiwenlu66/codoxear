@@ -1,6 +1,12 @@
 {
   "violations": [
     {
+      "check": "select-undercoverage",
+      "file": "app_message_flow.js",
+      "name": "createMessageFlowController.appendEvent",
+      "reason": "appendEvents is the supplied production path; appendEvent is a legacy fallback required only when appendEvents is absent."
+    },
+    {
       "check": "global-registration",
       "file": "app_application.js",
       "name": "window.codoxearPerf"

@@ -5,9 +5,7 @@ const global = window;
     const {
       documentTarget = global.document,
       ElementCtor = global.HTMLElement,
-      root,
       el,
-      iconSvg,
       editCloseBtn,
       editStatus,
       editNameInput,
@@ -23,8 +21,6 @@ const global = window;
       editSaveBtn,
       editCancelBtn,
       editViewer,
-      fileUnsavedDialogRuntime,
-      fileViewerController,
       getSessionInfo,
       getSessions,
       sessionState,
@@ -195,14 +191,6 @@ const global = window;
       }
     }
 
-    function promptFileUnsavedChoice() {
-      return fileUnsavedDialogRuntime.promptChoice(documentTarget.activeElement, HTMLElementCtor);
-    }
-    function hideFileUnsavedDialog(choice = "cancel") { return fileUnsavedDialogRuntime.hide(choice); }
-    function maybeHandleUnsavedFileChanges() { return fileViewerController.maybeHandleUnsavedFileChanges(); }
-    function handleFileUnsavedSaveChoice() { return fileViewerController.handleFileUnsavedSaveChoice(); }
-    function handleFileUnsavedDiscardChoice() { return fileViewerController.handleFileUnsavedDiscardChoice(); }
-    function handleFileUnsavedCancelChoice() { return fileViewerController.handleFileUnsavedCancelChoice(); }
 
     editPriorityRange.oninput = syncEditPriorityLabel;
     editPriorityResetBtn.onclick = () => { editPriorityRange.value = "0"; syncEditPriorityLabel(); };
@@ -221,23 +209,12 @@ const global = window;
       const target = event.target instanceof ElementCtor ? event.target : null;
       if (target && dependencyMenuOpen && !target.closest("#editDependencyBtn") && !target.closest("#editDependencyMenu")) closeDependencyMenu();
     });
-    if (fileUnsavedDialogRuntime) {
-      const save = fileUnsavedDialogRuntime.saveButton || (root && root.querySelector && root.querySelector("#fileUnsavedSaveBtn"));
-      void save;
-    }
-
     return {
       viewer: editViewer,
       openEditSession,
       hideEditSession,
       applyMenus,
       closeDependencyMenu,
-      promptFileUnsavedChoice,
-      hideFileUnsavedDialog,
-      maybeHandleUnsavedFileChanges,
-      handleFileUnsavedSaveChoice,
-      handleFileUnsavedDiscardChoice,
-      handleFileUnsavedCancelChoice,
     };
   }
 
