@@ -3,37 +3,12 @@
     {
       "check": "pass-through-factory",
       "file": "app_wiring.js",
-      "name": "createChatInteractionOptions"
-    },
-    {
-      "check": "pass-through-factory",
-      "file": "app_wiring.js",
       "name": "createFileOpsOptions"
     },
     {
       "check": "pass-through-factory",
       "file": "app_wiring.js",
       "name": "createSessionDisplayOptions"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_application_composition.js",
-      "name": "wiring.createChatInteractionOptions"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_chat_interaction.js",
-      "name": "historyModule.createMessageHistoryController"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_chat_interaction.js",
-      "name": "sendModule.createSendLifecycleController"
-    },
-    {
-      "check": "bag-spread",
-      "file": "app_chat_interaction.js",
-      "name": "transcriptModule.createTranscriptRenderController"
     },
     {
       "check": "bag-spread",
