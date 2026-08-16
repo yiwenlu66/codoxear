@@ -853,6 +853,13 @@
       .networkBanner[hidden] {
         display: none;
       }
+      /* Chrome rows are never scroll containers. The 44px hit areas on
+         chrome .icon-btn::after (inset: -6px) and form controls (inset: -2px)
+         are absolutely positioned, so they inflate the scrollable overflow
+         area of any ancestor with non-visible overflow: a scrollable .actions
+         row gains permanent phantom scrollbars on both axes (overflow-x: auto
+         computes overflow-y to auto too) and clips anything painted outside a
+         button's border box. Buttons in these rows fit or wrap instead. */
       .actions {
         display: flex;
         gap: var(--space-3);
@@ -860,11 +867,6 @@
         flex-wrap: nowrap;
         justify-content: flex-end;
         align-items: center;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      .actions::-webkit-scrollbar {
-        display: none;
       }
       .topActions {
         align-items: center;
@@ -2263,12 +2265,6 @@ select {
         gap: var(--space-3);
         flex-wrap: wrap;
         justify-content: flex-end;
-        /* Base .actions sets overflow-x: auto, which computes overflow-y to
-           auto as well and clips the row to the 32px button height. That cut
-           the top/bottom of the #fileEditBtn.dirty outline ring, leaving two
-           meaningless side bars. This row wraps instead of scrolling, so
-           restore visible overflow and let the dirty ring render in full. */
-        overflow: visible;
       }
       #fileEditBtn {
         min-width: var(--ctl-chrome);
@@ -3161,6 +3157,12 @@ select {
         gap: var(--space-3);
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        /* Chips are real scrolling content, but their form-control hit area
+           (::after inset: -2px) inflates the scrollable overflow area by 2px
+           on every side, producing phantom scrollbars when the row fits. The
+           2px geometry padding absorbs the outset into the padding box, so
+           scrollbars appear only on genuine chip overflow. */
+        padding: 2px;
       }
       #editViewer .choiceChips {
         flex-wrap: wrap;
@@ -3302,6 +3304,12 @@ select {
         align-items: center;
         justify-content: space-between;
         gap: var(--space-4);
+      }
+      /* Crowded dialog headers (e.g. Details with two copy buttons) wrap
+         instead of scrolling or spilling; .actions rows are never scroll
+         containers. */
+      .queueHeader .actions {
+        flex-wrap: wrap;
       }
       .queueHeader .title {
         font-size: var(--font-lg);

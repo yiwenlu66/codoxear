@@ -229,6 +229,16 @@ browser eval '(() => {
   const sidebar = document.querySelector(".sidebar");
   const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : 0;
   const bundleLoaded = Boolean(document.querySelector("script[type=\"module\"][src*=\"dist/app.bundle.js\"]"));
+  const chromeRows = Array.from(document.querySelectorAll(".actions, .choiceChips")).map((element) => {
+    const style = getComputedStyle(element);
+    const scrollable = /(auto|scroll)/.test(style.overflowX + " " + style.overflowY);
+    return {
+      id: element.id || element.className,
+      scrollable,
+      dx: element.scrollWidth - element.clientWidth,
+      dy: element.scrollHeight - element.clientHeight,
+    };
+  });
   return {
     appBootstrapped: window.__codoxearAppBootstrapped === true,
     loadError: window.__codoxearLoadError ?? null,
@@ -237,6 +247,7 @@ browser eval '(() => {
     sidebarVisible: visible(sidebar),
     sidebarContent: String(sidebar?.innerText || "").trim().length,
     bundleLoaded,
+    chromeRows,
     visibleLoadFailure: /codoxear failed to load|error: unable to contact server/i.test(String(document.body?.innerText || ""))
   };
 })()' --json > "$artifacts/browser-report.json" 2>&1 || fail "DOM verification evaluation failed"
@@ -306,6 +317,21 @@ fatal_console_errors = [
     )
 ]
 checks["no_fatal_console_errors"] = not fatal_console_errors
+# Chrome rows must never become scroll containers: their absolutely positioned
+# hit-area pseudo elements otherwise inflate the scrollable overflow area and
+# produce permanent phantom scrollbars. Chip rows may scroll horizontally for
+# genuine overflow, but never vertically from the 2px hit-area outset.
+chrome_rows = report.get("chromeRows")
+if not isinstance(chrome_rows, list):
+    raise SystemExit(f"agent-browser eval did not return chromeRows: {report!r}")
+checks["chrome_rows_not_scrollable"] = all(
+    isinstance(row, dict) and (row.get("scrollable") is False or str(row.get("id") or "").endswith("choiceChips"))
+    for row in chrome_rows
+) and any(isinstance(row, dict) and "voiceActions" in str(row.get("id") or "") for row in chrome_rows)
+checks["chip_rows_no_vertical_phantom"] = all(
+    not isinstance(row, dict) or not str(row.get("id") or "").endswith("choiceChips") or (row.get("dy") or 0) <= 0
+    for row in chrome_rows
+)
 summary = {
     "pass": all(checks.values()),
     "checks": checks,
