@@ -37,3 +37,18 @@
 
 ## 2026-08-16 17:36:20 +0800
 - Committed the role-based correction as 16082b8a (Define form dialog typography by role). The commit covers AGENTS.md, codoxear/static/app.css, and the renamed role-invariant test only; unrelated untracked workspace paths remained untouched.
+
+## 2026-08-16 19:33:08 +0800
+- User challenged the role-based revision again: “think again. do you really need so many variants?” The 13px vs 14px primary split is now suspect because a 1px difference is unlikely to carry a meaningful role distinction and may preserve the original accretion under a new rationale.
+- Launched async critic abb5d1c2-0815-4a81-8b29-5d52857e4ab1 to challenge the frame and evaluate a stricter two-tier desktop system: 14px primary dialog text, 12px true metadata, 16px only mobile entry anti-zoom.
+
+## 2026-08-16 19:43:07 +0800
+- Critic abb5d1c2-0815-4a81-8b29-5d52857e4ab1 challenged the proposed two-tier collapse. Its decisive observation: 13px versus 14px is not a dialog-private distinction but the app-wide chrome/content boundary (buttons/sidebar/menu rows versus entries/picker values/titles). Collapsing dialog labels/actions to 14 would require container-scoped overrides and increase system-level variance; collapsing values to 13 would fragment entry typography across dialogs, chat search, and composer.
+- Revised the design claim: the correct simplification is zero dialog-owned text sizes, not one primary pixel size inside dialogs. Dialogs sit on shared planes: 13px chrome, 14px content, 12px meta, with 16px reserved for mobile entry anti-zoom.
+- Updated AGENTS.md to state the ownership invariant explicitly instead of enumerating what looked like four dialog variants.
+- Strengthened tests/test_form_typography_roles.py so .formViewer, .formDialog, #editViewer, #newSessionViewer, and .formActions cannot declare font-size. Focused test: 6 passed.
+
+## 2026-08-16 19:45:52 +0800
+- Full-suite rerun after the ownership-doc/test hardening produced 1671 passed and 1 failure in tests/test_chat_scrollback_source.py::TestChatScrollbackSource::test_open_session_tail_request_aborts_superseded_open. The failure is caused by concurrent unrelated uncommitted transcript-replacement work in codoxear/static/app_session_lifecycle.js that added a required invalidateOlderLoad dependency without updating that VM harness. Those files were not staged or changed for this typography task.
+- Focused typography tests remained green: 6 passed. The prior full suite for the completed typography code was 1672 passed, 103 subtests.
+- Committed the ownership clarification as 623d659a (Clarify form typography ownership invariant), containing only AGENTS.md and tests/test_form_typography_roles.py.
