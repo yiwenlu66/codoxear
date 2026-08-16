@@ -247,10 +247,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           appEventCleanups.push(() => target.removeEventListener(type, handler, options));
           return handler;
         }
-        const codoxearEventBindings = CodoxearEventBindings;
-        if (!codoxearEventBindings || typeof codoxearEventBindings.createEventBindings !== "function")
-          throw new Error("Codoxear event bindings failed to load");
-        const eventBindings = codoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
+        const eventBindings = CodoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;

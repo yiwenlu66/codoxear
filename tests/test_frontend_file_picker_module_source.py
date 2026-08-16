@@ -25,14 +25,6 @@ def run_picker_module_probe() -> dict[str, object]:
         vm.runInContext({json.dumps(helper_source)}, ctx);
         vm.runInContext({json.dumps(picker_source)}, ctx);
         const picker = ctx.window.CodoxearFilePicker;
-        let missingError = "";
-        const missingCtx = {{ window: {{}} }};
-        vm.createContext(missingCtx);
-        try {{
-          vm.runInContext({json.dumps(picker_source)}, missingCtx);
-        }} catch (err) {{
-          missingError = err && err.message ? err.message : String(err);
-        }}
         let hostError = "";
         try {{
           picker.createSearchState({{}});
@@ -192,7 +184,6 @@ def run_picker_module_probe() -> dict[str, object]:
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(picker),
           exports: Object.keys(picker).sort(),
-          missingError,
           hostError,
           menuHostError,
           domHostError,
@@ -566,7 +557,6 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
                 "visibleFilePickerEntries",
             ],
         )
-        self.assertContains("Codoxear file picker helpers failed to load", result["missingError"])
         self.assertContains("Codoxear file picker host missing blocked", result["hostError"])
         self.assertContains("Codoxear file picker host missing normalizeLineNumber", result["menuHostError"])
         self.assertContains("Codoxear file picker host missing snapshot", result["domHostError"])

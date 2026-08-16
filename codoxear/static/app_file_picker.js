@@ -1,16 +1,6 @@
 import * as CodoxearFileHelpers from "./app_file_helpers.js";
 
 
-const fileHelpers = CodoxearFileHelpers;
-  if (
-    !fileHelpers ||
-    typeof fileHelpers.normalizeDraftFilePath !== "function" ||
-    typeof fileHelpers.filePickerCandidateScore !== "function" ||
-    typeof fileHelpers.compareFilePickerEntries !== "function" ||
-    typeof fileHelpers.filePickerMatchRangesForQuery !== "function"
-  )
-    throw new Error("Codoxear file picker helpers failed to load");
-
   function requireFunction(host, name) {
     const value = host && host[name];
     if (typeof value !== "function") throw new Error(`Codoxear file picker host missing ${name}`);
@@ -60,7 +50,7 @@ const fileHelpers = CodoxearFileHelpers;
   }
 
   function prependPendingSessionPathEntry(entries, query) {
-    const draftPath = fileHelpers.normalizeDraftFilePath(query);
+    const draftPath = CodoxearFileHelpers.normalizeDraftFilePath(query);
     if (!draftPath) return entries;
     if (entries.some((entry) => entry.path === draftPath && !entry.gitPath)) return entries;
     if (!entries.some((entry) => entry.path === draftPath && entry.gitPath)) return entries;
@@ -77,19 +67,19 @@ const fileHelpers = CodoxearFileHelpers;
       if (seen.has(key)) continue;
       const entry = entryForKey(key);
       if (!entry) continue;
-      const score = fileHelpers.filePickerCandidateScore(entry.path, query);
+      const score = CodoxearFileHelpers.filePickerCandidateScore(entry.path, query);
       if (score < 0) continue;
       seen.add(key);
       const pickerEntry = pickerEntryForKey(key, { score });
       if (pickerEntry) out.push(pickerEntry);
     }
-    normalizeSamePathFilePickerScores(out).sort(fileHelpers.compareFilePickerEntries);
+    normalizeSamePathFilePickerScores(out).sort(CodoxearFileHelpers.compareFilePickerEntries);
     return out.slice(0, 120);
   }
 
   function prependDraftFileEntry(entries, query, context) {
     if (context && typeof context.draftSuppressed === "function" && context.draftSuppressed()) return entries;
-    const draftPath = fileHelpers.normalizeDraftFilePath(query);
+    const draftPath = CodoxearFileHelpers.normalizeDraftFilePath(query);
     if (draftPath && !entries.some((entry) => entry.path === draftPath)) {
       return [requireFunction(context, "draftEntry")(draftPath), ...entries];
     }
@@ -268,7 +258,7 @@ const fileHelpers = CodoxearFileHelpers;
     const createTextNode = requireFunction(host, "createTextNode");
     const value = String(text || "");
     const span = createEl("span", { class: "fileMenuPath" });
-    const ranges = String(query || "").trim() ? fileHelpers.filePickerMatchRangesForQuery(value, query) : [];
+    const ranges = String(query || "").trim() ? CodoxearFileHelpers.filePickerMatchRangesForQuery(value, query) : [];
     if (!ranges.length) {
       span.textContent = value;
       parent.appendChild(span);
@@ -630,12 +620,12 @@ const fileHelpers = CodoxearFileHelpers;
       const entry = entryForKey(key);
       if (!entry) continue;
       if (searchResultPaths.has(entry.path) && !entry.gitPath && !normalizeFileApiPath(entry.apiPath)) continue;
-      const score = fileHelpers.filePickerCandidateScore(entry.path, query);
+      const score = CodoxearFileHelpers.filePickerCandidateScore(entry.path, query);
       if (score < 0) continue;
       const pickerEntry = pickerEntryForKey(key, { score });
       if (pickerEntry) out.push(pickerEntry);
     }
-    normalizeSamePathFilePickerScores(out).sort(fileHelpers.compareFilePickerEntries);
+    normalizeSamePathFilePickerScores(out).sort(CodoxearFileHelpers.compareFilePickerEntries);
     const limited = out.slice(0, 120);
     return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query, context);
   }

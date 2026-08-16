@@ -121,15 +121,11 @@ const global = window;
         return CodoxearDisplay.defaultButtonTooltip(attrs, node);
       }
 
-      // Voice helpers + the voice/settings/notification/announcement
-      // orchestration controller now live in codoxear/static/app_voice.js
-      // (loaded after app_voice_helpers.js and before app.js). app.js fails
-      // loud here if either module is missing; the controller itself
-      // additionally validates every helper API it consumes.
+      // Voice helpers and the voice/settings/notification/announcement
+      // controller live in codoxear/static/app_voice.js. ESM surfaces a missing
+      // module during loading; controllers validate their injected options.
 
-      const codoxearDom = CodoxearDom;
-      if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
-      const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
+      const el = (tag, attrs = {}, children = []) => CodoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
 
       function pushPerfSample(name, valueMs) {
         return CodoxearPerf.pushSample(name, valueMs);
@@ -140,16 +136,8 @@ const global = window;
 
       window.codoxearPerf = summarizePerf;
 
-      const codoxearUrls = CodoxearUrls;
-      if (
-        !codoxearUrls ||
-        typeof codoxearUrls.resolveAppUrl !== "function" ||
-        typeof codoxearUrls.sessionIdFromHash !== "function" ||
-        typeof codoxearUrls.setSessionHash !== "function"
-      )
-        throw new Error("Codoxear URL helpers failed to load");
       function resolveAppUrl(path) {
-        return codoxearUrls.resolveAppUrl(path);
+        return CodoxearUrls.resolveAppUrl(path);
       }
       function versionedShellAssetPath(path) {
         const version = String(window.CODOXEAR_ASSET_VERSION || "").trim();
@@ -287,107 +275,70 @@ const global = window;
       }
 
       function sessionIdFromHash() {
-        return codoxearUrls.sessionIdFromHash();
+        return CodoxearUrls.sessionIdFromHash();
       }
 
       function setSessionHash(sessionId) {
-        codoxearUrls.setSessionHash(sessionId);
+        CodoxearUrls.setSessionHash(sessionId);
       }
 
-      const codoxearSessionHelpers = CodoxearSessionHelpers;
-      if (
-        !codoxearSessionHelpers ||
-        !Array.isArray(codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS) ||
-        typeof codoxearSessionHelpers.sessionLaunchFailed !== "function" ||
-        typeof codoxearSessionHelpers.sessionLaunchPending !== "function" ||
-        typeof codoxearSessionHelpers.sessionLaunchKind !== "function" ||
-        typeof codoxearSessionHelpers.sessionLaunchIcon !== "function" ||
-        typeof codoxearSessionHelpers.sessionHasUnknownSend !== "function" ||
-        typeof codoxearSessionHelpers.sessionIsOrphanRecovery !== "function" ||
-        typeof codoxearSessionHelpers.sessionHasOrphanQueueRecovery !== "function" ||
-        typeof codoxearSessionHelpers.sessionSidebarGroupKey !== "function" ||
-        typeof codoxearSessionHelpers.sidebarSessionEntries !== "function" ||
-        typeof codoxearSessionHelpers.sidebarRenderSignature !== "function" ||
-        typeof codoxearSessionHelpers.sessionSelectable !== "function" ||
-        typeof codoxearSessionHelpers.sessionIsFast !== "function" ||
-        typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function" ||
-        typeof codoxearSessionHelpers.diagnosticsCopyText !== "function" ||
-        typeof codoxearSessionHelpers.normalizeQueueItems !== "function"
-      )
-        throw new Error("Codoxear session helpers failed to load");
-      const SESSION_SIDEBAR_GROUPS = codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;
+      const SESSION_SIDEBAR_GROUPS = CodoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;
 
       function sessionLaunchKind(s) {
-        return codoxearSessionHelpers.sessionLaunchKind(s);
+        return CodoxearSessionHelpers.sessionLaunchKind(s);
       }
 
       function sessionLaunchIcon(s) {
-        return codoxearSessionHelpers.sessionLaunchIcon(s);
+        return CodoxearSessionHelpers.sessionLaunchIcon(s);
       }
 
       function sessionLaunchFailed(s) {
-        return codoxearSessionHelpers.sessionLaunchFailed(s);
+        return CodoxearSessionHelpers.sessionLaunchFailed(s);
       }
 
       function sessionLaunchPending(s) {
-        return codoxearSessionHelpers.sessionLaunchPending(s);
+        return CodoxearSessionHelpers.sessionLaunchPending(s);
       }
 
       function sessionHasUnknownSend(s) {
-        return codoxearSessionHelpers.sessionHasUnknownSend(s);
+        return CodoxearSessionHelpers.sessionHasUnknownSend(s);
       }
 
       function sessionIsOrphanRecovery(s) {
-        return codoxearSessionHelpers.sessionIsOrphanRecovery(s);
+        return CodoxearSessionHelpers.sessionIsOrphanRecovery(s);
       }
 
       function sessionHasOrphanQueueRecovery(s) {
-        return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);
+        return CodoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);
       }
 
       function sessionSidebarGroupKey(s) {
-        return codoxearSessionHelpers.sessionSidebarGroupKey(s);
+        return CodoxearSessionHelpers.sessionSidebarGroupKey(s);
       }
 
       function sidebarSessionEntries(sessions) {
-        return codoxearSessionHelpers.sidebarSessionEntries(sessions);
+        return CodoxearSessionHelpers.sidebarSessionEntries(sessions);
       }
 
       function sidebarRenderSignature(entries, { selectedId = "", swipeActions = false } = {}) {
-        return codoxearSessionHelpers.sidebarRenderSignature(entries, { selectedId, swipeActions });
+        return CodoxearSessionHelpers.sidebarRenderSignature(entries, { selectedId, swipeActions });
       }
 
       function sessionSelectable(s) {
-        return codoxearSessionHelpers.sessionSelectable(s);
+        return CodoxearSessionHelpers.sessionSelectable(s);
       }
 
       function diagnosticsProviderDisplay(d) {
-        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));
+        return CodoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));
       }
 
       function diagnosticsCopyText(sessionId, rows) {
-        return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);
+        return CodoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);
       }
 
       function normalizeQueueItems(data) {
-        return codoxearSessionHelpers.normalizeQueueItems(data);
+        return CodoxearSessionHelpers.normalizeQueueItems(data);
       }
-
-      const codoxearPolling = CodoxearPolling;
-      if (
-        !codoxearPolling ||
-        !codoxearPolling.POLLING_INTERVALS ||
-        typeof codoxearPolling.sessionsPollDelayMs !== "function" ||
-        typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
-        typeof codoxearPolling.browserOffline !== "function" ||
-        typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
-        typeof codoxearPolling.networkRetryDelayMs !== "function" ||
-        typeof codoxearPolling.messagePollDelayMs !== "function" ||
-        typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
-      )
-        throw new Error("Codoxear polling helpers failed to load");
-
-
 
       function transcriptExportTooLargeCopyMessage(err) {
         return CodoxearConversationCopy.transcriptExportTooLargeCopyMessage(err);
@@ -443,7 +394,7 @@ const global = window;
       }
 
       function sessionIsFast(s) {
-        return codoxearSessionHelpers.sessionIsFast(s);
+        return CodoxearSessionHelpers.sessionIsFast(s);
       }
 
       function providerChoiceToSettings(choice, agentBackend = "codex") {
@@ -656,7 +607,7 @@ const global = window;
         codoxearDom, el, codoxearShell: CodoxearShell, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments,
         codoxearMessageFlow: CodoxearMessageFlow, codoxearSecondaryPoll: CodoxearSecondaryPoll, codoxearInterrupt: CodoxearInterrupt, codoxearDialogMenus: CodoxearDialogMenus,
         codoxearFileEditMode: CodoxearFileEditMode, codoxearPendingUser: CodoxearPendingUser, codoxearNavigationPulse: CodoxearNavigationPulse,
-        codoxearFileTouch: CodoxearFileTouch, codoxearPerfHelpers: CodoxearPerf, pushPerfSample, summarizePerf, codoxearUrls,
+        codoxearFileTouch: CodoxearFileTouch, codoxearPerfHelpers: CodoxearPerf, pushPerfSample, summarizePerf, codoxearUrls: CodoxearUrls,
         resolveAppUrl, versionedShellAssetPath, codoxearStorage: CodoxearStorage, optionalLocalStorage, storageGetItem,
         storageSetItem, storageRemoveItem, codoxearLaunch: CodoxearLaunch, codoxearNewSession: CodoxearNewSession, lastProviderKey,
         lastProviderModelKey, loadRememberedBackendChoice, rememberBackendChoice,
@@ -665,11 +616,11 @@ const global = window;
         apiResponseNotModified, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers: CodoxearFileHelpers,
         listFromFilesField, listFromFileRecords, baseName, fuzzyRecentCwdScore, shortSessionId,
         sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash,
-        codoxearSessionHelpers, sessionLaunchKind, sessionLaunchIcon, sessionLaunchFailed,
+        codoxearSessionHelpers: CodoxearSessionHelpers, sessionLaunchKind, sessionLaunchIcon, sessionLaunchFailed,
         sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
         sessionHasOrphanQueueRecovery, sessionSidebarGroupKey, sidebarSessionEntries,
         sidebarRenderSignature, sessionSelectable, diagnosticsProviderDisplay, diagnosticsCopyText,
-        normalizeQueueItems, codoxearPolling, codoxearNetwork: CodoxearNetwork, codoxearConversationCopy: CodoxearConversationCopy,
+        normalizeQueueItems, codoxearPolling: CodoxearPolling, codoxearNetwork: CodoxearNetwork, codoxearConversationCopy: CodoxearConversationCopy,
         transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
         agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
         emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend,

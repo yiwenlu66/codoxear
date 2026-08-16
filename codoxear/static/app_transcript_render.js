@@ -135,33 +135,6 @@ function setOlderState({ hasMore, isLoading }) {
   getHistoryController().olderLoadRuntime.setState({ hasMore, isLoading });
 }
 
-const codoxearMessageRows = CodoxearMessageRows;
-const codoxearTranscriptView = CodoxearTranscriptView;
-if (
-  !codoxearMessageRows ||
-  !codoxearTranscriptView ||
-  typeof codoxearTranscriptView.createTranscriptViewController !== "function" ||
-  typeof codoxearMessageRows.makeRow !== "function" ||
-  typeof codoxearMessageRows.safeMakeRow !== "function" ||
-  typeof codoxearMessageRows.messageCopyButtonForRow !== "function" ||
-  typeof codoxearMessageRows.renderedMessageRows !== "function" ||
-  typeof codoxearMessageRows.loadedUserMessageRows !== "function" ||
-  typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
-  typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function" ||
-  typeof codoxearMessageRows.createMessageCopyNavigationRuntime !== "function" ||
-  typeof codoxearMessageRows.rowSearchText !== "function" ||
-  typeof codoxearMessageRows.compareRowsInDomOrder !== "function" ||
-  typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
-  typeof codoxearMessageRows.loadedCopyJumpTarget !== "function" ||
-  typeof codoxearMessageRows.clearChatSearchMarks !== "function" ||
-  typeof codoxearMessageRows.applyChatSearchMarks !== "function" ||
-  typeof codoxearMessageRows.oldestRenderedHistoryCursor !== "function" ||
-  typeof codoxearMessageRows.firstVisibleMessageRow !== "function" ||
-  typeof codoxearMessageRows.trimRenderedRowTargets !== "function" ||
-  typeof codoxearMessageRows.trimRowsBeforeViewportTargets !== "function"
-)
-  throw new Error("Codoxear transcript view helpers failed to load");
-
 let transcriptViewController = null;
 
 function transcriptView() {
@@ -169,7 +142,7 @@ function transcriptView() {
   return transcriptViewController;
 }
 
-const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime(wiring.createMessageCopyNavigationOptions({ root: chatInner }));
+const messageCopyNavigationRuntime = CodoxearMessageRows.createMessageCopyNavigationRuntime(wiring.createMessageCopyNavigationOptions({ root: chatInner }));
 
 function renderedMessageRows() {
   return transcriptView().renderedMessageRows();
@@ -184,23 +157,23 @@ function loadedCopyMessageRows() {
 }
 
 function messageCopyButtonForRow(row) {
-  return codoxearMessageRows.messageCopyButtonForRow(row);
+  return CodoxearMessageRows.messageCopyButtonForRow(row);
 }
 
 function activeElementIsMessageCopyButton() {
-  return codoxearMessageRows.activeElementIsMessageCopyButton(document);
+  return CodoxearMessageRows.activeElementIsMessageCopyButton(document);
 }
 
 function rowSearchText(row) {
-  return codoxearMessageRows.rowSearchText(row);
+  return CodoxearMessageRows.rowSearchText(row);
 }
 
 function compareRowsInDomOrder(a, b) {
-  return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);
+  return CodoxearMessageRows.compareRowsInDomOrder(a, b, Node);
 }
 
 function loadedUserJumpTarget(rows, direction, threshold) {
-  return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);
+  return CodoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);
 }
 
 function loadedCopyJumpTarget(rows, direction, threshold) {
@@ -212,7 +185,7 @@ function applyChatSearchMarks(matches, currentRow, query) {
 }
 
 function firstVisibleMessageRow() {
-  return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
+  return CodoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
 }
 
 function syncMessageCopyTabStops() {
@@ -514,8 +487,8 @@ const transcriptDomRuntime = CodoxearTranscript.createTranscriptDomRuntime(wirin
   ymd,
   dayLabel,
   getRenderedRows: renderedMessageRows,
-  trimRenderedRowTargets: codoxearMessageRows.trimRenderedRowTargets,
-  trimRowsBeforeViewportTargets: codoxearMessageRows.trimRowsBeforeViewportTargets,
+  trimRenderedRowTargets: CodoxearMessageRows.trimRenderedRowTargets,
+  trimRowsBeforeViewportTargets: CodoxearMessageRows.trimRowsBeforeViewportTargets,
   scrollRuntime: transcriptScrollRuntime,
   defaultWindowRows: CHAT_DOM_WINDOW,
   afterDecorate: () => {
@@ -779,12 +752,12 @@ rebuildDecorations,
 markEventSeen,
       }));
 
-transcriptViewController = codoxearTranscriptView.createTranscriptViewController(wiring.createTranscriptViewOptions({
+transcriptViewController = CodoxearTranscriptView.createTranscriptViewController(wiring.createTranscriptViewOptions({
   root: chatInner,
   bottomSentinel,
   document,
   el,
-  messageRows: codoxearMessageRows,
+  messageRows: CodoxearMessageRows,
   transcript: CodoxearTranscript,
   getSelectedSessionId: () => getSelected(),
   getMessageRowDeps: messageRowDeps,

@@ -136,7 +136,7 @@ def strip_esm(source: str, module_name: str) -> str:
         object_literal = ", ".join(exports)
         projections.extend(f'window.{namespace} = Object.freeze({{{object_literal}}});' for namespace in namespaces)
     body = source.strip()
-    return "(function () {\n" + body + "\n" + "\n".join(projections) + "\n})();\n"
+    return "(function () {\n\"use strict\";\n" + body + "\n" + "\n".join(projections) + "\n})();\n"
 
 
 def module_path(module_name: str) -> Path:
