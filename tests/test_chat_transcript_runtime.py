@@ -12,6 +12,7 @@ APP_JS = module_path("app_message_history.js")
 APP_POLLING_JS = module_path("app_polling.js")
 APP_COMPOSER_JS = module_path("app_composer.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
@@ -1209,6 +1210,95 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         ])
         self.assertTrue(out["missingKey"])
         self.assertTrue(out["missingTake"])
+
+    def test_click_first_message_metric_flows_from_render_controller_through_tail_render(self) -> None:
+        transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
+        message_history_source = APP_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const samples = [];
+            let clock = 100;
+            const view = {{ renders: [], replaceWith(events, options) {{ this.renders.push({{ count: events.length, options }}); }} }};
+            const noop = () => {{}};
+            const wiring = new Proxy({{}}, {{ get: () => (deps) => deps }});
+            const ctx = {{
+              window: {{
+                CodoxearMessageRows: {{
+                  createMessageCopyNavigationRuntime: () => ({{ reset: noop, syncTabStops: noop, setActiveRow: noop, toggleTouchRow: noop, jumpTarget: () => null }}),
+                  messageCopyButtonForRow: () => null, activeElementIsCopyButton: () => false,
+                  rowSearchText: () => "", compareRowsInDomOrder: () => 0,
+                  loadedUserJumpTarget: () => null, firstVisibleMessageRow: () => null,
+                  trimRenderedRowTargets: () => [], trimRowsBeforeViewportTargets: () => [],
+                }},
+                CodoxearTranscript: {{
+                  createTranscriptSlotRuntime: () => ({{ activeSnapshot: () => ({{}}), getSlot: () => ({{ epoch: 0 }}), syncActiveSlot: () => ({{ state: "bound" }}), clearLiveCursor: noop, setLiveCursor: noop, updateSlot: () => ({{ resetPending: false }}), beginRenewal: noop, tailCacheMatchesSession: () => false, rememberTail: noop, appendTailEvents: noop, deleteTailCache: noop }}),
+                  createTypingRowRuntime: () => ({{ setVisible: noop, setSubagentVisible: noop, updateSubagentGauge: noop, reset: noop, anchor: () => ({{}}) }}),
+                  createTranscriptScrollRuntime: () => ({{ enableAutoScroll: noop, markLiveTail: noop, reset: noop, syncVisibleTimeIndicator: noop, snapshot: () => ({{ renderedAtLiveTail: true }}) }}),
+                  createTranscriptDomRuntime: () => ({{ rebuildDecorations: noop, trimRenderedRows: noop, trimRowsBeforeViewport: noop, clear: noop }}),
+                  createTranscriptEventRuntime: () => ({{ resetRecentEvents: noop, dropPendingUsers: () => [], pendingUsersForSession: () => [], markEventSeen: noop, isDuplicateEvent: () => false, isAdjacentAssistantDuplicateEvent: () => false, takePendingUserMatch: () => null }}),
+                  createOlderLoadRuntime: () => ({{ invalidate: noop, snapshot: () => ({{ hasMore: false, isLoading: false }}) }}),
+                  normalizedTranscriptEvents: (events) => events, transcriptSnapshotFromData: () => ({{}}),
+                }},
+                CodoxearTranscriptView: {{ createTranscriptViewController: () => view }},
+                CodoxearPendingUser: {{ createPendingUserController: () => ({{ consumePendingUserIfMatches: () => false }}) }},
+                CodoxearChatNavigation: {{ createChatNavigationController: () => ({{ syncButtons: noop, jumpToLoadedUserMessage: noop, jumpToLoadedMessage: noop }}) }},
+                CodoxearChatSearch: {{ createChatSearchController: () => ({{ isOpen: () => false, open: noop, close: noop, refreshLoaded: noop, step: noop }}) }},
+                CodoxearHintMode: {{ createHintModeController: () => ({{ isActive: () => false }}) }},
+                CodoxearNavigationPulse: {{ createNavigationPulseController: () => ({{ pulseNavigatedRow: noop }}) }},
+                CodoxearModal: {{ createModalKeyboardHandler: () => noop }},
+                CodoxearDisplay: {{ ymd: () => "", dayLabel: () => "", time24: () => "", recoveryPromptPreview: () => "" }},
+                CodoxearViewport: {{ prefersReducedMotion: () => false }},
+                setTimeout: noop, matchMedia: () => ({{ matches: false }}), getSelection: () => ({{ toString: () => "" }}),
+              }},
+              console,
+              AbortController,
+            }};
+            const transcriptStubs = ctx.window.CodoxearTranscript;
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_TRANSCRIPT_JS.read_text(encoding="utf-8"))}, ctx);
+            ctx.window.CodoxearTranscript = {{ ...ctx.window.CodoxearTranscript, ...transcriptStubs }};
+            vm.runInContext({json.dumps(transcript_render_source)}, ctx);
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+            const render = ctx.window.CodoxearTranscriptRender.createTranscriptRenderController({{
+              getPollGeneration: () => 1, getSessionIndex: () => new Map(),
+              getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{}}),
+              sessionState, isAppDisposed: () => false, getSessionEditController: () => null,
+              getQueueController: () => null, isFileViewerOpen: () => false, upgradeCandidateFileRefs: noop,
+              isMobile: () => false, refreshSessions: noop, jumpToLatest: noop,
+              getHistoryController: () => ({{ olderLoadRuntime: {{ invalidate: noop, resetAutoTrigger: noop }} }}),
+              getSendLifecycleController: () => ({{ messageFlowController: {{ updateTypingStatsFromSession: noop }} }}),
+              getAttachmentsController: () => ({{ syncAttachButtonState: noop }}),
+              CHAT_DOM_WINDOW: 60, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK: 90, INIT_PAGE_LIMIT: 60,
+              Node: {{}}, OLDER_CANCEL_PX: 48, OLDER_TOP_TRIGGER_PX: 1, addAppEvent: noop,
+              api: async () => ({{}}), appConfirm: {{}}, bottomSentinel: {{}}, chat: {{ scrollTop: 0, clientHeight: 0, scrollBy: noop }}, chatInner: {{ contains: () => false, querySelector: () => null }},
+              chatMarkdownHtmlCached: noop, chatSearchAllHintEl: {{}}, chatSearchBar: {{}}, chatSearchBtn: {{}}, chatSearchCloseBtn: {{}}, chatSearchInput: {{}}, chatSearchNextBtn: {{}}, chatSearchPrevBtn: {{}}, chatSearchStatus: {{}}, chatTimeChip: {{}}, codeBlockCopyRuntime: {{ toggleTouchPre: noop }},
+              codoxearCodeCopy: {{ codePreFromTarget: () => null }}, codoxearDisplay: ctx.window.CodoxearDisplay, codoxearModal: ctx.window.CodoxearModal, codoxearNavigationPulse: ctx.window.CodoxearNavigationPulse, codoxearPendingUser: ctx.window.CodoxearPendingUser, codoxearViewport: ctx.window.CodoxearViewport,
+              confirmApp: async () => false, copyToClipboard: noop, diagViewer: {{}}, document: {{ querySelectorAll: () => [], activeElement: null }}, editViewer: {{}}, el: noop, handleAppAuthLoss: noop, helpViewer: {{}}, iconSvg: noop, isModalTargetOpen: () => false, isTextEntryElement: () => false, jumpBtn: {{ style: {{}} }}, modalIsolationTargets: [], newSessionDialogController: {{ isOpen: () => false }}, nextUserBtn: {{}}, olderWrap: {{}},
+              performance: {{ now: () => clock }}, prevUserBtn: {{}}, pushPerfSample: (...sample) => samples.push(sample), queueViewer: {{ style: {{ display: "none" }} }}, refreshQueueViewer: noop, requestAnimationFrame: noop, sendChoice: {{}}, sessionAgentBackend: () => "pi", setTimeout: noop, setToast: noop, textarea: {{ focus: noop }}, window: ctx.window, wiring,
+            }});
+            vm.runInContext({json.dumps(message_history_source)}, ctx);
+            const history = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
+              getPollGeneration: () => 1, getSessionIndex: () => new Map(), getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
+              transcript: {{ transcriptView: render.transcriptView, markClickFirstPaint: render.markClickFirstPaint }}, sessionState,
+              wiring, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}}, AbortController,
+              performance: {{ now: () => clock }}, OLDER_AUTO_COOLDOWN_MS: 450, OLDER_PAGE_LIMIT: 30,
+              api: async () => ({{}}), handleAppAuthLoss: noop, syncQueueSubmitState: noop, syncComposerSendButton: noop, updateUnattendedBtnState: noop, updateQueueBadge: noop, sessionLaunchFailed: () => false, confirmApp: async () => false, setToast: noop, codoxearDisplay: ctx.window.CodoxearDisplay, redactedLaunchErrorText: () => "", sessionIdFromHash: () => "", sessionSelectable: () => false,
+            }});
+            history.renderSessionTail([{{ role: "assistant", text: "unarmed" }}]);
+            const beforeArm = samples.slice();
+            render.markClickLoad();
+            clock = 137;
+            history.renderSessionTail([{{ role: "assistant", text: "armed" }}]);
+            process.stdout.write(JSON.stringify({{ beforeArm, samples, renders: view.renders }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["beforeArm"], [])
+        self.assertEqual(out["samples"], [["click_to_first_message_ms", 37]])
+        self.assertEqual([render["count"] for render in out["renders"]], [1, 1])
 
     def test_transcript_render_runtime_owns_window_render_and_history_prepend(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
