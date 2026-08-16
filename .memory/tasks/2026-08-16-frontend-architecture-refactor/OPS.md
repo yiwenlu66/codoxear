@@ -162,3 +162,43 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
 - PHASE 2 COMPLETE: suite 1681 green, guards clean, docker_verify PASS
   (70a12140), docker_ui_flows OBSERVED (queue + /model picker flows
   correct).
+- Phase 3 inventory (executor c126549c): 35 composition `let`s mapped;
+  60 direct accessor-key incidences (70 with selected aliases); nine
+  dual-channel rendered surfaces with exact trigger paths; five dead/
+  shadowed bindings found; risk-ranked migration order. Report at
+  phase3-inventory.md. DESIGN PINS (main agent): seven-field store
+  (selected, running, queueLen, subagentsRunning, turnOpen, sending,
+  token); widgets subscribe internally; reducers write via atomic
+  applyRuntime; slices = store/render-fields/selected+sending+turnOpen/
+  dead-binding cleanup.
+- Slice 1 (baf62edc): app_session_state.js + 7 behavioral tests. Suite
+  1688 green.
+- Slice 2 (5cb906db): running/queueLen/subagentsRunning/token migrated.
+  Session display, typing row, queue badge subscribe internally;
+  setStatus/setContext/setTyping/setSubagentsRunning contract keys dead;
+  reducers write applyRuntime. Four dual-channel surfaces collapsed to
+  single-trigger subscriptions. Docker verify PASS at 5cb906db.
+- Slice 3 (run b50d4500, terra): selected/sending/turnOpen + alias
+  collapse. Production migration implemented; executor TIMED OUT at 30m
+  with 17/~101 harness migrations remaining (1671 passed). Resumed
+  (6f1336f3) to finish the tail.
+- Slice 3 complete (0c397b60): all 70 legacy accessor/alias incidences
+  eliminated (measured against baf62edc baseline). 62 files.
+- Slice 4 (a727e3d9): 3 dead bindings deleted; click_to_first_message_ms
+  metric repaired (shadowed pair since the extraction era). Behavioral
+  test for the repaired wire (2e436f1a).
+- REGRESSION CHAIN (all caught by the Docker behavior gate, all made
+  loud by the 4988b72d failure surfacing): (1) attachments boot crash —
+  call-site literal missing sessionState (2168aec5 fix); (2) stale
+  setSending shorthand in message-flow literal (93a88fe8) — invisible
+  because unbound-option-value was scoped to 4 Phase-2 selectors;
+  expanded guard to ALL selectors, surfacing 7 mismatches; (3) my own
+  slice-4 error — a failed edit call silently dropped the composition
+  markClickLoad rebinding while its deletions landed (a727e3d9),
+  clickLoadT0 ReferenceError; completed in eb9fa9a8. Deploy-script tests
+  caught a consistency issue: snapshot guard needs the allowlist commit
+  (0a284514). Triage of the 7: iconSvg + dead unsaved-file duplication
+  pruned from session edit, defaulted destructures excluded, appendEvent
+  allowlisted with mandatory reason (0a284514).
+- PHASE 3 GATE: suite 1690 green, guard clean, docker_verify PASS
+  (eb9fa9a8). Adversarial review + behavior-interaction subagent next.
