@@ -1,16 +1,6 @@
 {
   "violations": [
     {
-      "check": "pass-through-factory",
-      "file": "app_wiring.js",
-      "name": "createFileOpsOptions"
-    },
-    {
-      "check": "pass-through-factory",
-      "file": "app_wiring.js",
-      "name": "createSessionDisplayOptions"
-    },
-    {
       "check": "bag-spread",
       "file": "app_file_ops.js",
       "name": "fileViewerModalRuntime.show"
