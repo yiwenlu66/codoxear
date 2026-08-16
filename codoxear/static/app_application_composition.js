@@ -178,8 +178,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         const unattendedDom = CodoxearUnattended.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
         const { unattendedMenu, enabledEl: unattendedEnabledEl, cooldownEl: unattendedCooldownEl, remainingEl: unattendedRemainingEl, requestEl: unattendedRequestEl } = unattendedDom;
         root.appendChild(unattendedMenu);
-        let pendingHashSessionId = "";
-        let pendingHashSessionSelectInFlight = false;
         const INIT_PAGE_LIMIT = 24;
         const OLDER_PAGE_LIMIT = 60;
         const CHAT_DOM_WINDOW = 260;
@@ -220,7 +218,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         function closeSendChoiceDialog(options) {
           if (composerController) composerController.hideSendChoice(options);
         }
-				    let lastToken = null;
         let sessionEditController = null;
         newSessionDefaults = {
           default_backend: "pi",
@@ -232,8 +229,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         };
         latestSessions = [];
         let tmuxAvailable = false;
-                 let clickLoadT0 = 0;
-                 let clickMetricPending = false;
               // Unattended menu state, cfg cache, number-input drafts, and the
               // per-session save timers/in-flight/pending maps live in the
               // CodoxearUnattended controller (codoxear/static/app_unattended.js).

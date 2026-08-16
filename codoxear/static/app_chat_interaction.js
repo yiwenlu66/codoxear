@@ -383,6 +383,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       transcriptSlotRuntime: transcript.transcriptSlotRuntime, typingRowRuntime: transcript.typingRowRuntime,
       transcriptScrollRuntime: transcript.transcriptScrollRuntime, transcriptDomRuntime: transcript.transcriptDomRuntime,
       transcriptEventRuntime: transcript.transcriptEventRuntime, transcriptView: transcript.transcriptView,
+      markClickLoad: transcript.markClickLoad,
       olderLoadRuntime: historyController.olderLoadRuntime,
       resetChatRenderState: transcript.resetChatRenderState, clearOlderLoadError: historyController.clearOlderLoadError,
       updateChatNavButtons: transcript.updateChatNavButtons, closeChatSearch: transcript.closeChatSearch,

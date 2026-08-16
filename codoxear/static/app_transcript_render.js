@@ -639,6 +639,11 @@ function updateQueueBadge() {
   }
 }
 
+  function markClickLoad() {
+    clickLoadT0 = performance.now();
+    clickMetricPending = true;
+  }
+
   function markClickFirstPaint() {
     if (!clickMetricPending) return;
     clickMetricPending = false;
@@ -830,7 +835,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
       hintModeController,
       eventKey, markEventSeen, isDuplicateEvent, isAdjacentAssistantDuplicateEvent,
       takePendingUserMatch, isTranscriptRenewalCommand,
-      transcriptView, markClickFirstPaint, syncActiveTranscriptSlot, dispose,
+      transcriptView, markClickLoad, markClickFirstPaint, syncActiveTranscriptSlot, dispose,
     });
   }
 
