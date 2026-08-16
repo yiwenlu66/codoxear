@@ -1,4 +1,3 @@
-  "use strict";
 
   function isModalTargetOpen(node) {
     if (!node) return false;

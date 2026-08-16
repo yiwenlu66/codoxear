@@ -1,4 +1,3 @@
-  "use strict";
 
   function conversationCopyParts(events) {
     const parts = [];

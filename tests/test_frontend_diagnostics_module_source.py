@@ -267,22 +267,6 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertTrue(by_label["missing uiVersion"]["type"])
         self.assertContains("uiVersion", by_label["missing uiVersion"]["msg"])
 
-    def test_module_load_fails_loud_without_helpers_or_modal(self) -> None:
-        diag_source = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
-        js_only_diag = textwrap.dedent(
-            f"""
-            const vm = require("vm");
-            const ctx = {{ window: {{}}, HTMLElement: function HTMLElement() {{}} }};
-            vm.createContext(ctx);
-            let err = null;
-            try {{ vm.runInContext({json.dumps(diag_source)}, ctx); }}
-            catch (e) {{ err = String(e.message); }}
-            process.stdout.write(JSON.stringify({{ err }}));
-            """
-        )
-        result = run_node_json(js_only_diag)
-        self.assertContains("failed to load", result["err"])
-
     # --- 2. failed-launch / local path: no API, recovery rows, copy enabled ---
 
     def test_failed_launch_path_renders_locally_without_api(self) -> None:

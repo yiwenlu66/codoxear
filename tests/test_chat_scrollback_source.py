@@ -67,8 +67,8 @@ def eval_launch_recovery_details() -> dict:
         vm.runInContext({json.dumps(display_source)}, moduleCtx);
         vm.runInContext({json.dumps(launch_source)}, moduleCtx);
         const ctx = {{
+          window: {{ CodoxearLaunch: moduleCtx.window.CodoxearLaunch }},
           codoxearDisplay: moduleCtx.window.CodoxearDisplay,
-          codoxearLaunch: moduleCtx.window.CodoxearLaunch,
           sessionIndex: new Map([["launch-dead", launchRow]]),
           selected: "launch-dead",
           sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),

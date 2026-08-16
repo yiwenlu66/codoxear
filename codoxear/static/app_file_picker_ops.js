@@ -1,7 +1,5 @@
-const global = window;
 
 /* File-picker menu, search, entry identity, and selection operations. */
-  "use strict";
   function requireObject(value, name) {
     if (!value || typeof value !== "object") throw new TypeError(`file picker dependency missing: ${name}`);
     return value;

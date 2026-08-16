@@ -1,4 +1,3 @@
-  "use strict";
 
   const DEFAULT_RETRY_MS = 1000;
 

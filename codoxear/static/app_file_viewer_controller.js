@@ -2,8 +2,7 @@ import * as CodoxearFileCandidateState from "./app_file_candidate_state.js";
 import * as CodoxearFileHelpers from "./app_file_helpers.js";
 import * as CodoxearFileViewerOperations from "./app_file_viewer_operations.js";
 
-  "use strict";
-  function requireFunction(value, name) {
+function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`);
     return value;
   }

@@ -1,4 +1,3 @@
-  "use strict";
 
   function normalizeTextForPendingMatch(s) {
     return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");

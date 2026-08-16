@@ -1,4 +1,3 @@
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`code copy dependency missing: ${name}`);

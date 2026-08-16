@@ -1,6 +1,5 @@
 const global = window;
 
-  "use strict";
 
   function requireWindowTarget(value) {
     if (!value || typeof value.innerHeight !== "number") {

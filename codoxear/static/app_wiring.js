@@ -1,7 +1,5 @@
-const global = window;
 
 /* Controller option factories: one named contract per controller/runtime seam. */
-  "use strict";
 
   function select(deps, keys) {
     if (!deps || typeof deps !== "object") throw new TypeError("controller options must be an object");

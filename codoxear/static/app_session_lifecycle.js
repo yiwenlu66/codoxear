@@ -1,6 +1,4 @@
-const global = window;
 
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`session lifecycle dependency missing: ${name}`);

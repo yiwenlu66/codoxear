@@ -1,9 +1,8 @@
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
-  "use strict";
 
-  // Unattended mode popover authority. Owns every piece of unattended-menu
+// Unattended mode popover authority. Owns every piece of unattended-menu
   // state that used to live as app.js locals (menu open/token/session-id,
   // return-focus element, cfg cache, number-input drafts/dirty flags,
   // per-session save timers/in-flight/pending maps) plus the button projection
@@ -23,22 +22,10 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
   // (options) so the controller has no hidden coupling to app.js globals and
   // can be exercised in a VM with fakes.
 
-  const codoxearSessionHelpers = CodoxearSessionHelpers;
-  if (
-    !codoxearSessionHelpers ||
-    typeof codoxearSessionHelpers.sessionLaunchFailed !== "function"
-  )
-    throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = CodoxearModal;
-  if (
-    !codoxearModal ||
-    typeof codoxearModal.restoreModalFocus !== "function"
-  )
-    throw new Error("Codoxear modal helpers failed to load");
 
-  const sessionLaunchFailed = codoxearSessionHelpers.sessionLaunchFailed;
-  const restoreModalFocus = codoxearModal.restoreModalFocus;
+  const sessionLaunchFailed = CodoxearSessionHelpers.sessionLaunchFailed;
+  const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   const UNATTENDED_SAVE_DEBOUNCE_MS = 450;
   const UNATTENDED_SAVE_RETRY_INITIAL_MS = 1500;

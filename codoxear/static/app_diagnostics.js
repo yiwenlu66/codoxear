@@ -1,9 +1,8 @@
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
-  "use strict";
 
-  // Details/diagnostics modal authority. Owns every piece of Details/diagnostics
+// Details/diagnostics modal authority. Owns every piece of Details/diagnostics
   // state that used to live as app.js locals (return-focus element and copy text)
   // plus the diag Copy conversation / Copy details click behavior, show/hide modal
   // behavior, and the rendering decisions for failed-launch (local recovery rows,
@@ -18,26 +17,12 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
   // so the controller has no hidden coupling to app.js globals and can be exercised
   // in a VM with fakes.
 
-  const codoxearSessionHelpers = CodoxearSessionHelpers;
-  if (
-    !codoxearSessionHelpers ||
-    typeof codoxearSessionHelpers.sessionLaunchFailed !== "function"
-  )
-    throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = CodoxearModal;
-  if (
-    !codoxearModal ||
-    typeof codoxearModal.isModalTargetOpen !== "function" ||
-    typeof codoxearModal.focusModalCloseButton !== "function" ||
-    typeof codoxearModal.restoreModalFocus !== "function"
-  )
-    throw new Error("Codoxear modal helpers failed to load");
 
-  const sessionLaunchFailed = codoxearSessionHelpers.sessionLaunchFailed;
-  const isModalTargetOpen = codoxearModal.isModalTargetOpen;
-  const focusModalCloseButton = codoxearModal.focusModalCloseButton;
-  const restoreModalFocus = codoxearModal.restoreModalFocus;
+  const sessionLaunchFailed = CodoxearSessionHelpers.sessionLaunchFailed;
+  const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
+  const focusModalCloseButton = CodoxearModal.focusModalCloseButton;
+  const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`diagnostics controller dependency missing: ${name}`);

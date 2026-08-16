@@ -54,41 +54,7 @@ def eval_viewport(query_matches: dict[str, bool], with_match_media: bool = True)
     return json.loads(proc.stdout)
 
 
-def run_app_viewport_guard(setup_js: str = "") -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("const codoxearViewport = window.CodoxearViewport;")
-    end = source.index("function isTextEntryElement(target)", start)
-    guard_source = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{ window: {{}} }};
-        vm.createContext(ctx);
-        try {{
-          vm.runInContext({json.dumps(setup_js + "\n" + guard_source)}, ctx);
-          process.stdout.write(JSON.stringify({{ ok: true, message: "" }}));
-        }} catch (err) {{
-          process.stdout.write(JSON.stringify({{ ok: false, message: String(err && err.message || err) }}));
-        }}
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
-
-
 class TestFrontendViewportModuleSource(unittest.TestCase):
-    def test_app_viewport_guard_throws_for_missing_or_partial_helper(self) -> None:
-        missing = run_app_viewport_guard()
-        self.assertEqual(missing, {"ok": False, "message": "Codoxear viewport helpers failed to load"})
-        partial = run_app_viewport_guard(
-            "window.CodoxearViewport = { isMobile() {}, prefersReducedMotion() {}, useDesktopSessionActions() {}, useTouchFileEditorControls() {} };"
-        )
-        self.assertEqual(partial, {"ok": False, "message": "Codoxear viewport helpers failed to load"})
-        complete = run_app_viewport_guard(
-            "window.CodoxearViewport = { isMobile() {}, prefersReducedMotion() {}, useDesktopSessionActions() {}, useTouchFileEditorControls() {}, isTextEntryElement() {}, updateAppHeightVar() {} };"
-        )
-        self.assertEqual(complete, {"ok": True, "message": ""})
-
     def test_viewport_queries_preserve_media_contracts(self) -> None:
         result = eval_viewport(
             {

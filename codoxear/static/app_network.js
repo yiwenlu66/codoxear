@@ -1,4 +1,3 @@
-  "use strict";
 
   function requireNode(value, name) {
     if (!value || typeof value !== "object") throw new TypeError(`network status requires ${name}`);

@@ -300,24 +300,6 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         self.assertTrue(by_label["missing api"]["type"])
         self.assertContains("api", by_label["missing api"]["msg"])
 
-    def test_module_load_fails_loud_without_helpers_or_modal(self) -> None:
-        unattended_source = APP_UNATTENDED_JS.read_text(encoding="utf-8")
-        js_only_unattended = textwrap.dedent(
-            f"""
-            const vm = require("vm");
-            const ctx = {{ window: {{}}, HTMLElement: function HTMLElement() {{}} }};
-            vm.createContext(ctx);
-            let threw = false;
-            let msg = "";
-            try {{ vm.runInContext({json.dumps(unattended_source)}, ctx); }}
-            catch (e) {{ threw = true; msg = String(e.message); }}
-            process.stdout.write(JSON.stringify({{ threw, msg }}));
-            """
-        )
-        result = run_node_json(js_only_unattended)
-        self.assertTrue(result["threw"])
-        self.assertContains("failed to load", result["msg"])
-
     # --- 2. button projection: no selected / failed launch / active session ---
 
     def test_button_projection_for_no_selected_failed_launch_active(self) -> None:

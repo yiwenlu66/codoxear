@@ -1,4 +1,3 @@
-  "use strict";
 
   const SESSION_SIDEBAR_GROUPS = Object.freeze([
     Object.freeze({ key: "now", label: "Now" }),

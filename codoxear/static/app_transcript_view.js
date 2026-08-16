@@ -1,4 +1,3 @@
-  "use strict";
 
   const VIEW_STATES = Object.freeze({
     LIVE: "LIVE",

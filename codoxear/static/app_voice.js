@@ -1,9 +1,8 @@
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
-  "use strict";
 
-  // Voice / Settings / Notifications / Announcement orchestration authority.
+// Voice / Settings / Notifications / Announcement orchestration authority.
   //
   // Owns every piece of voice/notification/announcement state that used to live
   // as app.js locals (voiceSaveTimer, voiceSettings, localAnnouncementEnabled,
@@ -31,36 +30,17 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
   // notificationDeviceClass) come from CodoxearVoiceHelpers; the modal
   // open-state + focus-restore helpers come from CodoxearModal.
 
-  const codoxearVoiceHelpers = CodoxearVoiceHelpers;
-  if (
-    !codoxearVoiceHelpers ||
-    typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function" ||
-    typeof codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback !== "function" ||
-    typeof codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback !== "function" ||
-    typeof codoxearVoiceHelpers.browserSupportsLiveAudioPlayback !== "function" ||
-    typeof codoxearVoiceHelpers.base64UrlToUint8Array !== "function" ||
-    typeof codoxearVoiceHelpers.isMobileNotificationDevice !== "function" ||
-    typeof codoxearVoiceHelpers.notificationDeviceClass !== "function"
-  )
-    throw new Error("Codoxear voice helpers failed to load");
 
-  const codoxearModal = CodoxearModal;
-  if (
-    !codoxearModal ||
-    typeof codoxearModal.isModalTargetOpen !== "function" ||
-    typeof codoxearModal.restoreModalFocus !== "function"
-  )
-    throw new Error("Codoxear modal helpers failed to load");
 
-  const browserSupportsNativeLiveAudioPlayback = codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback;
-  const browserSupportsMseLiveAudioPlayback = codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback;
-  const shouldPreferNativeLiveAudioPlayback = codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback;
-  const browserSupportsLiveAudioPlayback = codoxearVoiceHelpers.browserSupportsLiveAudioPlayback;
-  const base64UrlToUint8Array = codoxearVoiceHelpers.base64UrlToUint8Array;
-  const isMobileNotificationDevice = codoxearVoiceHelpers.isMobileNotificationDevice;
-  const notificationDeviceClass = codoxearVoiceHelpers.notificationDeviceClass;
-  const isModalTargetOpen = codoxearModal.isModalTargetOpen;
-  const restoreModalFocus = codoxearModal.restoreModalFocus;
+  const browserSupportsNativeLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback;
+  const browserSupportsMseLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback;
+  const shouldPreferNativeLiveAudioPlayback = CodoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback;
+  const browserSupportsLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsLiveAudioPlayback;
+  const base64UrlToUint8Array = CodoxearVoiceHelpers.base64UrlToUint8Array;
+  const isMobileNotificationDevice = CodoxearVoiceHelpers.isMobileNotificationDevice;
+  const notificationDeviceClass = CodoxearVoiceHelpers.notificationDeviceClass;
+  const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
+  const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   const LIVE_AUDIO_WATCHDOG_MS = 2500;
   const LIVE_AUDIO_STALL_GRACE_MS = 12000;

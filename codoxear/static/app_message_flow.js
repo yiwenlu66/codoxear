@@ -1,32 +1,14 @@
 import * as CodoxearPolling from "./app_polling.js";
 import * as CodoxearTranscript from "./app_transcript.js";
 
-  "use strict";
 
-  // Message data-flow authority. Owns confirmed sends, initial-tail/poll request
+// Message data-flow authority. Owns confirmed sends, initial-tail/poll request
   // cancellation, SSE connection/retry state, polling cadence/backoff, the
   // shared SSE/poll live-delta reducer, and typing-count reconciliation. Session
   // selection itself remains in app.js; selected id + generation are injected
   // so every asynchronous result is rejected after a selection change.
 
-  const codoxearPolling = CodoxearPolling;
-  if (
-    !codoxearPolling ||
-    typeof codoxearPolling.messagePollDelayMs !== "function" ||
-    typeof codoxearPolling.normalizeMessagePollKickDelay !== "function" ||
-    typeof codoxearPolling.browserOffline !== "function"
-  )
-    throw new Error("Codoxear polling helpers failed to load");
 
-  const codoxearTranscript = CodoxearTranscript;
-  if (
-    !codoxearTranscript ||
-    typeof codoxearTranscript.startsTypingCountWindow !== "function" ||
-    typeof codoxearTranscript.hasHumanOriginatedUserEvent !== "function" ||
-    typeof codoxearTranscript.thinkingModeForTokens !== "function" ||
-    typeof codoxearTranscript.transcriptSnapshotFromData !== "function"
-  )
-    throw new Error("Codoxear transcript helpers failed to load");
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`message flow dependency missing: ${name}`);
@@ -212,11 +194,11 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     function browserOffline() {
-      return codoxearPolling.browserOffline(navigatorValue());
+      return CodoxearPolling.browserOffline(navigatorValue());
     }
 
     function messagePollDelayMs(at = now()) {
-      return codoxearPolling.messagePollDelayMs({
+      return CodoxearPolling.messagePollDelayMs({
         now: at,
         visibilityState: visibilityState(),
         offline: browserOffline(),
@@ -245,7 +227,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     function normalizeMessagePollKickDelay(ms = 0) {
-      return codoxearPolling.normalizeMessagePollKickDelay({
+      return CodoxearPolling.normalizeMessagePollKickDelay({
         requested: ms,
         visibilityState: visibilityState(),
         offline: browserOffline(),
@@ -361,7 +343,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       setSubagentsRunning(subagentsRunning);
       typingRowRuntime.updateSubagentGauge(subagentsRunning);
       if (!session) return;
-      const thinkingMode = codoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
+      const thinkingMode = CodoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
       const stats = {
         thinking: session.thinking,
         thinkingTokens: session.thinking_tokens,
@@ -388,7 +370,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       const delta = data && data.meta_delta;
       if (!delta || typeof delta !== "object") return;
       const currentStats = typingRowRuntime.snapshot().stats || { thinkingTokens: 0 };
-      const thinkingMode = codoxearTranscript.thinkingModeForTokens(
+      const thinkingMode = CodoxearTranscript.thinkingModeForTokens(
         Math.max(Number(currentStats.thinkingTokens) || 0, Number(delta.thinking_tokens) || 0),
       );
       typingRowRuntime.updateTypingStats(
@@ -405,7 +387,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     async function applyLiveMessageData(sessionId, generation, data) {
       if (!isCurrent(sessionId, generation)) return;
       markMessagePollSuccess();
-      const slotInfo = codoxearTranscript.transcriptSnapshotFromData(data);
+      const slotInfo = CodoxearTranscript.transcriptSnapshotFromData(data);
       const nowBusy = Boolean(data.busy);
       const wasTurnOpen = getTurnOpen();
       const active = activeTranscriptSnapshot();
@@ -436,8 +418,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       const turnStart = Boolean(data.turn_start);
       const turnEnd = Boolean(data.turn_end);
       const turnAborted = Boolean(data.turn_aborted);
-      const newTurn = codoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
-      if (newTurn && codoxearTranscript.hasHumanOriginatedUserEvent(events)) typingRowRuntime.resetTypingStats();
+      const newTurn = CodoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
+      if (newTurn && CodoxearTranscript.hasHumanOriginatedUserEvent(events)) typingRowRuntime.resetTypingStats();
       let turnOpen = wasTurnOpen;
       if (turnStart) turnOpen = true;
       if (!turnOpen && nowBusy) turnOpen = true;

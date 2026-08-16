@@ -1,15 +1,12 @@
 import * as CodoxearUrls from "./app_application.js";
 
-  "use strict";
 
-  // KaTeX is loaded via index.html <script> BEFORE Monaco's loader.js.
+// KaTeX is loaded via index.html <script> BEFORE Monaco's loader.js.
   // This ordering ensures KaTeX's UMD wrapper takes the browser global
   // path (window.katex) instead of the AMD path (define).
 
-  const codoxearUrls = CodoxearUrls;
-  if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
   function resolveAppUrl(path) {
-    return codoxearUrls.resolveAppUrl(path);
+    return CodoxearUrls.resolveAppUrl(path);
   }
 
   function escapeHtml(s) {

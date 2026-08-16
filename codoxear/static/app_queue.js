@@ -1,9 +1,8 @@
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
-  "use strict";
 
-  // Queue orchestration authority. Owns every piece of queue state that used to
+// Queue orchestration authority. Owns every piece of queue state that used to
   // live as app.js locals (timers, mutation locks, pending deletes, draft text,
   // submit-busy flag, viewer sid/items, modal return-focus) plus the queue
   // button submit-state projection, the enqueue/move/delete/update decision
@@ -17,34 +16,16 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
   // createQueueController(options) so the controller has no hidden coupling to
   // app.js globals and can be exercised in a VM with fakes.
 
-  const codoxearSessionHelpers = CodoxearSessionHelpers;
-  if (
-    !codoxearSessionHelpers ||
-    typeof codoxearSessionHelpers.normalizeQueueItems !== "function" ||
-    typeof codoxearSessionHelpers.sessionLaunchFailed !== "function" ||
-    typeof codoxearSessionHelpers.sessionHasUnknownSend !== "function" ||
-    typeof codoxearSessionHelpers.sessionIsOrphanRecovery !== "function" ||
-    typeof codoxearSessionHelpers.sessionHasOrphanQueueRecovery !== "function"
-  )
-    throw new Error("Codoxear session helpers failed to load");
 
-  const codoxearModal = CodoxearModal;
-  if (
-    !codoxearModal ||
-    typeof codoxearModal.isModalTargetOpen !== "function" ||
-    typeof codoxearModal.focusModalCloseButton !== "function" ||
-    typeof codoxearModal.restoreModalFocus !== "function"
-  )
-    throw new Error("Codoxear modal helpers failed to load");
 
-  const normalizeQueueItems = codoxearSessionHelpers.normalizeQueueItems;
-  const sessionLaunchFailed = codoxearSessionHelpers.sessionLaunchFailed;
-  const sessionHasUnknownSend = codoxearSessionHelpers.sessionHasUnknownSend;
-  const sessionIsOrphanRecovery = codoxearSessionHelpers.sessionIsOrphanRecovery;
-  const sessionHasOrphanQueueRecovery = codoxearSessionHelpers.sessionHasOrphanQueueRecovery;
-  const isModalTargetOpen = codoxearModal.isModalTargetOpen;
-  const focusModalCloseButton = codoxearModal.focusModalCloseButton;
-  const restoreModalFocus = codoxearModal.restoreModalFocus;
+  const normalizeQueueItems = CodoxearSessionHelpers.normalizeQueueItems;
+  const sessionLaunchFailed = CodoxearSessionHelpers.sessionLaunchFailed;
+  const sessionHasUnknownSend = CodoxearSessionHelpers.sessionHasUnknownSend;
+  const sessionIsOrphanRecovery = CodoxearSessionHelpers.sessionIsOrphanRecovery;
+  const sessionHasOrphanQueueRecovery = CodoxearSessionHelpers.sessionHasOrphanQueueRecovery;
+  const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
+  const focusModalCloseButton = CodoxearModal.focusModalCloseButton;
+  const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   const QUEUE_UPDATE_DEBOUNCE_MS = 350;
   const QUEUE_REFRESH_EDIT_GUARD_MS = 900;

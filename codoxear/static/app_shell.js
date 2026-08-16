@@ -1,8 +1,7 @@
 import * as CodoxearQueue from "./app_queue.js";
 
-  "use strict";
 
-  function requireFunction(value, name) {
+function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`shell dependency missing: ${name}`);
     return value;
   }
@@ -354,16 +353,13 @@ import * as CodoxearQueue from "./app_queue.js";
     root.appendChild(appConfirmBackdrop);
     root.appendChild(appConfirm);
 
-    const codoxearQueue = CodoxearQueue;
-    if (!codoxearQueue || typeof codoxearQueue.createQueueDom !== "function")
-      throw new Error("Codoxear queue DOM failed to load");
     const {
       queueBackdrop,
       queueCloseBtn,
       queueList,
       queueEmpty,
       queueViewer,
-    } = codoxearQueue.createQueueDom({ root, el, iconSvg });
+    } = CodoxearQueue.createQueueDom({ root, el, iconSvg });
 
     const helpBackdrop = el("div", { class: "modalBackdrop", id: "helpBackdrop" });
     const helpCloseBtn = el("button", {

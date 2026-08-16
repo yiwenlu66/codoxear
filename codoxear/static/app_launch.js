@@ -1,30 +1,19 @@
 import * as CodoxearStorage from "./app_storage.js";
 import * as CodoxearUrls from "./app_application.js";
 
-  "use strict";
 
-  const codoxearUrls = CodoxearUrls;
-  if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
-  const codoxearStorage = CodoxearStorage;
-  if (
-    !codoxearStorage ||
-    typeof codoxearStorage.getItem !== "function" ||
-    typeof codoxearStorage.setItem !== "function" ||
-    typeof codoxearStorage.removeItem !== "function"
-  )
-    throw new Error("Codoxear storage helpers failed to load");
 
-  function resolveAppUrl(path) {
-    return codoxearUrls.resolveAppUrl(path);
+function resolveAppUrl(path) {
+    return CodoxearUrls.resolveAppUrl(path);
   }
   function storageGetItem(key) {
-    return codoxearStorage.getItem(key);
+    return CodoxearStorage.getItem(key);
   }
   function storageSetItem(key, value) {
-    return codoxearStorage.setItem(key, value);
+    return CodoxearStorage.setItem(key, value);
   }
   function storageRemoveItem(key) {
-    return codoxearStorage.removeItem(key);
+    return CodoxearStorage.removeItem(key);
   }
 
   const LAST_BACKEND_KEY = "codoxear.newSessionBackend";

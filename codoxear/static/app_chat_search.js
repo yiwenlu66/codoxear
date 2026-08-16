@@ -1,4 +1,3 @@
-  "use strict";
 
   const SEARCH_DEBOUNCE_MS = 300;
   const HIGHLIGHT_DEBOUNCE_MS = 120;

@@ -6,10 +6,8 @@ import * as CodoxearMessageRows from "./app_message_rows.js";
 import * as CodoxearTranscript from "./app_transcript.js";
 import * as CodoxearTranscriptView from "./app_transcript_view.js";
 
-const global = window;
 
 /* Transcript rendering, viewport state, search wiring, and row projection. */
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`transcript render dependency missing: ${name}`);
@@ -266,10 +264,7 @@ const navigationPulseController = codoxearNavigationPulse.createNavigationPulseC
 }));
 
 const hintModeController = (function instantiateHintModeController() {
-  const codoxearHintMode = CodoxearHintMode;
-  if (!codoxearHintMode || typeof codoxearHintMode.createHintModeController !== "function")
-    throw new Error("Codoxear hint mode controller failed to load");
-  return codoxearHintMode.createHintModeController(wiring.createHintModeOptions({
+  return CodoxearHintMode.createHintModeController(wiring.createHintModeOptions({
     documentTarget: document,
     isTextEntryElement,
     isMobile,
@@ -366,10 +361,7 @@ addAppEvent(document, "keydown", (e) => {
 // helpers exist; it wires the prev/next button handlers and the
 // document keydown listener itself. Chat search internals stay here.
 const chatNavigationController = (function instantiateChatNavigationController() {
-  const codoxearChatNavigation = CodoxearChatNavigation;
-  if (!codoxearChatNavigation || typeof codoxearChatNavigation.createChatNavigationController !== "function")
-    throw new Error("Codoxear chat navigation controller failed to load");
-  return codoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
+  return CodoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
     prevUserBtn,
     nextUserBtn,
     getSelected: () => getSelected(),
@@ -447,15 +439,9 @@ function stepChatSearch(delta) {
 // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
 // wired via chatNavigationController above.
 
-const codoxearTranscript = CodoxearTranscript;
-if (!codoxearTranscript || typeof codoxearTranscript.createTranscriptSlotRuntime !== "function")
-  throw new Error("Codoxear transcript helpers failed to load");
 
 chatSearchController = (function instantiateChatSearchController() {
-  const codoxearChatSearch = CodoxearChatSearch;
-  if (!codoxearChatSearch || typeof codoxearChatSearch.createChatSearchController !== "function")
-    throw new Error("Codoxear chat search controller failed to load");
-  return codoxearChatSearch.createChatSearchController(wiring.createChatSearchOptions({
+  return CodoxearChatSearch.createChatSearchController(wiring.createChatSearchOptions({
     chatSearchBtn,
     chatSearchInput,
     chatSearchPrevBtn,
@@ -464,8 +450,8 @@ chatSearchController = (function instantiateChatSearchController() {
     chatSearchStatus,
     chatSearchAllHintEl,
     chatSearchBar,
-    createLoadedChatSearchRuntime: codoxearTranscript.createLoadedChatSearchRuntime,
-    createChatSearchAllRuntime: codoxearTranscript.createChatSearchAllRuntime,
+    createLoadedChatSearchRuntime: CodoxearTranscript.createLoadedChatSearchRuntime,
+    createChatSearchAllRuntime: CodoxearTranscript.createChatSearchAllRuntime,
     getSelected: () => getSelected(),
     getPollGen: () => getPollGeneration(),
     api,
@@ -481,7 +467,7 @@ chatSearchController = (function instantiateChatSearchController() {
   }));
 })();
 
-const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime(wiring.createTranscriptSlotOptions({
+const transcriptSlotRuntime = CodoxearTranscript.createTranscriptSlotRuntime(wiring.createTranscriptSlotOptions({
   getSession: (sessionId) => getSessionIndex().get(sessionId) || null,
   maxTailEvents: INIT_PAGE_LIMIT,
 }));
@@ -494,7 +480,7 @@ function initPageLimit() {
   return INIT_PAGE_LIMIT;
 }
 
-const typingRowRuntime = codoxearTranscript.createTypingRowRuntime(wiring.createTypingRowOptions({
+const typingRowRuntime = CodoxearTranscript.createTypingRowRuntime(wiring.createTypingRowOptions({
   root: chatInner,
   bottomSentinel,
   el,
@@ -502,7 +488,7 @@ const typingRowRuntime = codoxearTranscript.createTypingRowRuntime(wiring.create
   scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
 }));
 
-const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
+const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
   chat,
   jumpButton: jumpBtn,
   timeChip: chatTimeChip,
@@ -520,7 +506,7 @@ const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime
   olderCancelPx: OLDER_CANCEL_PX,
 }));
 
-const transcriptDomRuntime = codoxearTranscript.createTranscriptDomRuntime(wiring.createTranscriptDomOptions({
+const transcriptDomRuntime = CodoxearTranscript.createTranscriptDomRuntime(wiring.createTranscriptDomOptions({
   root: chatInner,
   olderWrap,
   bottomSentinel,
@@ -552,23 +538,23 @@ function isLoadingOlderMessages() {
 }
 
 function normalizeTailEvent(ev) {
-  return codoxearTranscript.normalizeTailEvent(ev);
+  return CodoxearTranscript.normalizeTailEvent(ev);
 }
 
 function normalizeTranscriptState(data) {
-  return codoxearTranscript.normalizeTranscriptState(data);
+  return CodoxearTranscript.normalizeTranscriptState(data);
 }
 
 function transcriptKey(threadId, logPath) {
-  return codoxearTranscript.transcriptKey(threadId, logPath);
+  return CodoxearTranscript.transcriptKey(threadId, logPath);
 }
 
 function transcriptSnapshotFromData(data) {
-  return codoxearTranscript.transcriptSnapshotFromData(data);
+  return CodoxearTranscript.transcriptSnapshotFromData(data);
 }
 
 function transcriptIdentityFromData(data, fallback = null) {
-  return codoxearTranscript.transcriptIdentityFromData(data, fallback);
+  return CodoxearTranscript.transcriptIdentityFromData(data, fallback);
 }
 
 function getSessionTranscriptSlot(sessionId) {
@@ -732,30 +718,21 @@ function messageRowDeps() {
   };
 }
 
-      const codoxearMessageIdentity = CodoxearMessageIdentity;
-      if (
-!codoxearMessageIdentity ||
-typeof codoxearMessageIdentity.normalizeTextForPendingMatch !== "function" ||
-typeof codoxearMessageIdentity.pendingMatchKey !== "function" ||
-typeof codoxearMessageIdentity.eventKey !== "function" ||
-typeof codoxearMessageIdentity.chatAssistantDedupeKey !== "function"
-      )
-throw new Error("Codoxear message identity helpers failed to load");
 
       function normalizeTextForPendingMatch(s) {
-return codoxearMessageIdentity.normalizeTextForPendingMatch(s);
+return CodoxearMessageIdentity.normalizeTextForPendingMatch(s);
       }
 
-      const transcriptEventRuntime = codoxearTranscript.createTranscriptEventRuntime(wiring.createTranscriptEventOptions({
-eventKey: codoxearMessageIdentity.eventKey,
-pendingMatchKey: codoxearMessageIdentity.pendingMatchKey,
-normalizePendingText: codoxearMessageIdentity.normalizeTextForPendingMatch,
-assistantDedupeKey: codoxearMessageIdentity.chatAssistantDedupeKey,
+      const transcriptEventRuntime = CodoxearTranscript.createTranscriptEventRuntime(wiring.createTranscriptEventOptions({
+eventKey: CodoxearMessageIdentity.eventKey,
+pendingMatchKey: CodoxearMessageIdentity.pendingMatchKey,
+normalizePendingText: CodoxearMessageIdentity.normalizeTextForPendingMatch,
+assistantDedupeKey: CodoxearMessageIdentity.chatAssistantDedupeKey,
 maxRecentEventKeys: 320,
       }));
 
       function eventKey(ev) {
-return codoxearMessageIdentity.eventKey(ev);
+return CodoxearMessageIdentity.eventKey(ev);
       }
 
 function markEventSeen(ev) {
@@ -767,7 +744,7 @@ function isDuplicateEvent(ev) {
 }
 
 function chatAssistantDedupeKey(ev) {
-  return codoxearMessageIdentity.chatAssistantDedupeKey(ev);
+  return CodoxearMessageIdentity.chatAssistantDedupeKey(ev);
 }
 
 function isAdjacentAssistantDuplicateEvent(ev) {
@@ -778,7 +755,7 @@ function isAdjacentAssistantDuplicateEvent(ev) {
 }
 
 function pendingMatchKey(s) {
-  return codoxearMessageIdentity.pendingMatchKey(s);
+  return CodoxearMessageIdentity.pendingMatchKey(s);
 }
 
       function isTranscriptRenewalCommand(raw, sessionId = getSelected()) {
@@ -808,7 +785,7 @@ transcriptViewController = codoxearTranscriptView.createTranscriptViewController
   document,
   el,
   messageRows: codoxearMessageRows,
-  transcript: codoxearTranscript,
+  transcript: CodoxearTranscript,
   getSelectedSessionId: () => getSelected(),
   getMessageRowDeps: messageRowDeps,
   policyRuntime: {
@@ -841,7 +818,7 @@ function appendEvent(ev) {
 }
 
 function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
-  return codoxearTranscript.normalizedTranscriptEvents(events, {
+  return CodoxearTranscript.normalizedTranscriptEvents(events, {
     consumePending,
     selectedSessionId: getSelected(),
     eventKey,

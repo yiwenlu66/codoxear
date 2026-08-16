@@ -1,6 +1,5 @@
 const global = window;
 
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`iOS viewport controller dependency missing: ${name}`);

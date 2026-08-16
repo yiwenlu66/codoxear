@@ -1,4 +1,3 @@
-  "use strict";
 
   const POLLING_INTERVALS = Object.freeze({
     SESSION_POLL_VISIBLE_MS: 5000,

@@ -1,7 +1,5 @@
-const global = window;
 
 /* Confirmed send, staged attachments, queue coordination, and live delivery. */
-  "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`send lifecycle dependency missing: ${name}`);
     return value;

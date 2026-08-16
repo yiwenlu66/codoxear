@@ -1,40 +1,10 @@
 import * as CodoxearDisplay from "./app_display.js";
 import * as CodoxearLaunch from "./app_launch.js";
 
-  "use strict";
 
-  const codoxearLaunch = CodoxearLaunch;
-  if (
-    !codoxearLaunch ||
-    typeof codoxearLaunch.normalizeAgentBackendName !== "function" ||
-    typeof codoxearLaunch.agentBackendDisplayName !== "function" ||
-    typeof codoxearLaunch.agentBackendLogoPath !== "function" ||
-    typeof codoxearLaunch.sessionAgentBackend !== "function" ||
-    typeof codoxearLaunch.sessionProviderChoice !== "function" ||
-    typeof codoxearLaunch.providerChoicesForBackend !== "function" ||
-    typeof codoxearLaunch.defaultsForAgentBackend !== "function" ||
-    typeof codoxearLaunch.reasoningChoicesForBackend !== "function" ||
-    typeof codoxearLaunch.providerModelDisplay !== "function" ||
-    typeof codoxearLaunch.modelOptionMatches !== "function" ||
-    typeof codoxearLaunch.loadRememberedProviderChoice !== "function" ||
-    typeof codoxearLaunch.rememberProviderChoice !== "function" ||
-    typeof codoxearLaunch.loadRememberedProviderModelChoice !== "function" ||
-    typeof codoxearLaunch.rememberedProviderModelAbsentChoice !== "function" ||
-    typeof codoxearLaunch.rememberProviderModelChoice !== "function"
-  )
-    throw new Error("Codoxear launch helpers failed to load");
 
-  const codoxearDisplay = CodoxearDisplay;
-  if (
-    !codoxearDisplay ||
-    typeof codoxearDisplay.baseName !== "function" ||
-    typeof codoxearDisplay.shortSessionId !== "function" ||
-    typeof codoxearDisplay.fmtRelativeAge !== "function" ||
-    typeof codoxearDisplay.fuzzyRecentCwdScore !== "function"
-  )
-    throw new Error("Codoxear display helpers failed to load");
 
-  function requireFunction(value, name) {
+function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`new session controller dependency missing: ${name}`);
     return value;
   }
@@ -163,7 +133,7 @@ import * as CodoxearLaunch from "./app_launch.js";
     }
 
     function newSessionProviderChoices() {
-      return codoxearLaunch.providerChoicesForBackend(backend(), defaultsSource());
+      return CodoxearLaunch.providerChoicesForBackend(backend(), defaultsSource());
     }
 
     function newSessionHasProviderChoices() {
@@ -173,9 +143,9 @@ import * as CodoxearLaunch from "./app_launch.js";
     function defaultNewSessionProviderChoice() {
       const choices = newSessionProviderChoices();
       if (!choices.length) return "";
-      const defaults = codoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
       const configured = typeof defaults.provider_choice === "string" ? defaults.provider_choice.trim() : "";
-      const remembered = codoxearLaunch.loadRememberedProviderChoice(backend());
+      const remembered = CodoxearLaunch.loadRememberedProviderChoice(backend());
       if (remembered && choices.includes(remembered)) return remembered;
       if (configured && choices.includes(configured)) return configured;
       const currentProvider = provider();
@@ -196,7 +166,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       const choices = newSessionProviderChoices();
       const allowCustomProvider = newSessionAllowsCustomProvider();
       const hasProviders = choices.length > 0 || allowCustomProvider;
-      const defaults = codoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
       const fallbackModel = typeof defaults.model === "string" && defaults.model.trim() ? defaults.model.trim() : "default";
       let providerChoice = hasProviders ? defaultNewSessionProviderChoice() : "";
       let model = raw || fallbackModel;
@@ -222,9 +192,9 @@ import * as CodoxearLaunch from "./app_launch.js";
     }
 
     function rememberedNewSessionProviderModelChoice() {
-      const remembered = codoxearLaunch.loadRememberedProviderModelChoice(backend());
+      const remembered = CodoxearLaunch.loadRememberedProviderModelChoice(backend());
       if (!remembered) return null;
-      const absent = codoxearLaunch.rememberedProviderModelAbsentChoice(remembered);
+      const absent = CodoxearLaunch.rememberedProviderModelAbsentChoice(remembered);
       if (absent) return absent;
       const parsed = parseNewSessionProviderModelInput(remembered);
       if (parsed.providerError) return null;
@@ -237,7 +207,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       const defaults = defaultsSource();
       const warnings = defaults && typeof defaults === "object" && defaults.warnings && typeof defaults.warnings === "object" ? defaults.warnings : null;
       if (!warnings) return "";
-      const names = Object.keys(warnings).map(codoxearLaunch.agentBackendDisplayName).filter(Boolean);
+      const names = Object.keys(warnings).map(CodoxearLaunch.agentBackendDisplayName).filter(Boolean);
       if (!names.length) return "";
       return `Launch defaults degraded for ${names.join(", ")}; using safe defaults.`;
     }
@@ -267,7 +237,7 @@ import * as CodoxearLaunch from "./app_launch.js";
 
     function currentReasoningChoices() {
       const parsed = parseNewSessionProviderModelInput();
-      return codoxearLaunch.reasoningChoicesForBackend(backend(), defaultsSource(), {
+      return CodoxearLaunch.reasoningChoicesForBackend(backend(), defaultsSource(), {
         provider: parsed.providerAbsent ? "" : parsed.providerChoice || provider(),
         model: currentNewSessionModelForCapabilities(),
       });
@@ -302,7 +272,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       const seen = new Set();
       const out = [];
       const currentBackend = backend();
-      const defaults = codoxearLaunch.defaultsForAgentBackend(currentBackend, defaultsSource());
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(currentBackend, defaultsSource());
       const providerChoices = newSessionProviderChoices();
       const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
       const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
@@ -321,10 +291,10 @@ import * as CodoxearLaunch from "./app_launch.js";
       };
       if (configuredDefault && configuredDefaultBelongsToProvider) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
       for (const item of latestSessions()) {
-        if (codoxearLaunch.sessionAgentBackend(item) !== currentBackend) continue;
+        if (CodoxearLaunch.sessionAgentBackend(item) !== currentBackend) continue;
         const model = typeof item.model === "string" ? item.model.trim() : "";
         if (!model) continue;
-        const prov = codoxearLaunch.sessionProviderChoice(item);
+        const prov = CodoxearLaunch.sessionProviderChoice(item);
         const providerChoice = providerChoices.includes(prov) ? prov : "";
         if (!isConfiguredProviderModel(providerChoice, model)) continue;
         addNewSessionModelOption(out, seen, model, { providerChoice, recent: true });
@@ -361,14 +331,14 @@ import * as CodoxearLaunch from "./app_launch.js";
       if (!query) return options.slice(0, 12);
       const exact = options.filter((item) => String(item.model || "").toLowerCase() === query || String(item.searchText || "").toLowerCase() === query);
       const prefix = options.filter((item) => !exact.includes(item) && String(item.searchText || item.model || "").toLowerCase().startsWith(query));
-      const contains = options.filter((item) => !exact.includes(item) && !prefix.includes(item) && codoxearLaunch.modelOptionMatches(item, query));
+      const contains = options.filter((item) => !exact.includes(item) && !prefix.includes(item) && CodoxearLaunch.modelOptionMatches(item, query));
       return exact.concat(prefix, contains).slice(0, 12);
     }
 
     function setNewSessionReasoningEffort(value) {
       const choices = currentReasoningChoices();
       const next = String(value || "").trim().toLowerCase();
-      const fallback = String(codoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource()).reasoning_effort || "").trim().toLowerCase();
+      const fallback = String(CodoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource()).reasoning_effort || "").trim().toLowerCase();
       const resolved = choices.includes(next) ? next : choices.includes(fallback) ? fallback : choices[0] || "high";
       assignReasoningEffort(resolved);
       setPickerButtonContent(reasoningBtn, resolved);
@@ -376,12 +346,12 @@ import * as CodoxearLaunch from "./app_launch.js";
 
     function setNewSessionProvider(value) {
       const currentBackend = backend();
-      const options = codoxearLaunch.providerChoicesForBackend(currentBackend);
-      const fallback = String(codoxearLaunch.defaultsForAgentBackend(currentBackend, defaultsSource()).provider_choice || "").trim();
+      const options = CodoxearLaunch.providerChoicesForBackend(currentBackend);
+      const fallback = String(CodoxearLaunch.defaultsForAgentBackend(currentBackend, defaultsSource()).provider_choice || "").trim();
       const next = String(value || "").trim();
       const resolved = options.includes(next) || (next && newSessionAllowsCustomProvider()) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
       assignProvider(resolved);
-      codoxearLaunch.rememberProviderChoice(currentBackend, resolved);
+      CodoxearLaunch.rememberProviderChoice(currentBackend, resolved);
       setNewSessionReasoningEffort(reasoningEffort());
       renderReasoningMenu();
     }
@@ -399,7 +369,7 @@ import * as CodoxearLaunch from "./app_launch.js";
         assignLiteralModelInputValue(modelInput.value);
         assignLaunchPresetProviderAbsent(true);
       }
-      codoxearLaunch.rememberProviderModelChoice(backend(), selectedProvider, item.model || "default", { providerAbsent: Boolean(item.providerAbsent) });
+      CodoxearLaunch.rememberProviderModelChoice(backend(), selectedProvider, item.model || "default", { providerAbsent: Boolean(item.providerAbsent) });
       modelField.classList.remove("error");
       closeModelMenu();
       setNewSessionReasoningEffort(reasoningEffort());
@@ -414,7 +384,7 @@ import * as CodoxearLaunch from "./app_launch.js";
 
     function launchPresetProviderChoice(s) {
       if (!s || typeof s !== "object") return "";
-      const backendValue = codoxearLaunch.sessionAgentBackend(s);
+      const backendValue = CodoxearLaunch.sessionAgentBackend(s);
       const prov = typeof s.model_provider === "string" ? s.model_provider.trim() : "";
       if (backendValue === "pi") return prov;
       if (backendValue === "cc") return "";
@@ -431,7 +401,7 @@ import * as CodoxearLaunch from "./app_launch.js";
     function applyNewSessionLaunchPreset(sessionInfo) {
       const s = sessionInfo && typeof sessionInfo === "object" ? sessionInfo : null;
       if (!s) return false;
-      const backendValue = codoxearLaunch.sessionAgentBackend(s);
+      const backendValue = CodoxearLaunch.sessionAgentBackend(s);
       if (backendValue !== backend()) setBackend(backendValue, { resetSelections: true });
       const prov = launchPresetProviderChoice(s);
       const providerChoices = newSessionProviderChoices();
@@ -451,7 +421,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       clearNewSessionProviderModelError();
       const reasoning = typeof s.reasoning_effort === "string" ? s.reasoning_effort.trim().toLowerCase() : "";
       if (reasoning) setNewSessionReasoningEffort(reasoning);
-      const defaults = codoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(backend(), defaultsSource());
       if (defaults && defaults.supports_fast) setFast(String(s.service_tier || "").trim().toLowerCase() === "fast");
       if (tmuxAvailable()) setTmuxChecked(Boolean(s.transport === "tmux" || s.tmux_session || s.tmux_window));
       renderReasoningMenu();
@@ -478,14 +448,14 @@ import * as CodoxearLaunch from "./app_launch.js";
       const query = String(cwdInput.value || "").trim();
       if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
       return items
-        .map((cwd, idx) => ({ cwd, idx, score: codoxearDisplay.fuzzyRecentCwdScore(cwd, query) }))
+        .map((cwd, idx) => ({ cwd, idx, score: CodoxearDisplay.fuzzyRecentCwdScore(cwd, query) }))
         .filter((item) => item.score >= 0)
         .sort((a, b) => b.score - a.score || a.idx - b.idx || a.cwd.localeCompare(b.cwd))
         .slice(0, 10);
     }
 
     function syncNewSessionNamePlaceholder() {
-      const fallback = codoxearDisplay.baseName(String(cwdInput.value || "").trim());
+      const fallback = CodoxearDisplay.baseName(String(cwdInput.value || "").trim());
       nameInput.placeholder = fallback || "session-name";
     }
 
@@ -623,9 +593,9 @@ import * as CodoxearLaunch from "./app_launch.js";
       if (!item || typeof item !== "object") return "Start fresh";
       const alias = typeof item.alias === "string" ? item.alias.trim() : "";
       const firstUser = typeof item.first_user_message === "string" ? item.first_user_message.trim() : "";
-      const primary = alias || firstUser || codoxearDisplay.shortSessionId(item.session_id);
+      const primary = alias || firstUser || CodoxearDisplay.shortSessionId(item.session_id);
       const ts = Number(item.updated_ts || 0);
-      const age = ts > 0 ? codoxearDisplay.fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
+      const age = ts > 0 ? CodoxearDisplay.fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
       return `${age ? `${age} | ` : ""}${primary}`;
     }
 
@@ -911,7 +881,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       modelMenu.innerHTML = "";
       const items = controller.filteredNewSessionModelOptions();
       const raw = String(modelInput.value || "").trim();
-      const configured = String(codoxearLaunch.defaultsForAgentBackend(backend, defaultsSource()).model || "").trim();
+      const configured = String(CodoxearLaunch.defaultsForAgentBackend(backend, defaultsSource()).model || "").trim();
       if (modelMenuFocus < 0) {
         const selected = raw || configured;
         const index = selected ? items.findIndex((item) => item.displayText === selected || item.model === selected) : -1;
@@ -951,16 +921,16 @@ import * as CodoxearLaunch from "./app_launch.js";
       backendTabs.innerHTML = "";
       for (const value of ["pi", "codex", "cc"]) {
         const active = backend === value;
-        const label = codoxearLaunch.agentBackendDisplayName(value);
-        const btn = el("button", { class: `agentBackendTab${active ? " active" : ""}`, type: "button", title: label, "aria-label": label }, [el("img", { class: "agentBackendTabLogo", src: codoxearLaunch.agentBackendLogoPath(value), alt: `${label} logo`, width: "20", height: "20" })]);
+        const label = CodoxearLaunch.agentBackendDisplayName(value);
+        const btn = el("button", { class: `agentBackendTab${active ? " active" : ""}`, type: "button", title: label, "aria-label": label }, [el("img", { class: "agentBackendTabLogo", src: CodoxearLaunch.agentBackendLogoPath(value), alt: `${label} logo`, width: "20", height: "20" })]);
         btn.onclick = () => setBackend(value, { resetSelections: true });
         backendTabs.appendChild(btn);
       }
-      backendName.textContent = codoxearLaunch.agentBackendDisplayName(backend);
+      backendName.textContent = CodoxearLaunch.agentBackendDisplayName(backend);
     }
 
     function syncRunConfigUi() {
-      const defaults = codoxearLaunch.defaultsForAgentBackend(backend, defaultsSource());
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(backend, defaultsSource());
       const hasProviders = controller.newSessionHasProviderChoices() || controller.newSessionAllowsCustomProvider();
       modelLabel.textContent = hasProviders ? "Provider / model" : "Model";
       modelInput.placeholder = hasProviders ? "provider/model or model" : "Model";
@@ -969,14 +939,14 @@ import * as CodoxearLaunch from "./app_launch.js";
     }
 
     function setBackend(value, { resetSelections = false } = {}) {
-      const next = codoxearLaunch.normalizeAgentBackendName(value);
+      const next = CodoxearLaunch.normalizeAgentBackendName(value);
       const previous = backend;
       backend = next;
-      codoxearLaunch.rememberBackendChoice(next);
-      const defaults = codoxearLaunch.defaultsForAgentBackend(next, defaultsSource());
-      const providers = codoxearLaunch.providerChoicesForBackend(next, defaultsSource());
+      CodoxearLaunch.rememberBackendChoice(next);
+      const defaults = CodoxearLaunch.defaultsForAgentBackend(next, defaultsSource());
+      const providers = CodoxearLaunch.providerChoicesForBackend(next, defaultsSource());
       const defaultProvider = String(defaults.provider_choice || "").trim();
-      const rememberedProvider = codoxearLaunch.loadRememberedProviderChoice(next);
+      const rememberedProvider = CodoxearLaunch.loadRememberedProviderChoice(next);
       controller.setNewSessionProvider((resetSelections || previous !== next || !providers.includes(provider)) ? ((rememberedProvider && providers.includes(rememberedProvider) ? rememberedProvider : "") || defaultProvider || providers[0] || "") : provider);
       const modelDefault = String(defaults.model || "").trim();
       if (resetSelections || previous !== next) {
@@ -1017,7 +987,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       returnFocusEl = opener instanceof HTMLElement ? opener : doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
       prepareModalOpen();
       const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : like && like.cwd && like.cwd !== "?" ? like.cwd : current && current.cwd && current.cwd !== "?" ? current.cwd : "";
-      const initialBackend = (like ? codoxearLaunch.sessionAgentBackend(like) : current ? codoxearLaunch.sessionAgentBackend(current) : "") || codoxearLaunch.loadRememberedBackendChoice() || codoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
+      const initialBackend = (like ? CodoxearLaunch.sessionAgentBackend(like) : current ? CodoxearLaunch.sessionAgentBackend(current) : "") || CodoxearLaunch.loadRememberedBackendChoice() || CodoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
       status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false;
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
@@ -1032,7 +1002,7 @@ import * as CodoxearLaunch from "./app_launch.js";
       const parsed = controller.syncNewSessionProviderFromModelInput();
       if (parsed.providerError) { status.textContent = parsed.providerError; return; }
       const providerChoice = String(parsed.providerAbsent ? "" : parsed.providerChoice || provider || "").trim(); const model = String(parsed.model || "default").trim() || "default";
-      codoxearLaunch.rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsed.providerAbsent) });
+      CodoxearLaunch.rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsed.providerAbsent) });
       const resumeSessionId = (controller.currentResumeSelection() || {}).session_id || null; const createInTmux = !!tmuxToggle.checked; const worktreeBranch = !resumeSessionId && worktreeToggle.checked ? String(worktreeInput.value || "").trim() : null;
       if (worktreeToggle.checked && !worktreeBranch) { status.textContent = "Branch name is required."; return; }
       status.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";

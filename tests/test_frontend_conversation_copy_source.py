@@ -53,37 +53,13 @@ def eval_conversation_copy_helpers(expression: str) -> dict:
     return json.loads(proc.stdout)
 
 
-def run_app_conversation_copy_guard(setup_js: str = "") -> dict:
-    source = APP_GUARD_JS.read_text(encoding="utf-8")
-    start = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;")
-    end = source.index("function normalizeAgentBackendName", start)
-    guard_source = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{ window: {{}} }};
-        vm.createContext(ctx);
-        try {{
-          vm.runInContext({json.dumps(setup_js + "\n" + guard_source)}, ctx);
-          process.stdout.write(JSON.stringify({{ ok: true, message: "" }}));
-        }} catch (err) {{
-          process.stdout.write(JSON.stringify({{ ok: false, message: String(err && err.message || err) }}));
-        }}
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
-
-
 def eval_app_copy_failure_toasts() -> dict:
     source = APP_GUARD_JS.read_text(encoding="utf-8")
-    start = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;")
+    start = source.index("function transcriptExportTooLargeCopyMessage(err)")
     end = source.index("function normalizeAgentBackendName", start)
-    guard_source = source[start:end]
+    helper_source = source[start:end]
     setup = """
     window.CodoxearConversationCopy = {
-      formatConversationForCopy() {},
-      formatConversationForCopyResult() {},
       transcriptExportTooLargeCopyMessage(err) {
         if (err && err.status === 413 && err.obj && err.obj.max_bytes === 52428800) return "Conversation too large to copy (max 50 MiB). Use search or copy a smaller range.";
         return "";
@@ -95,7 +71,7 @@ def eval_app_copy_failure_toasts() -> dict:
         const vm = require("vm");
         const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(setup + "\n" + guard_source)}, ctx);
+        vm.runInContext({json.dumps(setup + "\n" + helper_source)}, ctx);
         const exportErr = Object.assign(new Error("transcript log is too large to export"), {{ status: 413, obj: {{ error: "transcript log is too large to export", max_bytes: 52428800 }} }});
         const genericErr = new Error("denied");
         process.stdout.write(JSON.stringify({{
@@ -171,18 +147,6 @@ def eval_app_copy_conversation_success(events) -> dict:
 
 
 class TestFrontendConversationCopySource(unittest.TestCase):
-    def test_app_conversation_copy_guard_throws_for_missing_or_partial_helper(self) -> None:
-        missing = run_app_conversation_copy_guard()
-        self.assertEqual(missing, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
-        partial = run_app_conversation_copy_guard("window.CodoxearConversationCopy = {};")
-        self.assertEqual(partial, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
-        formatting_only = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {} };")
-        self.assertEqual(formatting_only, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
-        missing_result = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {}, transcriptExportTooLargeCopyMessage() {} };")
-        self.assertEqual(missing_result, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
-        complete = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {}, formatConversationForCopyResult() {}, transcriptExportTooLargeCopyMessage() {} };")
-        self.assertEqual(complete, {"ok": True, "message": ""})
-
     def test_transcript_export_too_large_helper_recognizes_api_error_shape(self) -> None:
         result = eval_conversation_copy_helpers(
             """

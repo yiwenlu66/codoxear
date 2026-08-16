@@ -1,7 +1,5 @@
-const global = window;
 
 /* Session display authority: status, context pressure, and interrupt visibility. */
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`session display dependency missing: ${name}`);

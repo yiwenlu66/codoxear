@@ -1,4 +1,3 @@
-  "use strict";
 
   // Attachment staging authority. Owns the selected session's local staged-list
   // projection, upload producers (picker/paste/drop), image compression, and

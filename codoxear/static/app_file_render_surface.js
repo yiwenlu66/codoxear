@@ -1,4 +1,3 @@
-  "use strict";
 
 
   function requireFunction(value, name) {

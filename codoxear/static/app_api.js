@@ -1,11 +1,5 @@
 import * as CodoxearUrls from "./app_application.js";
-
-  "use strict";
-
-  const codoxearUrls = CodoxearUrls;
-  if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
-
-  const perfWindow = 200;
+const perfWindow = 200;
   const perfSamples = new Map();
 
   function pushSample(name, valueMs) {
@@ -67,7 +61,7 @@ import * as CodoxearUrls from "./app_application.js";
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
     }
-    const url = codoxearUrls.resolveAppUrl(path);
+    const url = CodoxearUrls.resolveAppUrl(path);
     const res = await fetch(url, opts);
     const dt = performance.now() - t0;
     if (rawPath === "/api/sessions" && method === "GET") codoxearPerfHelpers.pushSample("api_sessions_ms", dt);

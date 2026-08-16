@@ -70,41 +70,7 @@ def eval_polling_policy() -> dict:
     return json.loads(proc.stdout)
 
 
-def run_app_polling_guard(setup_js: str = "") -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("const codoxearPolling = window.CodoxearPolling;")
-    end = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;", start)
-    guard_source = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{ window: {{}} }};
-        vm.createContext(ctx);
-        try {{
-          vm.runInContext({json.dumps(setup_js + "\n" + guard_source)}, ctx);
-          process.stdout.write(JSON.stringify({{ ok: true, message: "" }}));
-        }} catch (err) {{
-          process.stdout.write(JSON.stringify({{ ok: false, message: String(err && err.message || err) }}));
-        }}
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
-
-
 class TestFrontendPollingModuleSource(unittest.TestCase):
-    def test_app_polling_guard_throws_for_missing_or_partial_helper(self) -> None:
-        missing = run_app_polling_guard()
-        self.assertEqual(missing, {"ok": False, "message": "Codoxear polling helpers failed to load"})
-        partial = run_app_polling_guard(
-            "window.CodoxearPolling = { POLLING_INTERVALS: {}, sessionsPollDelayMs() {}, secondaryPollDelayMs() {}, browserOffline() {}, messagePollErrorDelayMs() {}, messagePollDelayMs() {} };"
-        )
-        self.assertEqual(partial, {"ok": False, "message": "Codoxear polling helpers failed to load"})
-        complete = run_app_polling_guard(
-            "window.CodoxearPolling = { POLLING_INTERVALS: {}, sessionsPollDelayMs() {}, secondaryPollDelayMs() {}, browserOffline() {}, messagePollErrorDelayMs() {}, networkRetryDelayMs() {}, messagePollDelayMs() {}, normalizeMessagePollKickDelay() {} }; window.CodoxearNetwork = { createNetworkStatusController() {} };"
-        )
-        self.assertEqual(complete, {"ok": True, "message": ""})
-
     def test_polling_policy_preserves_delay_contracts(self) -> None:
         result = eval_polling_policy()
         self.assertEqual(result["intervals"], {

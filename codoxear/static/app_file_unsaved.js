@@ -1,6 +1,5 @@
 const global = window;
 
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file unsaved controller dependency missing: ${name}`);

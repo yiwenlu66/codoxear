@@ -3,10 +3,8 @@ import * as CodoxearFilePickerOps from "./app_file_picker_ops.js";
 import * as CodoxearFileUnsaved from "./app_file_unsaved.js";
 import * as CodoxearSessionEdit from "./app_session_edit.js";
 
-const global = window;
 
 /* File operations composition: viewer, editor, picker, unsaved-change, and touch keyboard. */
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file operations dependency missing: ${name}`);
@@ -262,10 +260,7 @@ const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRunti
   takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
   isUnavailable: () => isFileViewerSessionUnavailable(),
 }));
-const codoxearFileUnsaved = CodoxearFileUnsaved;
-if (!codoxearFileUnsaved || typeof codoxearFileUnsaved.createFileUnsavedController !== "function")
-  throw new Error("Codoxear file unsaved controller failed to load");
-const fileUnsavedController = codoxearFileUnsaved.createFileUnsavedController(wiring.createFileUnsavedOptions({
+const fileUnsavedController = CodoxearFileUnsaved.createFileUnsavedController(wiring.createFileUnsavedOptions({
   documentTarget: document,
   ElementCtor: HTMLElement,
   dialogRuntime: fileUnsavedDialogRuntime,

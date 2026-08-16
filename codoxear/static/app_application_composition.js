@@ -19,11 +19,9 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
 import * as CodoxearUnattended from "./app_unattended.js";
 import * as CodoxearWiring from "./app_wiring.js";
 
-const global = window;
 
 /* Application composition owns concrete lifecycle, controller assembly, and UI behavior.
  * app_application_runtime.js remains the stable bootstrap facade. */
-  "use strict";
 
   function createEventBindings(options = {}) {
     const addEvent = options.addEvent;
@@ -116,10 +114,7 @@ const global = window;
       function renderApp() {
             cleanupActiveApp();
 	        const root = $("#root");
-        const codoxearWiring = CodoxearWiring;
-        if (!codoxearWiring || typeof codoxearWiring.createWiring !== "function")
-          throw new Error("Codoxear wiring factories failed to load");
-        const wiring = codoxearWiring.createWiring();
+        const wiring = CodoxearWiring.createWiring();
         const shellDOM = codoxearShell.createShellDOM(wiring.createShellDOMOptions({
           root,
           el,
@@ -179,10 +174,7 @@ const global = window;
           banner: networkBanner,
           navigatorLike: typeof navigator === "undefined" ? undefined : navigator,
         }));
-        const codoxearUnattendedDom = CodoxearUnattended;
-        if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
-          throw new Error("Codoxear unattended DOM failed to load");
-        const unattendedDom = codoxearUnattendedDom.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
+        const unattendedDom = CodoxearUnattended.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
         const { unattendedMenu, enabledEl: unattendedEnabledEl, cooldownEl: unattendedCooldownEl, remainingEl: unattendedRemainingEl, requestEl: unattendedRequestEl } = unattendedDom;
         root.appendChild(unattendedMenu);
         let pendingHashSessionId = "";
@@ -401,10 +393,7 @@ const global = window;
           delayForPoll: secondaryPollDelayMs,
         }));
 
-        const codoxearSessionTitle = CodoxearSessionTitle;
-        if (!codoxearSessionTitle || typeof codoxearSessionTitle.createSessionTitleController !== "function")
-          throw new Error("Codoxear session title controller failed to load");
-        const sessionTitleController = codoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
+        const sessionTitleController = CodoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
           titleLabel,
           getSelected: () => selected,
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
@@ -433,16 +422,6 @@ const global = window;
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
         } = applicationModalDOM;
-        const codoxearModal = CodoxearModal;
-        if (
-          !codoxearModal ||
-          typeof codoxearModal.isModalTargetOpen !== "function" ||
-          typeof codoxearModal.syncModalIsolation !== "function" ||
-          typeof codoxearModal.restoreModalFocus !== "function" ||
-          typeof codoxearModal.focusModalCloseButton !== "function" ||
-          typeof codoxearModal.createModalKeyboardHandler !== "function"
-        )
-          throw new Error("Codoxear modal helpers failed to load");
 
         function setPickerButtonContent(button, primaryText, secondaryText = "", placeholder = false) {
           if (!button) return;
@@ -454,10 +433,7 @@ const global = window;
           button.appendChild(el("span", { class: "pickerButtonChevron", html: iconSvg("chevronDown") }));
         }
 
-        const codoxearDialogMenu = CodoxearDialogMenu;
-        if (!codoxearDialogMenu || typeof codoxearDialogMenu.createDialogMenuController !== "function")
-          throw new Error("Codoxear dialog menu controller failed to load");
-        const dialogMenuController = codoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
+        const dialogMenuController = CodoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
 
         const newSessionDialogController = codoxearNewSession.createNewSessionDialogController(wiring.createNewSessionDialogOptions({
           root,
@@ -498,11 +474,11 @@ const global = window;
         ];
 
         function isModalTargetOpen(node) {
-          return codoxearModal.isModalTargetOpen(node);
+          return CodoxearModal.isModalTargetOpen(node);
         }
 
         function syncModalIsolation() {
-          return codoxearModal.syncModalIsolation(app, modalIsolationTargets);
+          return CodoxearModal.syncModalIsolation(app, modalIsolationTargets);
         }
 
         function closeFilePickerMenu() {
@@ -528,11 +504,11 @@ const global = window;
         }
 
         function restoreModalFocus(target, isStillOpen) {
-          return codoxearModal.restoreModalFocus(target, isStillOpen);
+          return CodoxearModal.restoreModalFocus(target, isStillOpen);
         }
 
         function focusModalCloseButton(viewer, closeBtn) {
-          return codoxearModal.focusModalCloseButton(viewer, closeBtn);
+          return CodoxearModal.focusModalCloseButton(viewer, closeBtn);
         }
 
         let appConfirmPending = null;
@@ -604,12 +580,6 @@ const global = window;
         eventBindings.on(appConfirmCancelBtn, 'click', () => resolveAppConfirm(false));
         eventBindings.on(appConfirmBackdrop, 'click', () => resolveAppConfirm(false));
 
-        const codoxearClipboard = CodoxearClipboard;
-        if (!codoxearClipboard || typeof codoxearClipboard.copyToClipboard !== "function")
-          throw new Error("Codoxear clipboard helpers failed to load");
-        const codoxearCodeCopy = CodoxearCodeCopy;
-        if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
-          throw new Error("Codoxear code copy helpers failed to load");
 
         const toastController = createToastController({ toast, setTimeout });
         function setToast(text) {
@@ -617,10 +587,10 @@ const global = window;
         }
 
         async function copyToClipboard(text) {
-          return codoxearClipboard.copyToClipboard(text);
+          return CodoxearClipboard.copyToClipboard(text);
         }
 
-        const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime(wiring.createCodeBlockCopyOptions({
+        const codeBlockCopyRuntime = CodoxearCodeCopy.createCodeBlockCopyRuntime(wiring.createCodeBlockCopyOptions({
           copyToClipboard,
           setToast,
           setTimeout,
@@ -660,10 +630,7 @@ const global = window;
 
         let currentQueueLen = 0;
         let currentSubagentsRunning = 0;
-        const codoxearSessionDisplay = CodoxearSessionDisplay;
-        if (!codoxearSessionDisplay || typeof codoxearSessionDisplay.createSessionDisplayController !== "function")
-          throw new Error("Codoxear session display controller failed to load");
-        const sessionDisplayController = codoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
+        const sessionDisplayController = CodoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
           getSelected: () => selected,
           setRunning: (value) => { currentRunning = Boolean(value); },
           getQueueLen: () => currentQueueLen,
@@ -675,10 +642,7 @@ const global = window;
         const { setStatus, setContext } = sessionDisplayController;
         let fileOpsController = null;
 
-        const codoxearChatInteraction = CodoxearChatInteraction;
-        if (!codoxearChatInteraction || typeof codoxearChatInteraction.createChatInteractionController !== "function")
-          throw new Error("Codoxear chat interaction controller failed to load");
-        const chatInteractionController = codoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
+        const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
           ...deps,
           wiring,
           INIT_PAGE_LIMIT, OLDER_PAGE_LIMIT, OLDER_AUTO_COOLDOWN_MS, OLDER_TOP_TRIGGER_PX, OLDER_CANCEL_PX, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
@@ -714,7 +678,7 @@ const global = window;
           codoxearMessageHistory: CodoxearMessageHistory,
           codoxearSendLifecycle: CodoxearSendLifecycle,
           codoxearPendingUser, codoxearNavigationPulse,
-          codoxearModal, codoxearViewport, codoxearDisplay,
+          codoxearModal: CodoxearModal, codoxearViewport, codoxearDisplay,
           codoxearMessageFlow, codoxearAttachments, codoxearComposer, codoxearConversationCopy,
           codoxearPolling, codoxearNetwork, codoxearSessionHelpers,
           modalIsolationTargets, newSessionDialogController,
@@ -747,10 +711,7 @@ const global = window;
           rememberPendingHashSession, maybeSelectPendingHashSession,
         } = chatInteractionController;
         const unattendedController = (function instantiateUnattendedController() {
-          const codoxearUnattended = CodoxearUnattended;
-          if (!codoxearUnattended || typeof codoxearUnattended.createUnattendedController !== "function")
-            throw new Error("Codoxear unattended controller failed to load");
-          return codoxearUnattended.createUnattendedController(wiring.createUnattendedOptions({
+          return CodoxearUnattended.createUnattendedController(wiring.createUnattendedOptions({
             unattendedBtn,
             unattendedMenu,
             enabledEl: unattendedEnabledEl,
@@ -884,10 +845,7 @@ const global = window;
         function hideVoiceSettingsDialog() {
           return voiceController.hideVoiceSettingsDialog();
         }
-        const codoxearFileOps = CodoxearFileOps;
-        if (!codoxearFileOps || typeof codoxearFileOps.createFileOpsController !== "function")
-          throw new Error("Codoxear file operations controller failed to load");
-        fileOpsController = codoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
+        fileOpsController = CodoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
           wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
           $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
           sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
@@ -930,10 +888,7 @@ const global = window;
         } = fileOpsController;
         sessionEditController = fileOpsSessionEditController;
         const queueController = (function instantiateQueueController() {
-          const codoxearQueue = CodoxearQueue;
-          if (!codoxearQueue || typeof codoxearQueue.createQueueController !== "function")
-            throw new Error("Codoxear queue controller failed to load");
-          return codoxearQueue.createQueueController(wiring.createQueueOptions({
+          return CodoxearQueue.createQueueController(wiring.createQueueOptions({
             queueBackdrop,
             queueCloseBtn,
             queueList,
@@ -1012,10 +967,7 @@ const global = window;
         // app.js owns DOM construction for the diag nodes and the thin
         // delegating wrappers below; all diag rendering authority is delegated.
         const diagController = (function instantiateDiagnosticsController() {
-          const codoxearDiagnostics = CodoxearDiagnostics;
-          if (!codoxearDiagnostics || typeof codoxearDiagnostics.createDiagnosticsController !== "function")
-            throw new Error("Codoxear diagnostics controller failed to load");
-          return codoxearDiagnostics.createDiagnosticsController(wiring.createDiagnosticsOptions({
+          return CodoxearDiagnostics.createDiagnosticsController(wiring.createDiagnosticsOptions({
             diagBackdrop,
             diagViewer,
             diagContent,
@@ -1058,10 +1010,7 @@ const global = window;
 
         syncQueueSubmitState();
 
-        const codoxearSessionLifecycle = CodoxearSessionLifecycle;
-        if (!codoxearSessionLifecycle || typeof codoxearSessionLifecycle.createSessionLifecycleController !== "function")
-          throw new Error("Codoxear session lifecycle controller failed to load");
-        sessionLifecycleController = codoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
+        sessionLifecycleController = CodoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
           nextPollGeneration: () => { pollGen += 1; return pollGen; },
           incrementPollGeneration: () => { pollGen += 1; },
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
@@ -1160,10 +1109,7 @@ const global = window;
           consoleError: (...args) => console.error(...args),
         }));
 
-        const codoxearSessionRefresh = CodoxearSessionRefresh;
-        if (!codoxearSessionRefresh || typeof codoxearSessionRefresh.createSessionRefreshController !== "function")
-          throw new Error("Codoxear session refresh controller failed to load");
-        sessionRefreshController = codoxearSessionRefresh.createSessionRefreshController(wiring.createSessionRefreshOptions({
+        sessionRefreshController = CodoxearSessionRefresh.createSessionRefreshController(wiring.createSessionRefreshOptions({
           api,
           isDisposed: () => appDisposed,
           apiResponseNotModified,
@@ -1305,10 +1251,7 @@ const global = window;
           void loadOlderMessages({ auto: false });
         });
 
-        const codoxearIOSViewport = CodoxearIOSViewport;
-        if (!codoxearIOSViewport || typeof codoxearIOSViewport.createIOSViewportController !== "function")
-          throw new Error("Codoxear iOS viewport controller failed to load");
-        const iosViewportController = codoxearIOSViewport.createIOSViewportController(wiring.createIOSViewportOptions({
+        const iosViewportController = CodoxearIOSViewport.createIOSViewportController(wiring.createIOSViewportOptions({
           windowTarget: window,
           documentTarget: document,
           navigatorTarget: navigator,

@@ -2,10 +2,8 @@ import * as CodoxearMessageHistory from "./app_message_history.js";
 import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
 import * as CodoxearTranscriptRender from "./app_transcript_render.js";
 
-const global = window;
 
 /* Chat interaction composition: transcript rendering, message history, and send lifecycle. */
-  "use strict";
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`chat interaction dependency missing: ${name}`);

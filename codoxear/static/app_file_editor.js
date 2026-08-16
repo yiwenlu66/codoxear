@@ -1,4 +1,3 @@
-  "use strict";
 
   function safeDispose(value) {
     if (!value || typeof value.dispose !== "function") return false;

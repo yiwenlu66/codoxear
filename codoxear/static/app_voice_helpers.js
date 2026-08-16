@@ -1,4 +1,3 @@
-  "use strict";
 
   function browserSupportsNativeLiveAudioPlayback(liveAudio) {
     if (!liveAudio || typeof liveAudio.canPlayType !== "function") return false;

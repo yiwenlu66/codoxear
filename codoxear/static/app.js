@@ -1,8 +1,6 @@
 import { createApplicationController } from "./app_application.js";
 
 /* Boot is deliberately small: application composition lives in app_application.js. */
-  "use strict";
-
   const application = { createApplicationController };
   if (!application || typeof application.createApplicationController !== "function")
     throw new Error("Codoxear application controller failed to load");

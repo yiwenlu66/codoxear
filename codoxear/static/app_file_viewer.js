@@ -10,9 +10,8 @@ import * as CodoxearFileViewerController from "./app_file_viewer_controller.js";
 import * as CodoxearFileViewerLifecycle from "./app_file_viewer_lifecycle.js";
 import * as CodoxearFileViewerPanel from "./app_file_viewer_panel.js";
 
-  "use strict";
 
-  function requireFunction(value, name) {
+function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`);
     return value;
   }

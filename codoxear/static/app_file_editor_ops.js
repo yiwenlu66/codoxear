@@ -1,7 +1,5 @@
-const global = window;
 
 /* File editor save/unsaved-dialog keyboard and modal coordination. */
-  "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`file editor dependency missing: ${name}`);
     return value;

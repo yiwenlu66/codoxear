@@ -1,8 +1,7 @@
 import * as CodoxearFileHelpers from "./app_file_helpers.js";
 
-  "use strict";
 
-  const fileHelpers = CodoxearFileHelpers;
+const fileHelpers = CodoxearFileHelpers;
   if (
     !fileHelpers ||
     typeof fileHelpers.normalizeDraftFilePath !== "function" ||

@@ -1,6 +1,5 @@
 const global = window;
 
-  "use strict";
 
   function createSessionEditController(options = {}) {
     const {

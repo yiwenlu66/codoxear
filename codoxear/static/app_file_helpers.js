@@ -1,11 +1,8 @@
 import * as CodoxearDisplay from "./app_display.js";
 
-  "use strict";
 
-  const codoxearDisplay = CodoxearDisplay;
-  if (!codoxearDisplay || typeof codoxearDisplay.fmtBytes !== "function" || typeof codoxearDisplay.baseName !== "function") throw new Error("Codoxear display helpers failed to load");
 
-  function listFromFilesField(val) {
+function listFromFilesField(val) {
     if (!Array.isArray(val)) return [];
     const out = [];
     for (const v of val) {
@@ -66,8 +63,8 @@ import * as CodoxearDisplay from "./app_display.js";
   function blockedFileMessage(rel, reason, viewerMaxBytes, size) {
     const name = String(rel || "file");
     if (reason === "too_large") {
-      const maxText = viewerMaxBytes ? codoxearDisplay.fmtBytes(viewerMaxBytes) : "the viewer limit";
-      return `${name} is ${codoxearDisplay.fmtBytes(size)}. The viewer refuses to render text beyond ${maxText}. Use Download instead.`;
+      const maxText = viewerMaxBytes ? CodoxearDisplay.fmtBytes(viewerMaxBytes) : "the viewer limit";
+      return `${name} is ${CodoxearDisplay.fmtBytes(size)}. The viewer refuses to render text beyond ${maxText}. Use Download instead.`;
     }
     return `${name} is not renderable as text, markdown, image, or PDF. Use Download instead.`;
   }
@@ -89,7 +86,7 @@ import * as CodoxearDisplay from "./app_display.js";
     if (!raw) return 0;
     const lower = text.toLowerCase();
     if (lower === raw) return 12000;
-    const base = codoxearDisplay.baseName(text).toLowerCase();
+    const base = CodoxearDisplay.baseName(text).toLowerCase();
     if (base === raw) return 10000;
     let total = 0;
     for (const token of raw.split(/\s+/).filter(Boolean)) {

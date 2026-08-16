@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 import subprocess
 import sys
 from pathlib import Path
@@ -138,3 +139,16 @@ def test_wiring_guard_rejects_a_stale_allowlist_entry_and_duplicates(tmp_path: P
 
     assert duplicate.returncode == 2
     assert "duplicate allowlist entry" in duplicate.stderr
+
+
+def test_wiring_guard_allowlist_counter_handles_duplicate_head_entries(tmp_path: Path, monkeypatch) -> None:
+    entry = {"check": "global-registration", "file": "app_feature.js", "name": "window.gone"}
+    allowlist = _write_fixture(
+        tmp_path / "static",
+        {"app_feature.js": "const ready = true;\n"},
+        [entry],
+    )
+    monkeypatch.setattr(sys.modules[__name__], "REAL_ALLOWLIST", allowlist)
+    monkeypatch.setattr(sys.modules[__name__], "_head_allowlist_entries", lambda: [entry, entry])
+
+    test_wiring_guard_allowlist_only_shrinks_from_head()

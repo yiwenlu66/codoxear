@@ -1,4 +1,3 @@
-  "use strict";
 
   function mediaQueryMatches(query) {
     return Boolean(window.matchMedia && window.matchMedia(query).matches);

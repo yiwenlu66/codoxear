@@ -1,9 +1,7 @@
 import * as CodoxearTranscript from "./app_transcript.js";
 
-const global = window;
 
 /* Older-message paging, cursor state, and transcript lifecycle rendering. */
-  "use strict";
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`message history dependency missing: ${name}`);
     return value;
@@ -44,7 +42,7 @@ const global = window;
     }
 
     function usableOlderHistoryCursor(data) {
-      return codoxearTranscript.hasUsableOlderHistory(data) ? codoxearTranscript.historyCursorFromPayload(data) : null;
+      return CodoxearTranscript.hasUsableOlderHistory(data) ? CodoxearTranscript.historyCursorFromPayload(data) : null;
     }
 
     function oldestRenderedHistoryCursor() {
@@ -63,32 +61,6 @@ const global = window;
       return OLDER_PAGE_LIMIT;
     }
 
-    const codoxearTranscript = CodoxearTranscript;
-    if (
-      !codoxearTranscript ||
-      typeof codoxearTranscript.normalizeTailEvent !== "function" ||
-      typeof codoxearTranscript.normalizeTranscriptState !== "function" ||
-      typeof codoxearTranscript.normalizedTranscriptEvents !== "function" ||
-      typeof codoxearTranscript.transcriptKey !== "function" ||
-      typeof codoxearTranscript.historyCursorFromPayload !== "function" ||
-      typeof codoxearTranscript.hasUsableOlderHistory !== "function" ||
-      typeof codoxearTranscript.transcriptSnapshotFromData !== "function" ||
-      typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
-      typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
-      typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
-      typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
-      typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
-      typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
-      typeof codoxearTranscript.hasHumanOriginatedUserEvent !== "function" ||
-      typeof codoxearTranscript.createTranscriptRenderRuntime !== "function" ||
-      typeof codoxearTranscript.createTranscriptDomRuntime !== "function" ||
-      typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
-      typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
-      typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
-      typeof codoxearTranscript.createLoadedChatSearchRuntime !== "function" ||
-      typeof codoxearTranscript.createChatSearchAllRuntime !== "function"
-    )
-      throw new Error("Codoxear transcript helpers failed to load");
 
 async function loadTranscriptWindowAtCursor(cursor) {
   const cleanCursor = String(cursor || "").trim();

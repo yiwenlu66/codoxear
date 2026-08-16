@@ -1,4 +1,3 @@
-  "use strict";
 
   function defaultButtonTooltip(attrs = {}, node = null) {
     const candidates = [attrs.title, attrs["aria-label"], attrs["data-tooltip"], attrs.text, node && node.textContent];

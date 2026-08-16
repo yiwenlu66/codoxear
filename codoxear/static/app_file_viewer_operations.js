@@ -1,4 +1,3 @@
-  "use strict";
   function requireFunction(value, name) { if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`); return value; }
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
   const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
