@@ -1129,6 +1129,7 @@ const global = window;
           kickPoll,
           messagePollDelayMs,
           updateTranscriptSlot: updateSessionTranscriptSlot,
+          invalidateOlderLoad: () => olderLoadRuntime.invalidate(),
           renderPendingTranscriptSlot,
           applySessionRuntimeFromTail,
           renderSessionTail,

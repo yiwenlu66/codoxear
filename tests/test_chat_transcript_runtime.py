@@ -844,6 +844,118 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["frozen"])
 
 
+    def test_bound_log_identity_change_replaces_rendered_transcript(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        lifecycle_source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(lifecycle_source)}, ctx);
+            const calls = [];
+            const state = {{
+              selected: "sid",
+              generation: 0,
+              responses: [
+                // A: direct rebind — new log identity, empty new transcript.
+                {{ transcript_state: "bound", thread_id: "t2", log_path: "/new.jsonl", events: [], busy: false, queue_len: 0, token: null }},
+                // B: ordinary same-log reload — must preserve the DOM.
+                {{ transcript_state: "bound", thread_id: "t2", log_path: "/new.jsonl", events: [{{ role: "user", text: "hello" }}], busy: false, queue_len: 0, token: null }},
+                // C: transient rebind state — no proof, must preserve the DOM.
+                {{ transcript_state: "pending_bind", events: [], busy: false, queue_len: 0, token: null }},
+                // D: recovery to the same rendered log — must preserve the DOM.
+                {{ transcript_state: "bound", thread_id: "t2", log_path: "/new.jsonl", events: [{{ role: "user", text: "hello" }}], busy: false, queue_len: 0, token: null }},
+                // E (after beginRenewal): stale pre-renewal bind — ignored entirely.
+                {{ transcript_state: "bound", thread_id: "t2", log_path: "/new.jsonl", events: [{{ role: "user", text: "stale" }}], busy: false, queue_len: 0, token: null }},
+                // F: the renewal's fresh bind — replaces the rendered transcript.
+                {{ transcript_state: "bound", thread_id: "t3", log_path: "/newer.jsonl", events: [{{ role: "user", text: "renewed" }}, {{ role: "assistant", text: "reply" }}], busy: false, queue_len: 0, token: null }},
+              ],
+            }};
+            const slotRuntime = ctx.window.CodoxearTranscript.createTranscriptSlotRuntime({{
+              sessionIndex: new Map([["sid", {{ thread_id: "t1", log_path: "/old.jsonl" }}]]),
+            }});
+            slotRuntime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "t1", log_path: "/old.jsonl" }});
+            const messageFlow = {{
+              prepareSessionOpen: () => {{}},
+              beginOpenSessionTailRequest: (sessionId, generation) => ({{ sessionId, generation, signal: {{}} }}),
+              isOpenSessionTailAbortError: () => false,
+              isCurrentOpenSessionTailRequest: () => true,
+              finishOpenSessionTailRequest: () => {{}},
+              markMessagePollFailure: () => {{}},
+              markMessagePollSuccess: () => {{}},
+            }};
+            const defaults = () => {{}};
+            const options = new Proxy({{
+              nextPollGeneration: () => ++state.generation,
+              getSelected: () => state.selected,
+              setSelected: (value) => {{ state.selected = value; }},
+              resetTranscriptForSession: () => calls.push("reset-transcript"),
+              resetChatRenderState: () => calls.push("reset-chat"),
+              getSession: () => ({{ session_id: "sid", busy: false, queue_len: 0, token: null }}),
+              isCurrent: () => true,
+              beginFileViewerSync: () => false,
+              getTailCache: () => null,
+              tailCacheMatchesSession: () => false,
+              renderTranscriptLoading: () => calls.push("render-loading"),
+              messageFlow: () => messageFlow,
+              api: async () => state.responses.shift(),
+              initPageLimit: () => 60,
+              refreshSessions: async () => [],
+              isDisposed: () => true,
+              messagePollDelayMs: () => 900,
+              updateTranscriptSlot: (sessionId, data) => slotRuntime.updateSlot(sessionId, data),
+              invalidateOlderLoad: () => calls.push("invalidate-older"),
+              renderPendingTranscriptSlot: () => calls.push("render-pending"),
+              replaceWith: (events) => calls.push(["replace-with", events.length]),
+              renderSessionTail: () => calls.push("render-tail"),
+              restoreSessionScrollPosition: () => calls.push("restore-scroll"),
+              sessionIdFromHash: () => "",
+              sessionSelectable: () => false,
+              normalizeAgentBackendName: (value) => value,
+              providerChoiceToSettings: () => ({{}}),
+              backendSupportsFast: () => false,
+              confirmAction: async () => false,
+              sleep: async () => {{}},
+              isUnattendedOpen: () => false,
+              isMobile: () => false,
+            }}, {{ get: (target, name) => name in target ? target[name] : defaults }});
+            const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController(options);
+            (async () => {{
+              await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false }});
+              slotRuntime.beginRenewal("sid");
+              await controller.openSession("sid", {{ useCache: false }});
+              await controller.openSession("sid", {{ useCache: false }});
+              process.stdout.write(JSON.stringify({{ calls, slot: slotRuntime.getSlot("sid") }}));
+            }})().catch((error) => {{ console.error(error); process.exit(1); }});
+            """
+        )
+        out = _run_node(js)
+
+        # Replacement renders happen exactly at the two identity boundaries:
+        # the direct rebind (empty new tail) and the renewal's fresh bind.
+        self.assertEqual(out["calls"].count(["replace-with", 0]), 1)
+        self.assertEqual(out["calls"].count(["replace-with", 2]), 1)
+        # Same-log reloads, the transient pending_bind, and the ignored stale
+        # bind never replace the DOM.
+        self.assertEqual(len([call for call in out["calls"] if isinstance(call, list) and call[0] == "replace-with"]), 2)
+        self.assertNotIn("render-tail", out["calls"])
+        self.assertNotIn("render-pending", out["calls"])
+        # Older-load state is invalidated only at the replacement boundaries.
+        self.assertEqual(out["calls"].count("invalidate-older"), 2)
+        # Replacement renders at the new tail; the old scroll position is not restored.
+        self.assertNotIn("restore-scroll", out["calls"])
+        # Same-session reloads still avoid the fresh-selection reset paths.
+        self.assertNotIn("reset-transcript", out["calls"])
+        self.assertNotIn("reset-chat", out["calls"])
+        # The slot tracks the renewal's fresh bind honestly.
+        self.assertEqual(out["slot"]["state"], "bound")
+        self.assertEqual(out["slot"]["key"], "t3\n/newer.jsonl")
+
     def test_same_session_reload_preserves_rows_unless_forced_to_render_tail(self) -> None:
         lifecycle_source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -884,7 +996,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               api: async () => {{ const response = state.responses.shift(); if (response instanceof Error) throw response; return response; }},
               initPageLimit: () => 60, handleAuthLoss: defaults, refreshSessions: async () => [], isDisposed: () => true,
               kickPoll: defaults, messagePollDelayMs: () => 900,
-              updateTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
+              updateTranscriptSlot: () => ({{ ignoredStaleBound: false, previous: {{ state: "bound", key: "k1" }}, current: {{ state: "bound", key: "k1" }} }}),
               renderPendingTranscriptSlot: () => calls.push("render-pending"), applySessionRuntimeFromTail: defaults,
               renderSessionTail: () => calls.push("render-tail"), openMessageEventSource: defaults,
               isMobile: () => false, closeSidebar: defaults, updateUnattendedButton: defaults, refreshFileCandidates: defaults,
