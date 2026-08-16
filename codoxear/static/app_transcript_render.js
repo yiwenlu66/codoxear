@@ -59,29 +59,17 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
     const jumpToLatest = requireFunction(options.jumpToLatest, "jumpToLatest");
     const { setStatus, setContext,
-      $, ATTACH_UPLOAD_MAX_BYTES, AbortController, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
-      EventSource, INIT_PAGE_LIMIT, Node, OLDER_AUTO_COOLDOWN_MS, OLDER_CANCEL_PX, OLDER_PAGE_LIMIT,
-      OLDER_TOP_TRIGGER_PX, addAppEvent, agentBackendDisplayName, agentBackendLogoPath, api, appConfirm,
-      attachBtn, b64FromBytes, baseName, bottomSentinel, chat, chatInner, chatMarkdownHtmlCached,
+      CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
+      INIT_PAGE_LIMIT, Node, OLDER_CANCEL_PX, OLDER_TOP_TRIGGER_PX, addAppEvent, api, appConfirm,
+      bottomSentinel, chat, chatInner, chatMarkdownHtmlCached,
       chatSearchAllHintEl, chatSearchBar, chatSearchBtn, chatSearchCloseBtn, chatSearchInput,
       chatSearchNextBtn, chatSearchPrevBtn, chatSearchStatus, chatTimeChip, codeBlockCopyRuntime,
-      codoxearAttachments, codoxearCodeCopy, codoxearDisplay, codoxearMessageFlow, codoxearModal,
-      codoxearNavigationPulse, codoxearPendingUser, codoxearSessions, codoxearViewport, composer,
-      confirmApp, copyToClipboard, dataTransferHasFiles, diagViewer, document, editViewer, el,
-      extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, fmtRelativeAge, handleAppAuthLoss,
-      helpViewer, iconSvg, imgInput, isLikelyHeic, isModalTargetOpen,
-      isTextEntryElement, jumpBtn, looksLikeImage, modalIsolationTargets, navigator, networkStatus,
-      newSessionDialogController, nextUserBtn, olderBtn, olderError, olderErrorText, olderWrap,
-      performance, prevUserBtn, pushPerfSample, queueViewer, redactedLaunchErrorText,
-      refreshQueueViewer, requestAnimationFrame, resizeComposer, resolveAppUrl,
-      safeAttachmentStem, sendChoice, sessionAgentBackend, sessionDisplayName,
-      sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIdFromHash, sessionIsFast,
-      sessionIsOrphanRecovery, sessionLaunchFailed, sessionLaunchIcon, sessionLaunchLabel,
-      sessionLaunchPending, sessionProviderChoice, sessionSelectable, sessionTitleWithId, sessionsWrap,
-      setTimeout, setToast, sidebarEffortCode, sidebarEmptyHint, sidebarModelText, sidebarRenderSignature,
-      sidebarSessionEntries, storageRemoveItem, storageSetItem, syncComposerSendButton,
-      syncQueueSubmitState, textarea, titleLabel, updateUnattendedBtnState,
-      window, wiring
+      codoxearCodeCopy, codoxearDisplay, codoxearModal,
+      codoxearNavigationPulse, codoxearPendingUser, codoxearViewport, confirmApp, copyToClipboard, diagViewer, document, editViewer, el,
+      handleAppAuthLoss,
+      helpViewer, iconSvg, isModalTargetOpen,
+      isTextEntryElement, jumpBtn, modalIsolationTargets, newSessionDialogController, nextUserBtn, olderWrap,
+      performance, prevUserBtn, pushPerfSample, queueViewer, refreshQueueViewer, requestAnimationFrame, sendChoice, sessionAgentBackend, setTimeout, setToast, textarea, window, wiring
     } = options;
     let pendingHashSessionId = "";
     let pendingHashSessionSelectInFlight = false;

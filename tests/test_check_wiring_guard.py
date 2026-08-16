@@ -86,10 +86,18 @@ def test_wiring_guard_rejects_each_planted_architecture_violation(tmp_path: Path
             "global-registration",
             {"app_feature.js": "globalThis[\"planted\"] = {};\n"},
         ),
+        (
+            "direct-bag-argument",
+            {"app_feature.js": "createPlantedController(options);\n"},
+        ),
+        (
+            "direct-bag-argument",
+            {"app_feature.js": "requireFunction(factory, 'factory')(deps);\n"},
+        ),
     ]
 
-    for check_id, files in cases:
-        fixture_root = tmp_path / check_id
+    for index, (check_id, files) in enumerate(cases):
+        fixture_root = tmp_path / f"{check_id}-{index}"
         static_dir = fixture_root / "static"
         allowlist = _write_fixture(static_dir, files)
 
@@ -97,6 +105,32 @@ def test_wiring_guard_rejects_each_planted_architecture_violation(tmp_path: Path
 
         assert result.returncode == 1
         assert f"UNEXPECTED [{check_id}]" in result.stdout
+
+
+def test_wiring_guard_rejects_planted_selector_undercoverage_and_unbound_values(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    allowlist = _write_fixture(
+        static_dir,
+        {
+            "app_wiring.js": """
+            function select(deps, keys) { return {}; }
+            function createFeatureOptions(deps) { return select(deps, ['provided']); }
+            """,
+            "app_feature.js": """
+            function createFeatureController(options = {}) {
+              const required = requireFunction(options.required, 'required');
+              return required;
+            }
+            createFeatureController(wiring.createFeatureOptions({ provided: unboundValue }));
+            """,
+        },
+    )
+
+    result = _run_guard(static_dir, allowlist)
+
+    assert result.returncode == 1
+    assert "[select-undercoverage] app_feature.js: 'required' required by createFeatureController is absent from createFeatureOptions" in result.stdout
+    assert "[unbound-option-value] app_feature.js: 'unboundValue' in createFeatureOptions is not bound" in result.stdout
 
 
 def test_wiring_guard_ignores_non_object_bag_spreads_and_literal_text(tmp_path: Path) -> None:

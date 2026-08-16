@@ -62,7 +62,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
     const {
       wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
       $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
-      sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
+      normalizeLineNumber, markdownPreviewHtml,
       blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
       codoxearFilePicker, codoxearFilePickerOps, codoxearFileViewer, codoxearFileEditor, codoxearFileEditorOps, codoxearFileEditMode,
       codoxearFileTouch, codoxearDialogMenus,

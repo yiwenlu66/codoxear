@@ -5,11 +5,12 @@ The frontend is an ESM module graph. Controller factories receive `options`
 objects, and `app_wiring.js` constructs the contracts passed between modules.
 This checker verifies both sides of that contract:
 
-1. it traces creation calls and reports definitely missing destructured options;
-2. it ratchets three architecture rules through a checked-in allowlist:
-   pass-through option factories, `...options`/`...deps` spread elements in
-   object literals, and direct property assignments on `window`, `globalThis`,
-   or `global`.
+1. it traces creation calls, requires selector lists to cover controller inputs,
+   and reports unbound bare values in wiring option literals;
+2. it ratchets architecture rules through a checked-in allowlist: pass-through
+   option factories, `...options`/`...deps` spread elements in object literals,
+   direct shared-bag controller arguments, and direct property assignments on
+   `window`, `globalThis`, or `global`.
 
 The allowlist identifies findings by check id, relative file path, and stable
 factory/call/global name. A finding absent from the allowlist fails the check;
@@ -33,11 +34,15 @@ CHECK_PASS_THROUGH_FACTORY = "pass-through-factory"
 CHECK_SPREAD_INTO_FACTORY = "spread-into-factory"
 CHECK_BAG_SPREAD = "bag-spread"
 CHECK_GLOBAL_REGISTRATION = "global-registration"
+CHECK_DIRECT_BAG_ARGUMENT = "direct-bag-argument"
+CHECK_SELECT_UNDERCOVERAGE = "select-undercoverage"
+CHECK_UNBOUND_OPTION_VALUE = "unbound-option-value"
 ALLOWLIST_CHECKS = frozenset({
     CHECK_PASS_THROUGH_FACTORY,
     CHECK_SPREAD_INTO_FACTORY,
     CHECK_BAG_SPREAD,
     CHECK_GLOBAL_REGISTRATION,
+    CHECK_DIRECT_BAG_ARGUMENT,
 })
 DEFAULT_ALLOWLIST_PATH = Path(__file__).with_name("wiring_guard_allowlist.json")
 
@@ -70,6 +75,13 @@ BRACKET_PROPERTY_RE = re.compile(
 )
 FUNCTION_RE = re.compile(r"\bfunction\s+(?P<name>[A-Za-z_$][A-Za-z0-9_$]*)\s*\(")
 DIRECT_CALLEE_RE = re.compile(r"(?P<callee>[A-Za-z_$][A-Za-z0-9_$.]*)\s*\(\s*$")
+DIRECT_CREATE_BAG_RE = re.compile(
+    r"(?P<callee>(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*create[A-Z][A-Za-z0-9_$]*)\s*"
+    r"\(\s*(?P<argument>options|deps)\s*\)"
+)
+IMMEDIATE_REQUIRE_BAG_RE = re.compile(
+    r"requireFunction\s*\([^()]*\)\s*\(\s*(?P<argument>options|deps)\s*\)"
+)
 REGEX_PREFIX_WORDS = frozenset({"case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"})
 
 
@@ -279,6 +291,26 @@ def find_bag_spreads(source: str) -> list[str]:
     return _unique_contexts(contexts)
 
 
+def find_direct_bag_arguments(source: str) -> list[str]:
+    """Find controller/factory calls handed the whole `options`/`deps` bag.
+
+    The direct `createX(options)` form and `requireFunction(...)(options)` are
+    both the small, idiomatic regressions that bypass an explicit projection.
+    Method/function declarations are excluded; their closing paren is followed
+    by an opening brace rather than being a call expression.
+    """
+    contexts: list[str] = []
+    for match in DIRECT_CREATE_BAG_RE.finditer(source):
+        before = source[:match.start()].rstrip()
+        after = source[match.end():].lstrip()
+        if re.search(r"\bfunction\s+$", before) or after.startswith("{"):
+            continue
+        contexts.append(match.group("callee"))
+    for match in IMMEDIATE_REQUIRE_BAG_RE.finditer(source):
+        contexts.append("requireFunction")
+    return _unique_contexts(contexts)
+
+
 def _global_property_name(source: str, sanitized: str, match: re.Match[str]) -> str:
     root = match.group("root")
     if match.group("dot"):
@@ -306,6 +338,10 @@ def find_architecture_violations(static_dir: Path) -> list[GuardViolation]:
         violations.extend(
             GuardViolation(CHECK_BAG_SPREAD, relative_path, context)
             for context in find_bag_spreads(sanitized)
+        )
+        violations.extend(
+            GuardViolation(CHECK_DIRECT_BAG_ARGUMENT, relative_path, context)
+            for context in find_direct_bag_arguments(sanitized)
         )
         global_names = [
             _global_property_name(source, sanitized, match)
@@ -382,27 +418,139 @@ def get_static_dir(path: Path) -> Path:
 
 
 def extract_destructured_names(source: str) -> set[str]:
-    """Find all names destructured from `options` in a module."""
-    names = set()
-    # Match: const { a, b, c } = options;  (single or multi-line)
-    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*options\s*;', source, re.DOTALL):
-        for part in m.group(1).split(','):
-            part = part.strip()
-            if not part:
-                continue
-            name = re.split(r'[:=]', part)[0].strip()
-            if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*$', name):
-                names.add(name)
-    # Also match: const { a, b } = requireObject(options, "...")
-    for m in re.finditer(r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*requireObject\s*\(\s*options', source, re.DOTALL):
-        for part in m.group(1).split(','):
-            part = part.strip()
-            if not part:
-                continue
-            name = re.split(r'[:=]', part)[0].strip()
-            if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*$', name):
-                names.add(name)
+    """Find property names destructured from `options` in a module."""
+    names: set[str] = set()
+    for m in re.finditer(
+        r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:requireObject\s*\(\s*)?options\b',
+        source,
+        re.DOTALL,
+    ):
+        for part in split_object_properties(m.group(1)):
+            property_name = re.split(r'[:=]', part.strip())[0].strip()
+            if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*$', property_name):
+                names.add(property_name)
     return names
+
+
+def extract_required_option_names(source: str) -> set[str]:
+    """Find constructor-header inputs supplied by the options contract."""
+    names = extract_destructured_names(source)
+    names.update(re.findall(r'\b(?:requireFunction|requireObject)\s*\(\s*options\.([A-Za-z_$][A-Za-z0-9_$]*)\b', source))
+    return names
+
+
+def extract_select_keys(source: str) -> dict[str, set[str]]:
+    """Return `createXOptions` selector keys from the original wiring module."""
+    selectors: dict[str, set[str]] = {}
+    pattern = re.compile(
+        r'\b(?P<name>create[A-Z][A-Za-z0-9_$]*Options)\s*\(\s*deps\s*\)\s*'
+        r'\{\s*return\s+select\s*\(\s*deps\s*,\s*\[',
+        re.DOTALL,
+    )
+    for match in pattern.finditer(source):
+        opening = match.end() - 1
+        depth = 0
+        closing = None
+        for index in range(opening, len(source)):
+            if source[index] == '[':
+                depth += 1
+            elif source[index] == ']':
+                depth -= 1
+                if depth == 0:
+                    closing = index
+                    break
+        if closing is None:
+            continue
+        selectors[match.group('name')] = set(re.findall(r"['\"]([A-Za-z_$][A-Za-z0-9_$]*)['\"]", source[opening + 1:closing]))
+    return selectors
+
+
+def find_calls(source: str, pattern: str) -> list[tuple[str, int, int]]:
+    """Find calls by name pattern, returning name and argument bounds."""
+    calls: list[tuple[str, int, int]] = []
+    for match in re.finditer(rf'(?P<name>{pattern})\s*\(', source):
+        opening = source.find('(', match.start(), match.end())
+        closing = _matching_delimiter(source, opening, ')')
+        if closing is not None:
+            calls.append((match.group('name'), opening + 1, closing))
+    return calls
+
+
+def controller_selector_pairs(sources: dict[str, str]) -> list[tuple[str, str, str]]:
+    """Trace controller calls whose argument contains a wiring selector call."""
+    pairs: list[tuple[str, str, str]] = []
+    for creator_file, source in sources.items():
+        for controller, start, end in find_calls(source, r'(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*create[A-Z][A-Za-z0-9_$]*Controller'):
+            argument = source[start:end]
+            for selector in re.findall(r'\b(create[A-Z][A-Za-z0-9_$]*Options)\s*\(', argument):
+                pairs.append((selector, controller.rsplit('.', 1)[-1], creator_file))
+    return pairs
+
+
+def split_object_properties(body: str) -> list[str]:
+    """Split a literal's top-level properties after strings/comments are masked."""
+    properties: list[str] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(body):
+        if char in '({[':
+            depth += 1
+        elif char in ')}]':
+            depth -= 1
+        elif char == ',' and depth == 0:
+            properties.append(body[start:index])
+            start = index + 1
+    properties.append(body[start:])
+    return properties
+
+
+def unbound_option_values(source: str) -> list[tuple[str, str]]:
+    """Return bare identifier values in direct `wiring.create*Options({...})` calls.
+
+    This is deliberately scoped to wiring literals: it catches a missed import or
+    destructure at the contract boundary without becoming a general JS linter.
+    """
+    sanitized = strip_js_comments_and_strings(source)
+    bound = set(BUILTINS)
+    bound.update(extract_destructured_names(sanitized))
+    for match in re.finditer(r'\b(?:const|let|var)\s*\{([^}]+)\}\s*=\s*[A-Za-z_$][A-Za-z0-9_$]*\b', sanitized, re.DOTALL):
+        for part in match.group(1).split(','):
+            local_name = re.split(r'[:=]', part.strip())[-1].strip()
+            if re.fullmatch(r'[A-Za-z_$][A-Za-z0-9_$]*', local_name):
+                bound.add(local_name)
+    bound.update(re.findall(r'\b(?:const|let|var|function|class)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b', sanitized))
+    # Function parameter destructures are the dominant wiring scope in
+    # composition. Treat their names as bindings throughout that function.
+    for match in re.finditer(r'\bfunction\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(\s*\{([^}]*)\}', sanitized, re.DOTALL):
+        bound.update(re.findall(r'[A-Za-z_$][A-Za-z0-9_$]*', match.group(1)))
+    for match in re.finditer(r'\bimport\s+(.*?)\s+from\s+["\']', source, re.DOTALL):
+        bound.update(re.findall(r'\b([A-Za-z_$][A-Za-z0-9_$]*)\b', match.group(1)))
+
+    findings: list[tuple[str, str]] = []
+    for factory, start, end in find_calls(sanitized, r'wiring\.create[A-Z][A-Za-z0-9_$]*Options'):
+        argument = sanitized[start:end].strip()
+        if not argument.startswith('{'):
+            continue
+        closing = _matching_delimiter(sanitized, start + sanitized[start:end].find('{'), '}')
+        if closing is None or closing >= end:
+            continue
+        body = sanitized[start + sanitized[start:end].find('{') + 1:closing]
+        for property_text in split_object_properties(body):
+            property_text = property_text.strip()
+            if not property_text or property_text.startswith('...'):
+                continue
+            colon = property_text.find(':')
+            if colon == -1:
+                key = property_text
+                value = property_text
+            else:
+                key = property_text[:colon].strip()
+                value = property_text[colon + 1:].strip()
+            if not re.fullmatch(r'[A-Za-z_$][A-Za-z0-9_$]*', key):
+                continue
+            if re.fullmatch(r'[A-Za-z_$][A-Za-z0-9_$]*', value) and value not in bound:
+                findings.append((factory.rsplit('.', 1)[-1], value))
+    return findings
 
 
 def find_creation_object(source: str, factory_pattern: str) -> list[tuple[str, bool]]:
@@ -440,6 +588,7 @@ def extract_keys_from_object_body(body: str) -> set[str]:
 # Names that are built-in or provided by the JS runtime, not the options chain.
 BUILTINS = frozenset({
     'window', 'document', 'navigator', 'HTMLElement', 'Element', 'EventSource', 'AbortController',
+    'AudioContext', 'Notification', 'crypto', 'setInterval', 'clearInterval',
     'getComputedStyle', 'requestAnimationFrame', 'setTimeout', 'clearTimeout', 'Node',
     'performance', 'console', 'Math', 'JSON', 'Object', 'Array', 'String', 'Number',
     'Date', 'Error', 'Promise', 'Set', 'Map', 'Path', 'fetch', 'URL', 'Event',
@@ -450,71 +599,83 @@ BUILTINS = frozenset({
 })
 
 
-def find_module_factory(file_path: Path, source: str | None = None) -> str | None:
-    """Find the main factory function name exported by a module."""
+def factory_body(source: str, factory: str) -> str | None:
+    """Return a named function factory body using balanced delimiters."""
+    match = re.search(rf'\bfunction\s+{re.escape(factory)}\s*\(', source)
+    if not match:
+        return None
+    opening_paren = source.find('(', match.start(), match.end())
+    closing_paren = _matching_delimiter(source, opening_paren, ')')
+    if closing_paren is None:
+        return None
+    opening_brace = source.find('{', closing_paren + 1)
+    closing_brace = _matching_delimiter(source, opening_brace, '}') if opening_brace != -1 else None
+    return source[opening_brace:closing_brace + 1] if closing_brace is not None else None
+
+
+def constructor_header(source: str, factory: str) -> str:
+    """Return statements through the first non-declaration initializer."""
+    body = factory_body(source, factory) or source
+    # Headers conventionally contain only require calls/destructures. The first
+    # nested function begins controller-local implementation.
+    nested = re.search(r'\n\s{4}function\s+', body)
+    return body[:nested.start()] if nested else body
+
+
+def find_module_factories(file_path: Path, source: str | None = None) -> set[str]:
+    """Find controller factories exported by a module."""
     if source is None:
         source = strip_js_comments_and_strings(file_path.read_text())
-    for m in re.finditer(r'function\s+(create[A-Z]\w*Controller)\s*\(', source):
-        return m.group(1)
-    for m in re.finditer(r'(create[A-Z]\w*Controller)\s*=\s*(?:async\s+)?function', source):
-        return m.group(1)
-    for m in re.finditer(r'function\s+(create[A-Z]\w*)\s*\(', source):
-        name = m.group(1)
-        if name != 'createElement':
-            return name
-    return None
+    return set(re.findall(r'\bfunction\s+(create[A-Z]\w*Controller)\s*\(', source))
 
 
 def check_option_contracts(static_dir: Path) -> bool:
-    """Run the original creation-chain check and report definite wiring bugs."""
-    sources = {
-        path.name: strip_js_comments_and_strings(path.read_text())
+    """Verify selector coverage and the bindings used to build option literals."""
+    raw_sources = {
+        path.name: path.read_text()
         for path in sorted(static_dir.glob("app_*.js"))
     }
-    module_deps: dict[str, tuple[str, set[str]]] = {}
+    sources = {filename: strip_js_comments_and_strings(source) for filename, source in raw_sources.items()}
+    controller_deps: dict[str, tuple[str, set[str]]] = {}
     for filename, source in sources.items():
-        names = extract_destructured_names(source)
-        if not names:
+        required = extract_required_option_names(source) - BUILTINS
+        for factory in find_module_factories(static_dir / filename, source):
+            # Each controller's own header is its contract. Modules that host
+            # multiple controllers must not donate their aggregate option reads.
+            contract_source = constructor_header(source, factory)
+            controller_deps[factory] = (filename, extract_required_option_names(contract_source) - BUILTINS)
+
+    wiring_source = raw_sources.get("app_wiring.js", "")
+    selector_keys = extract_select_keys(wiring_source)
+    undercoverage: list[tuple[str, str, str, str]] = []
+    phase_two_selectors = {"createTranscriptRenderOptions", "createSendLifecycleOptions", "createFileOpsOptions", "createChatInteractionOptions"}
+    for selector, controller, creator in controller_selector_pairs(sources):
+        target = controller_deps.get(controller)
+        # Phase 2's new explicit chat/file selectors are the contract boundary
+        # this check protects. Older module-internal selectors retain their
+        # existing compatibility defaults and are intentionally out of scope.
+        fixture_selector = selector == "createFeatureOptions"
+        if not target or (selector not in phase_two_selectors and not fixture_selector):
             continue
-        factory = find_module_factory(static_dir / filename, source)
-        if factory:
-            module_deps[filename] = (factory, names - BUILTINS)
+        module, required = target
+        for name in sorted(required - selector_keys[selector]):
+            undercoverage.append((selector, module, controller, name))
 
-    all_creation_keys: dict[str, list[tuple[set[str], bool, str]]] = {}
-    for creator_file, creator_source in sources.items():
-        for factory, _ in module_deps.values():
-            for pattern in (factory, rf'\w+\.{factory}'):
-                for body, has_spread in find_creation_object(creator_source, pattern):
-                    keys = extract_keys_from_object_body(body)
-                    all_creation_keys.setdefault(factory, []).append((keys, has_spread, creator_file))
+    unbound: list[tuple[str, str, str]] = []
+    for filename, source in raw_sources.items():
+        for selector, value in unbound_option_values(source):
+            if selector in phase_two_selectors or selector == "createFeatureOptions":
+                unbound.append((filename, selector, value))
 
-    definite_bugs = []
-    spread_warnings = []
-    for module_file, (factory, deps) in sorted(module_deps.items()):
-        for keys, has_spread, creator_file in all_creation_keys.get(factory, []):
-            for name in sorted(deps - keys):
-                found_anywhere = any(
-                    re.search(rf'(?:const|let|var|function)\s+{re.escape(name)}\b', src)
-                    or re.search(rf':\s*{re.escape(name)}\b', src)
-                    or re.search(rf'\b{re.escape(name)}\s*[,}}\n]', src)
-                    for src in sources.values()
-                )
-                if not found_anywhere and not has_spread:
-                    definite_bugs.append((module_file, factory, name, creator_file))
-                elif not found_anywhere and has_spread:
-                    spread_warnings.append((module_file, factory, name, creator_file))
-
-    if definite_bugs:
-        print(f"Found {len(definite_bugs)} DEFINITE wiring bugs:\n")
-        for module, factory, name, creator in definite_bugs:
-            print(f"  [missing-option] {module}: '{name}' is missing for {factory} in {creator}")
-    if spread_warnings:
-        print(f"\n{len(spread_warnings)} names only available via spread (cannot verify statically):")
-        for module, factory, name, creator in spread_warnings[:10]:
-            print(f"  ⚠️  {module}: '{name}' (via spread in {creator})")
-        if len(spread_warnings) > 10:
-            print(f"  ... and {len(spread_warnings) - 10} more")
-    return not definite_bugs
+    if undercoverage:
+        print(f"Found {len(undercoverage)} selector undercoverage violations:\n")
+        for selector, module, controller, name in undercoverage:
+            print(f"  [{CHECK_SELECT_UNDERCOVERAGE}] {module}: '{name}' required by {controller} is absent from {selector}")
+    if unbound:
+        print(f"Found {len(unbound)} unbound option values:\n")
+        for module, selector, value in unbound:
+            print(f"  [{CHECK_UNBOUND_OPTION_VALUE}] {module}: '{value}' in {selector} is not bound")
+    return not undercoverage and not unbound
 
 
 def main() -> int:
