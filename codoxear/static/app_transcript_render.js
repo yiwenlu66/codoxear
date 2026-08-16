@@ -75,7 +75,7 @@ const global = window;
       isTextEntryElement, jumpBtn, looksLikeImage, modalIsolationTargets, navigator, networkStatus,
       newSessionDialogController, nextUserBtn, olderBtn, olderError, olderErrorText, olderWrap,
       performance, prevUserBtn, pushPerfSample, queueViewer, redactedLaunchErrorText,
-      refreshQueueViewer, renderStatusChip, requestAnimationFrame, resizeComposer, resolveAppUrl,
+      refreshQueueViewer, requestAnimationFrame, resizeComposer, resolveAppUrl,
       safeAttachmentStem, sendChoice, sessionAgentBackend, sessionDisplayName,
       sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIdFromHash, sessionIsFast,
       sessionIsOrphanRecovery, sessionLaunchFailed, sessionLaunchIcon, sessionLaunchLabel,

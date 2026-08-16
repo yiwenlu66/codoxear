@@ -20,8 +20,8 @@ def run_node_json(script: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_status_header_projects_queue_count_while_idle_or_busy() -> None:
-    """The header count stays comparable with the sidebar/badge during a busy turn."""
+def test_status_header_projects_queue_count_only() -> None:
+    """The topbar chip shows only the queue payload; busy/idle and ▸N live elsewhere."""
     script = f"""
     const vm = require("vm");
     const ctx = {{ window: {{}}, console }};
@@ -34,26 +34,28 @@ def test_status_header_projects_queue_count_while_idle_or_busy() -> None:
     const ctxChip = {{ style: {{}}, disabled: false, textContent: "", title: "" }};
     const controller = ctx.window.CodoxearSessionDisplay.createSessionDisplayController({{
       getSelected: () => "sid",
-      getRunning: () => running,
       setRunning: (value) => {{ running = value; }},
       getQueueLen: () => queueLen,
       setQueueLen: (value) => {{ queueLen = value; }},
-      getSubagentsRunning: () => 0,
       getAttachmentsController: () => null,
       updateQueueBadge: () => {{}},
       setToast: () => {{}},
       statusChip, interruptBtn, ctxChip, eventBindings: {{ on: () => {{}} }},
     }});
+    const snap = () => ({{ text: statusChip.textContent, display: statusChip.style.display }});
     controller.setStatus({{ running: false, queueLen: 2 }});
-    const idle = statusChip.textContent;
+    const idle = snap();
     controller.setStatus({{ running: true, queueLen: 2 }});
-    const busy = statusChip.textContent;
+    const busy = snap();
     controller.setStatus({{ running: true, queueLen: 0 }});
-    const empty = statusChip.textContent;
-    process.stdout.write(JSON.stringify({{ idle, busy, empty }}));
+    const busyEmpty = snap();
+    controller.setStatus({{ running: false, queueLen: 0 }});
+    const idleEmpty = snap();
+    process.stdout.write(JSON.stringify({{ idle, busy, busyEmpty, idleEmpty }}));
     """
     assert run_node_json(script) == {
-        "idle": "Idle · Queue 2",
-        "busy": "Busy · Queue 2",
-        "empty": "Busy",
+        "idle": {"text": "Queue 2", "display": "inline-flex"},
+        "busy": {"text": "Queue 2", "display": "inline-flex"},
+        "busyEmpty": {"text": "", "display": "none"},
+        "idleEmpty": {"text": "", "display": "none"},
     }

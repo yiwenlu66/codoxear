@@ -152,7 +152,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           return found;
         }}
 
-        const chipUpdates = [];
+        const subagentCounts = [];
         const gaugeUpdates = [];
         const quietRows = [];
         for (const row of rows) {{
@@ -187,7 +187,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             renderPendingTranscriptSlot: noop, renderSessionTail: noop, applySessionRuntimeFromTail: noop,
             resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop,
             appendEvent: noop, appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
-            setSubagentsRunning: (count) => chipUpdates.push(`Idle · ▸${{count}}`),
+            setSubagentsRunning: (count) => subagentCounts.push(count),
             updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
             getSending: () => false, setSending: noop, getCurrentRunning: () => false, setCurrentRunning: noop,
             getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
@@ -207,7 +207,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
         }}
         process.stdout.write(JSON.stringify({{
           sidebarMarkers: findText(wrap, "muted subagentMarker"),
-          idleChips: chipUpdates,
+          subagentCounts,
           quietRows,
           gaugeUpdates,
         }}));
@@ -302,7 +302,7 @@ def test_subagent_indicator_reconciles_native_sources_to_every_surface(tmp_path:
     surfaces = _run_surface_projection([{key: value for key, value in row.items() if not key.startswith("_")} for row in rows])
     assert surfaces == {
         "sidebarMarkers": ["▸1", "▸1", "▸1"],
-        "idleChips": ["Idle · ▸1", "Idle · ▸1", "Idle · ▸1"],
+        "subagentCounts": [1, 1, 1],
         "quietRows": ["▸1 subagent working", "▸1 subagent working", "▸1 subagent working"],
         "gaugeUpdates": [1, 1, 1],
     }

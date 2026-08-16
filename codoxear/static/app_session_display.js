@@ -10,11 +10,9 @@ const global = window;
 
   function createSessionDisplayController(options = {}) {
     const getSelected = requireFunction(options.getSelected, "getSelected");
-    const getRunning = requireFunction(options.getRunning, "getRunning");
     const setRunning = requireFunction(options.setRunning, "setRunning");
     const getQueueLen = requireFunction(options.getQueueLen, "getQueueLen");
     const setQueueLen = requireFunction(options.setQueueLen, "setQueueLen");
-    const getSubagentsRunning = requireFunction(options.getSubagentsRunning, "getSubagentsRunning");
     const getAttachmentsController = requireFunction(options.getAttachmentsController, "getAttachmentsController");
     const updateQueueBadge = requireFunction(options.updateQueueBadge, "updateQueueBadge");
     const setToast = requireFunction(options.setToast, "setToast");
@@ -23,12 +21,18 @@ const global = window;
     let lastToken = null;
 
     function renderStatusChip() {
+      // The topbar chip only carries payload not shown elsewhere: the queued
+      // message count. Busy/idle is owned by the sidebar state dot and the
+      // interrupt button; the ▸N subagent gauge lives in the sidebar meta line
+      // and the transcript idle activity row.
       const queueLen = getQueueLen();
-      const state = getRunning() ? "Busy" : "Idle";
-      const base = queueLen ? `${state} · Queue ${queueLen}` : state;
-      statusChip.style.display = "inline-flex";
-      const subagentsRunning = getSubagentsRunning();
-      statusChip.textContent = subagentsRunning > 0 ? `${base} · ▸${subagentsRunning}` : base;
+      if (queueLen > 0) {
+        statusChip.style.display = "inline-flex";
+        statusChip.textContent = `Queue ${queueLen}`;
+      } else {
+        statusChip.style.display = "none";
+        statusChip.textContent = "";
+      }
     }
 
     function setStatus({ running, queueLen }) {

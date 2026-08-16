@@ -665,16 +665,14 @@ const global = window;
           throw new Error("Codoxear session display controller failed to load");
         const sessionDisplayController = codoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
           getSelected: () => selected,
-          getRunning: () => currentRunning,
           setRunning: (value) => { currentRunning = Boolean(value); },
           getQueueLen: () => currentQueueLen,
           setQueueLen: (value) => { currentQueueLen = value; },
-          getSubagentsRunning: () => currentSubagentsRunning,
           getAttachmentsController: () => attachmentsController,
           updateQueueBadge: () => updateQueueBadge(),
           setToast, statusChip, interruptBtn, ctxChip, eventBindings,
         }));
-        const { renderStatusChip, setStatus, setContext } = sessionDisplayController;
+        const { setStatus, setContext } = sessionDisplayController;
         let fileOpsController = null;
 
         const codoxearChatInteraction = CodoxearChatInteraction;
@@ -707,7 +705,7 @@ const global = window;
           chatSearchBar, chatSearchBtn, prevUserBtn, nextUserBtn, textarea, statusChip, ctxChip,
           interruptBtn, toast, titleLabel, sessionsWrap, sidebarEmptyHint, queueViewer, helpViewer, diagViewer, editViewer,
           fileViewer, appConfirm, sendChoice, composer, attachBtn, imgInput, codeBlockCopyRuntime,
-          networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
+          networkStatus, Node: window.Node, resizeComposer,
           syncComposerSendButton, syncQueueSubmitState, updateUnattendedBtnState: () => updateUnattendedBtnState(),
           updateQueueBadge: () => updateQueueBadge(),
           refreshQueueViewer,

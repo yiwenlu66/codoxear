@@ -62,7 +62,8 @@ import * as CodoxearQueue from "./app_queue.js";
     chat.appendChild(chatInner);
 
     const titleLabel = el("div", { id: "threadTitle", "data-hint": "t", text: "No session selected" });
-    const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
+    const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "" });
+    statusChip.style.display = "none";
     const ctxChip = el("button", { class: "status-chip", id: "ctxChip", text: "", type: "button", "aria-label": "Context usage details", "data-hint": "y" });
     ctxChip.style.display = "none";
     ctxChip.disabled = true;

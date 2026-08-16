@@ -27,7 +27,7 @@ const global = window;
       sessionDisplayName, sessionLaunchFailed, sessionLaunchPending, redactedLaunchErrorText,
       fmtRelativeAge, sidebarEffortCode, sidebarModelText, baseName, sessionIsFast, agentBackendLogoPath,
       agentBackendDisplayName, sessionAgentBackend, sessionLaunchIcon, sessionLaunchLabel, confirmApp, api,
-      setToast, sessionProviderChoice, renderStatusChip, queueViewer, refreshQueueViewer } = options;
+      setToast, sessionProviderChoice, queueViewer, refreshQueueViewer } = options;
     const transcriptModule = options.codoxearTranscriptRender || CodoxearTranscriptRender;
     const historyModule = options.codoxearMessageHistory || CodoxearMessageHistory;
     const sendModule = options.codoxearSendLifecycle || CodoxearSendLifecycle;
