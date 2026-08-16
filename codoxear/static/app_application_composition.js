@@ -761,7 +761,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         ({ attachmentsController, messageFlowController } = chatInteractionController);
         const {
           chatSearchController, chatNavigationController, hintModeController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
-          transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, transcriptView, olderLoadRuntime,
+          transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, transcriptView, markClickLoad, olderLoadRuntime,
           resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
           closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,
           updateSessionTranscriptSlot, tailCacheMatchesSession, applySessionListTranscriptIdentity,
@@ -1104,7 +1104,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollGen === generation,
           setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
           setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
-          markClickLoad: () => { clickLoadT0 = performance.now(); clickMetricPending = true; },
+          markClickLoad,
           updateTypingStats: updateTypingStatsFromSession,
           beginFileViewerSync: () => {
             const started = Boolean(isFileViewerOpen() && !currentFileDirty());
