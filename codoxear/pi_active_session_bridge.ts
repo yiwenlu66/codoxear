@@ -98,36 +98,60 @@ function readLiveRunSettings(pi) {
 let lastCapsModel;
 let lastCapsProvider;
 let lastCapsEffort;
+let lastCommandsSnapshot;
 
-function refreshCaps(commands) {
-	// Re-read live model/effort from Pi and update the caps file.
-	// Called on turn_end, session_start, session_switch so the caps file
-	// always reflects the current model — even after /model changes.
-	// This eliminates the need for log scanning to learn the current model.
+function sameCommands(left, right) {
+	return Array.isArray(left)
+		&& Array.isArray(right)
+		&& left.length === right.length
+		&& left.every((command, index) => command.name === right[index].name && command.description === right[index].description);
+}
+
+function captureCommands() {
+	try {
+		const snapshot = activePi.getCommands().map((command) => ({
+			name: command.name,
+			description: command.description || "",
+		}));
+		lastCommandsSnapshot = sameCommands(lastCommandsSnapshot, snapshot) ? lastCommandsSnapshot : snapshot;
+		return lastCommandsSnapshot;
+	} catch {
+		return undefined;
+	}
+}
+
+function refreshCaps() {
+	// Re-read Pi's current settings and registry from a live lifecycle event.
+	// Retaining an unchanged registry snapshot avoids rewriting caps when the
+	// browser-visible state has not changed.
+	const previousCommandsSnapshot = lastCommandsSnapshot;
+	const commands = captureCommands();
 	const live = readLiveRunSettings(activePi);
 	const model = typeof live.model === "string" ? live.model : undefined;
 	const provider = typeof live.model_provider === "string" ? live.model_provider : undefined;
 	const effort = typeof live.reasoning_effort === "string" ? live.reasoning_effort : undefined;
-	if (model === lastCapsModel && provider === lastCapsProvider && effort === lastCapsEffort && commands === undefined) {
+	const commandsChanged = commands !== undefined && commands !== previousCommandsSnapshot;
+	if (model === lastCapsModel && provider === lastCapsProvider && effort === lastCapsEffort && !commandsChanged) {
 		return; // nothing changed
 	}
 	lastCapsModel = model;
 	lastCapsProvider = provider;
 	lastCapsEffort = effort;
-	writeThinkingCapabilities(commands);
+	writeThinkingCapabilities(commands, live);
 }
 
-function writeThinkingCapabilities(commands) {
+function writeThinkingCapabilities(commands, liveSettings) {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
 	const capsPath = `${markerPath}.caps`;
+	const commandsToWrite = commands !== undefined ? commands : lastCommandsSnapshot;
 	const payload = {
 		bridgeVersion: 2,
 		features: ["effort", "thinking"],
-		commands: Array.isArray(commands) ? commands.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
+		commands: Array.isArray(commandsToWrite) ? commandsToWrite.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
 		pid: process.pid,
 		updatedAt: new Date().toISOString(),
-		...readLiveRunSettings(activePi),
+		...(liveSettings || readLiveRunSettings(activePi)),
 	};
 	try {
 		fs.mkdirSync(path.dirname(capsPath), { recursive: true });
@@ -161,14 +185,7 @@ export default function (pi: ExtensionAPI): void {
 				handler: effortHandler,
 			});
 			commandsRegistered = true;
-			try {
-				const live = typeof pi.getCommands === "function" ? pi.getCommands() : undefined;
-				writeThinkingCapabilities(
-					Array.isArray(live) ? live.map((c) => ({ name: c.name, description: c.description || "" })) : undefined,
-				);
-			} catch {
-				// Caps without the command list is fine; the next lifecycle event retries.
-			}
+			writeThinkingCapabilities(captureCommands(), readLiveRunSettings(pi));
 		} catch {
 			// Runtime not yet bound (extension loading) or already registered;
 			// retried on subsequent lifecycle events until it succeeds.
@@ -185,7 +202,10 @@ export default function (pi: ExtensionAPI): void {
 		refreshCaps();
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
-	pi.on("turn_end", () => refreshCaps());
+	pi.on("turn_end", () => {
+		registerEffortCommands();
+		refreshCaps();
+	});
 	const effortHandler = (args, ctx) => {
 		const requested = args.trim().toLowerCase();
 		if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {

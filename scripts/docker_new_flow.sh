@@ -360,6 +360,22 @@ print("1" if result["rows"] >= 1 and not result["hasOldText"] and result["hasNew
 done
 [[ "$rebind_ok" == "1" ]] || fail "transcript was not replaced after /new rebind; see $artifacts/transcript-after.json and $artifacts/sessions-live.json"
 
+# MENU AFTER REBIND: the /new session_start lets the bridge registration
+# succeed, so the caps file carries the live extension registry. The projected
+# menu must keep the builtins in that state (union, not replacement) and the
+# bridge-provided /effort.
+curl -sS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions-after.json" || fail "could not read sessions after rebind"
+python3 - "$artifacts/sessions-after.json" <<'PY' || fail "slash menu lost builtins after the rebind; see $artifacts/sessions-after.json"
+import json
+import sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+rows = payload.get("sessions") if isinstance(payload, dict) else []
+row = next((r for r in rows if isinstance(r, dict) and r.get("agent_backend") == "pi"), {})
+names = {str(c.get("name") or "") for c in row.get("slash_commands") or [] if isinstance(c, dict)}
+missing = {"model", "new", "compact", "effort"} - names
+raise SystemExit(0 if not missing else f"missing commands: {sorted(missing)}")
+PY
+
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || fail "could not read browser errors"
 browser screenshot --full "$artifacts/new-flow.png" > "$artifacts/browser-screenshot.txt" 2>&1 || fail "could not save browser screenshot"
 
@@ -382,10 +398,15 @@ after = read_json("transcript-after.json")["data"]["result"]
 errors = read_json("browser-errors.json")
 page_errors = errors.get("data", {}).get("errors") if isinstance(errors, dict) else None
 
+slash_after = read_json("sessions-after.json")
+row_after = next((r for r in slash_after.get("sessions", []) if r.get("agent_backend") == "pi"), {})
+menu_names = {str(c.get("name") or "") for c in row_after.get("slash_commands") or [] if isinstance(c, dict)}
+
 checks = {
     "session_id_stable": row.get("session_id") == session_id,
     "log_path_changed": isinstance(row.get("log_path"), str) and row["log_path"] != old_log_path,
     "slash_menu_advertises_new": any(str(t).startswith("/new") for t in slash["optionTexts"]),
+    "slash_menu_keeps_builtins_after_rebind": {"model", "new", "compact", "effort"} <= menu_names,
     "transcript_rendered_before": before["rows"] >= 1 and before["hasOldText"],
     "transcript_replaced_after": after["rows"] >= 1 and not after["hasOldText"] and after["hasNewText"],
     "no_page_errors": page_errors == [],
@@ -397,6 +418,7 @@ report = {
     "old_log_path": old_log_path,
     "new_log_path": row.get("log_path"),
     "slash_options": slash["optionTexts"],
+    "slash_commands_after_rebind": sorted(menu_names),
     "transcript_before": before,
     "transcript_after": after,
     "page_errors": page_errors,
