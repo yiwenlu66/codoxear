@@ -138,16 +138,11 @@ def test_dialog_meta_plane_uses_one_token():
     assert _computed_style(1280, ".rangeValue")["font"] == "var(--font-sm)/1.2 var(--font-mono)"
 
 
-def test_form_containers_do_not_own_entry_typography():
-    forbidden_prefixes = (
-        ".formViewer input",
-        ".formViewer textarea",
-        ".unattendedMenu input",
-        ".unattendedMenu textarea",
-    )
+def test_form_containers_do_not_own_typography():
+    forbidden_fragments = (".formViewer", ".formDialog", "#editViewer", "#newSessionViewer", ".formActions")
     offenders = []
     for selectors, value in _font_size_rules():
         for selector in selectors:
-            if selector.startswith(forbidden_prefixes) and "checkbox" not in selector:
+            if any(fragment in selector for fragment in forbidden_fragments):
                 offenders.append((selector, value))
     assert offenders == []
