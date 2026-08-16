@@ -119,12 +119,12 @@ npx esbuild "$DEPLOY_DIR/codoxear/static/app.js" --bundle --minify \
 while IFS= read -r -d '' javascript_path; do
   node --check "$javascript_path"
 done < <(find "$DEPLOY_DIR/codoxear/static" -type f -name '*.js' -print0 | sort -z)
-if ! python3 "$SOURCE_ROOT/scripts/check_js_refs.py" "$DEPLOY_DIR/codoxear/static"; then
+if ! python3 "$DEPLOY_DIR/scripts/check_js_refs.py" "$DEPLOY_DIR/codoxear/static"; then
   echo "app.js reference check failed in deploy snapshot" >&2
   exit 1
 fi
-if ! python3 "$SOURCE_ROOT/scripts/check_wiring.py" "$DEPLOY_DIR/codoxear/static"; then
-  echo "cross-IIFE wiring check failed — a module destructures a name not present in its creation options" >&2
+if ! python3 "$DEPLOY_DIR/scripts/check_wiring.py" "$DEPLOY_DIR/codoxear/static"; then
+  echo "frontend wiring guard failed in deploy snapshot" >&2
   exit 1
 fi
 

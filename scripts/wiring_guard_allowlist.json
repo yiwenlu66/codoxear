@@ -1,0 +1,104 @@
+{
+  "violations": [
+    {
+      "check": "pass-through-factory",
+      "file": "app_wiring.js",
+      "name": "createChatInteractionOptions"
+    },
+    {
+      "check": "pass-through-factory",
+      "file": "app_wiring.js",
+      "name": "createFileOpsOptions"
+    },
+    {
+      "check": "pass-through-factory",
+      "file": "app_wiring.js",
+      "name": "createSessionDisplayOptions"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_application_composition.js",
+      "name": "wiring.createChatInteractionOptions"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_chat_interaction.js",
+      "name": "historyModule.createMessageHistoryController"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_chat_interaction.js",
+      "name": "sendModule.createSendLifecycleController"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_chat_interaction.js",
+      "name": "transcriptModule.createTranscriptRenderController"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_file_ops.js",
+      "name": "fileViewerModalRuntime.show"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_file_video.js",
+      "name": "loadCompatibleVideoPreview"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_file_viewer_controller.js",
+      "name": "createFileViewerOperationsRuntime"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_transcript.js",
+      "name": "appendTailEvents"
+    },
+    {
+      "check": "bag-spread",
+      "file": "app_transcript_view.js",
+      "name": "createTranscriptViewController"
+    },
+    {
+      "check": "global-registration",
+      "file": "app_application.js",
+      "name": "window.codoxearPerf"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.CODOXEAR_ASSET_VERSION"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.CODOXEAR_ATTACH_MAX_BYTES"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.__codoxearAppBootstrapped#1"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.__codoxearAppBootstrapped#2"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.__codoxearLoadError"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.__codoxearMarkBootstrapped"
+    },
+    {
+      "check": "global-registration",
+      "file": "index.html",
+      "name": "window.__codoxearRenderLoadErrorFallback"
+    }
+  ]
+}
