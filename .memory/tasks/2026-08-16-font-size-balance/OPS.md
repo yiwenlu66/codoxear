@@ -17,3 +17,23 @@
 
 ## 2026-08-16 16:45:56 +0800
 - Committed scoped fix as `4fbadf0e` (`Balance custom snooze date and time typography`). Staging included only `codoxear/static/app.css` and `tests/test_form_date_time_typography.py`; pre-existing untracked workspace paths remained untouched.
+
+## 2026-08-16 17:09:25 +0800
+- User challenged the patch-level outcome: “why are there so many different variants 13, 14, 16? think of what's the correct design, instead of just patching.”
+- Reopened the design question at the form-system level. Launched async theorist 30ee4c3c-774e-4ced-9971-8d75376424bb for a focused dialog-typography invariant review.
+
+## 2026-08-16 17:12:07 +0800
+- Git history clarified the origin of the 16px variant: f2640641 added an unscoped `.formViewer input/textarea` 16px rule during mobile layout work; the later mobile anti-zoom media rule duplicated that intent for coarse/small contexts. This supports replacing the unscoped rule with a role-based form-control system rather than adding more local overrides.
+
+## 2026-08-16 17:34:06 +0800
+- Theorist audit 30ee4c3c-774e-4ced-9971-8d75376424bb identified the system failure: a type scale existed without role ownership, global input type lists were incomplete, containers accumulated font-size patches, buttons used UA defaults, and mobile anti-zoom duplicated the type list.
+- Replaced the patch with a role-based form typography system. Desktop: labels/actions 13px, editable/title values 14px, meta 12px. Mobile/coarse text-entry controls share the 16px anti-zoom floor. Removed the unscoped 16px formViewer/unattended rule, the date/time special case, the login password 16px exception, and per-row mobile label restyles. Extended the single global entry rule and anti-zoom rule to date, time, search, and number. Tokenized base buttons to 13px and normalized text buttons/check labels/meta secondary text.
+- Rewrote the CSS test as tests/test_form_typography_roles.py, deleting the date/time-specific test. The new parsed-stylesheet tests pin entry, action, value/title, meta, mobile anti-zoom, and no form-container ownership of entry typography.
+- Documented the role-to-token mapping in AGENTS.md under Type rhythm.
+- Focused tests: 19 passed. Full suite: 1672 passed, 103 subtests.
+- Docker browser verification on isolated container codoxear-sandbox-19017 with fake Pi session. Real UI Edit conversation desktop computed styles: title/name/date/time/dependency 14px; labels/chips/Reset/Save/Cancel 13px; priority value 12px monospace. Mobile 390x844: name/date/time 16px; labels/chips/buttons 13px; one-column custom row; no horizontal overflow. New Session dialog also followed the same roles: title/input/picker 14px, labels/checks/buttons 13px. Browser errors: none.
+- Independent visual review of /tmp/codoxear-form-typography-desktop.png and /tmp/codoxear-form-typography-mobile.png confirmed the typography reads as one coherent paper-style dialog. It noted a minor mobile modal placement asymmetry unrelated to this typography change; no typography defect remained.
+- Closed the named browser session, removed the exact Docker container and sandbox root, and confirmed port 19017 unreachable.
+
+## 2026-08-16 17:36:20 +0800
+- Committed the role-based correction as 16082b8a (Define form dialog typography by role). The commit covers AGENTS.md, codoxear/static/app.css, and the renamed role-invariant test only; unrelated untracked workspace paths remained untouched.
