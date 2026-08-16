@@ -43,6 +43,7 @@ ALLOWLIST_CHECKS = frozenset({
     CHECK_BAG_SPREAD,
     CHECK_GLOBAL_REGISTRATION,
     CHECK_DIRECT_BAG_ARGUMENT,
+    CHECK_SELECT_UNDERCOVERAGE,
 })
 DEFAULT_ALLOWLIST_PATH = Path(__file__).with_name("wiring_guard_allowlist.json")
 
@@ -380,10 +381,15 @@ def load_allowlist(path: Path) -> list[GuardViolation]:
         check = entry.get("check")
         file = entry.get("file")
         name = entry.get("name")
+        reason = entry.get("reason")
         if check not in ALLOWLIST_CHECKS or not all(isinstance(value, str) and value for value in (file, name)):
             raise ValueError(
                 f"allowlist entry {index} must contain a known check plus non-empty file and name"
             )
+        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+            raise ValueError(f"allowlist entry {index} reason must be a non-empty string when present")
+        if check == CHECK_SELECT_UNDERCOVERAGE and not isinstance(reason, str):
+            raise ValueError(f"allowlist entry {index} for select-undercoverage requires a reason")
         violation = GuardViolation(check, file, name)
         if violation in seen:
             raise ValueError(f"duplicate allowlist entry: [{check}] {file}:{name}")
@@ -432,9 +438,31 @@ def extract_destructured_names(source: str) -> set[str]:
     return names
 
 
+def extract_optional_destructured_names(source: str) -> set[str]:
+    """Find names with defaults in an options destructure.
+
+    A default makes an option optional at that constructor boundary; selector
+    coverage should not force a caller to supply it.
+    """
+    optional: set[str] = set()
+    for match in re.finditer(
+        r'(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:requireObject\s*\(\s*)?options\b',
+        source,
+        re.DOTALL,
+    ):
+        for part in split_object_properties(match.group(1)):
+            property_name, separator, _default = part.strip().partition('=')
+            if not separator:
+                continue
+            property_name = property_name.split(':', 1)[0].strip()
+            if re.fullmatch(r'[A-Za-z_$][A-Za-z0-9_$]*', property_name):
+                optional.add(property_name)
+    return optional
+
+
 def extract_required_option_names(source: str) -> set[str]:
-    """Find constructor-header inputs supplied by the options contract."""
-    names = extract_destructured_names(source)
+    """Find non-defaulted constructor-header inputs supplied by options."""
+    names = extract_destructured_names(source) - extract_optional_destructured_names(source)
     names.update(re.findall(r'\b(?:requireFunction|requireObject)\s*\(\s*options\.([A-Za-z_$][A-Za-z0-9_$]*)\b', source))
     return names
 
@@ -629,7 +657,7 @@ def find_module_factories(file_path: Path, source: str | None = None) -> set[str
     return set(re.findall(r'\bfunction\s+(create[A-Z]\w*Controller)\s*\(', source))
 
 
-def check_option_contracts(static_dir: Path) -> bool:
+def check_option_contracts(static_dir: Path, allowlist: list[GuardViolation]) -> list[GuardViolation]:
     """Verify selector coverage and the bindings used to build option literals."""
     raw_sources = {
         path.name: path.read_text()
@@ -648,14 +676,20 @@ def check_option_contracts(static_dir: Path) -> bool:
     wiring_source = raw_sources.get("app_wiring.js", "")
     selector_keys = extract_select_keys(wiring_source)
     undercoverage: list[tuple[str, str, str, str]] = []
-    phase_two_selectors = {"createTranscriptRenderOptions", "createSendLifecycleOptions", "createFileOpsOptions", "createChatInteractionOptions"}
+    # Every select() selector is the explicit contract boundary: the
+    # undercoverage and unbound-value checks cover all of them. The four
+    # Phase 2 chat/file selectors are called out only in comments above;
+    # scoping to them let createMessageFlowOptions and other pre-existing
+    # selectors escape both checks (observed: stale setSending shorthand
+    # crashing boot at 2168aec5).
+    all_selectors = set(selector_keys)
     for selector, controller, creator in controller_selector_pairs(sources):
         target = controller_deps.get(controller)
         # Phase 2's new explicit chat/file selectors are the contract boundary
         # this check protects. Older module-internal selectors retain their
         # existing compatibility defaults and are intentionally out of scope.
         fixture_selector = selector == "createFeatureOptions"
-        if not target or (selector not in phase_two_selectors and not fixture_selector):
+        if not target or (selector not in all_selectors and not fixture_selector):
             continue
         module, required = target
         for name in sorted(required - selector_keys[selector]):
@@ -664,18 +698,30 @@ def check_option_contracts(static_dir: Path) -> bool:
     unbound: list[tuple[str, str, str]] = []
     for filename, source in raw_sources.items():
         for selector, value in unbound_option_values(source):
-            if selector in phase_two_selectors or selector == "createFeatureOptions":
+            if selector in all_selectors or selector == "createFeatureOptions":
                 unbound.append((filename, selector, value))
 
-    if undercoverage:
-        print(f"Found {len(undercoverage)} selector undercoverage violations:\n")
+    violations = [
+        GuardViolation(CHECK_SELECT_UNDERCOVERAGE, module, f"{controller}.{name}")
+        for _selector, module, controller, name in undercoverage
+    ]
+    permitted = Counter(allowlist)
+    unexpected = Counter(violations) - permitted
+    if unexpected:
+        print(f"Found {sum(unexpected.values())} selector undercoverage violations:\n")
         for selector, module, controller, name in undercoverage:
-            print(f"  [{CHECK_SELECT_UNDERCOVERAGE}] {module}: '{name}' required by {controller} is absent from {selector}")
+            violation = GuardViolation(CHECK_SELECT_UNDERCOVERAGE, module, f"{controller}.{name}")
+            if unexpected[violation]:
+                print(f"  [{CHECK_SELECT_UNDERCOVERAGE}] {module}: '{name}' required by {controller} is absent from {selector}")
+                unexpected[violation] -= 1
     if unbound:
         print(f"Found {len(unbound)} unbound option values:\n")
         for module, selector, value in unbound:
             print(f"  [{CHECK_UNBOUND_OPTION_VALUE}] {module}: '{value}' in {selector} is not bound")
-    return not undercoverage and not unbound
+    return violations + [
+        GuardViolation(CHECK_UNBOUND_OPTION_VALUE, module, f"{selector}.{value}")
+        for module, selector, value in unbound
+    ]
 
 
 def main() -> int:
@@ -689,9 +735,12 @@ def main() -> int:
 
     coverage = scan_coverage(static_dir)
     print(f"SCAN COVERAGE files={coverage.files} option_factories={coverage.option_factories}")
-    option_contracts_clean = check_option_contracts(static_dir)
-    ratchet_clean = report_allowlist_violations(find_architecture_violations(static_dir), allowlist)
-    if option_contracts_clean and ratchet_clean:
+    contract_violations = check_option_contracts(static_dir, allowlist)
+    ratchet_clean = report_allowlist_violations(
+        find_architecture_violations(static_dir) + contract_violations,
+        allowlist,
+    )
+    if ratchet_clean:
         print("\n✓ Wiring guard passed.")
         return 0
     return 1

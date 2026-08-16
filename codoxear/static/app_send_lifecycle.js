@@ -114,7 +114,6 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
   initPageLimit,
   typingRowRuntime,
-  setSending,
   getStagedAttachments: () => attachmentsController.getStagedAttachments(),
   normalizedStagedAttachments: (list) => attachmentsController.normalizedStagedAttachments(list),
   setSelectedSessionPendingAttachment: (sessionId, value) => attachmentsController.setSelectedSessionPendingAttachment(sessionId, value),
