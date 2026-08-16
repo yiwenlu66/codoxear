@@ -86,5 +86,10 @@ def slash_commands_for_backend(backend: str, caps: Any = None, *, pi_bridge_capa
     if backend != "pi":
         return []
     if pi_bridge_capable and isinstance(caps, (list, tuple)):
-        return [command for command in _clean_commands(caps) if command["name"] not in PI_INTERACTIVE_SLASH_COMMANDS or command["name"] == "model"]
+        extras = [
+            command
+            for command in _clean_commands(caps)
+            if command["name"] not in PI_INTERACTIVE_SLASH_COMMANDS
+        ]
+        return _clean_commands(list(PI_BUILTIN_SLASH_COMMANDS) + extras)
     return default_slash_commands("pi", pi_bridge_capable=False)
