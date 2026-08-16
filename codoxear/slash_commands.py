@@ -6,6 +6,7 @@ from typing import Any, Mapping
 # send as text from a browser; interactive UI commands are omitted.
 PI_BUILTIN_SLASH_COMMANDS = (
     {"name": "model", "description": "Select model (opens selector UI)"},
+    {"name": "new", "description": "Start a new session"},
     {"name": "share", "description": "Share session as a secret GitHub gist"},
     {"name": "copy", "description": "Copy last agent message to clipboard"},
     {"name": "name", "description": "Set session display name"},
@@ -16,8 +17,12 @@ PI_BUILTIN_SLASH_COMMANDS = (
     {"name": "compact", "description": "Manually compact the session context"},
     {"name": "reload", "description": "Reload extensions, skills, prompts, themes, and context files"},
 )
+# Interactive TUI commands are omitted from the browser menu. Session-
+# lifecycle commands other than /new (resume, fork, clone) stay excluded: they
+# rebind the transcript like /new does, but their TUI flows pick targets
+# interactively, which the browser cannot drive.
 PI_INTERACTIVE_SLASH_COMMANDS = (
-    "settings", "model", "scoped-models", "import", "tree", "login", "new",
+    "settings", "model", "scoped-models", "import", "tree", "login",
     "resume", "quit", "fork", "clone", "trust",
 )
 CC_SLASH_COMMANDS = (

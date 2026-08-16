@@ -7,8 +7,10 @@ def names(commands):
 
 def test_pi_defaults_keep_model_but_hide_interactive_builtins_and_bridge_commands():
     assert "model" in names(default_slash_commands("pi"))
+    assert "new" in names(default_slash_commands("pi"))
     assert "effort" not in names(default_slash_commands("pi"))
     assert "settings" not in names(default_slash_commands("pi"))
+    assert "resume" not in names(default_slash_commands("pi"))
     assert "effort" in names(default_slash_commands("pi", pi_bridge_capable=True))
     assert "thinking" in names(default_slash_commands("pi", pi_bridge_capable=True))
 
@@ -16,10 +18,16 @@ def test_pi_defaults_keep_model_but_hide_interactive_builtins_and_bridge_command
 def test_live_pi_registry_filters_known_interactive_entries():
     projected = slash_commands_for_backend(
         "pi",
-        [{"name": "settings"}, {"name": "model", "description": "Pick"}, {"name": "custom", "description": "Text"}],
+        [
+            {"name": "settings"},
+            {"name": "model", "description": "Pick"},
+            {"name": "new", "description": "Start a new session"},
+            {"name": "resume", "description": "Resume a different session"},
+            {"name": "custom", "description": "Text"},
+        ],
         pi_bridge_capable=True,
     )
-    assert names(projected) == ["model", "custom"]
+    assert names(projected) == ["model", "new", "custom"]
 
 
 def test_codex_only_exposes_broker_advertised_live_controls():
