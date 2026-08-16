@@ -1,4 +1,4 @@
-"""Pin dialog date/time controls to the dialog's control type scale.
+"""Pin the role-based typography contract for shared form dialogs.
 
 The stylesheet is parsed and cascaded per selector; these tests never inspect
 raw source text.
@@ -12,13 +12,23 @@ from tinycss2.ast import AtRule, Declaration, QualifiedRule
 
 
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+ENTRY_SELECTORS = (
+    'input[type="text"]',
+    'input[type="password"]',
+    'input[type="search"]',
+    'input[type="date"]',
+    'input[type="time"]',
+    'input[type="datetime-local"]',
+    'input[type="number"]',
+    "select",
+    "textarea",
+)
 
 
 def _media_query_matches(prelude: str, width: int) -> bool:
     """Evaluate app.css media forms for a fine-pointer viewport."""
     for query in prelude.split(","):
-        query = query.strip()
-        terms = [term.strip() for term in query.split(" and ")]
+        terms = [term.strip() for term in query.strip().split(" and ")]
         matches = True
         for term in terms:
             max_width = re.fullmatch(r"\(\s*max-width:\s*(\d+)px\s*\)", term)
@@ -53,15 +63,18 @@ def _active_rules(nodes, width: int):
                 yield from _active_rules(nested, width)
 
 
-def _computed_style(width: int, selector: str) -> dict[str, str]:
-    stylesheet = tinycss2.parse_stylesheet(
+def _stylesheet():
+    return tinycss2.parse_stylesheet(
         APP_CSS.read_text(encoding="utf-8"),
         skip_comments=True,
         skip_whitespace=True,
     )
+
+
+def _computed_style(width: int, selector: str) -> dict[str, str]:
     computed: dict[str, str] = {}
     important: set[str] = set()
-    for rule in _active_rules(stylesheet, width):
+    for rule in _active_rules(_stylesheet(), width):
         selectors = [part.strip() for part in tinycss2.serialize(rule.prelude).split(",")]
         if selector not in selectors:
             continue
@@ -83,14 +96,58 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
     return computed
 
 
-def test_custom_snooze_date_time_controls_use_dialog_control_type_scale():
-    for selector in ('.formViewer input[type="date"]', '.formViewer input[type="time"]'):
+def _font_size_rules():
+    for rule in _active_rules(_stylesheet(), 1280):
+        selectors = [part.strip() for part in tinycss2.serialize(rule.prelude).split(",")]
+        declarations = tinycss2.parse_declaration_list(
+            rule.content,
+            skip_comments=True,
+            skip_whitespace=True,
+        )
+        for declaration in declarations:
+            if isinstance(declaration, Declaration) and declaration.lower_name == "font-size":
+                yield selectors, tinycss2.serialize(declaration.value).strip()
+
+
+def test_entry_controls_share_the_desktop_value_scale():
+    for selector in ENTRY_SELECTORS:
         style = _computed_style(1280, selector)
         assert style["font-family"] == "inherit"
         assert style["font-size"] == "var(--font-lg)"
 
 
-def test_custom_snooze_date_time_controls_keep_mobile_anti_zoom_size():
-    for selector in ('input[type="date"]', 'input[type="time"]'):
+def test_entry_controls_share_the_mobile_anti_zoom_floor():
+    for selector in ENTRY_SELECTORS:
         style = _computed_style(390, selector)
         assert style["font-size"] == "var(--font-xl)"
+
+
+def test_label_and_action_plane_uses_one_token():
+    for selector in ("button", ".fieldLabel", ".choiceChip", ".checkField", ".icon-btn.text-btn"):
+        assert _computed_style(1280, selector)["font-size"] == "var(--font-md)"
+
+
+def test_value_and_title_plane_uses_one_token():
+    for selector in (".dialogPickerBtn", ".pickerButtonPrimary", ".queueHeader .title"):
+        assert _computed_style(1280, selector)["font-size"] == "var(--font-lg)"
+
+
+def test_dialog_meta_plane_uses_one_token():
+    for selector in (".fieldHint", ".pickerButtonSecondary"):
+        assert _computed_style(1280, selector)["font-size"] == "var(--font-sm)"
+    assert _computed_style(1280, ".rangeValue")["font"] == "var(--font-sm)/1.2 var(--font-mono)"
+
+
+def test_form_containers_do_not_own_entry_typography():
+    forbidden_prefixes = (
+        ".formViewer input",
+        ".formViewer textarea",
+        ".unattendedMenu input",
+        ".unattendedMenu textarea",
+    )
+    offenders = []
+    for selectors, value in _font_size_rules():
+        for selector in selectors:
+            if selector.startswith(forbidden_prefixes) and "checkbox" not in selector:
+                offenders.append((selector, value))
+    assert offenders == []

@@ -903,6 +903,8 @@
         color: var(--text);
         border-radius: 0;
         padding: var(--space-4) var(--space-5);
+        font-family: inherit;
+        font-size: var(--font-md);
         cursor: pointer;
       }
       button.primary,
@@ -993,7 +995,7 @@
         width: auto;
         min-width: 46px;
         padding: 0 var(--space-4);
-        font-size: var(--font-sm);
+        font-size: var(--font-md);
         line-height: 1;
       }
 	      .icon {
@@ -1891,7 +1893,11 @@
 textarea,
 input[type="password"],
 input[type="text"],
+input[type="date"],
+input[type="time"],
 input[type="datetime-local"],
+input[type="search"],
+input[type="number"],
 select {
   width: 100%;
   box-sizing: border-box;
@@ -1987,10 +1993,6 @@ select {
       .login button {
         width: 100%;
       }
-	      .login input[type="password"] {
-	        font-size: var(--font-xl);
-	      }
-
 	      .unattendedMenu {
 	        display: none;
 	        position: fixed;
@@ -2024,7 +2026,7 @@ select {
 	        display: inline-flex;
 	        align-items: center;
 	        gap: var(--space-3);
-	        font-size: var(--font-lg);
+	        font-size: var(--font-md);
 	      }
 	      .unattendedMenu .row > label::after {
 	        content: "";
@@ -2067,12 +2069,6 @@ select {
 	        outline: 2px solid var(--ink);
 	        outline-offset: 2px;
 	      }
-      .formViewer input,
-      .formViewer textarea,
-      .unattendedMenu input,
-      .unattendedMenu textarea {
-        font-size: var(--font-xl);
-      }
       .unattendedMenu input[type="number"] {
         width: 100%;
         box-sizing: border-box;
@@ -2081,7 +2077,6 @@ select {
         color: var(--text);
         padding: var(--space-4) var(--space-5);
         font-family: inherit;
-        font-size: var(--font-xl);
         border-radius: 0;
       }
       .unattendedMenu textarea {
@@ -2901,11 +2896,6 @@ select {
         height: var(--ctl);
         min-height: var(--ctl);
       }
-      .formViewer input[type="date"],
-      .formViewer input[type="time"] {
-        font-family: inherit;
-        font-size: var(--font-lg);
-      }
       .fieldLabel {
         font-size: var(--font-md);
         font-weight: 600;
@@ -2921,7 +2911,7 @@ select {
         display: inline-flex;
         align-items: center;
         gap: var(--space-3);
-        font-size: var(--font-lg);
+        font-size: var(--font-md);
       }
       .checkField::after {
         content: "";
@@ -3119,7 +3109,7 @@ select {
       .pickerButtonSecondary {
         width: 100%;
         min-width: 0;
-        font-size: var(--font-xs);
+        font-size: var(--font-sm);
         line-height: 1.25;
         color: var(--muted);
         white-space: nowrap;
@@ -3255,7 +3245,7 @@ select {
       .rangeValue {
         min-width: 56px;
         text-align: right;
-        font: var(--font-sm)/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font: var(--font-sm)/1.2 var(--font-mono);
         color: var(--muted);
       }
       .formActions {
@@ -3471,15 +3461,6 @@ select {
         .newSessionOptionsRow #newSessionTmuxField {
           justify-content: flex-start;
         }
-        .newSessionRunConfigRow .fieldLabel,
-        .newSessionOptionsRow .fieldLabel,
-        .unattendedMenu .label {
-          font-size: var(--font-sm);
-        }
-        .newSessionRunConfigRow .checkField,
-        .newSessionOptionsRow .checkField {
-          font-size: var(--font-md);
-        }
         .newSessionRunConfigRow #newSessionFastField .checkField,
         .newSessionOptionsRow #newSessionTmuxField .checkField {
           min-height: var(--dialog-control-h);
@@ -3500,6 +3481,7 @@ select {
         input[type="time"],
         input[type="datetime-local"],
         input[type="search"],
+        input[type="number"],
         select,
         textarea {
           font-size: var(--font-xl) !important;
