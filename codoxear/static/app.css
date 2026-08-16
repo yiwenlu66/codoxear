@@ -2901,6 +2901,11 @@ select {
         height: var(--ctl);
         min-height: var(--ctl);
       }
+      .formViewer input[type="date"],
+      .formViewer input[type="time"] {
+        font-family: inherit;
+        font-size: var(--font-lg);
+      }
       .fieldLabel {
         font-size: var(--font-md);
         font-weight: 600;
@@ -3491,6 +3496,8 @@ select {
       @media (max-width: 880px), (pointer: coarse) {
         input[type="text"],
         input[type="password"],
+        input[type="date"],
+        input[type="time"],
         input[type="datetime-local"],
         input[type="search"],
         select,
