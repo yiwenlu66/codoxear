@@ -14,6 +14,52 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     return value;
   }
 
+  function createTypingRowStoreProjection(options = {}) {
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("typing row projection dependency missing: sessionState");
+    }
+    const typingRowRuntime = options.typingRowRuntime;
+    if (
+      !typingRowRuntime ||
+      typeof typingRowRuntime.setVisible !== "function" ||
+      typeof typingRowRuntime.setSubagentVisible !== "function" ||
+      typeof typingRowRuntime.updateSubagentGauge !== "function"
+    ) {
+      throw new TypeError("typing row projection dependency missing: typingRowRuntime");
+    }
+
+    function syncTypingVisibility() {
+      const running = Boolean(sessionState.get("running"));
+      typingRowRuntime.setVisible(running);
+      typingRowRuntime.setSubagentVisible(!running);
+    }
+
+    function syncSubagentGauge() {
+      typingRowRuntime.updateSubagentGauge(Math.max(0, Number(sessionState.get("subagentsRunning")) || 0));
+      // Count changes while idle must materialize/remove the static activity
+      // row; running changes need not accompany subagent transitions.
+      typingRowRuntime.setSubagentVisible(!sessionState.get("running"));
+    }
+
+    const unsubscribers = [
+      sessionState.subscribe("running", syncTypingVisibility),
+      sessionState.subscribe("subagentsRunning", syncSubagentGauge),
+    ];
+    syncSubagentGauge();
+    syncTypingVisibility();
+
+    return Object.freeze({
+      dispose() {
+        while (unsubscribers.length) unsubscribers.pop()();
+      },
+      sync() {
+        syncSubagentGauge();
+        syncTypingVisibility();
+      },
+    });
+  }
+
   function createNavigationPulseController(options = {}) {
     function requireNavigationPulseFunction(value, name) {
       if (typeof value !== "function") throw new TypeError(`navigation pulse controller dependency missing: ${name}`);
@@ -444,26 +490,11 @@ const typingRowRuntime = CodoxearTranscript.createTypingRowRuntime(wiring.create
   scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
 }));
 
-function syncTypingVisibility() {
-  const running = Boolean(sessionState.get("running"));
-  typingRowRuntime.setVisible(running);
-  typingRowRuntime.setSubagentVisible(!running);
-}
-
-function syncSubagentGauge() {
-  typingRowRuntime.updateSubagentGauge(Math.max(0, Number(sessionState.get("subagentsRunning")) || 0));
-}
+const typingRowStoreProjection = createTypingRowStoreProjection({ sessionState, typingRowRuntime });
 
 function syncTypingRowRuntime() {
-  syncSubagentGauge();
-  syncTypingVisibility();
+  typingRowStoreProjection.sync();
 }
-
-const typingStateUnsubscribers = [
-  sessionState.subscribe("running", syncTypingVisibility),
-  sessionState.subscribe("subagentsRunning", syncSubagentGauge),
-];
-syncTypingRowRuntime();
 
 const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
   chat,
@@ -815,7 +846,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
 }
 
     function dispose() {
-      while (typingStateUnsubscribers.length) typingStateUnsubscribers.pop()();
+      typingRowStoreProjection.dispose();
     }
 
     return Object.freeze({
@@ -839,4 +870,4 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
     });
   }
 
-export { createNavigationPulseController, createTranscriptRenderController };
+export { createTypingRowStoreProjection, createNavigationPulseController, createTranscriptRenderController };

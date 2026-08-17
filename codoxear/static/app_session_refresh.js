@@ -103,15 +103,16 @@
       }
       if (selected) syncAttachments();
       else clearAttachments();
+      const selectedSession = selected ? sessionIndex.get(selected) : null;
+      // The selected session's runtime snapshot is authoritative even when the
+      // transcript identity is unchanged or a swipe defers sidebar rendering.
+      // Runtime liveness is not an identity transition: every fresh listing
+      // must be able to lower running while typing counters reconcile inside
+      // updateTypingStats without regressing live monotonic counts.
+      if (selectedSession) updateTypingStats(selectedSession);
       const renderedSidebar = renderSessions(sessions, { selectedId: selected, swipeActions: !useDesktopSessionActions() });
       if (!renderedSidebar) return sessions;
-      if (selected) {
-        const session = sessionIndex.get(selected);
-        if (session) {
-          setTitle(sessionTitle(session));
-          updateTypingStats(session);
-        }
-      }
+      if (selectedSession) setTitle(sessionTitle(selectedSession));
       updateUnattendedButton();
       syncComposerSendButton();
       syncQueueSubmitState();

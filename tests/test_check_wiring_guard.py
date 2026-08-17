@@ -70,7 +70,7 @@ def test_wiring_guard_allowlist_only_shrinks_from_head() -> None:
     head = Counter((entry["check"], entry["file"], entry["name"]) for entry in head_entries)
     added = current - head
 
-    assert all(check == "select-undercoverage" for check, _file, _name in added), "working-tree allowlist may only add documented selector false positives"
+    assert all(check in {"select-undercoverage", "select-callsite-coverage"} for check, _file, _name in added), "working-tree allowlist may only add documented selector false positives"
     entries_by_identity = {
         (entry["check"], entry["file"], entry["name"]): entry
         for entry in _allowlist_entries(REAL_ALLOWLIST)
@@ -137,6 +137,53 @@ def test_wiring_guard_rejects_planted_selector_undercoverage_and_unbound_values(
     assert result.returncode == 1
     assert "[select-undercoverage] app_feature.js: 'required' required by createFeatureController is absent from createFeatureOptions" in result.stdout
     assert "[unbound-option-value] app_feature.js: 'unboundValue' in createFeatureOptions is not bound" in result.stdout
+
+
+def test_wiring_guard_rejects_planted_selector_callsite_coverage_with_nested_arrow_literal(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    allowlist = _write_fixture(
+        static_dir,
+        {
+            "app_wiring.js": """
+            function select(deps, keys) { return {}; }
+            function createAttachmentsOptions(deps) { return select(deps, ['sessionState', 'getPayload']); }
+            """,
+            "app_feature.js": """
+            createAttachmentsController(wiring.createAttachmentsOptions({
+              getPayload: () => ({ nested: { value: true } }),
+            }));
+            """,
+        },
+    )
+
+    result = _run_guard(static_dir, allowlist)
+
+    assert result.returncode == 1
+    assert "[select-callsite-coverage] app_feature.js: 'sessionState' projected by createAttachmentsOptions is absent from its direct literal" in result.stdout
+    assert "UNEXPECTED [select-callsite-coverage] app_feature.js:createAttachmentsOptions.sessionState" in result.stdout
+
+
+def test_wiring_guard_accepts_nested_getter_and_arrow_property_names(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    allowlist = _write_fixture(
+        static_dir,
+        {
+            "app_wiring.js": """
+            function select(deps, keys) { return {}; }
+            function createFeatureOptions(deps) { return select(deps, ['getter', 'nestedArrow']); }
+            """,
+            "app_feature.js": """
+            createFeatureController(wiring.createFeatureOptions({
+              get getter() { return () => ({ nested: { value: true } }); },
+              nestedArrow: () => { return { alsoNested: true }; },
+            }));
+            """,
+        },
+    )
+
+    result = _run_guard(static_dir, allowlist)
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_wiring_guard_accepts_documented_selector_fallback_allowlist(tmp_path: Path) -> None:

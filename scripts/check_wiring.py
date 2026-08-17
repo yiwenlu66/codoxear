@@ -6,7 +6,8 @@ objects, and `app_wiring.js` constructs the contracts passed between modules.
 This checker verifies both sides of that contract:
 
 1. it traces creation calls, requires selector lists to cover controller inputs,
-   and reports unbound bare values in wiring option literals;
+   requires direct selector call literals to cover selector keys, and reports
+   unbound bare values in wiring option literals;
 2. it ratchets architecture rules through a checked-in allowlist: pass-through
    option factories, `...options`/`...deps` spread elements in object literals,
    direct shared-bag controller arguments, and direct property assignments on
@@ -36,6 +37,7 @@ CHECK_BAG_SPREAD = "bag-spread"
 CHECK_GLOBAL_REGISTRATION = "global-registration"
 CHECK_DIRECT_BAG_ARGUMENT = "direct-bag-argument"
 CHECK_SELECT_UNDERCOVERAGE = "select-undercoverage"
+CHECK_SELECT_CALLSITE_COVERAGE = "select-callsite-coverage"
 CHECK_UNBOUND_OPTION_VALUE = "unbound-option-value"
 ALLOWLIST_CHECKS = frozenset({
     CHECK_PASS_THROUGH_FACTORY,
@@ -44,6 +46,7 @@ ALLOWLIST_CHECKS = frozenset({
     CHECK_GLOBAL_REGISTRATION,
     CHECK_DIRECT_BAG_ARGUMENT,
     CHECK_SELECT_UNDERCOVERAGE,
+    CHECK_SELECT_CALLSITE_COVERAGE,
 })
 DEFAULT_ALLOWLIST_PATH = Path(__file__).with_name("wiring_guard_allowlist.json")
 
@@ -388,8 +391,8 @@ def load_allowlist(path: Path) -> list[GuardViolation]:
             )
         if reason is not None and (not isinstance(reason, str) or not reason.strip()):
             raise ValueError(f"allowlist entry {index} reason must be a non-empty string when present")
-        if check == CHECK_SELECT_UNDERCOVERAGE and not isinstance(reason, str):
-            raise ValueError(f"allowlist entry {index} for select-undercoverage requires a reason")
+        if check in {CHECK_SELECT_UNDERCOVERAGE, CHECK_SELECT_CALLSITE_COVERAGE} and not isinstance(reason, str):
+            raise ValueError(f"allowlist entry {index} for {check} requires a reason")
         violation = GuardViolation(check, file, name)
         if violation in seen:
             raise ValueError(f"duplicate allowlist entry: [{check}] {file}:{name}")
@@ -530,6 +533,84 @@ def split_object_properties(body: str) -> list[str]:
             start = index + 1
     properties.append(body[start:])
     return properties
+
+
+def direct_selector_call_literals(source: str) -> list[tuple[str, str, str]]:
+    """Return direct `wiring.create*Options({ ... })` call literals.
+
+    Delimiter matching operates on the lexical mask, so nested objects and arrow
+    function bodies cannot end the outer literal early. Raw text remains paired
+    with the masked body only to recover property names (which masking removes).
+    """
+    sanitized = strip_js_comments_and_strings(source)
+    literals: list[tuple[str, str, str]] = []
+    for factory, start, end in find_calls(sanitized, r'wiring\.create[A-Z][A-Za-z0-9_$]*Options'):
+        argument = sanitized[start:end]
+        leading = len(argument) - len(argument.lstrip())
+        opening = start + leading
+        if opening >= end or sanitized[opening] != '{':
+            continue
+        closing = _matching_delimiter(sanitized, opening, '}')
+        if closing is None or closing >= end:
+            continue
+        literals.append((factory.rsplit('.', 1)[-1], source[opening + 1:closing], sanitized[opening + 1:closing]))
+    return literals
+
+
+def object_literal_property_ranges(masked_body: str) -> list[tuple[int, int]]:
+    """Return top-level property slices using the lexical mask's delimiters."""
+    ranges: list[tuple[int, int]] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(masked_body):
+        if char in '({[':
+            depth += 1
+        elif char in ')}]':
+            depth -= 1
+        elif char == ',' and depth == 0:
+            ranges.append((start, index))
+            start = index + 1
+    ranges.append((start, len(masked_body)))
+    return ranges
+
+
+def object_literal_property_names(raw_body: str, masked_body: str) -> set[str]:
+    """Extract static top-level property names from paired literal bodies."""
+    names: set[str] = set()
+    for start, end in object_literal_property_ranges(masked_body):
+        raw_property = raw_body[start:end].strip()
+        masked_property = masked_body[start:end].strip()
+        if not raw_property or raw_property.startswith('...'):
+            continue
+        keyed = re.match(r'([A-Za-z_$][A-Za-z0-9_$]*)\s*:', masked_property)
+        if keyed:
+            names.add(keyed.group(1))
+            continue
+        shorthand = re.fullmatch(r'([A-Za-z_$][A-Za-z0-9_$]*)', masked_property)
+        if shorthand:
+            names.add(shorthand.group(1))
+            continue
+        accessor = re.match(r'(?:get|set)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(', masked_property)
+        method = re.match(r'(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\(', masked_property)
+        if accessor:
+            names.add(accessor.group(1))
+        elif method:
+            names.add(method.group(1))
+        else:
+            quoted = re.match(r"(['\"])([A-Za-z_$][A-Za-z0-9_$]*)\1\s*:", raw_property)
+            if quoted:
+                names.add(quoted.group(2))
+    return names
+
+
+def select_callsite_coverage(source: str, selector_keys: dict[str, set[str]]) -> list[tuple[str, str]]:
+    """Return selector keys omitted from direct object literals at call sites."""
+    missing: list[tuple[str, str]] = []
+    for selector, raw_body, masked_body in direct_selector_call_literals(source):
+        supplied = object_literal_property_names(raw_body, masked_body)
+        for key in sorted(selector_keys.get(selector, set()) - supplied):
+            missing.append((selector, key))
+    return missing
 
 
 def unbound_option_values(source: str) -> list[tuple[str, str]]:
@@ -695,6 +776,11 @@ def check_option_contracts(static_dir: Path, allowlist: list[GuardViolation]) ->
         for name in sorted(required - selector_keys[selector]):
             undercoverage.append((selector, module, controller, name))
 
+    callsite_coverage: list[tuple[str, str, str]] = []
+    for filename, source in raw_sources.items():
+        for selector, key in select_callsite_coverage(source, selector_keys):
+            callsite_coverage.append((filename, selector, key))
+
     unbound: list[tuple[str, str, str]] = []
     for filename, source in raw_sources.items():
         for selector, value in unbound_option_values(source):
@@ -704,16 +790,30 @@ def check_option_contracts(static_dir: Path, allowlist: list[GuardViolation]) ->
     violations = [
         GuardViolation(CHECK_SELECT_UNDERCOVERAGE, module, f"{controller}.{name}")
         for _selector, module, controller, name in undercoverage
+    ] + [
+        GuardViolation(CHECK_SELECT_CALLSITE_COVERAGE, filename, f"{selector}.{key}")
+        for filename, selector, key in callsite_coverage
     ]
     permitted = Counter(allowlist)
     unexpected = Counter(violations) - permitted
-    if unexpected:
-        print(f"Found {sum(unexpected.values())} selector undercoverage violations:\n")
-        for selector, module, controller, name in undercoverage:
-            violation = GuardViolation(CHECK_SELECT_UNDERCOVERAGE, module, f"{controller}.{name}")
-            if unexpected[violation]:
-                print(f"  [{CHECK_SELECT_UNDERCOVERAGE}] {module}: '{name}' required by {controller} is absent from {selector}")
-                unexpected[violation] -= 1
+    undercoverage_unexpected = [
+        (selector, module, controller, name)
+        for selector, module, controller, name in undercoverage
+        if unexpected[GuardViolation(CHECK_SELECT_UNDERCOVERAGE, module, f"{controller}.{name}")]
+    ]
+    if undercoverage_unexpected:
+        print(f"Found {len(undercoverage_unexpected)} selector undercoverage violations:\n")
+        for selector, module, controller, name in undercoverage_unexpected:
+            print(f"  [{CHECK_SELECT_UNDERCOVERAGE}] {module}: '{name}' required by {controller} is absent from {selector}")
+    callsite_unexpected = [
+        (filename, selector, key)
+        for filename, selector, key in callsite_coverage
+        if unexpected[GuardViolation(CHECK_SELECT_CALLSITE_COVERAGE, filename, f"{selector}.{key}")]
+    ]
+    if callsite_unexpected:
+        print(f"Found {len(callsite_unexpected)} selector call-site coverage violations:\n")
+        for filename, selector, key in callsite_unexpected:
+            print(f"  [{CHECK_SELECT_CALLSITE_COVERAGE}] {filename}: '{key}' projected by {selector} is absent from its direct literal")
     if unbound:
         print(f"Found {len(unbound)} unbound option values:\n")
         for module, selector, value in unbound:

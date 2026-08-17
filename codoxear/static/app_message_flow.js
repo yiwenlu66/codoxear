@@ -331,31 +331,43 @@ import * as CodoxearTranscript from "./app_transcript.js";
       pollFastUntilMs = 0;
     }
 
-    function updateTypingStatsFromSession(session, { updateSubagents = true } = {}) {
-      const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
-      if (updateSubagents) sessionState.applyRuntime({ subagentsRunning });
-      if (!session) return;
-      const thinkingMode = CodoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
-      const stats = {
-        thinking: session.thinking,
-        thinkingTokens: session.thinking_tokens,
-        thinkingMode,
-        tools: session.tools,
-      };
-      // Live deltas are exact; session-list snapshots are resumable but can lag.
-      // During an open turn a snapshot may recover a missed increment but may
-      // never lower a counter already observed by the live feed.
-      if (!sessionState.get("turnOpen")) {
-        typingRowRuntime.updateTypingStats(stats);
-        return;
+    function updateTypingStatsFromSession(session, { updateRuntime = true, updateSubagents = true } = {}) {
+      // updateSubagents is the pre-store-migration suppression name still used
+      // by tail/cache callers that apply their payload runtime separately.
+      const shouldApplyRuntime = updateRuntime && updateSubagents;
+      const running = Boolean(session && session.busy);
+      if (shouldApplyRuntime && running) sessionState.set("turnOpen", true);
+
+      if (session) {
+        const thinkingMode = CodoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
+        const stats = {
+          thinking: session.thinking,
+          thinkingTokens: session.thinking_tokens,
+          thinkingMode,
+          tools: session.tools,
+        };
+        // Live deltas are exact; session-list snapshots are resumable but can
+        // lag. While the turn is open a snapshot may raise counters but never
+        // lower exact values already observed from the live feed.
+        if (!sessionState.get("turnOpen")) {
+          typingRowRuntime.updateTypingStats(stats);
+        } else {
+          const current = typingRowRuntime.snapshot().stats || { thinking: 0, thinkingTokens: 0, tools: 0 };
+          typingRowRuntime.updateTypingStats({
+            thinking: Math.max(current.thinking, stats.thinking || 0),
+            thinkingTokens: Math.max(current.thinkingTokens, stats.thinkingTokens || 0),
+            thinkingMode,
+            tools: Math.max(current.tools, stats.tools || 0),
+          });
+        }
       }
-      const current = typingRowRuntime.snapshot().stats || { thinking: 0, thinkingTokens: 0, tools: 0 };
-      typingRowRuntime.updateTypingStats({
-        thinking: Math.max(current.thinking, stats.thinking || 0),
-        thinkingTokens: Math.max(current.thinkingTokens, stats.thinkingTokens || 0),
-        thinkingMode,
-        tools: Math.max(current.tools, stats.tools || 0),
-      });
+
+      if (shouldApplyRuntime) {
+        const queueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
+        const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+        sessionState.set("turnOpen", running);
+        sessionState.applyRuntime({ running, queueLen, token: session ? session.token || null : null, subagentsRunning });
+      }
     }
 
     function applyTypingMetaDelta(data) {

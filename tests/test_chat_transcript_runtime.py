@@ -14,6 +14,7 @@ APP_COMPOSER_JS = module_path("app_composer.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_REFRESH_JS = module_path("app_session_refresh.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_MESSAGE_IDENTITY_JS = module_path("app_transcript.js")
@@ -90,6 +91,112 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_session_snapshot_busy_to_idle_clears_store_projected_typing_row(self) -> None:
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
+        message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
+        session_refresh_source = APP_SESSION_REFRESH_JS.read_text(encoding="utf-8")
+        session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(polling_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_render_source)}, ctx);
+            vm.runInContext({json.dumps(message_flow_source)}, ctx);
+            vm.runInContext({json.dumps(session_refresh_source)}, ctx);
+
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, parentNode: null }};
+              out.appendChild = (child) => {{ out.children.push(child); child.parentNode = out; return child; }};
+              out.insertBefore = (child, before) => {{
+                if (child.parentNode) child.parentNode.children = child.parentNode.children.filter((item) => item !== child);
+                const index = out.children.indexOf(before);
+                out.children.splice(index < 0 ? out.children.length : index, 0, child);
+                child.parentNode = out;
+                child.isConnected = true;
+                return child;
+              }};
+              out.remove = () => {{
+                if (out.parentNode) out.parentNode.children = out.parentNode.children.filter((item) => item !== out);
+                out.parentNode = null;
+                out.isConnected = false;
+              }};
+              Object.defineProperty(out, "nextSibling", {{ get: () => out.parentNode ? out.parentNode.children[out.parentNode.children.indexOf(out) + 1] || null : null }});
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+
+            const root = node();
+            const bottom = node();
+            root.appendChild(bottom);
+            bottom.isConnected = true;
+            const typingRowRuntime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: bottom, el: (_tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
+            }});
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            sessionState.applyRuntime({{ selected: "sid", running: true, turnOpen: true }});
+            const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
+            typingRowRuntime.updateTypingStats({{ tools: 5, thinkingTokens: 1200, thinkingMode: "tokens" }});
+            const noop = () => {{}};
+            const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+              sessionState, getGeneration: () => 1, isAppDisposed: () => false,
+              getSessionInfo: () => ({{ agent_backend: "pi" }}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+              api: async () => ({{}}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,
+              refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
+              activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor", logPath: "/tmp/log" }}),
+              updateSessionTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
+              renderPendingTranscriptSlot: noop, renderSessionTail: noop, applySessionRuntimeFromTail: noop,
+              resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop,
+              appendTailSnapshotEvents: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
+              getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
+              syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
+              confirmAction: async () => false, setToast: noop, isTranscriptRenewalCommand: () => false,
+              nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
+              addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
+              invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+              visibilityState: () => "hidden", navigatorValue: () => ({{ onLine: true }}), EventSource: null,
+              AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 0, consoleWarn: noop, consoleError: noop,
+            }});
+            const listedSession = {{ session_id: "sid", busy: false, queue_len: 0, token: null, subagents_running: 0, tools: 0, thinking_tokens: 0 }};
+            let latestSessions = [];
+            const refresh = ctx.window.CodoxearSessionRefresh.createSessionRefreshController({{
+              sessionState,
+              api: async () => ({{ sessions: [listedSession] }}),
+              isDisposed: () => false, apiResponseNotModified: () => false,
+              getLatestSessions: () => latestSessions, setLatestSessions: (sessions) => {{ latestSessions = sessions; }},
+              setNewSessionDefaults: noop, emptyDefaults: () => ({{}}), setTmuxAvailable: noop, setRecentCwds: noop,
+              refreshNewSessionDefaults: noop, clearFileDiscoveryCaches: noop, useDesktopSessionActions: () => true,
+              setSessionIndex: noop, clearSelectedSessionAfterRemoval: noop, applySessionListTranscriptIdentity: noop,
+              syncRecoveryUiForSession: noop, syncAttachments: noop, clearAttachments: noop,
+              renderSessions: () => true, hasDeferredRefresh: () => false, setTitle: noop, sessionTitle: () => "sid",
+              updateTypingStats: flow.updateTypingStatsFromSession, updateUnattendedButton: noop,
+              syncComposerSendButton: noop, syncQueueSubmitState: noop, maybeSelectPendingHashSession: noop,
+            }});
+            const before = {{ running: sessionState.get("running"), turnOpen: sessionState.get("turnOpen"), children: root.children.length, connected: typingRowRuntime.snapshot().connected }};
+            (async () => {{
+              await refresh.refreshSessions();
+              const after = {{ running: sessionState.get("running"), turnOpen: sessionState.get("turnOpen"), children: root.children.length, connected: typingRowRuntime.snapshot().connected, stats: typingRowRuntime.snapshot().stats }};
+              projection.dispose();
+              process.stdout.write(JSON.stringify({{ before, after }}));
+            }})().catch((error) => {{ console.error(error); process.exit(1); }});
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["before"], {"running": True, "turnOpen": True, "children": 2, "connected": True})
+        self.assertEqual(out["after"], {
+            "running": False,
+            "turnOpen": False,
+            "children": 1,
+            "connected": False,
+            "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0},
+        })
+
     def test_first_unread_message_row_scrolls_to_matching_transcript_row(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -199,6 +306,66 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["withGauge"], {"text": "tools: 7 · subagents: 2", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["gaugeCleared"], {"text": "tools: 7", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
+
+    def test_idle_subagent_store_projection_materializes_and_removes_activity_row(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
+        session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_render_source)}, ctx);
+
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, parentNode: null }};
+              out.appendChild = (child) => {{ out.children.push(child); child.parentNode = out; return child; }};
+              out.insertBefore = (child, before) => {{
+                if (child.parentNode) child.parentNode.children = child.parentNode.children.filter((item) => item !== child);
+                const index = out.children.indexOf(before);
+                out.children.splice(index < 0 ? out.children.length : index, 0, child);
+                child.parentNode = out;
+                child.isConnected = true;
+                return child;
+              }};
+              out.remove = () => {{
+                if (out.parentNode) out.parentNode.children = out.parentNode.children.filter((item) => item !== out);
+                out.parentNode = null;
+                out.isConnected = false;
+              }};
+              Object.defineProperty(out, "nextSibling", {{ get: () => out.parentNode ? out.parentNode.children[out.parentNode.children.indexOf(out) + 1] || null : null }});
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+
+            const root = node();
+            const bottom = node();
+            root.appendChild(bottom);
+            bottom.isConnected = true;
+            const typingRowRuntime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: bottom, el: (_tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
+            }});
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
+            const countActivityRows = () => root.children.filter((child) => child.class === "msg-row assistant subagent-activity-row").length;
+            const initial = {{ children: root.children.length, activityRows: countActivityRows() }};
+            sessionState.applyRuntime({{ subagentsRunning: 1 }});
+            const afterOne = {{ children: root.children.length, activityRows: countActivityRows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            sessionState.applyRuntime({{ subagentsRunning: 0 }});
+            const afterZero = {{ children: root.children.length, activityRows: countActivityRows() }};
+            projection.dispose();
+            process.stdout.write(JSON.stringify({{ initial, afterOne, afterZero }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "initial": {"children": 1, "activityRows": 0},
+            "afterOne": {"children": 2, "activityRows": 1, "text": "▸1 subagent working"},
+            "afterZero": {"children": 1, "activityRows": 0},
+        })
 
     def test_typing_token_mode_requires_authoritative_positive_tokens(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
