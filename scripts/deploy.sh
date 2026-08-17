@@ -134,10 +134,10 @@ fi
 # owners and their field inventories exist.
 for tripwire in \
   'codoxear/static/app_session_state.js:createSessionState' \
-  'codoxear/static/app_session_state.js:"selected"' \
+  'codoxear/static/app_session_state.js:selected:' \
   'codoxear/static/app_session_catalog.js:createSessionCatalog' \
-  'codoxear/static/app_session_catalog.js:"latestSessions"' \
-  'codoxear/static/app_session_catalog.js:"sessionIndex"'; do
+  'codoxear/static/app_session_catalog.js:latestSessions:' \
+  'codoxear/static/app_session_catalog.js:sessionIndex:'; do
   trip_file="${tripwire%%:*}"
   trip_pattern="${tripwire#*:}"
   if grep -Eq "$trip_pattern" "$DEPLOY_DIR/$trip_file" 2>/dev/null; then
