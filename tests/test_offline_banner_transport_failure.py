@@ -66,7 +66,7 @@ def run_transport_failure_flow() -> dict:
         sessionCatalog.set("latestSessions", [state.session]);
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog,
-          getGeneration: () => state.generation,
+          currentGeneration: () => state.generation,
           isAppDisposed: () => state.disposed,
           sessionLaunchFailed: () => false,
           api: async () => {{ await fetch(); return {{ events: [], busy: false, queue_len: 0, token: null }}; }},

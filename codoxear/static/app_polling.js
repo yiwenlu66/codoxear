@@ -17,9 +17,30 @@
     return visibilityState === "hidden" ? hiddenMs : visibleMs;
   }
 
-  // Polling owns timer handles, retry streaks, enabled state, and stale-work
-  // generation. Composition supplies each loop's tick because its work belongs
-  // to the application controllers, not the scheduling mechanism.
+  // The async epoch invalidates work across session selection, transcript,
+  // history, search, and live delivery. It has no scheduling authority.
+  function createAsyncEpoch() {
+    let generation = 0;
+
+    function nextGeneration() {
+      generation += 1;
+      return generation;
+    }
+
+    function incrementGeneration() {
+      generation += 1;
+    }
+
+    return Object.freeze({
+      currentGeneration: () => generation,
+      nextGeneration,
+      incrementGeneration,
+    });
+  }
+
+  // Polling owns timer handles, retry streaks, and enabled state. Composition
+  // supplies each loop's tick because its work belongs to application
+  // controllers, not the scheduling mechanism.
   function createPollingRuntime(options = {}) {
     function requirePollingFunction(value, name) {
       if (typeof value !== "function") throw new TypeError(`polling runtime dependency missing: ${name}`);
@@ -28,7 +49,6 @@
 
     const scheduleTimer = requirePollingFunction(options.setTimeout, "setTimeout");
     const cancelTimer = requirePollingFunction(options.clearTimeout, "clearTimeout");
-    let generation = 0;
     let sessionsTimer = null;
     let secondaryTimer = null;
     let sessionsPollingEnabled = true;
@@ -92,15 +112,6 @@
       secondaryPollErrorStreak = 0;
     }
 
-    function nextGeneration() {
-      generation += 1;
-      return generation;
-    }
-
-    function incrementGeneration() {
-      generation += 1;
-    }
-
     function disable() {
       sessionsPollingEnabled = false;
       secondaryPollingEnabled = false;
@@ -108,9 +119,6 @@
     }
 
     return Object.freeze({
-      currentGeneration: () => generation,
-      nextGeneration,
-      incrementGeneration,
       scheduleSessions,
       scheduleSecondary,
       disable,
@@ -168,4 +176,4 @@
     return Math.max(safeRequested, errorDelay);
   }
 
-export { createPollingRuntime, POLLING_INTERVALS, sessionsPollDelayMs, secondaryPollDelayMs, browserOffline, messagePollErrorDelayMs, networkRetryDelayMs, messagePollDelayMs, normalizeMessagePollKickDelay };
+export { createAsyncEpoch, createPollingRuntime, POLLING_INTERVALS, sessionsPollDelayMs, secondaryPollDelayMs, browserOffline, messagePollErrorDelayMs, networkRetryDelayMs, messagePollDelayMs, normalizeMessagePollKickDelay };

@@ -25,7 +25,7 @@ def test_launch_fast_capability_reads_refreshed_catalog_defaults() -> None:
         const options = new Proxy({{
           sessionCatalog,
           sessionState,
-          pollingRuntime: {{ currentGeneration: () => 0, nextGeneration: () => 0, incrementGeneration: noop }},
+          asyncEpoch: {{ currentGeneration: () => 0, nextGeneration: () => 0, incrementGeneration: noop }},
           backendSupportsFastForDefaults: (backend, defaults) => Boolean(defaults.backends[backend].supports_fast),
           normalizeAgentBackendName: (value) => value,
           providerChoiceToSettings: () => ({{}}),

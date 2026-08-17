@@ -120,7 +120,7 @@ def run_voice_announcement_resume_harness() -> dict:
           const specific = {{
             sessionCatalog,
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.set("selected", "session-a"); return store; }})(),
-            getGeneration: () => 1, isAppDisposed: () => false,
+            currentGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen() {{}},
             activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-a", logPath: "/tmp/session-a.jsonl" }}),
             typingRowRuntime, visibilityState: () => documentTarget.visibilityState,

@@ -483,7 +483,7 @@ vm.createContext(ctx);
 const options = new Proxy({{
   sessionCatalog: (() => {{ const catalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }}); catalog.set("latestSessions", [{{ session_id: "sse-battle" }}]); return catalog; }})(),
   sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.set("selected", "sse-battle"); return store; }})(),
-  getGeneration: () => 7, isAppDisposed: () => false,
+  currentGeneration: () => 7, isAppDisposed: () => false,
   activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),
   resolveAppUrl: (path) => "https://phone.tailnet.example" + path,
   visibilityState: () => visibility, EventSource: FakeEventSource,

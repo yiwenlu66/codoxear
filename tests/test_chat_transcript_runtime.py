@@ -44,7 +44,7 @@ function createMessageFlow(state, overrides = {}) {
   });
   return ctx.window.CodoxearMessageFlow.createMessageFlowController({
     sessionState, sessionCatalog,
-    getGeneration: () => 1, isAppDisposed: () => false,
+    currentGeneration: () => 1, isAppDisposed: () => false,
 
     sessionLaunchFailed: () => false,
     api: async () => ({ queued: false, queue_len: 0 }), resolveAppUrl: (path) => `http://example.test${path}`,
@@ -152,7 +152,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
             sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
             const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-              sessionState, sessionCatalog, getGeneration: () => 1, isAppDisposed: () => false,
+              sessionState, sessionCatalog, currentGeneration: () => 1, isAppDisposed: () => false,
               sessionLaunchFailed: () => false,
               api: async () => ({{}}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,
               refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
@@ -1076,7 +1076,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
             const options = new Proxy({{
               sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
-              pollingRuntime: {{
+              asyncEpoch: {{
                 currentGeneration: () => state.generation,
                 nextGeneration: () => ++state.generation,
                 incrementGeneration: () => ++state.generation,
@@ -1173,7 +1173,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
             const options = new Proxy({{
               sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
-              pollingRuntime: {{
+              asyncEpoch: {{
                 currentGeneration: () => state.generation,
                 nextGeneration: () => ++state.generation,
                 incrementGeneration: () => ++state.generation,
@@ -1447,7 +1447,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
             const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
             const render = ctx.window.CodoxearTranscriptRender.createTranscriptRenderController({{
-              pollingRuntime: {{ currentGeneration: () => 1 }}, sessionCatalog,
+              currentGeneration: () => 1, sessionCatalog,
               getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{}}),
               sessionState, isAppDisposed: () => false, getSessionEditController: () => null,
               getQueueController: () => null, isFileViewerOpen: () => false, upgradeCandidateFileRefs: noop,
@@ -1465,7 +1465,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }});
             vm.runInContext({json.dumps(message_history_source)}, ctx);
             const history = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
-              pollingRuntime: {{ currentGeneration: () => 1 }}, sessionCatalog, getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
+              currentGeneration: () => 1, sessionCatalog, getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
               transcript: {{ transcriptView: render.transcriptView, markClickFirstPaint: render.markClickFirstPaint }}, sessionState,
               wiring, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}}, AbortController,
               performance: {{ now: () => clock }}, OLDER_AUTO_COOLDOWN_MS: 450, OLDER_PAGE_LIMIT: 30,
@@ -1857,7 +1857,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
+              currentGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -1933,7 +1933,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
+              currentGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -2006,7 +2006,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
+              currentGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -2080,7 +2080,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
+              currentGeneration: () => ctx.pollGen,
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,

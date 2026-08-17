@@ -68,7 +68,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         sessionCatalog.set("latestSessions", [{{ session_id: "busy-session", agent_backend: "pi" }}]);
         const messageFlow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
           sessionState, sessionCatalog,
-          getGeneration: () => 1, isAppDisposed: () => false,
+          currentGeneration: () => 1, isAppDisposed: () => false,
 
 
           sessionLaunchFailed: () => false,

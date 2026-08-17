@@ -118,7 +118,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
         sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog,
-          getGeneration: () => 1, isAppDisposed: () => false,
+          currentGeneration: () => 1, isAppDisposed: () => false,
 
           sessionLaunchFailed: () => false,
           api: async () => ({{ queued: false, queue_len: 0 }}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,

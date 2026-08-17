@@ -29,9 +29,9 @@
     const createChatSearchAllRuntime = requireFunction(options.createChatSearchAllRuntime, "createChatSearchAllRuntime");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
-    const pollingRuntime = options.pollingRuntime;
-    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
-      throw new TypeError("chat search controller dependency missing: pollingRuntime");
+    const currentGeneration = options.currentGeneration;
+    if (typeof currentGeneration !== "function") {
+      throw new TypeError("chat search controller dependency missing: currentGeneration");
     }
     const api = requireFunction(options.api, "api");
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
@@ -142,13 +142,13 @@
 
     async function runSearch(query, { before = "", appendOlder = false } = {}) {
       const sid = sessionState.get("selected");
-      const gen = pollingRuntime.currentGeneration();
+      const gen = currentGeneration();
       if (!sid || !query) return false;
       const request = requestRuntime.beginRequest();
       const beforePart = before ? `&before=${encodeURIComponent(before)}` : "";
       try {
         const data = await api(`/api/sessions/${sid}/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE_LIMIT}&order=latest${beforePart}`, { signal: request.signal });
-        if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen || currentQuery() !== query || !requestRuntime.isCurrent(request)) return false;
+        if (sessionState.get("selected") !== sid || currentGeneration() !== gen || currentQuery() !== query || !requestRuntime.isCurrent(request)) return false;
         const matches = Array.isArray(data.matches) ? data.matches : [];
         const count = Number.isFinite(Number(data.total)) ? Number(data.total) : (Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0);
         if (appendOlder) {
@@ -172,7 +172,7 @@
       } catch (error) {
         if (error && error.name === "AbortError") return false;
         if (error && error.status === 401) handleAppAuthLoss();
-        if (sessionState.get("selected") === sid && pollingRuntime.currentGeneration() === gen && requestRuntime.isCurrent(request)) {
+        if (sessionState.get("selected") === sid && currentGeneration() === gen && requestRuntime.isCurrent(request)) {
           serverMatches = [];
           serverTotal = 0;
           serverIndex = -1;

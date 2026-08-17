@@ -181,6 +181,9 @@ import * as CodoxearWiring from "./app_wiring.js";
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
         const OLDER_AUTO_COOLDOWN_MS = 450;
+        // Epoch is intentionally separate from polling: every async consumer
+        // may compare it, while only this composition owns scheduling powers.
+        const asyncEpoch = codoxearPolling.createAsyncEpoch();
         const pollingRuntime = codoxearPolling.createPollingRuntime({ setTimeout, clearTimeout });
         const sessionState = CodoxearSessionState.createSessionState({ consoleError: (...args) => console.error(...args) });
         const sessionCatalog = CodoxearSessionCatalog.createSessionCatalog({ consoleError: (...args) => console.error(...args) });
@@ -223,7 +226,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         const eventBindings = CodoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
         function stopMessagePolling() {
           sessionState.set("selected", null);
-          pollingRuntime.incrementGeneration();
+          asyncEpoch.incrementGeneration();
           if (messageFlowController) messageFlowController.stop();
           sessionState.set("turnOpen", false);
         }
@@ -589,7 +592,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         let fileOpsController = null;
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
-          pollingRuntime,
+          currentGeneration: asyncEpoch.currentGeneration,
           sessionCatalog,
           getSessionLifecycleController: () => sessionLifecycleController,
           getSessionRefreshController: () => sessionRefreshController,
@@ -1033,7 +1036,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         syncQueueSubmitState();
 
         sessionLifecycleController = CodoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
-          pollingRuntime,
+          asyncEpoch,
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
           sessionState,
           saveComposerDraft: saveSelectedComposerDraft,
@@ -1055,7 +1058,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           resetChatRenderState,
           getSession: (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId),
-          isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollingRuntime.currentGeneration() === generation,
+          isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && asyncEpoch.currentGeneration() === generation,
           setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
           setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
           markClickLoad,

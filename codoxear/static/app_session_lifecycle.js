@@ -38,9 +38,9 @@
   function createSessionLifecycleController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("session lifecycle dependency missing: options");
     const get = (name) => requireFunction(options[name], name);
-    const pollingRuntime = options.pollingRuntime;
-    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function" || typeof pollingRuntime.nextGeneration !== "function" || typeof pollingRuntime.incrementGeneration !== "function") {
-      throw new TypeError("session lifecycle dependency missing: pollingRuntime");
+    const asyncEpoch = options.asyncEpoch;
+    if (!asyncEpoch || typeof asyncEpoch.currentGeneration !== "function" || typeof asyncEpoch.nextGeneration !== "function" || typeof asyncEpoch.incrementGeneration !== "function") {
+      throw new TypeError("session lifecycle dependency missing: asyncEpoch");
     }
     const prepareSessionOpen = get("prepareSessionOpen");
     const saveComposerDraft = get("saveComposerDraft");
@@ -125,7 +125,7 @@
       handleFileViewerSessionUnavailable(sessionId);
       sessionState.set("selected", null);
       messageFlow().abortMessagePollRequest();
-      if (incrementPollGen) pollingRuntime.incrementGeneration();
+      if (incrementPollGen) asyncEpoch.incrementGeneration();
       if (clearPollState) messageFlow().clearPollSchedule();
       setActiveTranscriptPending();
       clearTranscriptForRemovedSession();
@@ -153,7 +153,7 @@
     }
 
     async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, forceRender = false } = {}) {
-      const generation = pollingRuntime.nextGeneration();
+      const generation = asyncEpoch.nextGeneration();
       messageFlow().prepareSessionOpen();
       const oldSelected = sessionState.get("selected");
       const reloadingSelectedSession = oldSelected === sessionId;

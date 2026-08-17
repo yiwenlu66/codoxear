@@ -27,21 +27,30 @@ def eval_polling_policy() -> dict:
           setTimeout(callback, delay) {{ const timer = {{ callback, delay }}; timers.push(timer); return timer; }},
           clearTimeout(timer) {{ canceled.push(timer); }},
         }});
-        const sessionsTick = () => "sessions";
+        let sessionsTickCalls = 0;
+        function sessionsTick() {{
+          sessionsTickCalls += 1;
+          if (sessionsTickCalls === 1) runtime.scheduleSessions(48, sessionsTick);
+        }}
         const secondaryTick = () => "secondary";
         runtime.scheduleSessions(12, sessionsTick);
         runtime.scheduleSessions(24, sessionsTick);
         runtime.scheduleSecondary(36, secondaryTick);
+        timers[1].callback();
+        const afterTick = {{ calls: sessionsTickCalls, rearmedDelay: timers[3].delay }};
         runtime.markSessionsPollFailure();
         runtime.markSessionsPollFailure();
         runtime.markSecondaryPollFailure();
         const beforeReset = {{ sessions: runtime.sessionsPollErrorStreak(), secondary: runtime.secondaryPollErrorStreak() }};
         runtime.resetStreaks();
-        const initialGeneration = runtime.currentGeneration();
-        const nextGeneration = runtime.nextGeneration();
-        runtime.incrementGeneration();
+        const epoch = helpers.createAsyncEpoch();
+        const initialGeneration = epoch.currentGeneration();
+        const nextGeneration = epoch.nextGeneration();
+        epoch.incrementGeneration();
         runtime.disable();
-        runtime.scheduleSessions(48, sessionsTick);
+        timers[3].callback();
+        const afterDisable = {{ calls: sessionsTickCalls }};
+        runtime.scheduleSessions(60, sessionsTick);
         const idle = helpers.messagePollDelayMs({{ now: 1000 }});
         const running = helpers.messagePollDelayMs({{ now: 1000, turnOpen: true }});
         const fast = helpers.messagePollDelayMs({{ now: 1000, pollFastUntilMs: 2000 }});
@@ -61,12 +70,15 @@ def eval_polling_policy() -> dict:
           runtime: {{
             initialGeneration,
             nextGeneration,
-            currentGeneration: runtime.currentGeneration(),
+            currentGeneration: epoch.currentGeneration(),
             beforeReset,
             afterReset: {{ sessions: runtime.sessionsPollErrorStreak(), secondary: runtime.secondaryPollErrorStreak() }},
+            afterTick,
+            afterDisable,
             canceled: canceled.length,
             scheduled: timers.map((timer) => timer.delay),
             frozen: Object.isFrozen(runtime),
+            epochFrozen: Object.isFrozen(epoch),
           }},
           sessionsVisible: helpers.sessionsPollDelayMs("visible"),
           sessionsHidden: helpers.sessionsPollDelayMs("hidden"),
@@ -123,9 +135,12 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
             "currentGeneration": 2,
             "beforeReset": {"sessions": 2, "secondary": 1},
             "afterReset": {"sessions": 0, "secondary": 0},
+            "afterTick": {"calls": 1, "rearmedDelay": 48},
+            "afterDisable": {"calls": 1},
             "canceled": 3,
-            "scheduled": [12, 24, 36],
+            "scheduled": [12, 24, 36, 48],
             "frozen": True,
+            "epochFrozen": True,
         })
         self.assertEqual(result["sessionsVisible"], 5000)
         self.assertEqual(result["sessionsHidden"], 15000)

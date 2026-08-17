@@ -118,7 +118,7 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
         const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         const controller = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
           sessionState, sessionCatalog,
-          pollingRuntime: {{ currentGeneration: () => 7 }},
+          currentGeneration: () => 7,
           getSessionLifecycleController: () => ({{ openSession: async (...args) => calls.push(["open", ...args]) }}),
           getSessionRefreshController: () => ({{ refreshSessions: async () => {{}} }}),
           getSendLifecycleController: () => ({{ kickPoll: (delay) => calls.push(["kick", delay]) }}),
@@ -217,7 +217,7 @@ def eval_open_session_tail_request_abort() -> dict:
         }});
         const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController({{
           sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
-          pollingRuntime: {{
+          asyncEpoch: {{
             currentGeneration: () => state.pollGen,
             nextGeneration: () => ++state.pollGen,
             incrementGeneration: () => ++state.pollGen,
@@ -295,7 +295,7 @@ def _run_lifecycle(body: str) -> dict:
         const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         const options = new Proxy({{
           sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
-          pollingRuntime: {{
+          asyncEpoch: {{
             currentGeneration: () => 0,
             nextGeneration: () => 0,
             incrementGeneration: () => {{ calls.push(["incrementGeneration"]); }},

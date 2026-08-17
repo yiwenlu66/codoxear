@@ -11,9 +11,9 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
   }
 
   function createChatInteractionController(options = {}) {
-    const pollingRuntime = options.pollingRuntime;
-    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
-      throw new TypeError("chat interaction dependency missing: pollingRuntime");
+    const currentGeneration = options.currentGeneration;
+    if (typeof currentGeneration !== "function") {
+      throw new TypeError("chat interaction dependency missing: currentGeneration");
     }
     const sessionCatalog = options.sessionCatalog;
     if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("chat interaction dependency missing: sessionCatalog");
@@ -45,7 +45,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     let sendLifecycleController = null;
     let attachmentsController = null;
     const transcript = transcriptModule.createTranscriptRenderController(wiring.createTranscriptRenderOptions({
-      pollingRuntime,
+      currentGeneration,
       sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
@@ -178,7 +178,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       wiring: options.wiring,
     }));
     historyController = historyModule.createMessageHistoryController(wiring.createMessageHistoryOptions({
-      pollingRuntime,
+      currentGeneration,
       sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
@@ -209,7 +209,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       sessionSelectable: options.sessionSelectable,
     }));
     sendLifecycleController = sendModule.createSendLifecycleController(wiring.createSendLifecycleOptions({
-      pollingRuntime,
+      currentGeneration,
       sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,

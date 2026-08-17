@@ -26,7 +26,7 @@ function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
 const sessionState = { get: () => selected };
 const deps = {
-  prevUserBtn: prev, nextUserBtn: next, sessionState, pollingRuntime: { currentGeneration: () => 1 },
+  prevUserBtn: prev, nextUserBtn: next, sessionState, currentGeneration: () => 1,
   api: async (url) => {
     events.push(`api:${url}`);
     if (apiMode === 'error') throw Object.assign(new Error('failed'), { status: 500 });

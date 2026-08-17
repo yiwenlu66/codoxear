@@ -42,7 +42,7 @@ def run_flow(body: str) -> dict:
           const options = {{
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }}); return store; }})(),
             sessionCatalog: (() => {{ const catalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }}); catalog.set("latestSessions", [state.session]); return catalog; }})(),
-            getGeneration: () => state.generation,
+            currentGeneration: () => state.generation,
             isAppDisposed: () => state.disposed, sessionLaunchFailed: () => false,
             api: async () => ({{ events: [], busy: false, queue_len: 0, token: null }}),
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,

@@ -78,7 +78,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog,
-            getGeneration: () => 1, isAppDisposed: () => false,
+            currentGeneration: () => 1, isAppDisposed: () => false,
 
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push({{ path, body: options.body }}); return {{ queued: false, queue_len: 0, busy: true }}; }},

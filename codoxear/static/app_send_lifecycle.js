@@ -9,9 +9,9 @@
     return value;
   }
   function createSendLifecycleController(options = {}) {
-    const pollingRuntime = options.pollingRuntime;
-    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
-      throw new TypeError("send lifecycle dependency missing: pollingRuntime");
+    const currentGeneration = options.currentGeneration;
+    if (typeof currentGeneration !== "function") {
+      throw new TypeError("send lifecycle dependency missing: currentGeneration");
     }
     const sessionCatalog = options.sessionCatalog;
     if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("send lifecycle dependency missing: sessionCatalog");
@@ -83,7 +83,7 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
 }));
 
 messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.createMessageFlowOptions({
-  getGeneration: () => pollingRuntime.currentGeneration(),
+  currentGeneration,
   isAppDisposed: () => isAppDisposed(),
   sessionCatalog,
   sessionLaunchFailed,
@@ -159,7 +159,7 @@ function setPollFastUntilMs(value) {
   messageFlowController.setPollFastUntilMs(value);
 }
 
-function openMessageEventSource(sessionId = sessionState.get("selected"), generation = pollingRuntime.currentGeneration()) {
+function openMessageEventSource(sessionId = sessionState.get("selected"), generation = currentGeneration()) {
   return messageFlowController.openMessageEventSource(sessionId, generation);
 }
 

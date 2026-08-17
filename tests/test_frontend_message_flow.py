@@ -78,7 +78,7 @@ def _run_node(body: str) -> dict:
           }};
           const options = {{
             sessionState, sessionCatalog,
-                        getGeneration: () => state.generation,
+                        currentGeneration: () => state.generation,
             isAppDisposed: () => state.disposed,
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push([path, options]); return {{}}; }},

@@ -79,7 +79,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
             updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState, sessionCatalog, getGeneration: () => 1, isAppDisposed: () => false,
+            sessionState, sessionCatalog, currentGeneration: () => 1, isAppDisposed: () => false,
 
             sessionLaunchFailed: () => false, api: async () => ({{ queued: false, queue_len: 0 }}),
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,

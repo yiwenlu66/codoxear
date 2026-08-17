@@ -37,7 +37,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
   function createMessageFlowController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("message flow dependency missing: options");
 
-    const getGeneration = requireFunction(options.getGeneration, "getGeneration");
+    const currentGeneration = requireFunction(options.currentGeneration, "currentGeneration");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
@@ -137,7 +137,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     let pollFastUntilMs = 0;
 
     function isCurrent(sessionId, generation) {
-      return !isAppDisposed() && sessionState.get("selected") === sessionId && getGeneration() === generation;
+      return !isAppDisposed() && sessionState.get("selected") === sessionId && currentGeneration() === generation;
     }
 
     function abortController(controller) {
@@ -159,7 +159,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
 
     function isCurrentOpenSessionTailRequest(request) {
-      return Boolean(request && sessionState.get("selected") === request.sessionId && getGeneration() === request.generation);
+      return Boolean(request && sessionState.get("selected") === request.sessionId && currentGeneration() === request.generation);
     }
 
     function isOpenSessionTailAbortError(request, error) {
@@ -255,7 +255,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       }, delay);
     }
 
-    function openMessageEventSource(sessionId = sessionState.get("selected"), generation = getGeneration()) {
+    function openMessageEventSource(sessionId = sessionState.get("selected"), generation = currentGeneration()) {
       if (!sessionId || !isCurrent(sessionId, generation) || visibilityState() !== "visible" || typeof EventSourceCtor !== "function") return false;
       const snapshot = activeTranscriptSnapshot();
       if (snapshot.state !== "bound" || !snapshot.liveCursor) return false;
@@ -453,7 +453,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       if (session) updateSessionTitle(session);
     }
 
-    async function pollMessages(sessionId = sessionState.get("selected"), generation = getGeneration()) {
+    async function pollMessages(sessionId = sessionState.get("selected"), generation = currentGeneration()) {
       if (isAppDisposed() || !sessionId) return;
       const reconnectSseAfterSuccess = messageTransportUnavailable;
       let pollRequest = null;
@@ -536,7 +536,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       }
       pollLoopBusy = true;
       const sessionId = sessionState.get("selected");
-      const generation = getGeneration();
+      const generation = currentGeneration();
       try {
         await pollMessages(sessionId, generation);
       } finally {

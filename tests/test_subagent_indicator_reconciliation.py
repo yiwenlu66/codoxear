@@ -193,7 +193,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           sessionCatalog.set("latestSessions", [{{ ...row, session_id: row.session_id || "sid" }}]);
           const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog,
-            getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
+            getSelected: () => "sid", currentGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen: noop,
             sessionLaunchFailed: () => false, api: async () => ({{}}), resolveAppUrl: (path) => path,
             handleAppAuthLoss: noop, refreshSessions: async () => [], openSession: async () => null,
