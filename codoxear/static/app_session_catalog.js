@@ -3,7 +3,9 @@
  *
  * `sessionIndex` is derived atomically from `latestSessions`: callers cannot
  * set it independently and therefore cannot publish a list whose lookup index
- * describes a different refresh snapshot.
+ * describes a different refresh snapshot. Session records remain shared
+ * objects so optimistic patches are visible through both catalog views; every
+ * such patch crosses the catalog's observable write boundary.
  */
 
 const INITIAL_DEFAULTS = Object.freeze({
@@ -66,45 +68,76 @@ function createSessionCatalog(options = {}) {
     return values[requireField(field)];
   }
 
-  function set(field, value) {
-    requireField(field);
-    if (field === "sessionIndex") {
-      throw new TypeError("session catalog field is derived: sessionIndex");
-    }
-
+  function normalizedFieldValue(field, value) {
     if (field === "latestSessions") {
       if (!Array.isArray(value)) throw new TypeError("session catalog latestSessions must be an array");
-      const sessions = value.slice();
-      const index = new Map();
-      for (const session of sessions) {
-        const sessionId = session && session.session_id;
-        if (sessionId !== undefined && sessionId !== null) index.set(sessionId, session);
-      }
-      const changed = [];
-      if (!Object.is(values.latestSessions, value)) changed.push("latestSessions");
-      values.latestSessions = sessions;
-      values.sessionIndex = index;
-      changed.push("sessionIndex");
-      notify(changed);
-      return true;
+      return value.slice();
     }
-
-    let next = value;
     if (field === "recentCwds") {
       if (!Array.isArray(value)) throw new TypeError("session catalog recentCwds must be an array");
-      next = value.slice();
-    } else if (field === "newSessionDefaults") {
+      return value.slice();
+    }
+    if (field === "newSessionDefaults") {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new TypeError("session catalog newSessionDefaults must be an object");
       }
-    } else if (field === "tmuxAvailable") {
-      next = Boolean(value);
+      return value;
+    }
+    if (field === "tmuxAvailable") return Boolean(value);
+    return value;
+  }
+
+  function applySnapshot(patch) {
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+      throw new TypeError("session catalog snapshot patch must be an object");
     }
 
-    if (Object.is(values[field], next)) return false;
-    values[field] = next;
-    notify([field]);
-    return true;
+    const fields = Object.keys(patch);
+    fields.forEach((field) => {
+      requireField(field);
+      if (field === "sessionIndex") throw new TypeError("session catalog field is derived: sessionIndex");
+    });
+    const nextValues = Object.fromEntries(fields.map((field) => [field, normalizedFieldValue(field, patch[field])]));
+    const changed = fields.filter((field) => {
+      if (field === "latestSessions") return !Object.is(values.latestSessions, patch.latestSessions);
+      return !Object.is(values[field], nextValues[field]);
+    });
+    let nextIndex = null;
+    if (Object.prototype.hasOwnProperty.call(nextValues, "latestSessions")) {
+      nextIndex = new Map();
+      for (const session of nextValues.latestSessions) {
+        const sessionId = session && session.session_id;
+        if (sessionId !== undefined && sessionId !== null) nextIndex.set(sessionId, session);
+      }
+    }
+
+    // A server response is one catalog generation: install every field before
+    // any subscriber can render it, then deduplicate callbacks shared by fields.
+    for (const field of fields) values[field] = nextValues[field];
+    if (nextIndex) values.sessionIndex = nextIndex;
+    const affected = changed.slice();
+    if (nextIndex) affected.push("sessionIndex");
+    notify(affected);
+    return affected;
+  }
+
+  function set(field, value) {
+    requireField(field);
+    if (field === "sessionIndex") throw new TypeError("session catalog field is derived: sessionIndex");
+    return applySnapshot({ [field]: value }).length > 0;
+  }
+
+  function patchSession(sessionId, patch) {
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+      throw new TypeError("session catalog session patch must be an object");
+    }
+    const session = values.sessionIndex.get(sessionId);
+    if (!session) return null;
+    Object.assign(session, patch);
+    // Both views expose the same record. Notify both fields atomically so a
+    // callback subscribed to either view observes the complete optimistic patch.
+    notify(["sessionIndex", "latestSessions"]);
+    return session;
   }
 
   function subscribe(field, callback) {
@@ -114,7 +147,7 @@ function createSessionCatalog(options = {}) {
     return () => subscribers[field].delete(callback);
   }
 
-  return Object.freeze({ get, set, subscribe });
+  return Object.freeze({ get, set, patchSession, applySnapshot, subscribe });
 }
 
 export { createSessionCatalog };

@@ -88,7 +88,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const queueBtn = requireNode(options.queueBtn, "queueBtn");
 
     // App-level runtime state accessors.
-    const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") {
+      throw new TypeError("queue controller dependency missing: sessionCatalog");
+    }
+    const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
       throw new TypeError("queue controller dependency missing: sessionState");
@@ -98,7 +102,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const setToast = requireFunction(options.setToast, "setToast");
     const clearCommitUnknownSend = requireFunction(options.clearCommitUnknownSend, "clearCommitUnknownSend");
     const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
-    const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const kickPoll = requireFunction(options.kickPoll, "kickPoll");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
     const handleAppAuthLoss = requireFunction(options.handleAppAuthLoss, "handleAppAuthLoss");
@@ -137,8 +140,13 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       queueBadge.style.display = n > 0 ? "inline-flex" : "none";
     }
     const unsubscribeQueueLen = sessionState.subscribe("queueLen", updateQueueBadge);
-    const unsubscribeSelected = sessionState.subscribe("selected", updateQueueBadge);
+    const unsubscribeSelected = sessionState.subscribe("selected", () => {
+      updateQueueBadge();
+      syncQueueSubmitState();
+    });
+    const unsubscribeSessionIndex = sessionCatalog.subscribe("sessionIndex", syncQueueSubmitState);
     updateQueueBadge();
+    syncQueueSubmitState();
 
     function applyQueueMutationRuntime(sessionId, response) {
       if (sessionState.get("selected") !== sessionId) return;
@@ -217,7 +225,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         kickPoll(0);
         applyQueueMutationRuntime(sessionId, res);
         await refreshSessions();
-        syncRecoveryUiForSession(sessionId);
         if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
           await refreshQueueViewer();
         }
@@ -281,7 +288,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         const response = await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
         applyQueueMutationRuntime(sid, response);
         await refreshSessions();
-        syncRecoveryUiForSession(sid);
         if (queueViewer.style.display === "flex") {
           const refreshedSession = getSessionInfo(sid);
           if (refreshedSession && Number(refreshedSession.queue_len || 0) > 0) await refreshQueueViewer();
@@ -312,7 +318,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         applyQueueMutationRuntime(sid, response);
         await refreshQueueViewer();
         await refreshSessions();
-        syncRecoveryUiForSession(sid);
       } catch (e) {
         if (e && e.status === 401) {
           handleAppAuthLoss();
@@ -352,7 +357,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
           if (isAppDisposed()) return;
           await refreshSessions();
           if (isAppDisposed()) return;
-          syncRecoveryUiForSession(sid);
         } catch (e) {
           if (isAppDisposed()) return;
           if (e && e.status === 401) {
@@ -552,6 +556,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     function dispose() {
       unsubscribeQueueLen();
       unsubscribeSelected();
+      unsubscribeSessionIndex();
       queueUpdateTimers.forEach((timer) => clearTimeoutFn(timer));
       queueUpdateTimers.clear();
       queueMutationLocks.clear();

@@ -44,12 +44,10 @@ import * as CodoxearTranscript from "./app_transcript.js";
       throw new TypeError("message flow dependency missing: sessionState");
     }
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("message flow dependency missing: sessionCatalog");
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.patchSession !== "function") {
+      throw new TypeError("message flow dependency missing: sessionCatalog");
+    }
     const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
-    const patchSessionInfo = (sessionId, patch) => {
-      const current = getSessionInfo(sessionId);
-      if (current) Object.assign(current, patch || {});
-    };
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const api = requireFunction(options.api, "api");
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
@@ -90,10 +88,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const normalizedStagedAttachments = requireFunction(options.normalizedStagedAttachments, "normalizedStagedAttachments");
     const setSelectedSessionPendingAttachment = requireFunction(options.setSelectedSessionPendingAttachment, "setSelectedSessionPendingAttachment");
-    const syncSendButtonState = requireFunction(options.syncSendButtonState, "syncSendButtonState");
-    const syncAttachButtonState = requireFunction(options.syncAttachButtonState, "syncAttachButtonState");
-    const syncQueueSubmitState = requireFunction(options.syncQueueSubmitState, "syncQueueSubmitState");
-    const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const confirmAction = requireFunction(options.confirmAction, "confirmAction");
     const setToast = requireFunction(options.setToast, "setToast");
     const isTranscriptRenewalCommand = requireFunction(options.isTranscriptRenewalCommand, "isTranscriptRenewalCommand");
@@ -658,14 +652,11 @@ import * as CodoxearTranscript from "./app_transcript.js";
         const commitUnknown = Boolean(error && error.obj && error.obj.commit_unknown);
         if (commitUnknown) {
           setToast("send status unknown; check transcript before retrying");
-          patchSessionInfo(sessionId, {
+          sessionCatalog.patchSession(sessionId, {
             commit_unknown_send: true,
             commit_unknown_send_text: raw,
             commit_unknown_send_ts: now() / 1000,
           });
-          syncSendButtonState();
-          syncQueueSubmitState();
-          syncAttachButtonState();
           setPollFastUntilMs(now() + 4000);
           kickPoll(0);
           void refreshSessions().catch((refreshError) => {
@@ -708,7 +699,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
             sessionState.set("turnOpen", false);
             sessionState.applyRuntime({ running: false });
           }
-          if (commitUnknown) syncRecoveryUiForSession(sessionId);
         }
         return false;
       } finally {

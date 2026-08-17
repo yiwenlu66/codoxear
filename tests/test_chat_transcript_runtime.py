@@ -201,6 +201,59 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0},
         })
 
+    def test_recovery_refresh_updates_catalog_subscribers_without_imperative_projection_calls(self) -> None:
+        session_refresh_source = APP_SESSION_REFRESH_JS.read_text(encoding="utf-8")
+        session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+        catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(catalog_source)}, ctx);
+            vm.runInContext({json.dumps(session_refresh_source)}, ctx);
+            const noop = () => {{}};
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+            sessionState.set("selected", "sid");
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+            sessionCatalog.set("latestSessions", [{{ session_id: "sid", commit_unknown_send: false, queue_len: 0 }}]);
+            const projections = [];
+            for (const name of ["attachment", "queue", "composer", "unattended"]) {{
+              sessionCatalog.subscribe("sessionIndex", () => {{
+                const row = sessionCatalog.get("sessionIndex").get("sid");
+                projections.push([name, row.commit_unknown_send, sessionCatalog.get("newSessionDefaults").generation]);
+              }});
+            }}
+            const refresh = ctx.window.CodoxearSessionRefresh.createSessionRefreshController({{
+              sessionState, sessionCatalog,
+              api: async () => ({{
+                sessions: [{{ session_id: "sid", commit_unknown_send: true, queue_len: 3 }}],
+                new_session_defaults: {{ generation: 2 }}, tmux_available: true, recent_cwds: ["/next"],
+              }}),
+              isDisposed: () => false, apiResponseNotModified: () => false, emptyDefaults: () => ({{}}),
+              clearFileDiscoveryCaches: noop, useDesktopSessionActions: () => true, clearSelectedSessionAfterRemoval: noop,
+              applySessionListTranscriptIdentity: noop, syncAttachments: noop, clearAttachments: noop,
+              renderSessions: () => true, hasDeferredRefresh: () => false, updateTypingStats: (session) => {{
+                sessionState.applyRuntime({{ queueLen: Number(session.queue_len) || 0 }});
+              }}, maybeSelectPendingHashSession: noop,
+            }});
+            refresh.refreshSessions().then(() => process.stdout.write(JSON.stringify({{
+              projections, queueLen: sessionState.get("queueLen"),
+              defaults: sessionCatalog.get("newSessionDefaults").generation,
+            }})));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out, {
+            "projections": [
+                ["attachment", True, 2], ["queue", True, 2],
+                ["composer", True, 2], ["unattended", True, 2],
+            ],
+            "queueLen": 3,
+            "defaults": 2,
+        })
+
     def test_first_unread_message_row_scrolls_to_matching_transcript_row(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(

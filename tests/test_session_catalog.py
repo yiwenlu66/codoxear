@@ -77,6 +77,69 @@ def test_latest_sessions_atomically_derives_session_index() -> None:
     }
 
 
+def test_patch_session_preserves_shared_record_and_notifies_both_catalog_views_once() -> None:
+    result = evaluate(
+        """
+        const catalog = createSessionCatalog({ consoleError: () => {} });
+        const session = { session_id: "a", model: "one" };
+        catalog.set("latestSessions", [session]);
+        const calls = [];
+        const shared = (value, field) => calls.push({
+          field,
+          sameRecord: catalog.get("latestSessions")[0] === catalog.get("sessionIndex").get("a"),
+          model: catalog.get("sessionIndex").get("a").model,
+          deliveredRecord: field === "sessionIndex" ? value.get("a").model : value[0].model,
+        });
+        catalog.subscribe("sessionIndex", shared);
+        catalog.subscribe("latestSessions", shared);
+        const patched = catalog.patchSession("a", { model: "two", commit_unknown_send: true });
+        const missing = catalog.patchSession("missing", { model: "none" });
+        process.stdout.write(JSON.stringify({
+          patchedIsSource: patched === session,
+          missing,
+          source: session,
+          calls,
+        }));
+        """
+    )
+    assert result == {
+        "patchedIsSource": True,
+        "missing": None,
+        "source": {"session_id": "a", "model": "two", "commit_unknown_send": True},
+        "calls": [{"field": "sessionIndex", "sameRecord": True, "model": "two", "deliveredRecord": "two"}],
+    }
+
+
+def test_apply_snapshot_installs_all_fields_before_deduplicated_notification() -> None:
+    result = evaluate(
+        """
+        const catalog = createSessionCatalog({ consoleError: () => {} });
+        const calls = [];
+        const shared = (_value, field) => calls.push({
+          field,
+          ids: Array.from(catalog.get("sessionIndex").keys()),
+          defaults: catalog.get("newSessionDefaults").generation,
+          tmux: catalog.get("tmuxAvailable"),
+          cwds: catalog.get("recentCwds").slice(),
+        });
+        for (const field of ["latestSessions", "sessionIndex", "newSessionDefaults", "tmuxAvailable", "recentCwds"]) {
+          catalog.subscribe(field, shared);
+        }
+        const affected = catalog.applySnapshot({
+          latestSessions: [{ session_id: "next" }],
+          newSessionDefaults: { generation: 2 },
+          tmuxAvailable: true,
+          recentCwds: ["/next"],
+        });
+        process.stdout.write(JSON.stringify({ affected, calls }));
+        """
+    )
+    assert result == {
+        "affected": ["latestSessions", "newSessionDefaults", "tmuxAvailable", "recentCwds", "sessionIndex"],
+        "calls": [{"field": "latestSessions", "ids": ["next"], "defaults": 2, "tmux": True, "cwds": ["/next"]}],
+    }
+
+
 def test_session_index_rejects_independent_writes_and_unknown_fields() -> None:
     result = evaluate(
         """

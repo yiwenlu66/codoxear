@@ -21,7 +21,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const getSendLifecycleController = requireFunction(options.getSendLifecycleController, "getSendLifecycleController");
-    const getAttachmentsController = requireFunction(options.getAttachmentsController, "getAttachmentsController");
     const transcript = requireObject(options.transcript, "transcript");
     const sessionState = requireObject(options.sessionState, "sessionState");
     if (typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
@@ -29,7 +28,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
     const { wiring, olderWrap, olderBtn, olderError, olderErrorText, AbortController, performance,
       OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss,
-      syncQueueSubmitState, syncComposerSendButton, syncUnattendedButtonState,
       sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
       sessionIdFromHash, sessionSelectable } = options;
     const { transcriptSlotRuntime, transcriptScrollRuntime, setOlderState,
@@ -255,19 +253,6 @@ async function dismissFailedLaunchRecord(sessionId) {
   }
 }
 
-function syncRecoveryUiForSession(sessionId) {
-  if (sessionState.get("selected") !== sessionId) return;
-  const s = getSessionIndex().get(sessionId) || null;
-  if (s) {
-    const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
-    sessionState.applyRuntime({ queueLen });
-  }
-  getAttachmentsController().syncAttachButtonState();
-  syncQueueSubmitState();
-  syncComposerSendButton();
-  syncUnattendedButtonState();
-}
-
 function renderPendingTranscriptSlot(sessionId) {
   transcriptView().replaceWith([]);
   restorePendingUserRowsForSession(sessionId);
@@ -397,7 +382,7 @@ function maybeSelectPendingHashSession() {
     return Object.freeze({
       olderLoadRuntime, invalidateOlderLoad, clearOlderLoadError, showOlderLoadError, setOlderState,
       loadTranscriptWindowAtCursor, loadOlderMessages, maybeAutoLoadOlder, clearRenderedTranscriptRange,
-      applySessionRuntimeFromTail, renderSessionTail, recoveryDetailsText, syncRecoveryUiForSession,
+      applySessionRuntimeFromTail, renderSessionTail, recoveryDetailsText,
       renderPendingTranscriptSlot, renderTranscriptLoading, renderTranscriptLoadError, applyCachedTail,
       applyLiveMessageData, pollMessages, jumpToLatest, rememberPendingHashSession, maybeSelectPendingHashSession,
     });

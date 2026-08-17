@@ -363,7 +363,7 @@ class TestChatScrollbackSource(unittest.TestCase):
             ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementGeneration"], ["setActiveTranscriptPending"],
             ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""],
             ["clearAttachments"],
-            ["syncAttachmentButton"], ["resetChatRenderState"], ["hideUnattendedMenu"],
+            ["resetChatRenderState"], ["hideUnattendedMenu"],
         ]:
             self.assertContains(expected, result["calls"])
 

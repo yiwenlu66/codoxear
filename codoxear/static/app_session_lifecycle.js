@@ -53,7 +53,6 @@
     const clearTranscriptForRemovedSession = get("clearTranscriptForRemovedSession");
     const syncAttachments = get("syncAttachments");
     const clearAttachments = get("clearAttachments");
-    const syncAttachmentButton = get("syncAttachmentButton");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("session lifecycle dependency missing: sessionState");
@@ -111,7 +110,6 @@
     const backendSupportsFast = (backend) => backendSupportsFastForDefaults(backend, sessionCatalog.get("newSessionDefaults"));
     const setToast = get("setToast");
     const confirmAction = get("confirmAction");
-    const syncRecoveryUiForSession = get("syncRecoveryUiForSession");
     const sleep = get("sleep");
     const consoleError = get("consoleError");
 
@@ -129,7 +127,6 @@
       setSessionHash("");
       sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
       clearAttachments();
-      syncAttachmentButton();
       resetChatRenderState();
       if (isUnattendedOpen()) hideUnattendedMenu();
       return true;
@@ -316,7 +313,6 @@
         await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
         setToast("unknown send marker cleared");
         await refreshSessions();
-        if (sessionState.get("selected") === sessionId) syncRecoveryUiForSession(sessionId);
         return true;
       } catch (error) {
         if (error && error.status === 401) {

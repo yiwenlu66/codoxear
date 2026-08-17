@@ -132,12 +132,14 @@ def run_controller_harness() -> dict[str, Any]:
         attachmentController.syncAttachButtonState();
 
         const queueBtn = node();
+        const queueSessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+        queueSessionCatalog.set("latestSessions", [{{ session_id: "sid", launch_state: "ready", queue_len: 0 }}]);
         const queueController = ctx.window.CodoxearQueue.createQueueController({{
           queueBackdrop: node(), queueCloseBtn: node(), queueList: node(), queueEmpty: node(), queueViewer: node(), queueBtn,
           sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.set("selected", "sid"); return store; }})(),
-          getSessionInfo: () => ({{ session_id: "sid", launch_state: "ready", queue_len: 0 }}),
+          sessionCatalog: queueSessionCatalog,
           isAppDisposed: () => false, api: async () => ({{}}), setToast: noop, clearCommitUnknownSend: async () => {{}},
-          refreshSessions: async () => {{}}, updateQueueBadge: noop, syncRecoveryUiForSession: noop,
+          refreshSessions: async () => {{}}, updateQueueBadge: noop,
           kickPoll: noop, setPollFastUntilMs: noop, handleAppAuthLoss: noop,
           prepareModalOpen: noop, afterModalVisibilityChanged: noop, el: () => node(), iconSvg: () => "",
           recoveryPanelFocusFallback: () => null, confirmAction: async () => true,

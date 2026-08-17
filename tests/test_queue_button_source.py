@@ -82,7 +82,7 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
           queueViewer,
           queueBtn,
 
-          getSessionInfo: (sid) => sessions.get(sid) || null,
+          sessionCatalog: {{ get: (field) => field === "sessionIndex" ? sessions : null, subscribe: () => () => {{}} }},
           isAppDisposed: () => disposed,
           api,
           setToast: (t) => {{ toasts.push(t); calls.push(["setToast", t]); }},

@@ -116,7 +116,7 @@ const deps = {
   queueViewer,
   queueBtn,
 
-  getSessionInfo: (sid) => sessions.get(sid) || null,
+  sessionCatalog: { get: (field) => field === "sessionIndex" ? sessions : null, subscribe: () => () => {} },
   isAppDisposed: () => disposed,
   api: (url, options = {}) => {
     const body = options && options.body ? JSON.parse(JSON.stringify(options.body)) : null;
@@ -306,7 +306,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               queueBackdrop: node, queueCloseBtn: node, queueList: node,
               queueEmpty: node, queueViewer: node, queueBtn: node,
-              getSessionInfo: () => null, isAppDisposed: () => false,
+              sessionCatalog: { get: () => new Map(), subscribe: () => () => {} }, isAppDisposed: () => false,
               sessionState: ctx.window.CodoxearSessionState.createSessionState({ consoleError: () => {} }),
               api: null,
               setToast: () => {}, clearCommitUnknownSend: () => {}, refreshSessions: async () => {},
@@ -412,13 +412,13 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         self.assertEqual(result["toasts"], ["queued (3)"])
         self.assertEqual(result["apiBody"], {"text": "hello world"})
         order = result["order"]
-        # api(enqueue) -> setPollFastUntilMs -> kickPoll -> refreshSessions ->
-        # syncRecoveryUiForSession (the badge reacts to the queueLen store
-        # subscription; refreshQueueViewer is skipped because the viewer is closed).
+        # api(enqueue) -> setPollFastUntilMs -> kickPoll -> refreshSessions.
+        # Catalog/store subscriptions own the post-refresh projections;
+        # refreshQueueViewer is skipped because the viewer is closed.
         self.assertLess(order.index("api"), order.index("setPollFastUntilMs"))
         self.assertLess(order.index("setPollFastUntilMs"), order.index("kickPoll"))
         self.assertLess(order.index("kickPoll"), order.index("refreshSessions"))
-        self.assertLess(order.index("refreshSessions"), order.index("syncRecoveryUiForSession"))
+        self.assertNotIn("syncRecoveryUiForSession", order)
 
     # --- 4. 401 handling before any queue error toast ---
 

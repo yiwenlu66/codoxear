@@ -10,7 +10,7 @@
     const isDisposed = requireFunction(options.isDisposed, "isDisposed");
     const apiResponseNotModified = requireFunction(options.apiResponseNotModified, "apiResponseNotModified");
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.set !== "function") {
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.applySnapshot !== "function") {
       throw new TypeError("session refresh dependency missing: sessionCatalog");
     }
     const emptyDefaults = requireFunction(options.emptyDefaults, "emptyDefaults");
@@ -19,7 +19,6 @@
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("session refresh dependency missing: sessionState");    const clearSelectedSessionAfterRemoval = requireFunction(options.clearSelectedSessionAfterRemoval, "clearSelectedSessionAfterRemoval");
     const applySessionListTranscriptIdentity = requireFunction(options.applySessionListTranscriptIdentity, "applySessionListTranscriptIdentity");
-    const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const syncAttachments = requireFunction(options.syncAttachments, "syncAttachments");
     const clearAttachments = requireFunction(options.clearAttachments, "clearAttachments");
     const renderSessions = requireFunction(options.renderSessions, "renderSessions");
@@ -59,20 +58,17 @@
       if (notModified && !hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
       if (!notModified || firstLoadNeedsPopulation) {
         latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-        sessionCatalog.set("latestSessions", latestSessions);
-        sessionCatalog.set(
-          "newSessionDefaults",
-          data && typeof data.new_session_defaults === "object" && data.new_session_defaults
-            ? data.new_session_defaults
-            : emptyDefaults()
-        );
-        sessionCatalog.set("tmuxAvailable", Boolean(data.tmux_available));
-        sessionCatalog.set(
-          "recentCwds",
-          Array.isArray(data.recent_cwds)
+        sessionCatalog.applySnapshot({
+          latestSessions,
+          newSessionDefaults:
+            data && typeof data.new_session_defaults === "object" && data.new_session_defaults
+              ? data.new_session_defaults
+              : emptyDefaults(),
+          tmuxAvailable: Boolean(data.tmux_available),
+          recentCwds: Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, index, values) => typeof cwd === "string" && cwd.trim() && values.indexOf(cwd) === index)
-            : []
-        );
+            : [],
+        });
         clearFileDiscoveryCaches();
       }
       const sessions = latestSessions.slice().sort((a, b) => {
@@ -88,10 +84,7 @@
       let selected = sessionState.get("selected");
       if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
       selected = sessionState.get("selected");
-      if (selected) {
-        applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
-        syncRecoveryUiForSession(selected);
-      }
+      if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
       if (selected) syncAttachments();
       else clearAttachments();
       const selectedSession = selected ? sessionIndex.get(selected) : null;

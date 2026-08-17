@@ -70,7 +70,7 @@ sessionState.set("selected", selected);
       const controller = ctx.window.CodoxearQueue.createQueueController({{
         queueBackdrop, queueCloseBtn, queueList, queueEmpty, queueViewer, queueBtn,
 
-        getSessionInfo: (sid) => sessions.get(sid) || null,
+        sessionCatalog: {{ get: (field) => field === "sessionIndex" ? sessions : null, subscribe: () => () => {{}} }},
         sessionState,
         isAppDisposed: () => false,
         api: async () => nextResponses.shift(),

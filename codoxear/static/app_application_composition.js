@@ -195,9 +195,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         function loadSelectedComposerDraft(sessionId) {
           if (composerController) composerController.loadSessionDraft(sessionId);
         }
-        function syncComposerSendButton() {
-          if (composerController) composerController.syncSendButtonState();
-        }
         function closeSendChoiceDialog(options) {
           if (composerController) composerController.hideSendChoice(options);
         }
@@ -617,10 +614,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionIsOrphanRecovery: sessionIsOrphanRecovery,
           sessionSelectable: sessionSelectable,
           setTimeout: setTimeout,
-          syncComposerSendButton: syncComposerSendButton,
-          syncQueueSubmitState: syncQueueSubmitState,
           textarea: textarea,
-          syncUnattendedButtonState: () => unattendedController.syncButtonState(),
           window: window,
         }));
         ({ attachmentsController, messageFlowController } = chatInteractionController);
@@ -634,7 +628,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           setPollFastUntilMs, openMessageEventSource, isMobile, useDesktopSessionActions,
           useTouchFileEditorControls, setSidebarOpen, setSidebarCollapsed, clearCommitUnknownSend,
           refreshSessions, loadOlderMessages, applySessionRuntimeFromTail, renderSessionTail,
-          recoveryDetailsText, syncRecoveryUiForSession, renderPendingTranscriptSlot,
+          recoveryDetailsText, renderPendingTranscriptSlot,
           renderTranscriptLoading, renderTranscriptLoadError, applyCachedTail, jumpToLatest,
           rememberPendingHashSession, maybeSelectPendingHashSession,
         } = chatInteractionController;
@@ -776,7 +770,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             queueViewer,
             queueBtn: $("#queueBtn"),
             sessionState,
-            getSessionInfo: (sid) => sessionCatalog.get("sessionIndex").get(sid),
+            sessionCatalog,
             isAppDisposed: () => appDisposed,
             api,
             setToast,
@@ -784,7 +778,6 @@ import * as CodoxearWiring from "./app_wiring.js";
             refreshSessions,
             getComposerText: () => (textarea ? textarea.value : ""),
             clearComposerInput,
-            syncRecoveryUiForSession,
             kickPoll,
             setPollFastUntilMs,
             handleAppAuthLoss,
@@ -799,10 +792,6 @@ import * as CodoxearWiring from "./app_wiring.js";
 
         function selectedSessionLaunchFailed() {
           return sessionLaunchFailed(sessionState.get("selected") ? sessionCatalog.get("sessionIndex").get(sessionState.get("selected")) : null);
-        }
-
-        function syncQueueSubmitState() {
-          queueController.syncQueueSubmitState();
         }
 
         async function enqueueComposerText(raw, opts) {
@@ -901,7 +890,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearTranscriptForRemovedSession: clearRenderedTranscriptRange,
           syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
-          syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           resetChatRenderState,
           getSession: (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId),
           isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && asyncEpoch.currentGeneration() === generation,
@@ -959,7 +947,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           backendSupportsFastForDefaults: (backend, defaults) => codoxearLaunch.backendSupportsFast(backend, defaults),
           setToast,
           confirmAction: (options) => confirmApp(options),
-          syncRecoveryUiForSession,
           sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
           consoleError: (...args) => console.error(...args),
         }));
@@ -978,7 +965,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionState,
           clearSelectedSessionAfterRemoval: (...args) => sessionLifecycleController.clearSelectedSessionAfterRemoval(...args),
           applySessionListTranscriptIdentity,
-          syncRecoveryUiForSession,
           syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           renderSessions: (sessions, options) => sidebarController.renderSessions(sessions, options),

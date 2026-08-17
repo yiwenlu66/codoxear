@@ -111,7 +111,9 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("unattended controller dependency missing: sessionState");
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.subscribe !== "function") throw new TypeError("unattended controller dependency missing: sessionCatalog");
+    if (!sessionCatalog || typeof sessionCatalog.patchSession !== "function" || typeof sessionCatalog.subscribe !== "function") {
+      throw new TypeError("unattended controller dependency missing: sessionCatalog");
+    }
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const api = requireFunction(options.api, "api");
@@ -417,12 +419,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         cooldown_minutes: saved.cooldown_minutes,
         remaining_injections: saved.remaining_injections,
       };
-      const s = getSessionInfo(sid);
-      if (s) {
-        s.unattended_enabled = Boolean(saved.enabled);
-        s.unattended_cooldown_minutes = saved.cooldown_minutes;
-        s.unattended_remaining_injections = saved.remaining_injections;
-      }
+      sessionCatalog.patchSession(sid, {
+        unattended_enabled: Boolean(saved.enabled),
+        unattended_cooldown_minutes: saved.cooldown_minutes,
+        unattended_remaining_injections: saved.remaining_injections,
+      });
       finalizeUnattendedNumberDraft("cooldown_minutes");
       finalizeUnattendedNumberDraft("remaining_injections");
       syncUnattendedNumberDraftsFromCfg();
@@ -682,11 +683,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         unattendedCfg.enabled = requested && Number(unattendedCfg.remaining_injections) > 0;
         if (requested && !unattendedCfg.enabled) setToast("increase injections before enabling unattended mode");
         e.target.checked = unattendedCfg.enabled;
-        const s = getSessionInfo(selected);
-        if (s) {
-          s.unattended_enabled = unattendedCfg.enabled;
-        }
-        projectButtonState();
+        sessionCatalog.patchSession(selected, { unattended_enabled: unattendedCfg.enabled });
         scheduleUnattendedSave({ enabled: unattendedCfg.enabled });
       };
     }
@@ -715,16 +712,14 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         const value = parseUnattendedDraftInt("remaining_injections");
         if (value === null) return;
         unattendedCfg.remaining_injections = value;
-        const s = getSessionInfo(selected);
-        if (s) {
-          s.unattended_remaining_injections = value;
-          if (value <= 0) {
-            unattendedCfg.enabled = false;
-            if (enabledEl) enabledEl.checked = false;
-            s.unattended_enabled = false;
-          }
+        if (value <= 0) {
+          unattendedCfg.enabled = false;
+          if (enabledEl) enabledEl.checked = false;
         }
-        projectButtonState();
+        sessionCatalog.patchSession(selected, {
+          unattended_remaining_injections: value,
+          ...(value <= 0 ? { unattended_enabled: false } : {}),
+        });
         scheduleUnattendedSave({ remaining_injections: value, ...(value <= 0 ? { enabled: false } : {}) });
       };
       remainingEl.onblur = () => {

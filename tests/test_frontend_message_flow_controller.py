@@ -77,6 +77,35 @@ def run_flow(body: str) -> dict:
     return json.loads(completed.stdout)
 
 
+def test_commit_unknown_patch_updates_catalog_projection_without_imperative_render_relays() -> None:
+    result = run_flow(
+        """
+        const projectionCalls = [];
+        let test;
+        test = harness({
+          api: async () => { const error = new Error("unknown"); error.obj = { commit_unknown: true }; throw error; },
+          refreshSessions: async () => [],
+          setTimeout: () => 0,
+        });
+        test.options.sessionCatalog.subscribe("sessionIndex", () => {
+          const session = test.options.sessionCatalog.get("sessionIndex").get("sid");
+          projectionCalls.push({ unknown: session.commit_unknown_send, text: session.commit_unknown_send_text });
+        });
+        test.controller.sendText("possibly sent").then((sent) => process.stdout.write(JSON.stringify({
+          sent,
+          projectionCalls,
+          session: test.options.sessionCatalog.get("sessionIndex").get("sid"),
+          toast: test.state.errors[0],
+        })));
+        """
+    )
+    assert result["sent"] is False
+    assert result["projectionCalls"] == [{"unknown": True, "text": "possibly sent"}]
+    assert result["session"]["commit_unknown_send"] is True
+    assert result["session"]["commit_unknown_send_text"] == "possibly sent"
+    assert result["toast"] == "sending..."
+
+
 def test_poll_generation_prevents_stale_tick_from_scheduling_another_poll() -> None:
     result = run_flow(
         """

@@ -123,7 +123,10 @@ const deps = {
   remainingEl,
   requestEl,
   sessionState: { get: () => selected, subscribe: () => () => {} },
-  sessionCatalog: { subscribe: () => () => {} },
+  sessionCatalog: {
+    patchSession: (sid, patch) => { const session = sessions.get(sid); if (!session) return null; Object.assign(session, patch); return session; },
+    subscribe: () => () => {},
+  },
   getSessionInfo: (sid) => sessions.get(sid) || null,
   isAppDisposed: () => disposed,
   api: (url, options = {}) => {
@@ -274,7 +277,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               unattendedBtn: node, unattendedMenu: node,
               enabledEl: node, cooldownEl: node, remainingEl: node, requestEl: node,
-              sessionState: { get: () => null, subscribe: () => () => {} }, sessionCatalog: { subscribe: () => () => {} }, getSessionInfo: () => null, isAppDisposed: () => false,
+              sessionState: { get: () => null, subscribe: () => () => {} }, sessionCatalog: { patchSession: () => null, subscribe: () => () => {} }, getSessionInfo: () => null, isAppDisposed: () => false,
               api: null,
               refreshSessions: async () => {}, handleAppAuthLoss: () => {}, setToast: () => {},
               addAppEvent: () => {},

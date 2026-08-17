@@ -33,8 +33,8 @@
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
       imgInput, isLikelyHeic, looksLikeImage, navigator, networkStatus,
       resizeComposer, resolveAppUrl,
-      safeAttachmentStem, sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionLaunchFailed, setTimeout, setToast, syncComposerSendButton,
-      syncQueueSubmitState, textarea, window, wiring
+      safeAttachmentStem, sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionLaunchFailed, setTimeout, setToast,
+      textarea, window, wiring
     } = options;
     const transcript = requireObject(options.transcript, "transcript");
     const history = requireObject(options.history, "history");
@@ -48,8 +48,7 @@
       transcriptSlotRuntime, transcriptEventRuntime, transcriptScrollRuntime, isTranscriptRenewalCommand,
       transcriptView, updateTypingStatsFromSession
     } = transcript;
-    const { renderPendingTranscriptSlot, renderSessionTail, applySessionRuntimeFromTail,
-      syncRecoveryUiForSession } = history;
+    const { renderPendingTranscriptSlot, renderSessionTail, applySessionRuntimeFromTail } = history;
 attachmentsController = codoxearAttachments.createAttachmentsController(wiring.createAttachmentsOptions({
   sessionState,
   attachBtn,
@@ -109,10 +108,6 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   getStagedAttachments: () => attachmentsController.getStagedAttachments(),
   normalizedStagedAttachments: (list) => attachmentsController.normalizedStagedAttachments(list),
   setSelectedSessionPendingAttachment: (sessionId, value) => attachmentsController.setSelectedSessionPendingAttachment(sessionId, value),
-  syncSendButtonState: syncComposerSendButton,
-  syncAttachButtonState: () => attachmentsController.syncAttachButtonState(),
-  syncQueueSubmitState,
-  syncRecoveryUiForSession,
   confirmAction: (options) => confirmApp(options),
   setToast,
   isTranscriptRenewalCommand,

@@ -104,10 +104,10 @@ sessionState.set("selected", selected);
               const queueController = ctx.window.CodoxearQueue.createQueueController({
                 queueBackdrop: node("queueBackdrop"), queueCloseBtn: node("queueCloseBtn"),
                 queueList: node("queueList"), queueEmpty: node("queueEmpty"), queueViewer: node("queueViewer"), queueBtn: node("queueBtn"),
-                getSessionInfo: () => ({ launch_state: "ready" }), sessionState, isAppDisposed: () => false,
+                sessionCatalog: { get: () => new Map([["s1", { launch_state: "ready" }]]), subscribe: () => () => {} }, sessionState, isAppDisposed: () => false,
                 api: async () => ({ queued: true, queue_len: 1 }), setToast: notify("queue"),
                 clearCommitUnknownSend: async () => true, refreshSessions: async () => {}, updateQueueBadge: () => {},
-                syncRecoveryUiForSession: () => {}, kickPoll: () => {}, setPollFastUntilMs: () => {}, handleAppAuthLoss: () => {},
+                kickPoll: () => {}, setPollFastUntilMs: () => {}, handleAppAuthLoss: () => {},
                 prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
                 el: (tag, attrs = {}, children = []) => Object.assign(node(tag), { tag, textContent: attrs.text || "", _children: children }),
                 iconSvg: () => "", recoveryPanelFocusFallback: () => null, confirmAction: async () => false,

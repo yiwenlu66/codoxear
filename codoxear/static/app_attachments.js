@@ -27,12 +27,13 @@
       throw new TypeError("attachments controller dependency missing: sessionState");
     }
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") throw new TypeError("attachments controller dependency missing: sessionCatalog");
+    if (
+      !sessionCatalog ||
+      typeof sessionCatalog.get !== "function" ||
+      typeof sessionCatalog.patchSession !== "function" ||
+      typeof sessionCatalog.subscribe !== "function"
+    ) throw new TypeError("attachments controller dependency missing: sessionCatalog");
     const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
-    const patchSessionInfo = (sessionId, patch) => {
-      const current = getSessionInfo(sessionId);
-      if (current) Object.assign(current, patch || {});
-    };
 
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const sessionHasUnknownSend = requireFunction(options.sessionHasUnknownSend, "sessionHasUnknownSend");
@@ -120,7 +121,7 @@
       const sessionId = sessionState.get("selected");
       if (sessionId) {
         const normalized = normalizedStagedAttachments(list);
-        patchSessionInfo(sessionId, {
+        sessionCatalog.patchSession(sessionId, {
           staged_attachments: normalized,
           pending_attachment: normalized.length > 0,
         });
@@ -218,7 +219,7 @@
       if (!sessionId || sessionState.get("selected") !== sessionId) return false;
       const info = getSessionInfo(sessionId);
       if (!info) return false;
-      patchSessionInfo(sessionId, {
+      sessionCatalog.patchSession(sessionId, {
         pending_attachment: Boolean(value),
         ...(value ? {} : { staged_attachments: [] }),
       });
