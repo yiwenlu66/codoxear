@@ -1049,11 +1049,6 @@
         font-weight: inherit;
         cursor: pointer;
       }
-      .status-chip.running {
-        color: var(--paper);
-        border-color: var(--ink);
-        background: var(--ink);
-      }
       .status-chip,
       .chatTimeChip,
       .ts {

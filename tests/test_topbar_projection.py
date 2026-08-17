@@ -21,8 +21,8 @@ def run_node_json(script: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
-    """Store writes synchronously project queue, interrupt, and context DOM state."""
+def test_topbar_subscribes_to_runtime_store_and_disposes() -> None:
+    """Topbar store subscriptions synchronously project queue, interrupt, and context widgets."""
     script = f"""
     const vm = require("vm");
     const ctx = {{ window: {{}}, console }};

@@ -170,7 +170,7 @@ If you start a web-owned session and later want to continue it in your terminal 
 
 ## Frontend architecture
 
-`codoxear/static/app.js` is a 34-line bootstrap: it authenticates, creates the application controller, and selects login or application rendering. The former application shell is composed through six explicit modules: `app_application.js` (dependency facade), `app_application_composition.js` (lifecycle assembly), `app_chat_interaction.js` (transcript/session interaction), `app_file_ops.js` (viewer/editor/picker integration), `app_session_display.js` (status/context projection), and `app_wiring.js` (controller dependency contracts). Focused controllers own their stateful workflows; add new behavior to that owner rather than to the bootstrap.
+`codoxear/static/app.js` is a 34-line bootstrap: it authenticates, creates the application controller, and selects login or application rendering. The former application shell is composed through six explicit modules: `app_application.js` (dependency facade), `app_application_composition.js` (lifecycle assembly), `app_chat_interaction.js` (transcript/session interaction), `app_file_ops.js` (viewer/editor/picker integration), `app_topbar.js` (topbar status widgets), and `app_wiring.js` (controller dependency contracts). `app_topbar.js` owns the status chip, context chip, and interrupt button end-to-end: element creation, rendering, session-store subscriptions, and interactions. `app_shell.js` owns only the `topMeta`, `titleRow`, and `topActions` layout slots; `app.css` owns presentation; the shell help overlay owns the global shortcut table. Focused controllers own their stateful workflows; add new behavior to that owner rather than to the bootstrap.
 
 ## UI features
 
