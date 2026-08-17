@@ -300,3 +300,29 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   PASS (d1907983), behavior parity verified, closing objections
   mechanically verified dead (patchSession at all 3 mutation sites,
   applySnapshot in refresh, zero relay calls).
+- PHASE 6 (evidence-gated splits): cohesion audit (theorist d593bc28)
+  verdicts — transcript/voice/file-viewer SPLITTABLE, new_session
+  COHESIVE (respected; not touched). Splits: e498f5bb (search runtimes
+  →chat_search, older-load →message_history, dead duplicate key),
+  09c21567 (notifications →app_notifications.js, double-writer
+  consolidated), f897b609 (touch-editor consolidation; save-conflict
+  ReferenceErrors fixed — fileSaveConflictTarget recovered from git
+  history c5078736). Adversarial review: older-load objection REJECTED
+  (consumers calling an owner's public API is normal ownership);
+  accepted: notification DOM seam completed, conflict token strengthened
+  to full (sessionId,path,gitPath,apiPath) identity, dead duplicate.
+  Behavior gate caught picker ReferenceError (menuState binding) —
+  fixed with regression test (0ee3b292), live re-verified PASS.
+  Audit also found: duplicate transcriptView key (dead syntax, removed).
+  PHASE 6 COMPLETE: suite 1712, guard clean, docker_verify PASS,
+  behavior re-verified.
+- PHASE 7 (backend audit, theorist bc1565f2): GO, narrowly scoped.
+  DEMONSTRATED LIVE DEFECT: cursor-relative poll/SSE deltas mutate
+  shared Session model/provider/effort/token with no monotonic guard —
+  mark_log_delta ignores new_off; probe regressed new-model→old-model
+  through the production poll route on a >2MiB log. Token has the same
+  class via lockless direct writes. Rejected: broad server.py/broker
+  rewrites, SessionStore/voice/launch-config work, broker/sessiond
+  merger (all LATENT-STRUCTURAL at worst). Scoped phases: B1 monotonic
+  log-derived projection owner, B2 poll/SSE unified live-delta
+  projection, B3 manager wiring contracts (lowest priority).
