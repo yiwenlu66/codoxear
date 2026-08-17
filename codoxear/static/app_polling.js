@@ -17,32 +17,111 @@
     return visibilityState === "hidden" ? hiddenMs : visibleMs;
   }
 
-  function createSecondaryPollController(options = {}) {
-    function requireSecondaryPollFunction(value, name) {
-      if (typeof value !== "function") throw new TypeError(`secondary poll controller dependency missing: ${name}`);
+  // Polling owns timer handles, retry streaks, enabled state, and stale-work
+  // generation. Composition supplies each loop's tick because its work belongs
+  // to the application controllers, not the scheduling mechanism.
+  function createPollingRuntime(options = {}) {
+    function requirePollingFunction(value, name) {
+      if (typeof value !== "function") throw new TypeError(`polling runtime dependency missing: ${name}`);
       return value;
     }
 
-    const isDisposed = requireSecondaryPollFunction(options.isDisposed, "isDisposed");
-    const isPollingEnabled = requireSecondaryPollFunction(options.isPollingEnabled, "isPollingEnabled");
-    const stopPolling = requireSecondaryPollFunction(options.stopPolling, "stopPolling");
-    const setTimer = requireSecondaryPollFunction(options.setTimer, "setTimer");
-    const scheduleTimer = requireSecondaryPollFunction(options.setTimeout, "setTimeout");
-    const runTick = requireSecondaryPollFunction(options.runTick, "runTick");
-    const delayForPoll = requireSecondaryPollFunction(options.delayForPoll, "delayForPoll");
+    const scheduleTimer = requirePollingFunction(options.setTimeout, "setTimeout");
+    const cancelTimer = requirePollingFunction(options.clearTimeout, "clearTimeout");
+    let generation = 0;
+    let sessionsTimer = null;
+    let secondaryTimer = null;
+    let sessionsPollingEnabled = true;
+    let secondaryPollingEnabled = true;
+    let sessionsPollErrorStreak = 0;
+    let secondaryPollErrorStreak = 0;
 
-    function scheduleSecondaryPoll(delayMs = delayForPoll()) {
-      if (isDisposed() || !isPollingEnabled()) return;
-      stopPolling();
-      setTimer(
-        scheduleTimer(() => {
-          setTimer(null);
-          void runTick();
-        }, Math.max(0, Number(delayMs) || 0))
-      );
+    function cancelSessions() {
+      if (sessionsTimer) cancelTimer(sessionsTimer);
+      sessionsTimer = null;
     }
 
-    return Object.freeze({ scheduleSecondaryPoll });
+    function cancelSecondary() {
+      if (secondaryTimer) cancelTimer(secondaryTimer);
+      secondaryTimer = null;
+    }
+
+    function cancelAll() {
+      cancelSessions();
+      cancelSecondary();
+    }
+
+    function scheduleSessions(delayMs, runTick) {
+      if (!sessionsPollingEnabled) return;
+      const tick = requirePollingFunction(runTick, "runSessionsTick");
+      cancelSessions();
+      sessionsTimer = scheduleTimer(() => {
+        sessionsTimer = null;
+        if (sessionsPollingEnabled) void tick();
+      }, Math.max(0, Number(delayMs) || 0));
+    }
+
+    function scheduleSecondary(delayMs, runTick) {
+      if (!secondaryPollingEnabled) return;
+      const tick = requirePollingFunction(runTick, "runSecondaryTick");
+      cancelSecondary();
+      secondaryTimer = scheduleTimer(() => {
+        secondaryTimer = null;
+        if (secondaryPollingEnabled) void tick();
+      }, Math.max(0, Number(delayMs) || 0));
+    }
+
+    function markSessionsPollSuccess() {
+      sessionsPollErrorStreak = 0;
+    }
+
+    function markSessionsPollFailure() {
+      sessionsPollErrorStreak = Math.min(sessionsPollErrorStreak + 1, 20);
+    }
+
+    function markSecondaryPollSuccess() {
+      secondaryPollErrorStreak = 0;
+    }
+
+    function markSecondaryPollFailure() {
+      secondaryPollErrorStreak = Math.min(secondaryPollErrorStreak + 1, 20);
+    }
+
+    function resetStreaks() {
+      sessionsPollErrorStreak = 0;
+      secondaryPollErrorStreak = 0;
+    }
+
+    function nextGeneration() {
+      generation += 1;
+      return generation;
+    }
+
+    function incrementGeneration() {
+      generation += 1;
+    }
+
+    function disable() {
+      sessionsPollingEnabled = false;
+      secondaryPollingEnabled = false;
+      cancelAll();
+    }
+
+    return Object.freeze({
+      currentGeneration: () => generation,
+      nextGeneration,
+      incrementGeneration,
+      scheduleSessions,
+      scheduleSecondary,
+      disable,
+      sessionsPollErrorStreak: () => sessionsPollErrorStreak,
+      secondaryPollErrorStreak: () => secondaryPollErrorStreak,
+      markSessionsPollSuccess,
+      markSessionsPollFailure,
+      markSecondaryPollSuccess,
+      markSecondaryPollFailure,
+      resetStreaks,
+    });
   }
 
   function sessionsPollDelayMs(visibilityState) {
@@ -89,4 +168,4 @@
     return Math.max(safeRequested, errorDelay);
   }
 
-export { createSecondaryPollController, POLLING_INTERVALS, sessionsPollDelayMs, secondaryPollDelayMs, browserOffline, messagePollErrorDelayMs, networkRetryDelayMs, messagePollDelayMs, normalizeMessagePollKickDelay };
+export { createPollingRuntime, POLLING_INTERVALS, sessionsPollDelayMs, secondaryPollDelayMs, browserOffline, messagePollErrorDelayMs, networkRetryDelayMs, messagePollDelayMs, normalizeMessagePollKickDelay };

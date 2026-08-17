@@ -21,6 +21,27 @@ def eval_polling_policy() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const helpers = ctx.window.CodoxearPolling;
+        const timers = [];
+        const canceled = [];
+        const runtime = helpers.createPollingRuntime({{
+          setTimeout(callback, delay) {{ const timer = {{ callback, delay }}; timers.push(timer); return timer; }},
+          clearTimeout(timer) {{ canceled.push(timer); }},
+        }});
+        const sessionsTick = () => "sessions";
+        const secondaryTick = () => "secondary";
+        runtime.scheduleSessions(12, sessionsTick);
+        runtime.scheduleSessions(24, sessionsTick);
+        runtime.scheduleSecondary(36, secondaryTick);
+        runtime.markSessionsPollFailure();
+        runtime.markSessionsPollFailure();
+        runtime.markSecondaryPollFailure();
+        const beforeReset = {{ sessions: runtime.sessionsPollErrorStreak(), secondary: runtime.secondaryPollErrorStreak() }};
+        runtime.resetStreaks();
+        const initialGeneration = runtime.currentGeneration();
+        const nextGeneration = runtime.nextGeneration();
+        runtime.incrementGeneration();
+        runtime.disable();
+        runtime.scheduleSessions(48, sessionsTick);
         const idle = helpers.messagePollDelayMs({{ now: 1000 }});
         const running = helpers.messagePollDelayMs({{ now: 1000, turnOpen: true }});
         const fast = helpers.messagePollDelayMs({{ now: 1000, pollFastUntilMs: 2000 }});
@@ -37,6 +58,16 @@ def eval_polling_policy() -> dict:
         const recovered = helpers.messagePollDelayMs({{ now: 1000, errorStreak: 0 }});
         process.stdout.write(JSON.stringify({{
           intervals: helpers.POLLING_INTERVALS,
+          runtime: {{
+            initialGeneration,
+            nextGeneration,
+            currentGeneration: runtime.currentGeneration(),
+            beforeReset,
+            afterReset: {{ sessions: runtime.sessionsPollErrorStreak(), secondary: runtime.secondaryPollErrorStreak() }},
+            canceled: canceled.length,
+            scheduled: timers.map((timer) => timer.delay),
+            frozen: Object.isFrozen(runtime),
+          }},
           sessionsVisible: helpers.sessionsPollDelayMs("visible"),
           sessionsHidden: helpers.sessionsPollDelayMs("hidden"),
           secondaryVisible: helpers.secondaryPollDelayMs("visible"),
@@ -85,6 +116,16 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
             "MESSAGE_POLL_OFFLINE_MS": 15000,
             "MESSAGE_POLL_ERROR_MIN_MS": 2000,
             "MESSAGE_POLL_ERROR_MAX_MS": 30000,
+        })
+        self.assertEqual(result["runtime"], {
+            "initialGeneration": 0,
+            "nextGeneration": 1,
+            "currentGeneration": 2,
+            "beforeReset": {"sessions": 2, "secondary": 1},
+            "afterReset": {"sessions": 0, "secondary": 0},
+            "canceled": 3,
+            "scheduled": [12, 24, 36],
+            "frozen": True,
         })
         self.assertEqual(result["sessionsVisible"], 5000)
         self.assertEqual(result["sessionsHidden"], 15000)

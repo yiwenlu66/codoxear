@@ -115,7 +115,7 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
         sessionState.set("selected", "sid");
         const controller = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
           sessionState,
-          getPollGeneration: () => 7, getSessionIndex: () => new Map(),
+          pollingRuntime: {{ currentGeneration: () => 7 }}, getSessionIndex: () => new Map(),
           getSessionLifecycleController: () => ({{ openSession: async (...args) => calls.push(["open", ...args]) }}),
           getSessionRefreshController: () => ({{ refreshSessions: async () => {{}} }}),
           getSendLifecycleController: () => ({{ kickPoll: (delay) => calls.push(["kick", delay]) }}),
@@ -211,8 +211,11 @@ def eval_open_session_tail_request_abort() -> dict:
         }});
         const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController({{
           sessionState,
-          nextPollGeneration: () => ++state.pollGen,
-          incrementPollGeneration: () => ++state.pollGen,
+          pollingRuntime: {{
+            currentGeneration: () => state.pollGen,
+            nextGeneration: () => ++state.pollGen,
+            incrementGeneration: () => ++state.pollGen,
+          }},
           prepareSessionOpen: () => messageFlow.prepareSessionOpen(),
                               setActiveSession: () => {{}}, saveComposerDraft: () => {{}}, loadComposerDraft: () => {{}},
           closeUnattendedForOtherSession: () => {{}}, persistSelected: () => {{}}, removePersistedSelected: () => {{}}, setSessionHash: () => {{}},
@@ -284,7 +287,11 @@ def _run_lifecycle(body: str) -> dict:
         sessionState.set("selected", "sid-1");
         const options = new Proxy({{
           sessionState,
-                    incrementPollGeneration: () => {{ calls.push(["incrementPollGeneration"]); }},
+          pollingRuntime: {{
+            currentGeneration: () => 0,
+            nextGeneration: () => 0,
+            incrementGeneration: () => {{ calls.push(["incrementGeneration"]); }},
+          }},
           messageFlow: () => ({{ abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]), clearPollSchedule: () => calls.push(["clearPollSchedule"]) }}),
           handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid]),
           setActiveTranscriptPending: () => calls.push(["setActiveTranscriptPending"]),
@@ -348,7 +355,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertTrue(result["applied"])
         self.assertEqual(result["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1"])
         for expected in [
-            ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementPollGeneration"], ["setActiveTranscriptPending"],
+            ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementGeneration"], ["setActiveTranscriptPending"],
             ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""], ["setNoSessionTitle"],
             ["clearAttachments"],
             ["syncAttachmentButton"], ["resetChatRenderState"], ["hideUnattendedMenu"], ["updateUnattendedButton"],

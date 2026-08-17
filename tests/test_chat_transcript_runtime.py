@@ -1069,7 +1069,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             sessionState.set("selected", "sid");
             const options = new Proxy({{
               sessionState,
-              nextPollGeneration: () => ++state.generation,
+              pollingRuntime: {{
+                currentGeneration: () => state.generation,
+                nextGeneration: () => ++state.generation,
+                incrementGeneration: () => ++state.generation,
+              }},
                                           resetTranscriptForSession: () => calls.push("reset-transcript"),
               resetChatRenderState: () => calls.push("reset-chat"),
               getSession: () => ({{ session_id: "sid", busy: false, queue_len: 0, token: null }}),
@@ -1160,8 +1164,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const defaults = () => {{}};
             const options = new Proxy({{
               sessionState,
-              nextPollGeneration: () => ++state.generation,
-              incrementPollGeneration: defaults,
+              pollingRuntime: {{
+                currentGeneration: () => state.generation,
+                nextGeneration: () => ++state.generation,
+                incrementGeneration: () => ++state.generation,
+              }},
               prepareSessionOpen: messageFlow.prepareSessionOpen,
                                           setActiveSession: defaults, saveComposerDraft: defaults, loadComposerDraft: defaults,
               closeUnattendedForOtherSession: defaults, persistSelected: defaults, removePersistedSelected: defaults, setSessionHash: defaults,
@@ -1429,7 +1436,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(transcript_render_source)}, ctx);
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
             const render = ctx.window.CodoxearTranscriptRender.createTranscriptRenderController({{
-              getPollGeneration: () => 1, getSessionIndex: () => new Map(),
+              pollingRuntime: {{ currentGeneration: () => 1 }}, getSessionIndex: () => new Map(),
               getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{}}),
               sessionState, isAppDisposed: () => false, getSessionEditController: () => null,
               getQueueController: () => null, isFileViewerOpen: () => false, upgradeCandidateFileRefs: noop,
@@ -1447,7 +1454,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }});
             vm.runInContext({json.dumps(message_history_source)}, ctx);
             const history = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
-              getPollGeneration: () => 1, getSessionIndex: () => new Map(), getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
+              pollingRuntime: {{ currentGeneration: () => 1 }}, getSessionIndex: () => new Map(), getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
               transcript: {{ transcriptView: render.transcriptView, markClickFirstPaint: render.markClickFirstPaint }}, sessionState,
               wiring, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}}, AbortController,
               performance: {{ now: () => clock }}, OLDER_AUTO_COOLDOWN_MS: 450, OLDER_PAGE_LIMIT: 30,
@@ -1839,7 +1846,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              getPollGeneration: () => ctx.pollGen,
+              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -1914,7 +1921,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              getPollGeneration: () => ctx.pollGen,
+              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -1986,7 +1993,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              getPollGeneration: () => ctx.pollGen,
+              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,
@@ -2059,7 +2066,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             f"""
             const ctx = {{
               window: {{}},
-              getPollGeneration: () => ctx.pollGen,
+              pollingRuntime: {{ currentGeneration: () => ctx.pollGen }},
               selected: "sid",
               hasOlder: true,
               loadingOlder: false,

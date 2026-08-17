@@ -83,7 +83,10 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
   }
 
   function createTranscriptRenderController(options = {}) {
-    const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
+    const pollingRuntime = options.pollingRuntime;
+    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
+      throw new TypeError("transcript render dependency missing: pollingRuntime");
+    }
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
@@ -367,7 +370,7 @@ const chatNavigationController = (function instantiateChatNavigationController()
     prevUserBtn,
     nextUserBtn,
     sessionState,
-    getPollGen: () => getPollGeneration(),
+    pollingRuntime,
     api,
     loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
     loadOlderMessages: (...args) => getHistoryController().loadOlderMessages(...args),
@@ -455,7 +458,7 @@ chatSearchController = (function instantiateChatSearchController() {
     createLoadedChatSearchRuntime: CodoxearTranscript.createLoadedChatSearchRuntime,
     createChatSearchAllRuntime: CodoxearTranscript.createChatSearchAllRuntime,
     sessionState,
-    getPollGen: () => getPollGeneration(),
+    pollingRuntime,
     api,
     loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
     handleAppAuthLoss,

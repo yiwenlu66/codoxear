@@ -21,7 +21,10 @@
     const nextUserBtn = requireNode(options.nextUserBtn, "nextUserBtn");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat navigation controller dependency missing: sessionState");
-    const getPollGen = typeof options.getPollGen === "function" ? options.getPollGen : () => 0;
+    const pollingRuntime = options.pollingRuntime;
+    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
+      throw new TypeError("chat navigation controller dependency missing: pollingRuntime");
+    }
     const api = typeof options.api === "function" ? options.api : async () => ({ total: loadedUserMessageRows().length, matches: [] });
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
     const loadOlderMessages = requireFunction(options.loadOlderMessages, "loadOlderMessages");
@@ -55,12 +58,12 @@
 
     async function refreshUserTotal(sessionId) {
       if (!sessionId || totalRequests.has(sessionId)) return;
-      const gen = getPollGen();
+      const gen = pollingRuntime.currentGeneration();
       const request = api(`/api/sessions/${sessionId}/search?q=*&role=user&limit=1`);
       totalRequests.set(sessionId, request);
       try {
         const data = await request;
-        if (sessionState.get("selected") !== sessionId || getPollGen() !== gen) return;
+        if (sessionState.get("selected") !== sessionId || pollingRuntime.currentGeneration() !== gen) return;
         userTotals.set(sessionId, Math.max(0, Number(data.total) || 0));
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
@@ -97,18 +100,18 @@
       // stays silent. error means this navigation genuinely failed and the
       // caller should say so.
       const sid = sessionState.get("selected");
-      const gen = getPollGen();
+      const gen = pollingRuntime.currentGeneration();
       if (!sid) return { stale: true };
       const anchorRow = direction < 0 ? rows[0] : rows[rows.length - 1];
       const cursor = anchorRow && anchorRow.dataset ? String(anchorRow.dataset.historyCursor || "") : "";
       if (!cursor) return { error: true };
       try {
         const data = await api(`/api/sessions/${sid}/messages/neighbor?role=user&direction=${direction < 0 ? "previous" : "next"}&cursor=${encodeURIComponent(cursor)}`);
-        if (sessionState.get("selected") !== sid || getPollGen() !== gen) return { stale: true };
+        if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen) return { stale: true };
         return { data, match: data && data.neighbor ? data.neighbor : null };
       } catch (error) {
         if (error && error.status === 401) handleAppAuthLoss();
-        if (sessionState.get("selected") !== sid || getPollGen() !== gen) return { stale: true };
+        if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen) return { stale: true };
         return { error: true };
       }
     }

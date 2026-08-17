@@ -72,7 +72,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       isTextEntryElement, updateAppHeightVar,
       codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
       codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
-      codoxearMessageFlow, codoxearSecondaryPoll, codoxearInterrupt, codoxearDialogMenus,
+      codoxearMessageFlow, codoxearInterrupt, codoxearDialogMenus,
       codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
       codoxearFileTouch, codoxearPerfHelpers, pushPerfSample, summarizePerf, codoxearUrls,
       resolveAppUrl, versionedShellAssetPath, codoxearStorage, optionalLocalStorage, storageGetItem,
@@ -183,13 +183,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
         const OLDER_AUTO_COOLDOWN_MS = 450;
-        let pollGen = 0;
-	         let sessionsTimer = null;
-         let secondaryPollTimer = null;
-         let sessionsPollingEnabled = true;
-         let secondaryPollingEnabled = true;
-         let sessionsPollErrorStreak = 0;
-         let secondaryPollErrorStreak = 0;
+        const pollingRuntime = codoxearPolling.createPollingRuntime({ setTimeout, clearTimeout });
         const sessionState = CodoxearSessionState.createSessionState({ consoleError: (...args) => console.error(...args) });
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
@@ -242,17 +236,15 @@ import * as CodoxearWiring from "./app_wiring.js";
         const eventBindings = CodoxearEventBindings.createEventBindings(wiring.createEventBindingsOptions({ addEvent: addAppEvent }));
         function stopMessagePolling() {
           sessionState.set("selected", null);
-          pollGen += 1;
+          pollingRuntime.incrementGeneration();
           if (messageFlowController) messageFlowController.stop();
           sessionState.set("turnOpen", false);
         }
         function cleanupApp() {
           if (appDisposed) return;
           appDisposed = true;
-          sessionsPollingEnabled = false;
-          secondaryPollingEnabled = false;
+          pollingRuntime.disable();
           stopMessagePolling();
-          stopAllPolling();
           if (newSessionDialogController) newSessionDialogController.close();
           if (voiceController) voiceController.dispose();
           if (unattendedController) unattendedController.dispose();
@@ -293,50 +285,38 @@ import * as CodoxearWiring from "./app_wiring.js";
           return codoxearPolling.networkRetryDelayMs({
             normalDelayMs: codoxearPolling.sessionsPollDelayMs(document.visibilityState),
             offline: browserOffline(),
-            errorStreak: sessionsPollErrorStreak,
+            errorStreak: pollingRuntime.sessionsPollErrorStreak(),
           });
         }
         function secondaryPollDelayMs() {
           return codoxearPolling.networkRetryDelayMs({
             normalDelayMs: codoxearPolling.secondaryPollDelayMs(document.visibilityState),
             offline: browserOffline(),
-            errorStreak: secondaryPollErrorStreak,
+            errorStreak: pollingRuntime.secondaryPollErrorStreak(),
           });
         }
         function browserOffline() {
           return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
         }
         function markSessionsPollSuccess() {
-          sessionsPollErrorStreak = 0;
+          pollingRuntime.markSessionsPollSuccess();
           networkStatus.reportSuccess();
         }
         function markSessionsPollFailure(transportFailed = true) {
-          sessionsPollErrorStreak = Math.min(sessionsPollErrorStreak + 1, 20);
+          pollingRuntime.markSessionsPollFailure();
           if (transportFailed) networkStatus.reportFailure();
         }
         function markSecondaryPollSuccess() {
-          secondaryPollErrorStreak = 0;
+          pollingRuntime.markSecondaryPollSuccess();
           networkStatus.reportSuccess();
         }
         function markSecondaryPollFailure(transportFailed = true) {
-          secondaryPollErrorStreak = Math.min(secondaryPollErrorStreak + 1, 20);
+          pollingRuntime.markSecondaryPollFailure();
           if (transportFailed) networkStatus.reportFailure();
         }
 
-        function stopSessionsPolling() {
-          if (sessionsTimer) clearTimeout(sessionsTimer);
-          sessionsTimer = null;
-        }
-        function stopSecondaryPolling() {
-          if (secondaryPollTimer) clearTimeout(secondaryPollTimer);
-          secondaryPollTimer = null;
-        }
-        function stopAllPolling() {
-          stopSessionsPolling();
-          stopSecondaryPolling();
-        }
         async function runSessionsPollTick() {
-          if (appDisposed || !sessionsPollingEnabled) return;
+          if (appDisposed) return;
           try {
             await refreshSessions();
             markSessionsPollSuccess();
@@ -351,7 +331,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           scheduleSessionsPoll();
         }
         async function runSecondaryPollTick() {
-          if (appDisposed || !secondaryPollingEnabled) return;
+          if (appDisposed) return;
           try {
             await refreshVoiceBackgroundState();
             markSecondaryPollSuccess();
@@ -363,27 +343,16 @@ import * as CodoxearWiring from "./app_wiring.js";
             markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("secondary poll failed", e2);
           }
-          secondaryPollController.scheduleSecondaryPoll();
+          scheduleSecondaryPoll();
         }
         function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
-          if (appDisposed || !sessionsPollingEnabled) return;
-          stopSessionsPolling();
-          sessionsTimer = setTimeout(() => {
-            sessionsTimer = null;
-            void runSessionsPollTick();
-          }, Math.max(0, Number(delayMs) || 0));
+          if (appDisposed) return;
+          pollingRuntime.scheduleSessions(delayMs, runSessionsPollTick);
         }
-        const secondaryPollController = codoxearSecondaryPoll.createSecondaryPollController(wiring.createSecondaryPollOptions({
-          isDisposed: () => appDisposed,
-          isPollingEnabled: () => secondaryPollingEnabled,
-          stopPolling: stopSecondaryPolling,
-          setTimer: (timer) => {
-            secondaryPollTimer = timer;
-          },
-          setTimeout,
-          runTick: runSecondaryPollTick,
-          delayForPoll: secondaryPollDelayMs,
-        }));
+        function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
+          if (appDisposed) return;
+          pollingRuntime.scheduleSecondary(delayMs, runSecondaryPollTick);
+        }
 
         const sessionTitleController = CodoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
           titleLabel,
@@ -634,7 +603,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         let fileOpsController = null;
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
-          getPollGeneration: () => pollGen,
+          pollingRuntime,
           getSessionIndex: () => sessionIndex,
           getSessionLifecycleController: () => sessionLifecycleController,
           getSessionRefreshController: () => sessionRefreshController,
@@ -1078,8 +1047,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         syncQueueSubmitState();
 
         sessionLifecycleController = CodoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
-          nextPollGeneration: () => { pollGen += 1; return pollGen; },
-          incrementPollGeneration: () => { pollGen += 1; },
+          pollingRuntime,
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
           sessionState,
           saveComposerDraft: saveSelectedComposerDraft,
@@ -1101,7 +1069,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           resetChatRenderState,
           getSession: (sessionId) => sessionIndex.get(sessionId),
-          isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollGen === generation,
+          isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollingRuntime.currentGeneration() === generation,
           setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
           setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
           markClickLoad,
@@ -1398,7 +1366,7 @@ import * as CodoxearWiring from "./app_wiring.js";
 	            resizeComposer();
 
 	            scheduleSessionsPoll();
-            secondaryPollController.scheduleSecondaryPoll();
+            scheduleSecondaryPoll();
               addAppEvent(window, "hashchange", async () => {
                 await sessionLifecycleController.selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
               });
@@ -1410,25 +1378,24 @@ import * as CodoxearWiring from "./app_wiring.js";
                 if (document.visibilityState === "visible") {
                   if (sessionState.get("selected")) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
-                  secondaryPollController.scheduleSecondaryPoll(0);
+                  scheduleSecondaryPoll(0);
                   return;
                 }
                 if (sessionState.get("selected")) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
-                secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
                 networkStatus.reportSuccess();
                 messageFlowController.resetMessagePollBackoff();
-                sessionsPollErrorStreak = 0;
-                secondaryPollErrorStreak = 0;
+                pollingRuntime.resetStreaks();
                 if (sessionState.get("selected")) {
                   messageFlowController.resumeLiveDelivery();
                   kickPoll(0);
                 }
                 scheduleSessionsPoll(0);
-                secondaryPollController.scheduleSecondaryPoll(0);
+                scheduleSecondaryPoll(0);
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
@@ -1436,7 +1403,7 @@ import * as CodoxearWiring from "./app_wiring.js";
                 messageFlowController.closeMessageEventSource();
                 if (sessionState.get("selected")) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
-                secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });

@@ -9,7 +9,10 @@
     return value;
   }
   function createSendLifecycleController(options = {}) {
-    const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
+    const pollingRuntime = options.pollingRuntime;
+    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
+      throw new TypeError("send lifecycle dependency missing: pollingRuntime");
+    }
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
@@ -84,7 +87,7 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
 }));
 
 messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.createMessageFlowOptions({
-  getGeneration: () => getPollGeneration(),
+  getGeneration: () => pollingRuntime.currentGeneration(),
   isAppDisposed: () => isAppDisposed(),
   getSessionInfo: (sessionId) => getSessionIndex().get(sessionId) || null,
   patchSessionInfo: (sessionId, patch) => {
@@ -166,7 +169,7 @@ function setPollFastUntilMs(value) {
   messageFlowController.setPollFastUntilMs(value);
 }
 
-function openMessageEventSource(sessionId = sessionState.get("selected"), generation = getPollGeneration()) {
+function openMessageEventSource(sessionId = sessionState.get("selected"), generation = pollingRuntime.currentGeneration()) {
   return messageFlowController.openMessageEventSource(sessionId, generation);
 }
 

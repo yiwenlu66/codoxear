@@ -11,7 +11,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
   }
 
   function createChatInteractionController(options = {}) {
-    const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
+    const pollingRuntime = options.pollingRuntime;
+    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
+      throw new TypeError("chat interaction dependency missing: pollingRuntime");
+    }
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
@@ -41,7 +44,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     let sendLifecycleController = null;
     let attachmentsController = null;
     const transcript = transcriptModule.createTranscriptRenderController(wiring.createTranscriptRenderOptions({
-      getPollGeneration: options.getPollGeneration,
+      pollingRuntime,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
@@ -174,7 +177,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       wiring: options.wiring,
     }));
     historyController = historyModule.createMessageHistoryController(wiring.createMessageHistoryOptions({
-      getPollGeneration: options.getPollGeneration,
+      pollingRuntime,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
@@ -205,7 +208,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       sessionSelectable: options.sessionSelectable,
     }));
     sendLifecycleController = sendModule.createSendLifecycleController(wiring.createSendLifecycleOptions({
-      getPollGeneration: options.getPollGeneration,
+      pollingRuntime,
       getSessionIndex: options.getSessionIndex,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,

@@ -11,7 +11,10 @@ import * as CodoxearTranscript from "./app_transcript.js";
     return value;
   }
   function createMessageHistoryController(options = {}) {
-    const getPollGeneration = requireFunction(options.getPollGeneration, "getPollGeneration");
+    const pollingRuntime = options.pollingRuntime;
+    if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
+      throw new TypeError("message history dependency missing: pollingRuntime");
+    }
     const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
@@ -69,18 +72,18 @@ async function loadTranscriptWindowAtCursor(cursor) {
   const cleanCursor = String(cursor || "").trim();
   if (!sessionState.get("selected") || !cleanCursor) return null;
   const sid = sessionState.get("selected");
-  const gen = getPollGeneration();
+  const gen = pollingRuntime.currentGeneration();
   invalidateOlderLoad();
   try {
     const data = await api(`/api/sessions/${sid}/messages/window?cursor=${encodeURIComponent(cleanCursor)}&before=30&after=30`);
-    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen) return null;
+    if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen) return null;
     const events = Array.isArray(data.events) ? data.events : [];
     const nextCursor = usableOlderHistoryCursor(data);
     transcriptView().replaceWith(events, { detached: true, cursor: nextCursor, nextHasMore: Boolean(nextCursor) });
     return data;
   } catch (error) {
     if (error && error.status === 401) handleAppAuthLoss();
-    else if (sessionState.get("selected") === sid && getPollGeneration() === gen) showOlderLoadError();
+    else if (sessionState.get("selected") === sid && pollingRuntime.currentGeneration() === gen) showOlderLoadError();
     return null;
   }
 }
@@ -94,7 +97,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePre
   if (!sessionState.get("selected") || !state.hasMore || state.isLoading) return false;
   if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
   const sid = sessionState.get("selected");
-  const gen = getPollGeneration();
+  const gen = pollingRuntime.currentGeneration();
   const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
   const view = typeof transcriptView === "function" ? transcriptView() : null;
   if (view && !view.beginOlderLoad()) {
@@ -107,7 +110,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePre
     const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
       signal: load.signal,
     });
-    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
+    if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
     const evs = Array.isArray(data.events) ? data.events : [];
     const nextCursor = usableOlderHistoryCursor(data);
     const nextHasOlder = Boolean(nextCursor);
@@ -132,7 +135,7 @@ async function loadOlderMessages({ auto = false, cancelOnScroll = true, forcePre
       handleAppAuthLoss();
       return false;
     }
-    if (sessionState.get("selected") !== sid || getPollGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
+    if (sessionState.get("selected") !== sid || pollingRuntime.currentGeneration() !== gen || !olderLoadRuntime.isCurrent(load)) return false;
     if (e && e.status === 409) {
       await getSessionLifecycleController().openSession(sid, { useCache: false });
       return false;
@@ -334,7 +337,7 @@ async function applyLiveMessageData(sid, gen, data) {
   return getSendLifecycleController().messageFlowController.applyLiveMessageData(sid, gen, data);
 }
 
-async function pollMessages(sid = sessionState.get("selected"), gen = getPollGeneration()) {
+async function pollMessages(sid = sessionState.get("selected"), gen = pollingRuntime.currentGeneration()) {
   return getSendLifecycleController().messageFlowController.pollMessages(sid, gen);
 }
 
