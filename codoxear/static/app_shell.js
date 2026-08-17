@@ -564,6 +564,11 @@ function requireFunction(value, name) {
     const {
       announceBtn,
       notificationBtn,
+      notificationPanel,
+      notificationList,
+      notificationEmpty,
+      notificationClearBtn,
+      notificationEnableBtn,
       liveAudio,
       voiceSettingsBackdrop,
       voiceSettingsCloseBtn,
@@ -593,7 +598,8 @@ function requireFunction(value, name) {
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, notificationBtn, liveAudio, voiceSettingsBackdrop,
+      editSaveBtn, editViewer, announceBtn, notificationBtn, notificationPanel, notificationList,
+      notificationEmpty, notificationClearBtn, notificationEnableBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn

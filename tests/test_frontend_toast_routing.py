@@ -19,6 +19,7 @@ def run_vm(body: str) -> dict:
         "SESSION_STATE": module_path("app_session_state.js"),
         "DIAGNOSTICS": module_path("app_diagnostics.js"),
         "VOICE_HELPERS": module_path("app_voice_helpers.js"),
+        "NOTIFICATIONS": module_path("app_notifications.js"),
         "VOICE": module_path("app_voice.js"),
         "FILE_VIEWER_SCRIPTS": [
             module_path(name)
@@ -63,7 +64,7 @@ def run_vm(body: str) -> dict:
           clearTimeout() {{}}, setInterval: () => 0, clearInterval() {{}},
         }};
         vm.createContext(ctx);
-        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, SESSION_STATE_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, VOICE_SOURCE]
+        [MODAL_SOURCE, HELPERS_SOURCE, TOAST_SOURCE, SESSION_STATE_SOURCE, QUEUE_SOURCE, DIAGNOSTICS_SOURCE, VOICE_HELPERS_SOURCE, NOTIFICATIONS_SOURCE, VOICE_SOURCE]
           .forEach((source) => vm.runInContext(source, ctx));
         {viewer_sources}.forEach((source) => vm.runInContext(source, ctx));
         {body}
@@ -140,7 +141,18 @@ sessionState.set("selected", selected);
                 voiceSettingsViewer: node("voiceSettingsViewer"), voiceSettingsCancelBtn: node("voiceSettingsCancelBtn"), voiceSettingsSaveBtn: node("voiceSettingsSaveBtn"),
               };
               const voiceController = ctx.window.CodoxearVoice.createVoiceController(Object.assign(voiceNodes, {
-                isAppDisposed: () => false, api: async () => ({}), setToast: notify("voice"), handleAppAuthLoss: () => {}, prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
+                notificationOptions: {
+                  notificationBtn: voiceNodes.notificationBtn,
+                  isAppDisposed: () => false,
+                  api: async () => ({ subscriptions: [], items: [] }),
+                  setToast: notify("voice"), handleAppAuthLoss() {}, resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
+                  storageGetItem: () => null, storageSetItem() {}, storageRemoveItem() {},
+                  eventBindings: { on(target, type, handler) { target[`on${type}`] = handler; return handler; } },
+                  windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document,
+                  Notification: undefined, clearTimeout() {},
+                },
+            eventBindings: { on(target, type, handler) { target[`on${type}`] = handler; return handler; } },
+            isAppDisposed: () => false, api: async () => ({}), setToast: notify("voice"), handleAppAuthLoss: () => {}, prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
                 resolveAppUrl: (value) => value, versionedShellAssetPath: (value) => value, storageGetItem: () => null, storageSetItem: () => {}, storageRemoveItem: () => {},
                 windowTarget: { isSecureContext: false }, navigatorTarget: { userAgent: "X11 Linux x86_64" }, documentTarget: { activeElement: null, contains: () => true },
                 Notification: undefined, requestFrame: (fn) => fn(), setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},

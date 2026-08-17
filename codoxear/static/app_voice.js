@@ -1,34 +1,13 @@
 import * as CodoxearModal from "./app_modal.js";
+import * as CodoxearNotifications from "./app_notifications.js";
 import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
 
-// Voice / Settings / Notifications / Announcement orchestration authority.
-  //
-  // Owns every piece of voice/notification/announcement state that used to live
-  // as app.js locals (voiceSaveTimer, voiceSettings, localAnnouncementEnabled,
-  // localNotificationEnabled, desktopNotificationTimers,
-  // deliveredDesktopNotificationIds, notificationFeedSinceTs,
-  // announcementClientId/heartbeat timer, liveAudio retry/watchdog timers and
-  // HLS state, notificationState and service-worker registration state) plus
-  // every voice/settings/notification/announcement function that used to live
-  // in app.js (announcement toggle, notification transport projection, desktop
-  // + push notification enable/toggle, notification feed polling, voice
-  // settings load/save, live-audio source/playback/watchdog orchestration, the
-  // voice settings dialog show/hide/focus behavior) and the announceBtn /
-  // notificationBtn / liveAudio / voice-settings-dialog event handlers.
-  //
-  // app.js supplies the shell root and voice host; this module constructs and
-  // owns the announce/notification buttons, hidden live-audio node, and voice
-  // settings dialog through createVoiceDom(options), then injects those nodes
-  // into createVoiceController(options). App-level runtime accessors (api,
-  // toasts, auth loss, modal open/close coordination, storage, url/version
-  // helpers, timer/animation-frame/window/navigator/document targets) remain
-  // injected so the controller has no hidden coupling to app.js globals and
-  // can be exercised in a VM with fakes.
-  //
-  // Pure helpers (browserSupports*/base64UrlToUint8Array/isMobileNotificationDevice/
-  // notificationDeviceClass) come from CodoxearVoiceHelpers; the modal
-  // open-state + focus-restore helpers come from CodoxearModal.
+// Voice settings, announcements, and live-audio authority.
+// Browser notification state, transport, widget rendering, and handlers live in
+// app_notifications.js. This controller coordinates the shared
+// /api/settings/voice response by passing only its notification slice through
+// the notification runtime's narrow interface.
 
 
 
@@ -36,9 +15,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
   const browserSupportsMseLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback;
   const shouldPreferNativeLiveAudioPlayback = CodoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback;
   const browserSupportsLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsLiveAudioPlayback;
-  const base64UrlToUint8Array = CodoxearVoiceHelpers.base64UrlToUint8Array;
-  const isMobileNotificationDevice = CodoxearVoiceHelpers.isMobileNotificationDevice;
-  const notificationDeviceClass = CodoxearVoiceHelpers.notificationDeviceClass;
   const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
   const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
@@ -47,7 +23,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
   const LIVE_AUDIO_RESTART_THROTTLE_MS = 4000;
   const ANNOUNCEMENT_HEARTBEAT_INTERVAL_MS = 15000;
   const VOICE_SAVE_DEBOUNCE_MS = 250;
-  const NOTIFICATION_PANEL_MAX_ITEMS = 100;
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`voice controller dependency missing: ${name}`);
@@ -67,19 +42,16 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const voiceHost = requireNode(options.voiceHost, "voiceHost");
     if (!root || typeof root.appendChild !== "function") throw new TypeError("voice DOM dependency missing: root");
 
+    const notificationDom = CodoxearNotifications.createNotificationDom({ root, el, iconSvg, voiceHost });
+    const {
+      notificationBtn,
+      notificationPanel,
+      notificationList,
+      notificationEmpty,
+      notificationClearBtn,
+      notificationEnableBtn,
+    } = notificationDom;
     const announceBtn = el("button", { id: "announceBtn", class: "icon-btn", title: "Voice announcements", "aria-label": "Voice announcements", type: "button", html: iconSvg("volume") });
-    const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", "aria-controls": "notificationPanel", "aria-expanded": "false", type: "button", html: iconSvg("bell") });
-    const notificationPanel = el("section", { id: "notificationPanel", class: "notificationPanel", role: "dialog", "aria-label": "Notifications" });
-    const notificationPanelHeader = el("div", { class: "notificationPanelHeader" }, [
-      el("div", { class: "title", text: "Notifications" }),
-      el("button", { id: "notificationClearBtn", class: "text-btn", type: "button", text: "Mark read" }),
-    ]);
-    const notificationEnableBtn = el("button", { id: "notificationEnableBtn", class: "text-btn", type: "button", text: "Enable browser alerts" });
-    const notificationEmpty = el("div", { id: "notificationEmpty", class: "muted", text: "No notifications" });
-    const notificationList = el("div", { id: "notificationList", class: "notificationList", role: "list" });
-    notificationPanel.append(notificationPanelHeader, notificationEnableBtn, notificationEmpty, notificationList);
-    notificationPanel.style.display = "none";
-    voiceHost.appendChild(notificationBtn);
     voiceHost.appendChild(announceBtn);
 
     const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
@@ -139,7 +111,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       ]),
       el("div", { class: "formActions" }, [voiceSettingsCancelBtn, voiceSettingsSaveBtn]),
     ]);
-    root.appendChild(notificationPanel);
     root.appendChild(liveAudio);
     root.appendChild(voiceSettingsBackdrop);
     root.appendChild(voiceSettingsViewer);
@@ -172,15 +143,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
     // DOM nodes (created and owned by app.js).
     const announceBtn = requireNode(options.announceBtn, "announceBtn");
-    const notificationBtn = requireNode(options.notificationBtn, "notificationBtn");
-    const notificationPanel = options.notificationPanel || null;
-    const notificationList = options.notificationList || null;
-    const notificationEmpty = options.notificationEmpty || null;
-    const notificationClearBtn = options.notificationClearBtn || null;
-    const notificationEnableBtn = options.notificationEnableBtn || null;
-    const hasNotificationPanel = Boolean(
-      notificationPanel && notificationList && notificationEmpty && notificationClearBtn && notificationEnableBtn
-    );
     const liveAudio = requireNode(options.liveAudio, "liveAudio");
     const voiceSettingsBackdrop = requireNode(options.voiceSettingsBackdrop, "voiceSettingsBackdrop");
     const voiceSettingsCloseBtn = requireNode(options.voiceSettingsCloseBtn, "voiceSettingsCloseBtn");
@@ -203,33 +165,28 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
     const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
-    const versionedShellAssetPath = requireFunction(options.versionedShellAssetPath, "versionedShellAssetPath");
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
     const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
-    const focusSessionFromNotification = typeof options.focusSessionFromNotification === "function" ? options.focusSessionFromNotification : null;
+    const notificationOptions = options.notificationOptions;
+    if (!notificationOptions || typeof notificationOptions !== "object") {
+      throw new TypeError("voice controller dependency missing: notificationOptions");
+    }
+    const notificationRuntime = CodoxearNotifications.createNotificationRuntime(notificationOptions);
 
     // Injectable browser targets (default to the real globals).
     const windowTarget = options.windowTarget || window;
     const navigatorTarget = options.navigatorTarget || (typeof navigator !== "undefined" ? navigator : null);
     const documentTarget = options.documentTarget || document;
-    const NotificationCtor = typeof options.Notification !== "undefined" ? options.Notification : (typeof Notification !== "undefined" ? Notification : undefined);
     const cryptoRef = typeof options.crypto !== "undefined" ? options.crypto : (typeof windowTarget.crypto !== "undefined" ? windowTarget.crypto : undefined);
-    const AudioContextCtor = typeof options.AudioContext !== "undefined"
-      ? options.AudioContext
-      : (windowTarget.AudioContext || windowTarget.webkitAudioContext || null);
-
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (typeof requestAnimationFrame === "function" ? requestAnimationFrame : null);
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
     const clearTimeoutFn = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
     const setIntervalFn = typeof options.setInterval === "function" ? options.setInterval : setInterval;
     const clearIntervalFn = typeof options.clearInterval === "function" ? options.clearInterval : clearInterval;
 
-    function deviceNotificationClass() {
-      return notificationDeviceClass(navigatorTarget);
-    }
 
-    // --- Voice / notification / announcement state owned by this controller ---
+    // --- Voice / settings / announcement state owned by this controller ---
 
     let voiceSaveTimer = null;
     let voiceSettings = {
@@ -242,14 +199,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       has_tts_api_key: false,
     };
     let localAnnouncementEnabled = storageGetItem("codoxear.announcementEnabled") === "1";
-    let localNotificationEnabled = storageGetItem("codoxear.notificationEnabled") === "1";
-    const desktopNotificationTimers = new Map();
-    const deliveredDesktopNotificationIds = new Set();
-    let notificationFeedSinceTs = 0;
-    const notificationItems = new Map();
-    const readNotificationIds = new Set();
-    let notificationPanelOpen = false;
-    let notificationAudioContext = null;
     const announcementClientId = (() => {
       const key = "codoxear.announcementClientId";
       const current = storageGetItem(key);
@@ -264,15 +213,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     let announcementHeartbeatTimer = null;
     let liveAudioRetryTimer = null;
     let liveAudioWatchdogTimer = null;
-    let notificationState = {
-      desktop_supported: false,
-      push_supported: false,
-      permission: NotificationCtor ? NotificationCtor.permission : "unsupported",
-      desktop_enabled: false,
-      endpoint: "",
-      notifications_enabled: false,
-      subscriptions: [],
-    };
     let unattendedPrompt = { prompt: "", default_prompt: "" };
     let liveAudioStarted = false;
     let liveAudioErrorState = false;
@@ -282,33 +222,21 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     let liveAudioLastCurrentTime = 0;
     let liveAudioSuspectSinceTs = 0;
     let liveAudioLastRestartTs = 0;
-    let swRegistration = null;
     // Canonical voice-settings dialog open flag. The controller owns this; the
     // <dialog>.open / style state is a fallback only, so callers must not rely
     // on style.display alone to decide whether the dialog is open.
     let settingsOpen = false;
     let voiceSettingsReturnFocusEl = null;
 
-    // Controller-owned event listener lifecycle (cleared by dispose).
-    const eventCleanups = [];
-    function addEvent(target, type, handler, options) {
-      if (!target || typeof target.addEventListener !== "function") return handler;
-      target.addEventListener(type, handler, options);
-      eventCleanups.push(() => {
-        try {
-          target.removeEventListener(type, handler, options);
-        } catch (_error) {}
-      });
-      return handler;
+    const eventBindings = options.eventBindings;
+    if (!eventBindings || typeof eventBindings.on !== "function") {
+      throw new TypeError("voice controller dependency missing: eventBindings");
     }
 
     function voiceAnnouncementsEnabled() {
       return !!localAnnouncementEnabled;
     }
 
-    function notificationsEnabledLocally() {
-      return !!localNotificationEnabled;
-    }
 
     function isSettingsOpen() {
       if (settingsOpen) return true;
@@ -546,13 +474,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       updateVoiceUi();
     }
 
-    function setNotificationEnabledLocal(enabled) {
-      localNotificationEnabled = !!enabled;
-      if (localNotificationEnabled) storageSetItem("codoxear.notificationEnabled", "1");
-      else storageRemoveItem("codoxear.notificationEnabled");
-      updateVoiceUi();
-    }
-
     function resumeAnnouncementRuntime({ resetSource = false } = {}) {
       if (!localAnnouncementEnabled) return;
       startAnnouncementHeartbeat();
@@ -585,213 +506,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       } catch (e) {
         console.error("auto-start live audio failed", e);
       }
-    }
-
-    function setDesktopNotificationsEnabled(enabled) {
-      if (enabled) storageSetItem("codoxear.desktopNotificationsEnabled", "1");
-      else storageRemoveItem("codoxear.desktopNotificationsEnabled");
-      notificationState.desktop_enabled = !!enabled;
-    }
-
-    function pushNotificationsEnabledForCurrentDevice() {
-      return !!(
-        localNotificationEnabled &&
-        deviceNotificationClass() === "mobile" &&
-        notificationState.push_supported &&
-        notificationState.permission === "granted" &&
-        notificationState.notifications_enabled &&
-        notificationState.endpoint
-      );
-    }
-
-    function activeNotificationTransport() {
-      if (!localNotificationEnabled) return "none";
-      if (deviceNotificationClass() === "mobile") {
-        return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";
-      }
-      if (
-        notificationState.desktop_supported &&
-        notificationState.permission === "granted" &&
-        notificationState.desktop_enabled
-      ) {
-        return "desktop";
-      }
-      return "none";
-    }
-
-    function desktopNotificationsEnabled() {
-      return activeNotificationTransport() === "desktop";
-    }
-
-    function focusSessionFromDesktopNotification(sessionId) {
-      const sid = String(sessionId || "").trim();
-      try {
-        if (typeof windowTarget.focus === "function") windowTarget.focus();
-      } catch {}
-      if (!sid) return;
-      if (focusSessionFromNotification) focusSessionFromNotification(sid);
-    }
-
-    function showDesktopNotification({ messageId, title, body, sessionId }) {
-      if (!desktopNotificationsEnabled()) return false;
-      const id = String(messageId || "").trim();
-      if (id && deliveredDesktopNotificationIds.has(id)) return false;
-      const sid = String(sessionId || "").trim();
-      const safeTitle = String(title || "Session").trim() || "Session";
-      const safeBody = String(body || "").replace(/\s+/g, " ").trim();
-      if (!safeBody) return false;
-      try {
-        const notification = new NotificationCtor(safeTitle, {
-          body: safeBody.length <= 180 ? safeBody : `${safeBody.slice(0, 179).trimEnd()}...`,
-          tag: id || `desktop:${Date.now()}`,
-        });
-        if (sid) {
-          notification.onclick = (event) => {
-            if (event && typeof event.preventDefault === "function") event.preventDefault();
-            try {
-              if (typeof notification.close === "function") notification.close();
-            } catch {}
-            focusSessionFromDesktopNotification(sid);
-          };
-        }
-        if (id) deliveredDesktopNotificationIds.add(id);
-        return true;
-      } catch (e) {
-        console.error("desktop notification failed", e);
-        return false;
-      }
-    }
-
-    async function primeNotificationSound() {
-      if (!AudioContextCtor) return;
-      if (!notificationAudioContext) notificationAudioContext = new AudioContextCtor();
-      if (notificationAudioContext.state === "suspended" && typeof notificationAudioContext.resume === "function") {
-        await notificationAudioContext.resume();
-      }
-    }
-
-    function playNotificationSound() {
-      if (!notificationAudioContext || notificationAudioContext.state === "suspended") return;
-      try {
-        const oscillator = notificationAudioContext.createOscillator();
-        const gain = notificationAudioContext.createGain();
-        oscillator.frequency.value = 740;
-        gain.gain.setValueAtTime(0.05, notificationAudioContext.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, notificationAudioContext.currentTime + 0.14);
-        oscillator.connect(gain);
-        gain.connect(notificationAudioContext.destination);
-        oscillator.start();
-        oscillator.stop(notificationAudioContext.currentTime + 0.14);
-      } catch (e) {
-        console.error("notification sound failed", e);
-      }
-    }
-
-    function sortedNotificationItems() {
-      return Array.from(notificationItems.values()).sort((a, b) => {
-        const byUpdated = Number(b.updated_ts || 0) - Number(a.updated_ts || 0);
-        return byUpdated || String(b.message_id || "").localeCompare(String(a.message_id || ""));
-      });
-    }
-
-    function trimNotificationItems() {
-      for (const item of sortedNotificationItems().slice(NOTIFICATION_PANEL_MAX_ITEMS)) {
-        notificationItems.delete(item.message_id);
-        readNotificationIds.delete(item.message_id);
-      }
-    }
-
-    function markNotificationRead(messageId) {
-      const id = String(messageId || "").trim();
-      if (id) readNotificationIds.add(id);
-    }
-
-    function markAllNotificationsRead() {
-      notificationItems.forEach((_item, messageId) => markNotificationRead(messageId));
-    }
-
-    function unreadNotificationCount() {
-      let count = 0;
-      notificationItems.forEach((_item, messageId) => {
-        if (!readNotificationIds.has(messageId)) count += 1;
-      });
-      return count;
-    }
-
-    function renderNotificationPanel() {
-      if (!hasNotificationPanel) return;
-      const unread = unreadNotificationCount();
-      const suffix = unread ? `, ${unread} unread` : "";
-      notificationBtn.dataset.unread = String(unread);
-      notificationBtn.setAttribute("aria-label", `Notifications${suffix}`);
-      notificationBtn.title = `Notifications${suffix}`;
-      notificationBtn.classList.toggle("active", unread > 0);
-      notificationBtn.setAttribute("aria-expanded", notificationPanelOpen ? "true" : "false");
-      notificationPanel.style.display = notificationPanelOpen ? "flex" : "none";
-      notificationEmpty.style.display = notificationItems.size ? "none" : "block";
-      notificationClearBtn.disabled = unread === 0;
-      const alertsEnabled = notificationsEnabledLocally();
-      notificationEnableBtn.textContent = alertsEnabled ? "Disable browser alerts" : "Enable browser alerts";
-      notificationList.replaceChildren();
-      for (const item of sortedNotificationItems()) {
-        const row = documentTarget.createElement("button");
-        row.type = "button";
-        row.className = "notificationItem";
-        row.setAttribute("role", "listitem");
-        row.classList.toggle("unread", !readNotificationIds.has(item.message_id));
-        const title = documentTarget.createElement("span");
-        title.className = "notificationItemTitle";
-        title.textContent = String(item.session_display_name || "Session");
-        const body = documentTarget.createElement("span");
-        body.className = "notificationItemBody";
-        body.textContent = String(item.notification_text || "");
-        row.append(title, body);
-        row.onclick = () => {
-          markNotificationRead(item.message_id);
-          notificationPanelOpen = false;
-          renderNotificationPanel();
-          focusSessionFromDesktopNotification(item.session_id);
-        };
-        notificationList.appendChild(row);
-      }
-    }
-
-    async function pollNotificationFeed({ prime = false } = {}) {
-      if (isAppDisposed()) return;
-      let maxSeen = notificationFeedSinceTs;
-      try {
-        const data = await api(`/api/notifications/feed?since=${encodeURIComponent(notificationFeedSinceTs)}`);
-        if (isAppDisposed()) return;
-        const items = Array.isArray(data.items) ? data.items : [];
-        for (const item of items) {
-          const messageId = String(item && item.message_id ? item.message_id : "").trim();
-          if (!messageId) continue;
-          const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
-          if (updatedTs > maxSeen) maxSeen = updatedTs;
-          const alreadyKnown = notificationItems.has(messageId);
-          notificationItems.set(messageId, { ...item, message_id: messageId });
-          if (prime || notificationPanelOpen) markNotificationRead(messageId);
-          if (!prime && !alreadyKnown && desktopNotificationsEnabled()) {
-            showDesktopNotification({
-              messageId,
-              title: item && item.session_display_name,
-              body: item && item.notification_text,
-              sessionId: item && item.session_id,
-            });
-            playNotificationSound();
-          }
-        }
-        trimNotificationItems();
-      } catch (e) {
-        if (e && e.status === 401) {
-          handleAppAuthLoss();
-          return;
-        }
-        console.error("notification feed poll failed", e);
-        return;
-      }
-      notificationFeedSinceTs = maxSeen;
-      renderNotificationPanel();
     }
 
     function syncVoiceSettingsFormFromState() {
@@ -840,31 +554,28 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       announceBtn.title = audioError ? `${announceBase} (audio error)` : announceBase;
       announceBtn.setAttribute("aria-label", announceBtn.title);
       announceBtn.classList.toggle("error", audioError);
-      notificationBtn.classList.toggle("active", notificationsEnabledLocally());
-      const transport = activeNotificationTransport();
-      notificationBtn.title = notificationsEnabledLocally()
-        ? transport === "push"
-          ? "Notifications on (push)"
-          : transport === "desktop"
-            ? "Notifications on"
-            : "Notifications pending"
-        : "Notifications off";
-      notificationBtn.setAttribute("aria-label", notificationBtn.title);
-      notificationState.permission = NotificationCtor ? NotificationCtor.permission : "unsupported";
-      renderNotificationPanel();
       if (!isSettingsOpen()) syncVoiceSettingsFormFromState();
+    }
+
+    function notificationSnapshot(snapshot) {
+      const data = snapshot && typeof snapshot === "object" ? snapshot : {};
+      const settings = data.notifications && typeof data.notifications === "object" ? data.notifications : {};
+      return {
+        vapid_public_key: String(settings.vapid_public_key || data.vapid_public_key || ""),
+        subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
+      };
     }
 
     async function refreshBackgroundState({ force = false, primeNotifications = false } = {}) {
       const announcementsEnabled = voiceAnnouncementsEnabled();
-      const notificationsEnabled = notificationsEnabledLocally();
+      const notificationsEnabled = notificationRuntime.enabledLocally();
       if (!force && !announcementsEnabled && !notificationsEnabled) return false;
 
       // `/api/settings/voice` includes the subscription snapshot. A single
       // request refreshes both state authorities when a tab becomes visible.
       const snapshot = await loadVoiceSettings();
-      await syncNotificationState(snapshot);
-      if (notificationsEnabled) await pollNotificationFeed({ prime: primeNotifications });
+      await notificationRuntime.syncState(notificationSnapshot(snapshot));
+      if (notificationsEnabled) await notificationRuntime.pollFeed({ prime: primeNotifications });
       return true;
     }
 
@@ -927,123 +638,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
           } catch (_error) {}
         }
       }, VOICE_SAVE_DEBOUNCE_MS);
-    }
-
-    async function ensureVoiceServiceWorker() {
-      if (!navigatorTarget || !("serviceWorker" in navigatorTarget) || !("PushManager" in windowTarget) || !NotificationCtor) {
-        throw new Error("push notifications are not supported in this browser");
-      }
-      if (!swRegistration) {
-        swRegistration = await navigatorTarget.serviceWorker.register(resolveAppUrl(versionedShellAssetPath("/service-worker.js")), {
-          scope: resolveAppUrl("/"),
-        });
-      }
-      return swRegistration;
-    }
-
-    async function syncNotificationState(serverSnapshot) {
-      if (isAppDisposed()) return;
-      notificationState.desktop_supported = !!(windowTarget.isSecureContext && NotificationCtor);
-      notificationState.push_supported = !!(notificationState.desktop_supported && navigatorTarget && "serviceWorker" in navigatorTarget && "PushManager" in windowTarget);
-      notificationState.permission = NotificationCtor ? NotificationCtor.permission : "unsupported";
-      notificationState.desktop_enabled = storageGetItem("codoxear.desktopNotificationsEnabled") === "1";
-      let snapshot = serverSnapshot;
-      if (!snapshot) {
-        try {
-          snapshot = await api("/api/notifications/subscription");
-        } catch (e) {
-          if (!(e && e.status === 404)) throw e;
-        }
-      }
-      if (isAppDisposed()) return;
-      let endpoint = "";
-      if (deviceNotificationClass() === "mobile" && notificationState.push_supported) {
-        try {
-          const reg = await ensureVoiceServiceWorker();
-          if (isAppDisposed()) return;
-          const sub = await reg.pushManager.getSubscription();
-          if (isAppDisposed()) return;
-          endpoint = sub && typeof sub.endpoint === "string" ? sub.endpoint : "";
-        } catch (e) {
-          console.error("load push subscription failed", e);
-        }
-      }
-      const subscriptions = snapshot && Array.isArray(snapshot.subscriptions) ? snapshot.subscriptions : [];
-      const current = endpoint ? subscriptions.find((item) => item && item.endpoint === endpoint) : null;
-      notificationState.endpoint = endpoint;
-      notificationState.subscriptions = subscriptions;
-      notificationState.notifications_enabled = !!(current && current.notifications_enabled);
-      updateVoiceUi();
-    }
-
-    async function enableNotificationsOnDevice() {
-      if (!notificationState.desktop_supported) {
-        throw new Error("notifications require HTTPS or localhost");
-      }
-      if (NotificationCtor && NotificationCtor.permission !== "granted") {
-        const permission = await NotificationCtor.requestPermission();
-        if (permission !== "granted") {
-          throw new Error(`notification permission ${permission}`);
-        }
-      }
-      if (deviceNotificationClass() === "desktop") {
-        setDesktopNotificationsEnabled(true);
-        await syncNotificationState();
-        return;
-      }
-      if (!notificationState.push_supported) {
-        throw new Error("mobile notifications require web push in an installed HTTPS web app");
-      }
-      const reg = await ensureVoiceServiceWorker();
-      const publicKey = voiceSettings && voiceSettings.notifications ? voiceSettings.notifications.vapid_public_key : "";
-      if (!publicKey) throw new Error("missing VAPID public key");
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: base64UrlToUint8Array(publicKey, atob),
-        });
-      }
-      const snapshot = await api("/api/notifications/subscription", {
-        method: "POST",
-        body: {
-          subscription: sub.toJSON(),
-          user_agent: navigatorTarget ? navigatorTarget.userAgent : "",
-          device_label: "current-device",
-          device_class: deviceNotificationClass(),
-        },
-      });
-      await syncNotificationState(snapshot);
-    }
-
-    async function toggleCurrentDeviceNotifications(enabled) {
-      if (!notificationState.desktop_supported) {
-        throw new Error("notifications require HTTPS or localhost");
-      }
-      if (deviceNotificationClass() === "desktop") {
-        setDesktopNotificationsEnabled(enabled);
-        await syncNotificationState();
-        return;
-      }
-      if (!notificationState.push_supported) {
-        throw new Error("mobile notifications require web push in an installed HTTPS web app");
-      }
-      if (!notificationState.endpoint && enabled) {
-        await enableNotificationsOnDevice();
-        return;
-      }
-      if (!notificationState.endpoint) {
-        await syncNotificationState();
-        return;
-      }
-      const snapshot = await api("/api/notifications/subscription/toggle", {
-        method: "POST",
-        body: {
-          endpoint: notificationState.endpoint,
-          enabled: !!enabled,
-        },
-      });
-      await syncNotificationState(snapshot);
     }
 
     async function startLiveAudioPlayback({ resetSource = false } = {}) {
@@ -1129,89 +723,41 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         setToast(`audio start error: ${describeLiveAudioStartError(err)}`);
       }
     };
-    notificationBtn.onclick = async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!hasNotificationPanel) {
-        try {
-          await enableNotificationsOnDevice();
-        } catch (err) {
-          console.error("notification toggle failed", err);
-          setNotificationEnabledLocal(false);
-          setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
-        }
-        return;
-      }
-      notificationPanelOpen = !notificationPanelOpen;
-      if (notificationPanelOpen) {
-        markAllNotificationsRead();
-        renderNotificationPanel();
-        await pollNotificationFeed();
-        return;
-      }
-      renderNotificationPanel();
-    };
-    if (notificationClearBtn) {
-      notificationClearBtn.onclick = () => {
-        markAllNotificationsRead();
-        renderNotificationPanel();
-      };
-    }
-    if (notificationEnableBtn) {
-      notificationEnableBtn.onclick = async () => {
-        try {
-          await syncNotificationState();
-          if (notificationsEnabledLocally()) {
-            await toggleCurrentDeviceNotifications(false);
-            setNotificationEnabledLocal(false);
-          } else {
-            await primeNotificationSound();
-            setNotificationEnabledLocal(true);
-            await enableNotificationsOnDevice();
-          }
-        } catch (err) {
-          console.error("notification toggle failed", err);
-          setNotificationEnabledLocal(false);
-          setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
-        }
-        renderNotificationPanel();
-      };
-    }
-    addEvent(liveAudio, "error", () => {
+    eventBindings.on(liveAudio, "error", () => {
       liveAudioStarted = false;
       liveAudioErrorState = true;
       liveAudioSuspectSinceTs = 0;
       updateVoiceUi();
       scheduleLiveAudioRetry(1200, { resetSource: true });
     });
-    addEvent(liveAudio, "playing", () => {
+    eventBindings.on(liveAudio, "playing", () => {
       liveAudioStarted = true;
       liveAudioErrorState = false;
       markLiveAudioProgress();
       updateVoiceUi();
     });
-    addEvent(liveAudio, "timeupdate", () => {
+    eventBindings.on(liveAudio, "timeupdate", () => {
       markLiveAudioProgress();
     });
-    addEvent(liveAudio, "waiting", () => {
+    eventBindings.on(liveAudio, "waiting", () => {
       noteLiveAudioPotentialStall("waiting");
       runLiveAudioWatchdog();
     });
-    addEvent(liveAudio, "stalled", () => {
+    eventBindings.on(liveAudio, "stalled", () => {
       noteLiveAudioPotentialStall("stalled");
       runLiveAudioWatchdog();
     });
-    addEvent(liveAudio, "suspend", () => {
+    eventBindings.on(liveAudio, "suspend", () => {
       noteLiveAudioPotentialStall("suspend");
       runLiveAudioWatchdog();
     });
-    addEvent(liveAudio, "ended", () => {
+    eventBindings.on(liveAudio, "ended", () => {
       liveAudioStarted = false;
       liveAudioSuspectSinceTs = 0;
       updateVoiceUi();
       scheduleLiveAudioRetry(500, { resetSource: true });
     });
-    addEvent(liveAudio, "pause", () => {
+    eventBindings.on(liveAudio, "pause", () => {
       liveAudioStarted = false;
       liveAudioSuspectSinceTs = 0;
       updateVoiceUi();
@@ -1228,14 +774,14 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
     voiceSettingsCancelBtn.onclick = hideVoiceSettingsDialog;
     voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
-    addEvent(voiceSettingsViewer, "cancel", (e) => {
+    eventBindings.on(voiceSettingsViewer, "cancel", (e) => {
       e.preventDefault();
       hideVoiceSettingsDialog();
     });
     // The controller owns the browser's voice runtime. Restoring a visible tab
     // reasserts the listener and restarts a paused announcement stream even if
     // the session/SSE layer has not yet selected or refreshed a conversation.
-    addEvent(documentTarget, "visibilitychange", () => {
+    eventBindings.on(documentTarget, "visibilitychange", () => {
       if (isAppDisposed() || documentTarget.visibilityState !== "visible") return;
       resumeAnnouncementRuntime({ resetSource: false });
     });
@@ -1244,7 +790,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         voiceSettingsStatus.textContent = "Saving...";
         await saveVoiceSettings();
         await saveUnattendedPrompt();
-        await syncNotificationState();
+        await notificationRuntime.syncState(notificationSnapshot(voiceSettings));
         voiceSettingsStatus.textContent = "";
         hideVoiceSettingsDialog();
       } catch (e) {
@@ -1260,36 +806,17 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       liveAudioRetryTimer = null;
       stopAnnouncementHeartbeat();
       stopLiveAudioWatchdog();
-      desktopNotificationTimers.forEach((timer) => clearTimeoutFn(timer));
-      desktopNotificationTimers.clear();
-      deliveredDesktopNotificationIds.clear();
       resetLiveAudioState();
-      while (eventCleanups.length) {
-        const cleanup = eventCleanups.pop();
-        try {
-          cleanup();
-        } catch (_error) {}
-      }
+      notificationRuntime.dispose();
       settingsOpen = false;
       voiceSettingsReturnFocusEl = null;
       announceBtn.onclick = null;
-      notificationBtn.onclick = null;
-      if (notificationClearBtn) notificationClearBtn.onclick = null;
-      if (notificationEnableBtn) notificationEnableBtn.onclick = null;
       narrationSettingToggle.onchange = null;
       if (unattendedPromptResetBtn) unattendedPromptResetBtn.onclick = null;
       voiceSettingsCloseBtn.onclick = null;
       voiceSettingsCancelBtn.onclick = null;
       voiceSettingsBackdrop.onclick = null;
       voiceSettingsSaveBtn.onclick = null;
-      if (notificationAudioContext && typeof notificationAudioContext.close === "function") {
-        void notificationAudioContext.close();
-      }
-      notificationAudioContext = null;
-      notificationItems.clear();
-      readNotificationIds.clear();
-      notificationPanelOpen = false;
-      swRegistration = null;
       liveAudioErrorState = false;
     }
 
@@ -1300,12 +827,9 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
     return Object.freeze({
       voiceAnnouncementsEnabled,
-      notificationsEnabledLocally,
       isSettingsOpen,
       loadVoiceSettings,
       refreshBackgroundState,
-      syncNotificationState,
-      pollNotificationFeed,
       resumeAnnouncementRuntime,
       showVoiceSettingsDialog,
       hideVoiceSettingsDialog,

@@ -18,6 +18,7 @@ from codoxear.voice_routes import handle_voice_get_route
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
 VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+NOTIFICATIONS_SOURCE = (module_path("app_notifications.js")).read_text(encoding="utf-8")
 MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 
 
@@ -83,9 +84,24 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
           window: {{ isSecureContext: true }}, navigator: {{ userAgent: "X11 Linux" }}, document: documentTarget,
         }};
         vm.createContext(ctx);
-        for (const source of [{json.dumps(MODAL_SOURCE)}, {json.dumps(VOICE_HELPERS_SOURCE)}, {json.dumps(VOICE_SOURCE)}]) vm.runInContext(source, ctx);
+        for (const source of [{json.dumps(MODAL_SOURCE)}, {json.dumps(VOICE_HELPERS_SOURCE)}, {json.dumps(NOTIFICATIONS_SOURCE)}, {json.dumps(VOICE_SOURCE)}]) vm.runInContext(source, ctx);
         const controller = ctx.window.CodoxearVoice.createVoiceController({{
           ...dom, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+          notificationOptions: {{
+            notificationBtn: dom.notificationBtn, notificationPanel: dom.notificationPanel, notificationList: dom.notificationList,
+            notificationEmpty: dom.notificationEmpty, notificationClearBtn: dom.notificationClearBtn, notificationEnableBtn: dom.notificationEnableBtn,
+            isAppDisposed: () => false, api: async (url, options = {{}}) => {{
+              if (url.includes("/api/notifications/feed")) return {{ items: typeof feeds !== "undefined" ? (feeds.shift() || []) : typeof feedItems !== "undefined" ? feedItems.splice(0) : [] }};
+              if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
+              return {{}};
+            }}, setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
+            storageGetItem: (key) => key === "codoxear.notificationEnabled" ? "1" : null,
+            storageSetItem() {{}}, storageRemoveItem() {{}},
+            eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
+            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+            Notification: undefined, AudioContext: undefined, clearTimeout() {{}},
+          }},
+          eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
           isAppDisposed: () => false,
           api: async (url) => String(url).includes("/api/notifications/feed") ? {{ items: feedItems }} : {{ notifications: {{}}, audio: {{}} }},
           setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
@@ -94,7 +110,7 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
           requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}},
         }});
         (async () => {{
-          await controller.pollNotificationFeed();
+          await controller.refreshBackgroundState({{ force: true }});
           const beforeOpening = dom.notificationBtn.dataset.unread;
           await dom.notificationBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
           process.stdout.write(JSON.stringify({{

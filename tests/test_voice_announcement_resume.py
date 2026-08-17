@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
 VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+NOTIFICATIONS_SOURCE = (module_path("app_notifications.js")).read_text(encoding="utf-8")
 MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
@@ -72,6 +73,18 @@ def run_voice_announcement_resume_harness() -> dict:
           }};
           const controller = ctx.window.CodoxearVoice.createVoiceController({{
             ...dom,
+            notificationOptions: {{
+              notificationBtn: dom.notificationBtn,
+              isAppDisposed: () => false,
+              api: async () => ({{ subscriptions: [], items: [] }}),
+              setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
+              storageGetItem: (key) => storage && storage.has && storage.has(key) ? storage.get(key) : null,
+              storageSetItem() {{}}, storageRemoveItem() {{}},
+              eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
+              windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+              Notification: ctx.Notification, clearTimeout() {{}},
+            }},
+            eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
             isAppDisposed: () => false,
             api: (url, options = {{}}) => {{
               if (url === "/api/audio/listener") {{
@@ -145,6 +158,7 @@ def run_voice_announcement_resume_harness() -> dict:
         for (const source of [
           {json.dumps(MODAL_SOURCE)},
           {json.dumps(VOICE_HELPERS_SOURCE)},
+          {json.dumps(NOTIFICATIONS_SOURCE)},
           {json.dumps(VOICE_SOURCE)},
           {json.dumps(POLLING_SOURCE)},
           {json.dumps(TRANSCRIPT_SOURCE)},

@@ -10,10 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 MODAL = module_path("app_modal.js")
 VOICE = module_path("app_voice.js")
 VOICE_HELPERS = module_path("app_voice_helpers.js")
+NOTIFICATIONS = module_path("app_notifications.js")
 
 
 def run_modal_behavior() -> dict:
-    scripts = {name: path.read_text(encoding="utf-8") for name, path in {"modal": MODAL, "helpers": VOICE_HELPERS, "voice": VOICE}.items()}
+    scripts = {name: path.read_text(encoding="utf-8") for name, path in {"modal": MODAL, "helpers": VOICE_HELPERS, "notifications": NOTIFICATIONS, "voice": VOICE}.items()}
     program = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -29,11 +30,14 @@ def run_modal_behavior() -> dict:
         const ctx = {{ HTMLElement, window: {{}}, document: {{ activeElement: opener, contains: (el) => el === opener }},
           navigator: {{ userAgent: "X11" }}, requestAnimationFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}} }};
         vm.createContext(ctx);
-        for (const code of [{json.dumps(scripts['modal'])}, {json.dumps(scripts['helpers'])}, {json.dumps(scripts['voice'])}]) vm.runInContext(code, ctx);
+        for (const code of [{json.dumps(scripts['modal'])}, {json.dumps(scripts['helpers'])}, {json.dumps(scripts['notifications'])}, {json.dumps(scripts['voice'])}]) vm.runInContext(code, ctx);
         const app = {{ attrs: {{}}, toggleAttribute(k,on) {{ if (on) this.attrs[k] = ""; else delete this.attrs[k]; }}, setAttribute(k,v) {{ this.attrs[k] = v; }}, removeAttribute(k) {{ delete this.attrs[k]; }} }};
         const active = ctx.window.CodoxearModal.syncModalIsolation(app, [{{style: {{display:"none"}}}}, {{style: {{display:"flex"}}}}]);
-        const deps = {{ announceBtn: node(), notificationBtn: node(), liveAudio: node(), voiceSettingsBackdrop: backdrop, voiceSettingsCloseBtn: node(), voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(), voiceSettingsViewer: dialog, voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+        const notificationBtn = node();
+        const deps = {{ announceBtn: node(), notificationBtn, liveAudio: node(), voiceSettingsBackdrop: backdrop, voiceSettingsCloseBtn: node(), voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(), voiceSettingsViewer: dialog, voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+          notificationOptions: {{ notificationBtn, isAppDisposed: () => false, api: async () => ({{ subscriptions: [], items: [] }}), setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (v) => v, versionedShellAssetPath: (v) => v, storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document, clearTimeout() {{}} }},
           isAppDisposed: () => false, api: async () => ({{}}), setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen: () => calls.push("prepare"), afterModalVisibilityChanged: () => calls.push("visibility"), resolveAppUrl: (v) => v, versionedShellAssetPath: (v) => v, storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}} }};
+        deps.eventBindings = {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }};
         const controller = ctx.window.CodoxearVoice.createVoiceController(deps);
         controller.showVoiceSettingsDialog();
         const shown = {{ open: controller.isSettingsOpen(), display: dialog.style.display, backdrop: backdrop.style.display, nativeOpen: dialog.open }};

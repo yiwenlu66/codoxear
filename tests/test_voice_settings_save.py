@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
 VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+NOTIFICATIONS_SOURCE = (module_path("app_notifications.js")).read_text(encoding="utf-8")
 MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 
 
@@ -70,6 +71,7 @@ def run_voice_settings_save_harness() -> dict:
         for (const source of [
           {json.dumps(MODAL_SOURCE)},
           {json.dumps(VOICE_HELPERS_SOURCE)},
+          {json.dumps(NOTIFICATIONS_SOURCE)},
           {json.dumps(VOICE_SOURCE)},
         ]) vm.runInContext(source, ctx);
 
@@ -80,6 +82,20 @@ def run_voice_settings_save_harness() -> dict:
           windowTarget: ctx.window,
           navigatorTarget: ctx.navigator,
           documentTarget,
+          notificationOptions: {{
+            notificationBtn: dom.notificationBtn, notificationPanel: dom.notificationPanel, notificationList: dom.notificationList,
+            notificationEmpty: dom.notificationEmpty, notificationClearBtn: dom.notificationClearBtn, notificationEnableBtn: dom.notificationEnableBtn,
+            isAppDisposed: () => false, api: async (url, options = {{}}) => {{
+              if (url.includes("/api/notifications/feed")) return {{ items: typeof feeds !== "undefined" ? (feeds.shift() || []) : typeof feedItems !== "undefined" ? feedItems.splice(0) : [] }};
+              if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
+              return {{}};
+            }}, setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
+            storageGetItem: (key) => storage.get(key) || null, storageSetItem: (key, value) => storage.set(key, String(value)),
+            storageRemoveItem: (key) => storage.delete(key), eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
+            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+            Notification: NotificationCtor, AudioContext: typeof AudioContextCtor === "undefined" ? undefined : AudioContextCtor, clearTimeout() {{}},
+          }},
+          eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
           isAppDisposed: () => false,
           api: async (url, options = {{}}) => {{
             const body = options.body ? JSON.parse(JSON.stringify(options.body)) : null;
@@ -118,7 +134,7 @@ def run_voice_settings_save_harness() -> dict:
           await dom.voiceSettingsSaveBtn.onclick();
 
           await dom.notificationEnableBtn.onclick();
-          await controller.pollNotificationFeed();
+          await controller.refreshBackgroundState({{ force: true }});
 
           const settingsSave = calls.find((entry) => entry[0] === "api" && entry[1] === "/api/settings/voice" && entry[2]);
           process.stdout.write(JSON.stringify({{

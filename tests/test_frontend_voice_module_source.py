@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_VOICE_JS = module_path("app_voice.js")
 APP_VOICE_HELPERS_JS = module_path("app_voice_helpers.js")
+APP_NOTIFICATIONS_JS = module_path("app_notifications.js")
 APP_MODAL_JS = module_path("app_modal.js")
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
@@ -189,7 +190,34 @@ function buildDeps(overrides = {}) {
     storageGetItem: (k) => (storage.has(k) ? storage.get(k) : null),
     storageSetItem: (k, v) => { calls.push(["storageSetItem", k, String(v)]); storage.set(k, String(v)); },
     storageRemoveItem: (k) => { calls.push(["storageRemoveItem", k]); storage.delete(k); },
-    focusSessionFromNotification: (sid) => { calls.push(["focusSessionFromNotification", sid]); },
+    eventBindings: { on(target, type, handler, options) { target.addEventListener(type, handler, options); return handler; } },
+    notificationOptions: {
+      notificationBtn: dom.notificationBtn,
+      isAppDisposed: () => disposed,
+      api: (url, options = {}) => {
+        const body = options && options.body ? JSON.parse(JSON.stringify(options.body)) : null;
+        calls.push(["api", url, body]);
+        const routeKey = Object.keys(apiRoutes).find((k) => String(url).indexOf(k) !== -1);
+        const val = routeKey === undefined ? defaultApi(url) : apiRoutes[routeKey];
+        if (val instanceof Error) return Promise.reject(val);
+        if (typeof val === "function") return Promise.resolve(val(url, body));
+        return Promise.resolve(val);
+      },
+      setToast: (t) => { toasts.push(t); calls.push(["setToast", t]); },
+      handleAppAuthLoss: () => { calls.push(["handleAppAuthLoss"]); },
+      resolveAppUrl: (p) => p,
+      versionedShellAssetPath: (p) => p,
+      storageGetItem: (k) => (storage.has(k) ? storage.get(k) : null),
+      storageSetItem: (k, v) => { calls.push(["storageSetItem", k, String(v)]); storage.set(k, String(v)); },
+      storageRemoveItem: (k) => { calls.push(["storageRemoveItem", k]); storage.delete(k); },
+      eventBindings: { on(target, type, handler, options) { target.addEventListener(type, handler, options); return handler; } },
+      focusSessionFromNotification: (sid) => { calls.push(["focusSessionFromNotification", sid]); },
+      windowTarget: ctx.window,
+      navigatorTarget: ctx.navigator,
+      documentTarget: ctx.document,
+      Notification: NotificationCtor,
+      clearTimeout: fakeClearTimeout,
+    },
     requestFrame: (fn) => fn(),
     setTimeout: fakeSetTimeout,
     clearTimeout: fakeClearTimeout,
@@ -205,11 +233,12 @@ const ctx = {
   console,
   window: { isSecureContext: true },
   navigator: { userAgent: "X11 Linux x86_64" },
-  document: { activeElement: null, contains: () => true },
+  document: { activeElement: null, contains: () => true, addEventListener() {}, removeEventListener() {} },
 };
 vm.createContext(ctx);
 vm.runInContext(MODAL_SOURCE, ctx);
 vm.runInContext(HELPERS_SOURCE, ctx);
+vm.runInContext(NOTIFICATIONS_SOURCE, ctx);
 vm.runInContext(VOICE_SOURCE, ctx);
 
 globalThis.__harness = {
@@ -235,12 +264,14 @@ globalThis.__harness = {
 def harness_script(epilogue: str) -> str:
     voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
     helpers_source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+    notifications_source = APP_NOTIFICATIONS_JS.read_text(encoding="utf-8")
     modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
     js = (
         textwrap.dedent(
             f"""
         const MODAL_SOURCE = {json.dumps(modal_source)};
         const HELPERS_SOURCE = {json.dumps(helpers_source)};
+        const NOTIFICATIONS_SOURCE = {json.dumps(notifications_source)};
         const VOICE_SOURCE = {json.dumps(voice_source)};
         """
         )
@@ -277,14 +308,14 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             const setCalls = h.calls.filter((x) => x[0] === "storageSetItem").map((x) => x[1]);
             globalThis.__result = {
               announcements: c.voiceAnnouncementsEnabled(),
-              notifications: c.notificationsEnabledLocally(),
+              notificationTitle: h.dom.notificationBtn.title,
               clientIdStored: setCalls.indexOf("codoxear.announcementClientId") !== -1,
             };
             """
         )
         result = run_node_json(js)
         self.assertTrue(result["announcements"])
-        self.assertFalse(result["notifications"])
+        self.assertEqual(result["notificationTitle"], "Notifications off")
         self.assertTrue(result["clientIdStored"])
 
     def test_announcement_client_id_reuses_persisted_value(self) -> None:
@@ -453,7 +484,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             h.setUserAgent("X11 Linux x86_64");
             h.setSecureContext(true);
             const c = h.createController();
-            await c.syncNotificationState({ subscriptions: [] });
+            await c.refreshBackgroundState({ force: true });
             const desktop = { title: h.dom.notificationBtn.title, active: h.dom.notificationBtn.classList.contains("active") };
 
             // Switch to a mobile UA with no push subscription: locally enabled
@@ -462,13 +493,13 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             h.seedStorage({
               "codoxear.notificationEnabled": "1",
             });
-            await c.syncNotificationState({ subscriptions: [] });
+            await c.refreshBackgroundState({ force: true });
             const mobile = { title: h.dom.notificationBtn.title };
 
             // Locally disabled => "Notifications off" regardless of device.
             h.seedStorage({});
             const c2 = h.createController();
-            await c2.syncNotificationState({ subscriptions: [] });
+            await c2.refreshBackgroundState({ force: true });
             const off = { title: h.dom.notificationBtn.title, active: h.dom.notificationBtn.classList.contains("active") };
             globalThis.__result = { desktop, mobile, off };
             """
@@ -557,7 +588,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             c.dispose();
             const timersAfter = h.pendingTimerCount();
             // After dispose, the controller-owned button onclick handlers are released.
-            const handlersCleared = h.dom.announceBtn.onclick === null && h.dom.notificationBtn.onclick === null && h.dom.voiceSettingsSaveBtn.onclick === null;
+            const handlersCleared = h.dom.announceBtn.onclick === null && h.dom.voiceSettingsSaveBtn.onclick === null;
             // After dispose, running pending timers (none should remain) must not
             // issue any API call.
             const apiBefore = h.calls.filter((x) => x[0] === "api").length;

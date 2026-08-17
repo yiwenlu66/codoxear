@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_SOURCE = (module_path("app_voice.js")).read_text(encoding="utf-8")
 VOICE_HELPERS_SOURCE = (module_path("app_voice_helpers.js")).read_text(encoding="utf-8")
+NOTIFICATIONS_SOURCE = (module_path("app_notifications.js")).read_text(encoding="utf-8")
 MODAL_SOURCE = (module_path("app_modal.js")).read_text(encoding="utf-8")
 
 
@@ -36,6 +37,18 @@ def run_voice_resume_harness() -> dict:
           }};
           return ctx.window.CodoxearVoice.createVoiceController({{
             ...dom,
+            notificationOptions: {{
+              notificationBtn: dom.notificationBtn,
+              isAppDisposed: () => false,
+              api: async () => ({{ subscriptions: [], items: [] }}),
+              setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
+              storageGetItem: (key) => storage && storage.has && storage.has(key) ? storage.get(key) : null,
+              storageSetItem() {{}}, storageRemoveItem() {{}},
+              eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
+              windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document,
+              Notification: ctx.Notification, clearTimeout() {{}},
+            }},
+            eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
             isAppDisposed: () => false,
             api: async (url, options = {{}}) => {{
               if (url === "/api/audio/listener") {{
@@ -68,7 +81,7 @@ def run_voice_resume_harness() -> dict:
           document: {{ activeElement: null, contains: () => true }}, console,
         }};
         vm.createContext(ctx);
-        for (const source of [{json.dumps(MODAL_SOURCE)}, {json.dumps(VOICE_HELPERS_SOURCE)}, {json.dumps(VOICE_SOURCE)}]) vm.runInContext(source, ctx);
+        for (const source of [{json.dumps(MODAL_SOURCE)}, {json.dumps(VOICE_HELPERS_SOURCE)}, {json.dumps(NOTIFICATIONS_SOURCE)}, {json.dumps(VOICE_SOURCE)}]) vm.runInContext(source, ctx);
 
         (async () => {{
           // The persisted opt-in immediately registers before session selection;

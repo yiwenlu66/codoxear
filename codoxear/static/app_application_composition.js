@@ -362,7 +362,8 @@ import * as CodoxearWiring from "./app_wiring.js";
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, notificationBtn, liveAudio, voiceSettingsBackdrop,
+      editSaveBtn, editViewer, announceBtn, notificationBtn, notificationPanel, notificationList,
+      notificationEmpty, notificationClearBtn, notificationEnableBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
@@ -664,15 +665,44 @@ import * as CodoxearWiring from "./app_wiring.js";
           return unattendedController.hide(opts);
         }
 
-        // Voice/settings/notification/announcement state and behavior live in
-        // app_voice.js. Composition supplies shared runtime dependencies and
-        // invokes only the background refresh/resume seams needed by boot and
-        // browser lifecycle coordination.
+        // Voice settings coordinate the combined server snapshot; notification
+        // state, transport, widget rendering, and handlers stay behind the
+        // notification runtime constructed through the voice module.
+        const notificationOptions = wiring.createNotificationOptions({
+          notificationBtn,
+          notificationPanel,
+          notificationList,
+          notificationEmpty,
+          notificationClearBtn,
+          notificationEnableBtn,
+          isAppDisposed: () => appDisposed,
+          api,
+          setToast,
+          handleAppAuthLoss,
+          resolveAppUrl,
+          versionedShellAssetPath,
+          storageGetItem,
+          storageSetItem,
+          storageRemoveItem,
+          eventBindings,
+          focusSessionFromNotification: (sid) => {
+            if (sessionIdFromHash() !== sid) setSessionHash(sid);
+            void sessionLifecycleController.selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("desktop notification session select failed", e);
+            });
+          },
+          windowTarget: window,
+          navigatorTarget: navigator,
+          documentTarget: document,
+          Notification: window.Notification,
+          AudioContext: window.AudioContext || window.webkitAudioContext,
+          clearTimeout,
+        });
         let voiceController;
         function instantiateVoiceController() {
           return codoxearVoice.createVoiceController(wiring.createVoiceOptions({
             announceBtn,
-            notificationBtn,
             liveAudio,
             voiceSettingsBackdrop,
             voiceSettingsCloseBtn,
@@ -686,6 +716,8 @@ import * as CodoxearWiring from "./app_wiring.js";
             voiceSettingsViewer,
             voiceSettingsCancelBtn,
             voiceSettingsSaveBtn,
+            notificationOptions,
+            eventBindings,
             isAppDisposed: () => appDisposed,
             api,
             setToast,
@@ -693,17 +725,9 @@ import * as CodoxearWiring from "./app_wiring.js";
             prepareModalOpen,
             afterModalVisibilityChanged,
             resolveAppUrl,
-            versionedShellAssetPath,
             storageGetItem,
             storageSetItem,
             storageRemoveItem,
-            focusSessionFromNotification: (sid) => {
-              if (sessionIdFromHash() !== sid) setSessionHash(sid);
-              void sessionLifecycleController.selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
-                if (e && e.status === 401) handleAppAuthLoss();
-                else console.error("desktop notification session select failed", e);
-              });
-            },
           }));
         }
         voiceController = instantiateVoiceController();
