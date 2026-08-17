@@ -236,3 +236,67 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
 - PHASE 3 COMPLETE: suite 1697 green, guard clean (incl. callsite
   coverage), docker_verify PASS + ui_flows OBSERVED (d95da129), live
   behavior re-verified, adversarial review adjudicated to zero.
+- PHASE 4 (921c5676): app_topbar.js owns status chip, ctx chip,
+  interrupt button end-to-end; app_session_display.js dissolved; shell
+  keeps layout slots. Adversarial review (82eb27bd): 5 objections.
+  ACCEPTED: docs authority (AGENTS.md/README named the deleted module),
+  conversation-copy source-slicing test (removed per absolute policy;
+  contract documented in AGENTS.md; full *_module_source.py family
+  audited — all others behavioral), dead .status-chip.running CSS, stale
+  test filename. PARTIALLY ACCEPTED: maximal one-module litmus —
+  ownership boundary documented instead (topbar=logic, shell=slots,
+  css=presentation, help overlay=shortcut table). Revision 9f61ec7c.
+- Phase 4 accessibility verification (live Docker browser, VALIDATION.md
+  boundary): all activation paths PASS (hint z/y, Enter, Space, pointer,
+  hidden-state exclusion, no backend side effects, overflow). Two
+  PRE-EXISTING geometry gaps filed as issues #30/#31 (ctx chip 32px
+  mobile hit area; interrupt ::after slop possibly inert).
+  docker_verify PASS at 9f61ec7c. PHASE 4 COMPLETE.
+- PHASE 5 part 1 (eb9097ba): polling state extracted to
+  app_polling.js createPollingRuntime (timers, enabled flags, streaks,
+  generation). Docker PASS.
+- Phase 5 adversarial review (critic sol, 663ef5f6; infra misclassified
+  it failed, report complete): 12 objections, ALL ACCEPTED — none
+  overruled. Highlights: (2) session-catalog/launch-defaults closure
+  mesh survives (inventory rank-3 cluster); (3) LIVE dual-authority
+  defect — backendSupportsFast reads the stale outer defaults copy,
+  service_tier fast may be sent from fallback defaults; (4) my own
+  polling-cluster spec put the async epoch inside polling — capability
+  boundary regression; (1/6/7/8) composition still owns workflows
+  (unattended-aggregate, confirm, copy, help, modal policy,
+  title/placeholder multi-writer); (9-12) listener registry bypass,
+  dead inputs/functions, stale comments. Revision decomposed: A
+  (catalog + dual-authority, sol), B (epoch split + polling test gap),
+  C (workflow extraction), D (hygiene).
+- Revision A (7c0645e8, sol): app_session_catalog.js + dual-authority
+  fix implemented; executor timed out at 30m mid-verification with
+  suite green (1699); resumed for close-out (e637d727).
+- Revision A committed (05eedb99): catalog owns latestSessions/
+  sessionIndex(derived)/recentCwds/newSessionDefaults/tmuxAvailable;
+  dual-authority fast-tier defect fixed with launch-authority
+  regression test. Docker PASS.
+- Revision B (392e6563): createAsyncEpoch split from createPollingRuntime;
+  polling tests fire callbacks. Deploy tripwire modernized to the new
+  ownership form (363942b2, 3a075b94).
+- Revision C1 (171e213c): confirmation/conversation-copy/help workflows
+  + modal policy extracted. TDZ boot crash from a const replacing a
+  hoisted function (fixed f4da61a9 — hoisting-semantics lesson recorded:
+  VM suite does not catch TDZ, only Docker boot does).
+- Revision C2+D (586b41bb): updateUnattendedBtnState decomposed to named
+  subscribing owners; title single-writer (audited: one
+  titleLabel.textContent writer); transcript listeners cleanup-
+  registered; dead inputs/functions/inits/comments swept. Docker PASS.
+- Phase 5 closing review (critic sol, 05cbc4ec): 11/12 fixed; 3 new
+  objections, all ACCEPTED, one root cause — catalog exposes shared
+  mutable records so patches are invisible to subscriptions, which is
+  WHY imperative relays survived. Closing revision (81940ea1):
+  patchSession (observable in-place mutation) + applySnapshot (atomic
+  multi-field publish) added; ALL imperative render relays removed —
+  every examined transition covered by store/catalog notification.
+  Commit d1907983. Behavior parity judged "identical" by the live
+  Docker browser subagent (title rename, send lifecycle, search, nav,
+  diagnostics, unattended all verified).
+- PHASE 5 COMPLETE: suite 1708, guard clean, docker_verify + ui_flows
+  PASS (d1907983), behavior parity verified, closing objections
+  mechanically verified dead (patchSession at all 3 mutation sites,
+  applySnapshot in refresh, zero relay calls).
