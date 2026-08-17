@@ -29,7 +29,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     }
     const { wiring, olderWrap, olderBtn, olderError, olderErrorText, AbortController, performance,
       OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss,
-      syncQueueSubmitState, syncComposerSendButton, updateUnattendedBtnState,
+      syncQueueSubmitState, syncComposerSendButton, syncUnattendedButtonState,
       sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
       sessionIdFromHash, sessionSelectable } = options;
     const { transcriptSlotRuntime, transcriptScrollRuntime, setOlderState,
@@ -265,7 +265,7 @@ function syncRecoveryUiForSession(sessionId) {
   getAttachmentsController().syncAttachButtonState();
   syncQueueSubmitState();
   syncComposerSendButton();
-  updateUnattendedBtnState();
+  syncUnattendedButtonState();
 }
 
 function renderPendingTranscriptSlot(sessionId) {

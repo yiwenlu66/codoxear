@@ -27,7 +27,7 @@
       throw new TypeError("attachments controller dependency missing: sessionState");
     }
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("attachments controller dependency missing: sessionCatalog");
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") throw new TypeError("attachments controller dependency missing: sessionCatalog");
     const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
     const patchSessionInfo = (sessionId, patch) => {
       const current = getSessionInfo(sessionId);
@@ -477,6 +477,7 @@
     const unsubscribeSessionState = [
       sessionState.subscribe("selected", syncAttachButtonState),
       sessionState.subscribe("sending", syncAttachButtonState),
+      sessionCatalog.subscribe("sessionIndex", syncAttachButtonState),
     ];
     setAttachCount(0);
     syncAttachButtonState();

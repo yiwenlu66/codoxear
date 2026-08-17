@@ -24,12 +24,7 @@
     const clearAttachments = requireFunction(options.clearAttachments, "clearAttachments");
     const renderSessions = requireFunction(options.renderSessions, "renderSessions");
     const hasDeferredRefresh = requireFunction(options.hasDeferredRefresh, "hasDeferredRefresh");
-    const setTitle = requireFunction(options.setTitle, "setTitle");
-    const sessionTitle = requireFunction(options.sessionTitle, "sessionTitle");
     const updateTypingStats = requireFunction(options.updateTypingStats, "updateTypingStats");
-    const updateUnattendedButton = requireFunction(options.updateUnattendedButton, "updateUnattendedButton");
-    const syncComposerSendButton = requireFunction(options.syncComposerSendButton, "syncComposerSendButton");
-    const syncQueueSubmitState = requireFunction(options.syncQueueSubmitState, "syncQueueSubmitState");
     const maybeSelectPendingHashSession = requireFunction(options.maybeSelectPendingHashSession, "maybeSelectPendingHashSession");
 
     let refreshInFlight = null;
@@ -108,10 +103,6 @@
       if (selectedSession) updateTypingStats(selectedSession);
       const renderedSidebar = renderSessions(sessions, { selectedId: selected, swipeActions: !useDesktopSessionActions() });
       if (!renderedSidebar) return sessions;
-      if (selectedSession) setTitle(sessionTitle(selectedSession));
-      updateUnattendedButton();
-      syncComposerSendButton();
-      syncQueueSubmitState();
       maybeSelectPendingHashSession();
       return sessions;
     }

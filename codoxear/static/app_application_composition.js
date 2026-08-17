@@ -23,8 +23,8 @@ import * as CodoxearUnattended from "./app_unattended.js";
 import * as CodoxearWiring from "./app_wiring.js";
 
 
-/* Application composition owns concrete lifecycle, controller assembly, and UI behavior.
- * app_application_runtime.js remains the stable bootstrap facade. */
+/* Application composition owns shell construction, controller assembly, boot
+ * sequencing, polling ticks, and cleanup-registered application listeners. */
 
   function createEventBindings(options = {}) {
     const addEvent = options.addEvent;
@@ -73,37 +73,27 @@ import * as CodoxearWiring from "./app_wiring.js";
       window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
       isTextEntryElement, updateAppHeightVar,
-      codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
-      codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
+      codoxearViewport, codoxearDisplay, codoxearVoice, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
       codoxearMessageFlow, codoxearInterrupt, codoxearDialogMenus,
       codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
-      codoxearFileTouch, codoxearPerfHelpers, pushPerfSample, summarizePerf, codoxearUrls,
-      resolveAppUrl, versionedShellAssetPath, codoxearStorage, optionalLocalStorage, storageGetItem,
-      storageSetItem, storageRemoveItem, codoxearLaunch, codoxearNewSession, lastProviderKey,
-      lastProviderModelKey, loadRememberedBackendChoice, rememberBackendChoice,
-      loadRememberedProviderChoice, rememberProviderChoice, loadRememberedProviderModelChoice,
-      rememberedProviderModelAbsentChoice, rememberProviderModelChoice, codoxearApi,
+      codoxearFileTouch, pushPerfSample,
+      resolveAppUrl, versionedShellAssetPath, storageGetItem,
+      storageSetItem, storageRemoveItem, codoxearLaunch, codoxearNewSession,
       apiResponseNotModified, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers,
-      listFromFilesField, listFromFileRecords, baseName, fuzzyRecentCwdScore, shortSessionId,
-      sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash,
-      codoxearSessionHelpers, sessionLaunchKind, sessionLaunchIcon, sessionLaunchFailed,
+      listFromFilesField, listFromFileRecords, baseName,
+      sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash, sessionLaunchIcon, sessionLaunchFailed,
       sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
-      sessionHasOrphanQueueRecovery, sessionSidebarGroupKey, sidebarSessionEntries,
-      sidebarRenderSignature, sessionSelectable, diagnosticsProviderDisplay, diagnosticsCopyText,
-      normalizeQueueItems, codoxearPolling, codoxearNetwork,
-      transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
+      sessionHasOrphanQueueRecovery, sidebarSessionEntries,
+      sidebarRenderSignature, sessionSelectable, diagnosticsProviderDisplay, diagnosticsCopyText, codoxearPolling, codoxearNetwork, copyConversationFailureToast, normalizeAgentBackendName,
       agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
       emptyPiLaunchDefaults, emptyCcLaunchDefaults, redactedLaunchErrorText, sessionLaunchLabel,
-      sessionIsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches,
-      providerModelDisplay, fmtIdleAge, fmtRelativeAge, sessionTitleWithId, stripPathLocationSuffix,
-      isTextFileKind, isDiffableFileKind, blockedFileMessage, formatPriorityOffset, fileSearchScore,
-      normalizeDraftFilePath, filePickerFoldedSearchText, filePickerOriginalRangeForFolded,
-      filePickerMatchRanges, filePickerMatchRangesForQuery, filePickerCandidateScore,
-      compareFilePickerEntries, normalizeFileCandidateSource, filePickerSectionLabel,
+      sessionIsFast, providerChoiceToSettings, sessionProviderChoice, fmtRelativeAge, sessionTitleWithId, stripPathLocationSuffix,
+      isTextFileKind, isDiffableFileKind, blockedFileMessage, formatPriorityOffset,
+      normalizeDraftFilePath, filePickerSectionLabel,
       duplicateFilePickerPaths, rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle,
       dataTransferHasFiles, extractFilesFromClipboardData, extractFilesFromDropData, safeAttachmentStem,
       isLikelyHeic, looksLikeImage, b64FromBytes, codoxearFilePicker, codoxearFileViewer,
-      codoxearFileEditor, codoxearMarkdown, normalizeLineNumber, parseLocalFileRef,
+      codoxearFileEditor, normalizeLineNumber, parseLocalFileRef,
       isMarkdownPreviewable, markdownPreviewHtml, chatMarkdownHtmlCached, iconSvg,
       cleanupActiveApp, renderLogin, setActiveAppCleanup, clearActiveAppCleanup
     } = deps;
@@ -127,7 +117,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           backdrop,
           sessionsWrap,
           sidebarEmptyHint,
-          chatWrap,
           chatEmptyState,
           chat,
           chatInner,
@@ -244,6 +233,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           }
           if (voiceController) voiceController.dispose();
           if (unattendedController) unattendedController.dispose();
+          if (fileOpsController) fileOpsController.dispose();
           filePickerSearchState.dispose();
           if (iosViewportController) iosViewportController.dispose();
           if (chatSearchController) chatSearchController.dispose();
@@ -353,6 +343,8 @@ import * as CodoxearWiring from "./app_wiring.js";
         const sessionTitleController = CodoxearSessionTitle.createSessionTitleController(wiring.createSessionTitleOptions({
           titleLabel,
           sessionState,
+          sessionCatalog,
+          sessionTitleWithId,
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
         }));
 
@@ -566,6 +558,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           bottomSentinel: bottomSentinel,
           chat: chat,
           chatInner: chatInner,
+          chatNavRail,
+          chatEmptyState,
           chatMarkdownHtmlCached: chatMarkdownHtmlCached,
           chatSearchAllHintEl: chatSearchAllHintEl,
           chatSearchBar: chatSearchBar,
@@ -622,24 +616,21 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionIdFromHash: sessionIdFromHash,
           sessionIsOrphanRecovery: sessionIsOrphanRecovery,
           sessionSelectable: sessionSelectable,
-          sessionTitleWithId: sessionTitleWithId,
           setTimeout: setTimeout,
           syncComposerSendButton: syncComposerSendButton,
           syncQueueSubmitState: syncQueueSubmitState,
           textarea: textarea,
-          titleLabel: titleLabel,
-          updateUnattendedBtnState: () => updateUnattendedBtnState(),
+          syncUnattendedButtonState: () => unattendedController.syncButtonState(),
           window: window,
-          updateQueueBadge: () => updateQueueBadge(),
         }));
         ({ attachmentsController, messageFlowController } = chatInteractionController);
         const {
-          chatSearchController, chatNavigationController, hintModeController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
-          transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, transcriptView, markClickLoad, olderLoadRuntime,
-          resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
-          closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,
+          chatSearchController, chatNavigationController, hintModeController, sidebarController, transcriptSlotRuntime,
+          transcriptScrollRuntime, transcriptView, markClickLoad, olderLoadRuntime,
+          resetChatRenderState, clearOlderLoadError,
+          clearRenderedTranscriptRange, dropPendingUserRows,
           updateSessionTranscriptSlot, tailCacheMatchesSession, applySessionListTranscriptIdentity,
-          updateQueueBadge, updateTypingStatsFromSession, messagePollDelayMs, kickPoll,
+          updateTypingStatsFromSession, messagePollDelayMs, kickPoll,
           setPollFastUntilMs, openMessageEventSource, isMobile, useDesktopSessionActions,
           useTouchFileEditorControls, setSidebarOpen, setSidebarCollapsed, clearCommitUnknownSend,
           refreshSessions, loadOlderMessages, applySessionRuntimeFromTail, renderSessionTail,
@@ -656,6 +647,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             remainingEl: unattendedRemainingEl,
             requestEl: unattendedRequestEl,
             sessionState,
+            sessionCatalog,
             getSessionInfo: (sid) => sessionCatalog.get("sessionIndex").get(sid),
             isAppDisposed: () => appDisposed,
             api,
@@ -668,53 +660,20 @@ import * as CodoxearWiring from "./app_wiring.js";
             requestFrame: requestAnimationFrame,
             setTimeout,
             clearTimeout,
-            requestShellProjection: updateUnattendedBtnState,
             storageGetItem,
             storageSetItem,
             storageRemoveItem,
           }));
         })();
 
-        // App-shell button projection. The unattended-specific projection
-        // (button disabled/title/active, cfg cache sync from session fields,
-        // number-input draft sync, menu enabled-checkbox sync, and the
-        // close-menu-when-selected-changes guard) is delegated to the
-        // controller. Everything else (title edit, attach/file/send/queue/diag
-        // buttons, context bar, chat nav, chat-search close) stays here.
-        function updateUnattendedBtnState() {
-          unattendedController.syncButtonState();
-          attachmentsController.syncAttachButtonState();
-          const fileViewerBlocked = Boolean(sessionState.get("selected") && selectedSessionLaunchFailed());
-          const fileViewerLabel = !sessionState.get("selected") ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
-          fileBtn.disabled = !sessionState.get("selected") || fileViewerBlocked;
-          fileBtn.title = fileViewerLabel;
-          fileBtn.setAttribute("aria-label", fileViewerLabel);
-          chatSearchBtn.disabled = !sessionState.get("selected");
-          chatNavRail.style.display = sessionState.get("selected") ? "flex" : "none";
-          chatEmptyState.style.display = sessionState.get("selected") ? "none" : "flex";
-          if (!sessionState.get("selected") && chatSearchController.isOpen()) closeChatSearch();
-          updateChatNavButtons();
-          syncQueueSubmitState();
-          syncComposerSendButton();
-          diagBtn.disabled = !sessionState.get("selected");
-        }
-
         function hideUnattendedMenu(opts) {
           return unattendedController.hide(opts);
         }
 
-        function showUnattendedMenu(opts) {
-          return unattendedController.show(opts);
-        }
-
-        function toggleUnattendedMenu(opts) {
-          return unattendedController.toggle(opts);
-        }
-        // --- Voice / Settings / Notifications / Announcement orchestration
-        // announcement state through thin wrappers below. app_voice.js owns
-        // voice DOM construction, state, handlers, timers, and HLS lifecycle;
-        // app.js supplies shell/runtime dependencies and keeps event wiring that
-        // feeds voice from the poll/SSE orchestration.
+        // Voice/settings/notification/announcement state and behavior live in
+        // app_voice.js. Composition supplies shared runtime dependencies and
+        // invokes only the background refresh/resume seams needed by boot and
+        // browser lifecycle coordination.
         let voiceController;
         function instantiateVoiceController() {
           return codoxearVoice.createVoiceController(wiring.createVoiceOptions({
@@ -754,23 +713,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           }));
         }
         voiceController = instantiateVoiceController();
-        function voiceAnnouncementsEnabled() {
-          return voiceController.voiceAnnouncementsEnabled();
-        }
-        function notificationsEnabledLocally() {
-          return voiceController.notificationsEnabledLocally();
-        }
-        function loadVoiceSettings() {
-          return voiceController.loadVoiceSettings();
-        }
         function refreshVoiceBackgroundState(options) {
           return voiceController.refreshBackgroundState(options);
-        }
-        function syncNotificationState(serverSnapshot) {
-          return voiceController.syncNotificationState(serverSnapshot);
-        }
-        function pollNotificationFeed(opts) {
-          return voiceController.pollNotificationFeed(opts);
         }
         function resumeAnnouncementRuntime(opts) {
           return voiceController.resumeAnnouncementRuntime(opts);
@@ -800,8 +744,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           formatPriorityOffset, handleAppAuthLoss, isDiffableFileKind, isMarkdownPreviewable,
           isTextEntryElement, isTextFileKind, modalIsolationTargets, normalizeDraftFilePath,
           parseLocalFileRef, rawByteDuplicatePaths, refreshSessions: () => sessionRefreshController.refreshSessions(), selectedSessionLaunchFailed,
-          sessionDisplayName, sessionTitleWithId, setPickerButtonContent, storageGetItem,
-          storageSetItem, stripPathLocationSuffix, titleLabel,
+          sessionDisplayName, setPickerButtonContent, storageGetItem,
+          storageSetItem, stripPathLocationSuffix,
           useTouchFileEditorControls: () => codoxearViewport.useTouchFileEditorControls(),
           filePickerField, filePickerMenu, filePickerInput, fileStatus, fileDiff, fileImage,
           fileVideo, fileVideoPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
@@ -869,10 +813,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           return queueController.refreshQueueViewer();
         }
 
-        function showQueueViewer(opts) {
-          return queueController.showQueueViewer(opts);
-        }
-
         function hideQueueViewer() {
           return queueController.hideQueueViewer();
         }
@@ -895,12 +835,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           return helpController.hide();
         }
 
-        // Details/diagnostics modal state, rendering decisions, and the
-        // Copy conversation / Copy details / show / hide
-        // behavior live in the CodoxearDiagnostics controller
-        // (codoxear/static/app_diagnostics.js).
-        // app.js owns DOM construction for the diag nodes and the thin
-        // delegating wrappers below; all diag rendering authority is delegated.
+        // app_diagnostics.js owns diagnostics availability, modal state,
+        // rendering, and copy actions. Composition supplies its DOM and shared
+        // services, then wires shell events to the controller.
         const diagController = (function instantiateDiagnosticsController() {
           return CodoxearDiagnostics.createDiagnosticsController(wiring.createDiagnosticsOptions({
             diagBackdrop,
@@ -908,6 +845,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             diagContent,
             diagStatus,
             diagCloseBtn,
+            diagBtn,
             diagCopyConversationBtn,
             diagCopyBtn,
             sessionState,
@@ -943,8 +881,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           return diagController.hide(opts);
         }
 
-        syncQueueSubmitState();
-
         sessionLifecycleController = CodoxearSessionLifecycle.createSessionLifecycleController(wiring.createSessionLifecycleOptions({
           asyncEpoch,
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
@@ -969,8 +905,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           resetChatRenderState,
           getSession: (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId),
           isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && asyncEpoch.currentGeneration() === generation,
-          setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
-          setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
           markClickLoad,
           updateTypingStats: updateTypingStatsFromSession,
           beginFileViewerSync: () => {
@@ -1007,12 +941,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           openMessageEventSource,
           isMobile,
           closeSidebar: () => setSidebarOpen(false),
-          updateUnattendedButton: updateUnattendedBtnState,
           refreshFileCandidates,
           isUnattendedOpen: () => unattendedController.isOpen(),
           hideUnattendedMenu,
-          syncComposerSendButton,
-          syncQueueSubmitState,
           saveSessionScrollPosition: (sessionId) => transcriptScrollRuntime.saveSessionScrollPosition(sessionId),
           restoreSessionScrollPosition: (sessionId) => transcriptScrollRuntime.restoreSessionScrollPosition(sessionId),
           clearSessionScrollPosition: (sessionId) => transcriptScrollRuntime.clearSessionScrollPosition(sessionId),
@@ -1052,12 +983,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           renderSessions: (sessions, options) => sidebarController.renderSessions(sessions, options),
           hasDeferredRefresh: () => sidebarController.hasDeferredRefresh(),
-          setTitle: (title) => { titleLabel.textContent = title; },
-          sessionTitle: sessionTitleWithId,
           updateTypingStats: updateTypingStatsFromSession,
-          updateUnattendedButton: updateUnattendedBtnState,
-          syncComposerSendButton,
-          syncQueueSubmitState,
           maybeSelectPendingHashSession,
         }));
 
@@ -1113,24 +1039,27 @@ import * as CodoxearWiring from "./app_wiring.js";
         });
 	        eventBindings.on(backdrop, 'click', () => setSidebarOpen(false));
 
-        chat.addEventListener("scroll", () => {
+        eventBindings.on(chat, "scroll", () => {
           transcriptView().observeScroll("handleScroll");
         });
-        chat.addEventListener(
+        eventBindings.on(
+          chat,
           "wheel",
           (e) => {
             transcriptView().observeScroll("handleWheel", e);
           },
           { passive: true }
         );
-        chat.addEventListener(
+        eventBindings.on(
+          chat,
           "touchstart",
           (e) => {
             transcriptView().observeScroll("handleTouchStart", e);
           },
           { passive: true }
         );
-        chat.addEventListener(
+        eventBindings.on(
+          chat,
           "touchmove",
           (e) => {
             // Finger moves down -> content scrolls up.
@@ -1162,9 +1091,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           setTimeout,
           clearTimeout,
         }));
-        updateQueueBadge();
-        syncQueueSubmitState();
-        syncComposerSendButton();
         composerController = codoxearComposer.createComposerController(wiring.createComposerOptions({
           form,
           textarea,
@@ -1241,7 +1167,6 @@ import * as CodoxearWiring from "./app_wiring.js";
 	            setToast(`sessions error: ${e && e.message ? e.message : "unknown error"}`);
 	          } finally {
               if (appDisposed) return;
-	            if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
 	            resizeComposer();
 
 	            scheduleSessionsPoll();

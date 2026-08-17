@@ -68,12 +68,13 @@ const diagViewer = fakeNode();
 const diagContent = fakeNode();
 const diagStatus = fakeNode();
 const diagCloseBtn = fakeNode();
+const diagBtn = fakeNode();
 const diagCopyConversationBtn = fakeNode();
 const diagCopyBtn = fakeNode();
 
 const deps = {
-  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagCopyConversationBtn, diagCopyBtn,
-  sessionState: { get: () => selected },
+  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagBtn, diagCopyConversationBtn, diagCopyBtn,
+  sessionState: { get: () => selected, subscribe: () => () => {} },
   getSessionInfo: (sid) => sessions.get(sid) || null,
   api: (url) => {
     calls.push(["api", url]);
@@ -131,7 +132,7 @@ globalThis.__harness = {
   controller,
   calls,
   toasts,
-  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagCopyConversationBtn, diagCopyBtn },
+  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagBtn, diagCopyConversationBtn, diagCopyBtn },
   HTMLElementCtor: ctx.HTMLElement,
   sessions,
   select: (sid) => { selected = sid; },
@@ -226,8 +227,8 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const node = { style: {}, setAttribute() {}, appendChild() {} };
             const wiredExceptApi = {
               diagBackdrop: node, diagViewer: node, diagContent: node, diagStatus: node,
-              diagCloseBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
-              sessionState: { get: () => null }, getSessionInfo: () => null,
+              diagCloseBtn: node, diagBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
+              sessionState: { get: () => null, subscribe: () => () => {} }, getSessionInfo: () => null,
               api: null,
               setToast: () => {}, copyToClipboard: () => {}, copyConversation: () => {},
               recoveryDetailsText: () => "",

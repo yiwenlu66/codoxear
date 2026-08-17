@@ -71,7 +71,6 @@ def eval_session_edit_lifecycle() -> dict:
           const snoozeButtons = new Map([["none", makeNode()], ["4h", makeNode()], ["tomorrow", makeNode()], ["custom", makeNode()]]);
           const session = {{ session_id: "session-1", alias, priority_offset: 0, snooze_until: 0, dependency_session_id: "", cwd: "/repo" }};
           const calls = [];
-          let renderedTitle = alias;
           const controller = ctx.window.CodoxearSessionEdit.createSessionEditController({{
             documentTarget: {{ activeElement: makeNode() }}, ElementCtor: ElementStub, el, iconSvg: () => "",
             editCloseBtn, editStatus, editNameInput, editPriorityRange, editPriorityValue,
@@ -84,11 +83,10 @@ def eval_session_edit_lifecycle() -> dict:
             formatPriorityOffset: (value) => `+${{Number(value).toFixed(2)}}`, setPickerButtonContent: () => {{}},
             api: async (path, request) => {{ calls.push({{ path, body: request.body }}); session.alias = request.body.name; return {{}}; }},
             refreshSessions: async () => [session], setToast: (value) => calls.push({{ toast: value }}),
-            setTitle: (_sid, entry) => {{ renderedTitle = entry.alias; }},
             prepareModalOpen: () => {{}}, afterModalVisibilityChanged: () => {{}}, positionDialogMenu: () => {{}},
             addAppEvent: () => {{}}, now: () => Date.UTC(2026, 0, 1, 12, 0, 0), HTMLElementCtor: ElementStub,
           }});
-          return {{ controller, editNameInput, editSaveBtn, editCancelBtn, editViewer, calls, title: () => renderedTitle }};
+          return {{ controller, editNameInput, editSaveBtn, editCancelBtn, editViewer, calls, alias: () => session.alias }};
         }}
 
         const ctx = {{ window: {{}}, ElementStub }};
@@ -105,8 +103,8 @@ def eval_session_edit_lifecycle() -> dict:
           cancel.editNameInput.value = "Discarded";
           cancel.editCancelBtn.onclick();
           process.stdout.write(JSON.stringify({{
-            save: {{ title: save.title(), closed: !save.editViewer.open, calls: save.calls }},
-            cancel: {{ title: cancel.title(), closed: !cancel.editViewer.open, calls: cancel.calls }},
+            save: {{ alias: save.alias(), closed: !save.editViewer.open, calls: save.calls }},
+            cancel: {{ alias: cancel.alias(), closed: !cancel.editViewer.open, calls: cancel.calls }},
           }}));
         }});
         """
@@ -115,9 +113,9 @@ def eval_session_edit_lifecycle() -> dict:
 
 
 class TestFrontendSessionEditModule(unittest.TestCase):
-    def test_save_commits_edited_title_and_updates_title_projection(self) -> None:
+    def test_save_commits_edited_title_and_refreshes_catalog_data(self) -> None:
         result = eval_session_edit_lifecycle()
-        self.assertEqual(result["save"]["title"], "Renamed")
+        self.assertEqual(result["save"]["alias"], "Renamed")
         self.assertTrue(result["save"]["closed"])
         self.assertEqual(
             result["save"]["calls"][0],
@@ -135,7 +133,7 @@ class TestFrontendSessionEditModule(unittest.TestCase):
 
     def test_cancel_discards_draft_without_mutating_title(self) -> None:
         result = eval_session_edit_lifecycle()
-        self.assertEqual(result["cancel"]["title"], "Original")
+        self.assertEqual(result["cancel"]["alias"], "Original")
         self.assertTrue(result["cancel"]["closed"])
         self.assertEqual(result["cancel"]["calls"], [])
 

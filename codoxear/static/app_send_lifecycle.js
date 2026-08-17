@@ -33,8 +33,8 @@
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
       imgInput, isLikelyHeic, looksLikeImage, navigator, networkStatus,
       resizeComposer, resolveAppUrl,
-      safeAttachmentStem, sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionLaunchFailed, sessionTitleWithId, setTimeout, setToast, syncComposerSendButton,
-      syncQueueSubmitState, textarea, titleLabel, window, wiring
+      safeAttachmentStem, sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionLaunchFailed, setTimeout, setToast, syncComposerSendButton,
+      syncQueueSubmitState, textarea, window, wiring
     } = options;
     const transcript = requireObject(options.transcript, "transcript");
     const history = requireObject(options.history, "history");
@@ -104,7 +104,6 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   appendEvents: (events) => transcriptView().appendEvents(events),
   appendTailSnapshotEvents,
   sessionState,
-  updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
   initPageLimit,
   typingRowRuntime,
   getStagedAttachments: () => attachmentsController.getStagedAttachments(),

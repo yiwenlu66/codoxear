@@ -74,7 +74,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
         return changed;
       };
     const appendTailSnapshotEvents = requireFunction(options.appendTailSnapshotEvents, "appendTailSnapshotEvents");
-    const updateSessionTitle = requireFunction(options.updateSessionTitle, "updateSessionTitle");
     const initPageLimit = requireFunction(options.initPageLimit, "initPageLimit");
     const typingRowRuntime = options.typingRowRuntime;
     if (
@@ -450,7 +449,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
           identityData: data,
         });
       }
-      if (session) updateSessionTitle(session);
     }
 
     async function pollMessages(sessionId = sessionState.get("selected"), generation = currentGeneration()) {

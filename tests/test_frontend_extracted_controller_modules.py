@@ -46,9 +46,12 @@ def run_controller_harness() -> dict:
         let selected = null;
         const title = node();
         const opened = [];
+        const sessionIndex = new Map([["s-1", { session_id: "s-1", alias: "Named session" }]]);
         const titleController = ctx.window.CodoxearSessionTitle.createSessionTitleController({
           titleLabel: title,
           sessionState: { get: () => selected, subscribe: () => () => {} },
+          sessionCatalog: { get: () => sessionIndex, subscribe: () => () => {} },
+          sessionTitleWithId: (session) => `${session.alias} (${session.session_id})`,
           openEditSession: (sessionId) => opened.push(sessionId),
         });
         const disabledTitle = {
@@ -57,7 +60,9 @@ def run_controller_harness() -> dict:
           disabled: title.attributes["aria-disabled"],
         };
         selected = "s-1";
+        titleController.syncTitleValue();
         titleController.syncTitleEditState();
+        const displayedTitle = title.textContent;
         let prevented = false;
         title.onkeydown({ key: "Enter", preventDefault() { prevented = true; } });
 
@@ -139,7 +144,7 @@ def run_controller_harness() -> dict:
           unsavedController.handleFileUnsavedDiscardChoice();
           unsavedController.handleFileUnsavedCancelChoice();
           process.stdout.write(JSON.stringify({
-            title: { disabledTitle, enabled: { cursor: title.style.cursor, tabIndex: title.tabIndex, role: title.attributes.role }, opened, prevented },
+            title: { disabledTitle, displayedTitle, enabled: { cursor: title.style.cursor, tabIndex: title.tabIndex, role: title.attributes.role }, opened, prevented },
             unsaved: { choice, dialogCalls, viewerCalls },
             menu: { top: menu.style.top, maxHeight: menu.style.maxHeight, left: menu.style.left },
             ios: { isIOS: iosController.isIOS(), guardActiveAfterFocus, guardActiveAfterAlternateFocus, viewportCalls, scheduledDelays: scheduled.map((item) => item.delay) },
@@ -161,6 +166,7 @@ def test_extracted_controller_behavior() -> None:
     result = run_controller_harness()
 
     assert result["title"]["disabledTitle"] == {"cursor": "default", "tabIndex": -1, "disabled": "true"}
+    assert result["title"]["displayedTitle"] == "Named session (s-1)"
     assert result["title"]["enabled"] == {"cursor": "pointer", "tabIndex": 0, "role": "button"}
     assert result["title"]["opened"] == ["s-1"]
     assert result["title"]["prevented"] is True

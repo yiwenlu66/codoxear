@@ -117,7 +117,7 @@ sessionState.set("selected", selected);
 
               const diagnosticsController = ctx.window.CodoxearDiagnostics.createDiagnosticsController({
                 diagBackdrop: node("diagBackdrop"), diagViewer: node("diagViewer"), diagContent: node("diagContent"), diagStatus: node("diagStatus"),
-                diagCloseBtn: node("diagCloseBtn"), diagCopyConversationBtn: node("diagCopyConversationBtn"), diagCopyBtn: node("diagCopyBtn"),
+                diagCloseBtn: node("diagCloseBtn"), diagBtn: node("diagBtn"), diagCopyConversationBtn: node("diagCopyConversationBtn"), diagCopyBtn: node("diagCopyBtn"),
                 sessionState, getSessionInfo: () => ({}), api: async () => ({}), setToast: notify("diagnostics"),
                 copyToClipboard: async () => true, copyConversation: async () => true, recoveryDetailsText: () => "", redactedLaunchErrorText: () => "",
                 sessionLaunchLabel: () => "", agentBackendDisplayName: () => "", diagnosticsProviderDisplay: () => "", diagnosticsCopyText: () => "",

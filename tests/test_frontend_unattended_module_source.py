@@ -30,7 +30,6 @@ const vm = require("vm");
 const calls = [];
 const toasts = [];
 const rafCalls = [];
-const shellProjections = [];
 const browserStorage = new Map();
 const sessions = new Map();
 let selected = null;
@@ -123,7 +122,8 @@ const deps = {
   cooldownEl,
   remainingEl,
   requestEl,
-  sessionState: { get: () => selected },
+  sessionState: { get: () => selected, subscribe: () => () => {} },
+  sessionCatalog: { subscribe: () => () => {} },
   getSessionInfo: (sid) => sessions.get(sid) || null,
   isAppDisposed: () => disposed,
   api: (url, options = {}) => {
@@ -149,7 +149,6 @@ const deps = {
   storageGetItem: (key) => browserStorage.has(key) ? browserStorage.get(key) : null,
   storageSetItem: (key, value) => { browserStorage.set(key, String(value)); calls.push(["storageSetItem", key, String(value)]); },
   storageRemoveItem: (key) => { browserStorage.delete(key); calls.push(["storageRemoveItem", key]); },
-  requestShellProjection: () => { shellProjections.push(1); calls.push(["shellProjection"]); },
 };
 
 const ctx = {
@@ -170,7 +169,6 @@ globalThis.__harness = {
   calls,
   toasts,
   rafCalls,
-  shellProjections,
   HTMLElementCtor: ctx.HTMLElement,
   sessions,
   select: (sid) => { selected = sid; },
@@ -276,7 +274,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
             const wiredExceptApi = {
               unattendedBtn: node, unattendedMenu: node,
               enabledEl: node, cooldownEl: node, remainingEl: node, requestEl: node,
-              sessionState: { get: () => null }, getSessionInfo: () => null, isAppDisposed: () => false,
+              sessionState: { get: () => null, subscribe: () => () => {} }, sessionCatalog: { subscribe: () => () => {} }, getSessionInfo: () => null, isAppDisposed: () => false,
               api: null,
               refreshSessions: async () => {}, handleAppAuthLoss: () => {}, setToast: () => {},
               addAppEvent: () => {},

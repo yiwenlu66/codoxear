@@ -28,7 +28,7 @@
     const createLoadedChatSearchRuntime = requireFunction(options.createLoadedChatSearchRuntime, "createLoadedChatSearchRuntime");
     const createChatSearchAllRuntime = requireFunction(options.createChatSearchAllRuntime, "createChatSearchAllRuntime");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
     const currentGeneration = options.currentGeneration;
     if (typeof currentGeneration !== "function") {
       throw new TypeError("chat search controller dependency missing: currentGeneration");
@@ -312,7 +312,16 @@
       close();
     };
 
+    function syncAvailability() {
+      const available = Boolean(sessionState.get("selected"));
+      chatSearchBtn.disabled = !available;
+      if (!available && isOpen()) close();
+    }
+    const unsubscribeSelected = sessionState.subscribe("selected", syncAvailability);
+    syncAvailability();
+
     function dispose() {
+      unsubscribeSelected();
       close();
       requestRuntime.dispose();
       chatSearchBtn.onclick = null;
@@ -330,6 +339,7 @@
       dispose,
       isOpen,
       open,
+      syncAvailability,
       refreshLoaded,
       snapshot: () => loadedRuntime.snapshot(),
       step,

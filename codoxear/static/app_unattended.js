@@ -17,9 +17,9 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
   // modal focus helper (restoreModalFocus) comes from CodoxearModal.
   // Everything that touches app-level runtime state (selected session, session
   // index, app disposed flag, API, session refresh, auth loss, toasts, event
-  // registration, animation frame, timers, document/window targets, optional
-  // shell projection callback) is injected through createUnattendedController
-  // (options) so the controller has no hidden coupling to app.js globals and
+  // registration, animation frame, timers, and document/window targets) is
+  // injected through createUnattendedController(options) so the controller has
+  // no hidden coupling to the application assembly and
   // can be exercised in a VM with fakes.
 
 
@@ -109,7 +109,9 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     // App-level runtime state accessors and effects.
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("unattended controller dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("unattended controller dependency missing: sessionState");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.subscribe !== "function") throw new TypeError("unattended controller dependency missing: sessionCatalog");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const api = requireFunction(options.api, "api");
@@ -124,16 +126,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
     const clearTimeoutFn = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
     // The pending patch is browser-owned until the server has acknowledged it.
-    // app.js injects its guarded localStorage facade so private-mode/storage
-    // failures follow the rest of the browser persistence contract.
+    // Application assembly injects its guarded localStorage facade so
+    // private-mode/storage failures follow the browser persistence contract.
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
     const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
-    // Optional callback app.js wires to its full shell button projection
-    // (updateUnattendedBtnState). Invoked after an input handler mutates cfg /
-    // session state so the app-shell projection (attach/file/send/queue/diag
-    // buttons, context bar, etc.) re-runs exactly as it did before extraction.
-    const requestShellProjection = typeof options.requestShellProjection === "function" ? options.requestShellProjection : null;
 
     // Unattended state owned by this controller.
     let unattendedMenuOpen = false;
@@ -485,15 +482,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
             // for a stale response to rewrite the controls.
             void flushUnattendedSave(sid);
           }
-          if (sessionState.get("selected") === sid) {
-            // Mirror the pre-extraction finally, which called app.js
-            // updateUnattendedBtnState (full shell projection). When app.js wires
-            // requestShellProjection that re-runs the whole shell projection
-            // (including syncButtonState); otherwise project the unattended
-            // control directly so the button reflects the just-applied cfg.
-            if (requestShellProjection) requestShellProjection();
-            else projectButtonState();
-          }
+          if (sessionState.get("selected") === sid) projectButtonState();
         }
       }
     }
@@ -528,10 +517,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     // budget, which can change in another tab or through an injection.
     readPersistedUnattendedPatches();
 
-    // Unattended-specific button + cfg/input projection. This is the body that
-    // used to live inside app.js updateUnattendedBtnState for the unattended
-    // control only; the app-shell projection (attach/file/send/queue/diag,
-    // context bar, chat nav) stays in app.js and calls syncButtonState().
+    // Unattended-specific button + cfg/input projection. Selection and catalog
+    // subscriptions make this controller the sole writer of the control.
     function projectButtonState() {
       const selected = sessionState.get("selected");
       if (selected) {
@@ -699,8 +686,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         if (s) {
           s.unattended_enabled = unattendedCfg.enabled;
         }
-        if (requestShellProjection) requestShellProjection();
-        else projectButtonState();
+        projectButtonState();
         scheduleUnattendedSave({ enabled: unattendedCfg.enabled });
       };
     }
@@ -738,8 +724,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
             s.unattended_enabled = false;
           }
         }
-        if (requestShellProjection) requestShellProjection();
-        else projectButtonState();
+        projectButtonState();
         scheduleUnattendedSave({ remaining_injections: value, ...(value <= 0 ? { enabled: false } : {}) });
       };
       remainingEl.onblur = () => {
@@ -760,6 +745,10 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       projectButtonState();
     }
 
+    const unsubscribeSelected = sessionState.subscribe("selected", projectButtonState);
+    const unsubscribeSessionIndex = sessionCatalog.subscribe("sessionIndex", projectButtonState);
+    projectButtonState();
+
     function isOpen() {
       return unattendedMenuOpen;
     }
@@ -769,6 +758,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     }
 
     function dispose() {
+      unsubscribeSelected();
+      unsubscribeSessionIndex();
       unattendedSaveTimers.forEach((timer) => clearTimeoutFn(timer));
       unattendedSaveTimers.clear();
       // Pending request text remains in browser storage until its matching

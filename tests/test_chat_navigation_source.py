@@ -19,6 +19,7 @@ def eval_navigation() -> dict:
         const calls = [];
         const makeButton = () => ({{ style: {{}}, disabled: null, onclick: null }});
         const prev = makeButton(), next = makeButton();
+        const chatNavRail = {{ style: {{}} }}, chatEmptyState = {{ style: {{}} }};
         const userRows = [{{ id: "u1", scrollIntoView: (opts) => calls.push(["scroll", "u1", opts]) }}];
         const copyRows = [{{ id: "m1", scrollIntoView: (opts) => calls.push(["scroll", "m1", opts]) }}];
         let selected = "sid";
@@ -27,7 +28,8 @@ def eval_navigation() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const controller = ctx.window.CodoxearChatNavigation.createChatNavigationController({{
-          prevUserBtn: prev, nextUserBtn: next, sessionState: {{ get: () => selected }},
+          prevUserBtn: prev, nextUserBtn: next, chatNavRail, chatEmptyState,
+          sessionState: {{ get: () => selected, subscribe: () => () => {{}} }},
           currentGeneration: () => 1,
           loadedUserMessageRows: () => userRows, loadedCopyMessageRows: () => copyRows,
           loadOlderMessages: async () => false,

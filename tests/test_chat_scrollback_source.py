@@ -180,7 +180,7 @@ def eval_open_session_tail_request_abort() -> dict:
           ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
           ["sid-b", {{ session_id: "sid-b", busy: false, queue_len: 0, token: null }}],
         ]);
-        const state = {{ pollGen: 0, title: "" }};
+        const state = {{ pollGen: 0 }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         sessionCatalog.set("latestSessions", Array.from(sessions.values()));
@@ -229,7 +229,7 @@ def eval_open_session_tail_request_abort() -> dict:
           setStatus: () => {{}}, setContext: () => {{}}, setTyping: () => {{}}, resetChatRenderState: () => {{}},
           getSession: (sid) => sessions.get(sid),
           isCurrent: (sid, generation) => sessionState.get("selected") === sid && state.pollGen === generation,
-          setTitle: (session) => {{ state.title = `title:${{session.session_id}}`; }}, setNoSessionTitle: () => {{}}, markClickLoad: () => {{}},
+          markClickLoad: () => {{}},
           updateTypingStats: () => {{}}, beginFileViewerSync: () => false, handleFileViewerSessionUnavailable: () => {{}},
           finishFileViewerSync: () => {{}}, getTailCache: () => null, tailCacheMatchesSession: () => false,
           applyCachedTail: () => {{}}, renderTranscriptLoading: () => {{}}, messageFlow: () => messageFlow, api,
@@ -263,7 +263,7 @@ def eval_open_session_tail_request_abort() -> dict:
           process.stdout.write(JSON.stringify({{
             firstResult, secondResult, firstSignalAborted: firstSignal.aborted,
             secondSignalAborted: secondRequest.signal.aborted, pollGen: state.pollGen,
-            selected: sessionState.get("selected"), title: state.title,
+            selected: sessionState.get("selected"),
             apiCalls: calls.filter((call) => call[0] === "api"),
             abortCalls: calls.filter((call) => call[0] === "abort"),
             failureCalls: calls.filter((call) => call[0] === "markMessagePollFailure"),
@@ -306,11 +306,8 @@ def _run_lifecycle(body: str) -> dict:
           clearTranscriptForRemovedSession: () => calls.push(["clearTranscriptForRemovedSession"]),
           removePersistedSelected: () => calls.push(["removePersistedSelected"]),
           setSessionHash: (value) => calls.push(["setSessionHash", value]),
-          setNoSessionTitle: () => calls.push(["setNoSessionTitle"]),
-          setStatus: (value) => calls.push(["setStatus", value]), setContext: (value) => calls.push(["setContext", value]), setTyping: (value) => calls.push(["setTyping", value]),
-          clearAttachments: () => calls.push(["clearAttachments"]), syncAttachmentButton: () => calls.push(["syncAttachmentButton"]), resetChatRenderState: () => calls.push(["resetChatRenderState"]), updateQueueBadge: () => calls.push(["updateQueueBadge"]),
-          isUnattendedOpen: () => true, hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]), updateUnattendedButton: () => calls.push(["updateUnattendedButton"]),
-          syncComposerSendButton: () => calls.push(["syncComposerSendButton"]), syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
+          clearAttachments: () => calls.push(["clearAttachments"]), syncAttachmentButton: () => calls.push(["syncAttachmentButton"]), resetChatRenderState: () => calls.push(["resetChatRenderState"]),
+          isUnattendedOpen: () => true, hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
           clearSessionScrollPosition: (sid) => calls.push(["clearSessionScrollPosition", sid]),
           deleteTranscriptSession: (sid) => calls.push(["deleteTranscriptSession", sid]), dropPendingUserRows: (sid) => calls.push(["dropPendingUserRows", sid]),
         }}, {{ get: (target, name) => name in target ? target[name] : noop }});
@@ -364,10 +361,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertEqual(result["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1"])
         for expected in [
             ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementGeneration"], ["setActiveTranscriptPending"],
-            ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""], ["setNoSessionTitle"],
+            ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""],
             ["clearAttachments"],
-            ["syncAttachmentButton"], ["resetChatRenderState"], ["hideUnattendedMenu"], ["updateUnattendedButton"],
-            ["syncComposerSendButton"], ["syncQueueSubmitState"],
+            ["syncAttachmentButton"], ["resetChatRenderState"], ["hideUnattendedMenu"],
         ]:
             self.assertContains(expected, result["calls"])
 
@@ -387,7 +383,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertFalse(result["secondSignalAborted"])
         self.assertEqual(result["pollGen"], 2)
         self.assertEqual(result["selected"], "sid-b")
-        self.assertEqual(result["title"], "title:sid-b")
         self.assertEqual(len(result["apiCalls"]), 2)
         self.assertTrue(all(call[1].endswith("/messages/tail?limit=60") for call in result["apiCalls"]))
         self.assertTrue(all(call[2] for call in result["apiCalls"]))

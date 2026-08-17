@@ -31,7 +31,6 @@ const global = window;
       api,
       refreshSessions,
       setToast,
-      setTitle,
       prepareModalOpen,
       afterModalVisibilityChanged,
       positionDialogMenu,
@@ -182,7 +181,6 @@ const global = window;
         await refreshSessions();
         if (editSessionId !== sid) return;
         hideEditSession();
-        if (sessionState.get("selected") === sid) setTitle(sid, getSessionInfo(sid));
         setToast("conversation updated");
       } catch (error) {
         if (editSessionId === sid) editStatus.textContent = error && error.message ? error.message : "Save failed";

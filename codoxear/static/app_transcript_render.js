@@ -115,6 +115,7 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
       handleAppAuthLoss,
       helpViewer, iconSvg, isModalTargetOpen,
       isTextEntryElement, jumpBtn, modalIsolationTargets, newSessionDialogController, nextUserBtn, olderWrap,
+      chatNavRail, chatEmptyState,
       performance, prevUserBtn, pushPerfSample, queueViewer, refreshQueueViewer, requestAnimationFrame, sendChoice, sessionAgentBackend, setTimeout, setToast, textarea, window, wiring
     } = options;
     let pendingHashSessionId = "";
@@ -371,6 +372,8 @@ const chatNavigationController = (function instantiateChatNavigationController()
   return CodoxearChatNavigation.createChatNavigationController(wiring.createChatNavigationOptions({
     prevUserBtn,
     nextUserBtn,
+    chatNavRail,
+    chatEmptyState,
     sessionState,
     currentGeneration,
     api,

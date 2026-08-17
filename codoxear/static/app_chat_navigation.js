@@ -19,8 +19,10 @@
 
     const prevUserBtn = requireNode(options.prevUserBtn, "prevUserBtn");
     const nextUserBtn = requireNode(options.nextUserBtn, "nextUserBtn");
+    const chatNavRail = requireNode(options.chatNavRail, "chatNavRail");
+    const chatEmptyState = requireNode(options.chatEmptyState, "chatEmptyState");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("chat navigation controller dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("chat navigation controller dependency missing: sessionState");
     const currentGeneration = options.currentGeneration;
     if (typeof currentGeneration !== "function") {
       throw new TypeError("chat navigation controller dependency missing: currentGeneration");
@@ -75,6 +77,8 @@
 
     function syncButtons() {
       const sid = sessionState.get("selected");
+      chatNavRail.style.display = sid ? "flex" : "none";
+      chatEmptyState.style.display = sid ? "none" : "flex";
       if (!sid) {
         prevUserBtn.disabled = true;
         nextUserBtn.disabled = true;
@@ -207,7 +211,11 @@
       }
     });
 
+    const unsubscribeSelected = sessionState.subscribe("selected", syncButtons);
+    syncButtons();
+
     function dispose() {
+      unsubscribeSelected();
       prevUserBtn.onclick = null;
       nextUserBtn.onclick = null;
     }

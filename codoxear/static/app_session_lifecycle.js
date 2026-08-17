@@ -61,8 +61,6 @@
     const resetChatRenderState = get("resetChatRenderState");
     const getSession = get("getSession");
     const isCurrent = get("isCurrent");
-    const setTitle = get("setTitle");
-    const setNoSessionTitle = get("setNoSessionTitle");
     const markClickLoad = get("markClickLoad");
     const updateTypingStats = get("updateTypingStats");
     const beginFileViewerSync = get("beginFileViewerSync");
@@ -93,12 +91,9 @@
     const openMessageEventSource = get("openMessageEventSource");
     const isMobile = get("isMobile");
     const closeSidebar = get("closeSidebar");
-    const updateUnattendedButton = get("updateUnattendedButton");
     const refreshFileCandidates = get("refreshFileCandidates");
     const isUnattendedOpen = get("isUnattendedOpen");
     const hideUnattendedMenu = get("hideUnattendedMenu");
-    const syncComposerSendButton = get("syncComposerSendButton");
-    const syncQueueSubmitState = get("syncQueueSubmitState");
     const saveSessionScrollPosition = get("saveSessionScrollPosition");
     const restoreSessionScrollPosition = get("restoreSessionScrollPosition");
     const clearSessionScrollPosition = get("clearSessionScrollPosition");
@@ -132,15 +127,11 @@
       sessionState.set("turnOpen", false);
       removePersistedSelected();
       setSessionHash("");
-      setNoSessionTitle();
       sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
       clearAttachments();
       syncAttachmentButton();
       resetChatRenderState();
       if (isUnattendedOpen()) hideUnattendedMenu();
-      updateUnattendedButton();
-      syncComposerSendButton();
-      syncQueueSubmitState();
       return true;
     }
 
@@ -173,7 +164,6 @@
 
       const session = getSession(sessionId);
       if (!isCurrent(sessionId, generation)) return null;
-      setTitle(session, sessionId);
       markClickLoad();
       const optimisticBusy = Boolean(session && session.busy);
       const optimisticQueueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
@@ -272,7 +262,6 @@
       applySessionRuntimeFromTail(sessionId, data);
       if (slotChange.current.state !== "failed") { openMessageEventSource(sessionId, generation); kickPoll(900); }
       if (isMobile()) closeSidebar();
-      updateUnattendedButton();
       finishFileViewerSync(sessionId, fileViewerSyncStarted, refreshFileCandidates);
       return data;
     }

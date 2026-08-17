@@ -48,12 +48,13 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const diagContent = requireNode(options.diagContent, "diagContent");
     const diagStatus = requireNode(options.diagStatus, "diagStatus");
     const diagCloseBtn = requireNode(options.diagCloseBtn, "diagCloseBtn");
+    const diagBtn = requireNode(options.diagBtn, "diagBtn");
     const diagCopyConversationBtn = requireNode(options.diagCopyConversationBtn, "diagCopyConversationBtn");
     const diagCopyBtn = requireNode(options.diagCopyBtn, "diagCopyBtn");
 
     // App-level runtime state accessors and effects.
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("diagnostics dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("diagnostics dependency missing: sessionState");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
@@ -273,7 +274,14 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       }
     }
 
+    function syncAvailability() {
+      diagBtn.disabled = !sessionState.get("selected");
+    }
+    const unsubscribeSelected = sessionState.subscribe("selected", syncAvailability);
+    syncAvailability();
+
     function dispose() {
+      unsubscribeSelected();
       diagReturnFocusEl = null;
       diagCopyText = "";
       diagConversationCopyReady = false;
@@ -285,6 +293,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       hide,
       onCopyConversationClick,
       onCopyClick,
+      syncAvailability,
       dispose,
     });
   }

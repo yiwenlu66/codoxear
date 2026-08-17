@@ -23,7 +23,7 @@
     const sendChoiceCancelBtn = requireNode(options.sendChoiceCancelBtn, "sendChoiceCancelBtn");
 
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("composer dependency missing: sessionCatalog");
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") throw new TypeError("composer dependency missing: sessionCatalog");
     const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const sessionState = options.sessionState;
@@ -677,6 +677,7 @@
     const unsubscribeSessionState = [
       sessionState.subscribe("selected", syncSendButtonState),
       sessionState.subscribe("sending", syncSendButtonState),
+      sessionCatalog.subscribe("sessionIndex", syncSendButtonState),
     ];
     syncSendButtonState();
     autoGrow();

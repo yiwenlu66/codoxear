@@ -57,9 +57,9 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
 
   function createFileOpsController(options = {}) {
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file operations dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("file operations dependency missing: sessionState");
     const sessionCatalog = options.sessionCatalog;
-    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("file operations dependency missing: sessionCatalog");
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") throw new TypeError("file operations dependency missing: sessionCatalog");
     const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const {
@@ -79,8 +79,8 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
       formatPriorityOffset, handleAppAuthLoss, isDiffableFileKind, isMarkdownPreviewable,
       isTextEntryElement, isTextFileKind, modalIsolationTargets, normalizeDraftFilePath,
       parseLocalFileRef, rawByteDuplicatePaths, refreshSessions, selectedSessionLaunchFailed,
-      sessionDisplayName, sessionTitleWithId, setPickerButtonContent, storageGetItem,
-      storageSetItem, stripPathLocationSuffix, titleLabel, useTouchFileEditorControls,
+      sessionDisplayName, setPickerButtonContent, storageGetItem,
+      storageSetItem, stripPathLocationSuffix, useTouchFileEditorControls,
       filePickerField, filePickerMenu, filePickerInput, fileStatus, fileDiff, fileImage,
       fileVideo, fileVideoPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
       fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
@@ -609,7 +609,6 @@ const sessionEditController = CodoxearSessionEdit.createSessionEditController(wi
   api,
   refreshSessions,
   setToast,
-  setTitle: (_sid, session) => { if (session) titleLabel.textContent = sessionTitleWithId(session); },
   prepareModalOpen,
   afterModalVisibilityChanged,
   positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
@@ -776,6 +775,15 @@ async function refreshFileCandidates({ force = false, sessionId = null, syncToke
   return await fileCandidateRefreshRuntime.refresh({ force, sessionId, syncToken });
 }
 
+function syncFileButtonState() {
+  const selected = sessionState.get("selected");
+  const blocked = Boolean(selected && selectedSessionLaunchFailed());
+  const label = !selected ? "Select a session to view files" : blocked ? "Failed launch has no file browser" : "View file";
+  fileBtn.disabled = !selected || blocked;
+  fileBtn.title = label;
+  fileBtn.setAttribute("aria-label", label);
+}
+
 async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
   void manual;
   if (selectedSessionLaunchFailed()) {
@@ -858,6 +866,10 @@ fileEditorOpsController.bindInteractions({
   handleFileEditorSaveShortcut, handleFileEditorDeleteKeydown, suppressFileEditorNativeDelete, fileTouchController,
 });
 
+const unsubscribeFileButtonSelected = sessionState.subscribe("selected", syncFileButtonState);
+const unsubscribeFileButtonCatalog = sessionCatalog.subscribe("sessionIndex", syncFileButtonState);
+syncFileButtonState();
+
 
     return Object.freeze({
       dialogMenusController,
@@ -874,6 +886,10 @@ fileEditorOpsController.bindInteractions({
       isFileViewerOpen,
       handleFileViewerSessionUnavailable,
       refreshFileCandidates,
+      dispose() {
+        unsubscribeFileButtonSelected();
+        unsubscribeFileButtonCatalog();
+      },
     });
   }
 
