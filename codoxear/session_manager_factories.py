@@ -308,6 +308,7 @@ def list_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) 
         runtime_probes=ListingRuntimeProbes(
             last_conversation_ts_from_tail=lambda path: caps.last_conversation_ts_from_tail(path),
             read_run_settings_from_log=lambda path, agent_backend: caps.read_run_settings_from_log(path, agent_backend=agent_backend),
+            commit_log_observation=manager.commit_log_observation,
             log_size_or_none=manager._log_size_or_none,
             send_boundary_unresolved=manager._confirmed_send_boundary_unresolved_for_session,
             idle_from_log_path=manager.idle_from_log_path,
@@ -345,6 +346,7 @@ def refresh_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
         session_run_settings=manager._session_run_settings,
         normalize_requested_service_tier=caps.normalize_requested_service_tier,
         reset_log_caches=lambda session, log_off: manager._reset_log_caches(session, meta_log_off=log_off),
+        commit_log_observation=manager.commit_log_observation,
         queue_len=manager._queue_len,
         maybe_drain_session_queue=manager._maybe_drain_session_queue,
     )
@@ -560,6 +562,7 @@ def discovery_registry_for_manager(manager: Any, caps: SessionManagerFactoryCaps
         unlink_quiet=caps.unlink_quiet,
         remember_recent_cwd=manager._remember_recent_cwd,
         save_recent_cwds=manager._save_recent_cwds,
+        commit_log_observation=manager.commit_log_observation,
         stderr=caps.stderr,
     )
 

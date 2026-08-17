@@ -88,6 +88,22 @@ class ClaudeCodeBackend(AgentBackend):
     ) -> tuple[str | None, str | None, str | None]:
         return read_cc_run_settings(log_path)
 
+    def run_settings_from_log_rows(
+        self,
+        objs: list[dict[str, Any]],
+        *,
+        turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]],
+    ) -> tuple[str | None, str | None, str | None]:
+        del turn_context_run_settings
+        for obj in reversed(objs):
+            if not isinstance(obj, dict) or obj.get("type") != "assistant":
+                continue
+            message = obj.get("message")
+            model = message.get("model") if isinstance(message, dict) else None
+            if isinstance(model, str) and model.strip():
+                return None, model.strip(), None
+        return None, None, None
+
     def normalize_launch_request_options(
         self,
         obj: Mapping[str, Any],

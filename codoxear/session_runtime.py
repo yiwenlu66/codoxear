@@ -9,6 +9,8 @@ from typing import Any, Callable, Mapping, MutableMapping
 from .agent_backend import normalize_agent_backend
 from .session_listing import build_public_session_row
 from .session_listing import listing_priority
+from .session_log_projection import LogDerivedSessionObservation
+from .session_log_projection import log_revision as current_log_revision
 from .session_model import Session
 from .session_store import SessionStore
 from .token_signal import TokenObservation
@@ -66,6 +68,7 @@ class ListingRuntimeProbes:
     send_boundary_unresolved: Callable[[str, Path | None, int | None], bool]
     idle_from_log_path: Callable[[str, Path], bool]
     current_git_branch: Callable[[Path], str | None]
+    commit_log_observation: Callable[[str, LogDerivedSessionObservation], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -226,6 +229,10 @@ def reset_session_log_caches(session: Session, *, meta_log_off: int) -> None:
     session.model = None
     session.reasoning_effort = None
     session.service_tier = None
+    session.run_settings_log_revision = None
+    session.log_projection_identity = None
+    session.log_projection_revision = None
+    session.log_projection_end = 0
 
 
 def session_transport_from_meta(*, meta: dict[str, Any], clean_optional_text: Callable[[Any], str | None]) -> tuple[str | None, str | None, str | None]:
@@ -376,6 +383,38 @@ def apply_run_settings_backfill(
     )
 
 
+def _commit_listing_observation(
+    probes: ListingRuntimeProbes,
+    sessions: MutableMapping[str, Session],
+    lock: Any,
+    session_id: str,
+    observation: LogDerivedSessionObservation,
+) -> bool:
+    if probes.commit_log_observation is not None:
+        return bool(probes.commit_log_observation(session_id, observation))
+    # Direct-call test/embedding compatibility: production injects the ordered
+    # coordinator owner. This fallback preserves the focused function seam and
+    # is unreachable from SessionManager's production wiring.
+    with lock:
+        session = sessions.get(session_id)
+        if session is None or session.log_path != observation.log_path:
+            return False
+        if observation.last_conversation_ts is not None:
+            session.last_chat_ts = observation.last_conversation_ts
+        if observation.history_scanned:
+            session.last_chat_history_scanned = True
+        if observation.model_provider is not None:
+            session.model_provider = observation.model_provider
+        if observation.model is not None:
+            session.model = observation.model
+        bridge_live = bool(session.pi_thinking_command) and _pid_alive(session.broker_pid)
+        if observation.reasoning_effort is not None and not bridge_live:
+            session.reasoning_effort = observation.reasoning_effort
+        if observation.settings_revision is not None:
+            session.run_settings_log_revision = observation.settings_revision
+        return True
+
+
 def build_runtime_enriched_session_rows(
     *,
     staged_rows: list[dict[str, Any]],
@@ -399,15 +438,28 @@ def build_runtime_enriched_session_rows(
                 conv_ts = probes.last_conversation_ts_from_tail(log_path_obj)
             except FileNotFoundError:
                 conv_ts = None
+            revision = current_log_revision(log_path_obj)
+            committed = bool(
+                revision is not None
+                and _commit_listing_observation(
+                    probes,
+                    sessions,
+                    lock,
+                    sid,
+                    LogDerivedSessionObservation(
+                        log_path=log_path_obj,
+                        revision=revision,
+                        start_off=0,
+                        end_off=revision[2],
+                        last_conversation_ts=conv_ts,
+                        history_scanned=True,
+                    ),
+                )
+            )
             with lock:
                 s_cur = sessions.get(sid)
-                history_update = apply_history_backfill(
-                    s_cur,
-                    expected_log_path=log_path_obj,
-                    conversation_ts=conv_ts,
-                )
-                if history_update is not None and s_cur is not None:
-                    updated_ts = history_update.updated_ts
+                if committed and s_cur is not None:
+                    updated_ts = float(s_cur.last_chat_ts) if isinstance(s_cur.last_chat_ts, (int, float)) else float(s_cur.start_ts)
                     it["updated_ts"] = updated_ts
                     recent_cwd_dirty = recent_cwd_dirty or store.note_recent_cwd(s_cur.cwd, updated_ts)
                     priority = listing_priority(
@@ -437,24 +489,35 @@ def build_runtime_enriched_session_rows(
                 )
             except (FileNotFoundError, ValueError):
                 log_provider = log_model = log_effort = None
+            committed = bool(
+                log_revision is not None
+                and _commit_listing_observation(
+                    probes,
+                    sessions,
+                    lock,
+                    sid,
+                    LogDerivedSessionObservation(
+                        log_path=log_path_obj,
+                        revision=log_revision,
+                        start_off=0,
+                        end_off=log_revision[2],
+                        model_provider=log_provider,
+                        model=log_model,
+                        reasoning_effort=log_effort,
+                        settings_revision=log_revision,
+                    ),
+                )
+            )
             with lock:
                 s_cur = sessions.get(sid)
-                run_settings_update = apply_run_settings_backfill(
-                    s_cur,
-                    expected_log_path=log_path_obj,
-                    log_provider=log_provider,
-                    log_model=log_model,
-                    log_effort=log_effort,
-                    log_revision=log_revision,
-                )
-                if run_settings_update is not None:
-                    it["model_provider"] = run_settings_update.model_provider
-                    it["preferred_auth_method"] = run_settings_update.preferred_auth_method
-                    it["model"] = run_settings_update.model
-                    it["reasoning_effort"] = run_settings_update.reasoning_effort
+                if committed and s_cur is not None:
+                    it["model_provider"] = s_cur.model_provider
+                    it["preferred_auth_method"] = s_cur.preferred_auth_method
+                    it["model"] = s_cur.model
+                    it["reasoning_effort"] = s_cur.reasoning_effort
                     it["provider_choice"] = provider_choice_for_settings(
-                        run_settings_update.model_provider,
-                        run_settings_update.preferred_auth_method,
+                        s_cur.model_provider,
+                        s_cur.preferred_auth_method,
                     )
         log_path_for_boundary = log_path_obj if isinstance(log_path_obj, Path) else None
         log_size = probes.log_size_or_none(log_path_for_boundary)

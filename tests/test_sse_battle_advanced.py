@@ -88,7 +88,7 @@ class _LiveManager:
     def get_session(self, session_id: str) -> Session | None:
         return self.broker.session if session_id == self.broker.session.session_id else None
 
-    def mark_log_delta(self, _session_id: str, *, objs, new_off: int) -> None:
+    def mark_log_delta(self, _session_id: str, *, objs, new_off: int, **_ordering) -> None:
         del objs
         self.deltas.append(new_off)
 

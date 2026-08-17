@@ -28,6 +28,12 @@ class Session:
     # Identity of the log last replayed for model/provider/effort settings.
     # Session-list polling replays run settings only after the file changes.
     run_settings_log_revision: tuple[int, int, int, int] | None = None
+    # Ordered commit boundary for every shared registry field derived from the
+    # bound JSONL log. The path/device/inode identity admits legitimate offset
+    # resets after /new or rebind; revision/end reject late older requests.
+    log_projection_identity: tuple[str, int, int] | None = None
+    log_projection_revision: tuple[int, int, int, int] | None = None
+    log_projection_end: int = 0
     meta_thinking: int = 0
     meta_thinking_tokens: int = 0
     # Codex token-count rows repeat a cumulative reasoning total. Keep the

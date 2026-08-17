@@ -80,6 +80,15 @@ class AgentBackend:
     ) -> tuple[str | None, str | None, str | None]:
         raise NotImplementedError(f"{self.name} backend does not implement run-settings extraction")
 
+    def run_settings_from_log_rows(
+        self,
+        objs: list[dict[str, Any]],
+        *,
+        turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]],
+    ) -> tuple[str | None, str | None, str | None]:
+        """Project the newest settings evidence in one ordered JSONL range."""
+        raise NotImplementedError(f"{self.name} backend does not implement incremental run-settings extraction")
+
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
         return False
 

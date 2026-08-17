@@ -113,6 +113,31 @@ class PiBackend(AgentBackend):
     ) -> tuple[str | None, str | None, str | None]:
         return read_pi_run_settings(log_path)
 
+    def run_settings_from_log_rows(
+        self,
+        objs: list[dict[str, Any]],
+        *,
+        turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]],
+    ) -> tuple[str | None, str | None, str | None]:
+        del turn_context_run_settings
+        provider = None
+        model = None
+        effort = None
+        for obj in objs:
+            if not isinstance(obj, dict):
+                continue
+            if obj.get("type") == "model_change":
+                provider_value = obj.get("provider")
+                model_value = obj.get("modelId")
+                if isinstance(provider_value, str) and provider_value.strip() and isinstance(model_value, str) and model_value.strip():
+                    provider = provider_value.strip()
+                    model = model_value.strip()
+            elif obj.get("type") == "thinking_level_change":
+                effort_value = obj.get("thinkingLevel")
+                if isinstance(effort_value, str) and effort_value.strip():
+                    effort = effort_value.strip()
+        return provider, model, effort
+
     def normalize_launch_request_options(
         self,
         obj: Mapping[str, Any],

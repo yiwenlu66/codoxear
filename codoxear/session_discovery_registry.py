@@ -6,8 +6,10 @@ from typing import Any, Callable, MutableMapping
 import sys
 
 from .session_discovery import DiscoveryRegistration, DiscoveryResult
+from .session_log_projection import LogDerivedSessionObservation
 from .session_model import Session
 from .session_runtime import set_session_interrupted_idle
+from .token_signal import coerce_token_observation
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,7 @@ class SessionDiscoveryRegistryCoordinator:
     unlink_quiet: Callable[[Path], None]
     remember_recent_cwd: Callable[..., bool]
     save_recent_cwds: Callable[[], None]
+    commit_log_observation: Callable[[str, LogDerivedSessionObservation], bool] = lambda _sid, _observation: False
     stderr: Any = sys.stderr
 
     def apply_result(self, result: DiscoveryResult) -> None:
@@ -80,16 +83,16 @@ class SessionDiscoveryRegistryCoordinator:
             sock_path=registration.sock_path,
             busy=registration.busy,
             queue_len=registration.queue_len,
-            token=registration.token,
+            token=registration.token if registration.log_path is None else None,
             meta_thinking=0,
             meta_thinking_tokens=0,
             meta_tools=0,
             meta_system=0,
             meta_log_off=registration.meta_log_off,
-            model_provider=registration.model_provider,
+            model_provider=registration.model_provider if registration.log_path is None else None,
             preferred_auth_method=registration.preferred_auth_method,
-            model=registration.model,
-            reasoning_effort=registration.reasoning_effort,
+            model=registration.model if registration.log_path is None else None,
+            reasoning_effort=registration.reasoning_effort if registration.log_path is None else None,
             service_tier=registration.service_tier,
             tmux_session=registration.tmux_session,
             tmux_window=registration.tmux_window,
@@ -106,6 +109,7 @@ class SessionDiscoveryRegistryCoordinator:
             interrupted_idle_log_off=(registration.meta_log_off if registration.interrupted_idle else 0),
             lost=bool(registration.lost),
         )
+        should_commit_log = False
         with self.lock:
             previous = self.sessions().get(registration.session_id)
             if not previous:
@@ -120,10 +124,8 @@ class SessionDiscoveryRegistryCoordinator:
                 # true so the false/clearing path stays untouched.
                 if registration.interrupted_idle:
                     set_session_interrupted_idle(session, registration.interrupted_idle)
-                session.model_provider = registration.model_provider
                 session.preferred_auth_method = registration.preferred_auth_method
-                session.model = registration.model
-                session.reasoning_effort = registration.reasoning_effort
+                should_commit_log = registration.log_revision is not None and registration.log_path is not None
                 session.service_tier = registration.service_tier
                 self.sessions()[registration.session_id] = session
             else:
@@ -150,14 +152,17 @@ class SessionDiscoveryRegistryCoordinator:
                 # new interrupt, respects stale-true suppression, and clears
                 # suppression when the broker reports false.
                 set_session_interrupted_idle(previous, registration.interrupted_idle)
-                previous.token = session.token
+                same_bound_log = previous.log_path == session.log_path
                 if previous.log_path != session.log_path:
                     previous.log_path = session.log_path
                     self.reset_log_caches(previous, registration.meta_log_off)
-                previous.model_provider = registration.model_provider
+                if not same_bound_log:
+                    previous.token = session.token
+                    previous.model_provider = session.model_provider
+                    previous.model = session.model
+                    previous.reasoning_effort = session.reasoning_effort
+                    should_commit_log = registration.log_revision is not None and registration.log_path is not None
                 previous.preferred_auth_method = registration.preferred_auth_method
-                previous.model = registration.model
-                previous.reasoning_effort = registration.reasoning_effort
                 previous.service_tier = registration.service_tier
                 previous.tmux_session = registration.tmux_session
                 previous.tmux_window = registration.tmux_window
@@ -172,3 +177,20 @@ class SessionDiscoveryRegistryCoordinator:
                 if not previous.lost:
                     previous.lost_since = None
                 previous.pi_thinking_command = bool(registration.pi_thinking_command)
+        if should_commit_log and registration.log_revision is not None and registration.log_path is not None:
+            self.commit_log_observation(
+                registration.session_id,
+                LogDerivedSessionObservation(
+                    log_path=registration.log_path,
+                    revision=registration.log_revision,
+                    start_off=0,
+                    end_off=registration.log_revision[2],
+                    token=coerce_token_observation(registration.token),
+                    model_provider=registration.model_provider,
+                    model=registration.model,
+                    reasoning_effort=registration.reasoning_effort,
+                    settings_revision=registration.log_revision,
+                    effective_settings=True,
+                    replace_settings=True,
+                ),
+            )

@@ -24,7 +24,13 @@ from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
 from codoxear.message_routes import handle_messages_window
 from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
+from codoxear.session_log_runtime import SessionLogRuntimeCoordinator
 from codoxear.session_model import Session
+from codoxear.rollout_idle import _analyze_log_chunk
+from codoxear.rollout_log import _compute_idle_from_log
+from codoxear.rollout_log import _find_latest_token_update
+from codoxear.session_log_metadata import turn_context_run_settings
+from codoxear.util import read_jsonl_from_offset
 from codoxear.token_signal import TOKEN_CLEAR
 
 # Fixed HMAC secret so encode/decode are exercised against the real signing
@@ -106,7 +112,7 @@ class _TailManager:
 
 
 class _LiveManager:
-    """Manager fake for the live route: records mark_log_delta calls."""
+    """Manager fake for route plumbing tests; no shared-state projection."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -123,6 +129,33 @@ class _LiveManager:
 
     def _attach_notification_texts(self, events):
         return events
+
+
+class _OrderedLiveManager(_LiveManager):
+    """Production coordinator behind the route-facing manager surface."""
+
+    def __init__(self, session: Session) -> None:
+        import threading
+
+        super().__init__(session)
+        sessions = {session.session_id: session}
+        self._runtime = SessionLogRuntimeCoordinator(
+            lock=threading.Lock(),
+            sessions=lambda: sessions,
+            analyze_log_chunk=_analyze_log_chunk,
+            turn_context_run_settings=lambda payload: turn_context_run_settings(
+                payload,
+                clean_optional_text=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+                display_reasoning_effort=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+            ),
+            compute_idle_from_log=_compute_idle_from_log,
+            read_jsonl_from_offset=read_jsonl_from_offset,
+            find_latest_token_update=_find_latest_token_update,
+        )
+
+    def mark_log_delta(self, *args, **kwargs) -> bool:
+        self.marked.append((args, kwargs))
+        return self._runtime.mark_log_delta(*args, **kwargs)
 
 
 def _deps(**overrides):
@@ -574,7 +607,7 @@ def test_messages_live_unknown_cc_usage_clears_stale_session_token() -> None:
             return {}, False, 0, live_session.token
 
         deps, responses, _metrics = _deps(message_runtime_snapshot=runtime_snapshot)
-        manager = _LiveManager(session)
+        manager = _OrderedLiveManager(session)
         cursor = encode_message_cursor(kind="live", session=session, pos=cursor_pos, secret=_SECRET)
         handle_messages_live(
             _FakeHandler(),

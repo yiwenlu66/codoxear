@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
+from .agent_backend import get_agent_backend
+from .session_log_projection import LogDerivedSessionObservation
+from .session_log_projection import log_identity
+from .session_log_projection import log_revision
 from .session_model import Session
 from .util import _codex_sessions_dir_for_log
 from .util import scan_active_cc_subagents
@@ -25,6 +29,122 @@ class SessionLogRuntimeCoordinator:
     read_jsonl_from_offset: Callable[..., tuple[list[dict[str, Any]], int]]
     find_latest_token_update: Callable[[Path], dict[str, Any] | None]
 
+    def observation_from_rows(
+        self,
+        *,
+        agent_backend: str,
+        log_path: Path,
+        revision: tuple[int, int, int, int],
+        start_off: int,
+        end_off: int,
+        objs: list[dict[str, Any]],
+        invalidate_idle_cache: bool = True,
+    ) -> LogDerivedSessionObservation:
+        """Normalize one backend-native JSONL range into the registry schema."""
+        _thinking, _thinking_tokens, _tools, _system, last_ts, token_update, _chat_events, _turn_state = self.analyze_log_chunk(objs)
+        provider, model, effort = get_agent_backend(agent_backend).run_settings_from_log_rows(
+            objs,
+            turn_context_run_settings=self.turn_context_run_settings,
+        )
+        return LogDerivedSessionObservation(
+            log_path=log_path,
+            revision=revision,
+            start_off=start_off,
+            end_off=end_off,
+            token=coerce_token_observation(token_update),
+            model_provider=provider,
+            model=model,
+            reasoning_effort=effort,
+            last_conversation_ts=float(last_ts) if isinstance(last_ts, (int, float)) else None,
+            invalidate_idle_cache=invalidate_idle_cache,
+        )
+
+    def commit_log_observation(self, session_id: str, observation: LogDerivedSessionObservation) -> bool:
+        """Atomically commit a current, monotonic JSONL observation.
+
+        The session binding path and the file's exact revision must still match
+        what the reader observed. Within one path/device/inode generation, a
+        commit whose end precedes the last accepted end is rejected. A changed
+        path/inode (rebind) or a current same-file revision smaller than the
+        prior end (truncation) starts a legitimate new offset generation.
+
+        Source priority is unchanged: full-refresh observations may carry
+        already-reconciled effective settings; raw Pi log observations always
+        own provider/model but cannot replace a live bridge-owned effort.
+        """
+        identity = log_identity(observation.log_path, observation.revision)
+        with self.lock:
+            if log_revision(observation.log_path) != observation.revision:
+                return False
+            session = self.sessions().get(session_id)
+            if session is None or session.log_path != observation.log_path:
+                return False
+
+            prior_identity = session.log_projection_identity
+            prior_end = int(session.log_projection_end)
+            reset_generation = prior_identity != identity or int(observation.revision[2]) < prior_end
+            if not reset_generation and int(observation.end_off) < prior_end:
+                return False
+
+            if reset_generation:
+                session.log_projection_identity = identity
+                session.log_projection_end = 0
+                if prior_identity == identity and int(observation.revision[2]) < prior_end:
+                    session.last_chat_ts = None
+                    session.last_chat_history_scanned = False
+                    session.run_settings_log_revision = None
+
+            if observation.last_conversation_ts is not None:
+                session.last_chat_ts = (
+                    observation.last_conversation_ts
+                    if session.last_chat_ts is None
+                    else max(session.last_chat_ts, observation.last_conversation_ts)
+                )
+            if observation.history_scanned:
+                session.last_chat_history_scanned = True
+            if observation.token.observed:
+                session.token = observation.token.public_token
+            if observation.replace_settings or observation.model_provider is not None:
+                session.model_provider = observation.model_provider
+            if observation.replace_settings or observation.model is not None:
+                session.model = observation.model
+            bridge_live = (
+                session.agent_backend == "pi"
+                and bool(session.pi_thinking_command)
+                and self._pid_alive(session.broker_pid)
+            )
+            if observation.replace_settings:
+                session.reasoning_effort = observation.reasoning_effort
+            elif observation.reasoning_effort is not None and (observation.effective_settings or not bridge_live):
+                session.reasoning_effort = observation.reasoning_effort
+            if observation.settings_revision is not None:
+                session.run_settings_log_revision = observation.settings_revision
+            if observation.invalidate_idle_cache:
+                session.idle_cache_log_off = -1
+            session.log_projection_revision = observation.revision
+            session.log_projection_end = int(observation.end_off)
+            return True
+
+    @staticmethod
+    def _pid_alive(pid: Any) -> bool:
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            return False
+        if pid_int <= 0:
+            return False
+        try:
+            import os
+
+            os.kill(pid_int, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except Exception:
+            return False
+        return True
+
     def update_meta_counters(self) -> None:
         with self.lock:
             items = list(self.sessions().items())
@@ -32,7 +152,10 @@ class SessionLogRuntimeCoordinator:
             log_path = session.log_path
             if log_path is None or (not log_path.exists()):
                 continue
-            size = int(log_path.stat().st_size)
+            source_revision = log_revision(log_path)
+            if source_revision is None:
+                continue
+            size = int(source_revision[2])
             offset = int(session.meta_log_off)
             reset_last_chat = False
             if size < offset:
@@ -126,20 +249,25 @@ class SessionLogRuntimeCoordinator:
             fallback_token: dict[str, Any] | None = None
             if not latest_token_observation.observed and session.token is None:
                 fallback_token = self.find_latest_token_update(log_path)
+            if source_revision is not None:
+                observation = LogDerivedSessionObservation(
+                    log_path=log_path,
+                    revision=source_revision,
+                    start_off=0 if reset_last_chat else int(session.meta_log_off),
+                    end_off=min(offset, source_revision[2]),
+                    token=(
+                        latest_token_observation
+                        if latest_token_observation.observed
+                        else coerce_token_observation(fallback_token)
+                    ),
+                    last_conversation_ts=latest_chat_ts,
+                )
+                self.commit_log_observation(sid, observation)
 
             with self.lock:
                 current = self.sessions().get(sid)
-                if not current:
+                if not current or current.log_path != log_path:
                     continue
-                if reset_last_chat:
-                    current.last_chat_ts = None
-                    current.last_chat_history_scanned = False
-                if latest_chat_ts is not None:
-                    current.last_chat_ts = latest_chat_ts if current.last_chat_ts is None else max(current.last_chat_ts, latest_chat_ts)
-                if latest_token_observation.observed:
-                    current.token = latest_token_observation.public_token
-                elif fallback_token is not None:
-                    current.token = fallback_token
                 current.meta_codex_reasoning_total = codex_reasoning_total
                 if current.busy:
                     if counters_reset:
@@ -185,57 +313,36 @@ class SessionLogRuntimeCoordinator:
                     suppress_session_interrupted_idle(current)
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
-    def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _thinking, _thinking_tokens, _tools, _system, last_ts, _token_update, _chat_events, _turn_state = self.analyze_log_chunk(objs)
+    def mark_log_delta(
+        self,
+        session_id: str,
+        *,
+        objs: list[dict[str, Any]],
+        new_off: int,
+        start_off: int = 0,
+        expected_log_path: Path | None = None,
+        revision: tuple[int, int, int, int] | None = None,
+    ) -> bool:
         with self.lock:
             current = self.sessions().get(session_id)
-            agent_backend = current.agent_backend if current is not None else None
-
-        model_provider = None
-        model = None
-        reasoning_effort = None
-        if agent_backend == "pi":
-            for obj in objs:
-                if not isinstance(obj, dict):
-                    continue
-                if obj.get("type") == "model_change":
-                    provider_value = obj.get("provider")
-                    model_value = obj.get("modelId")
-                    if isinstance(provider_value, str) and provider_value.strip() and isinstance(model_value, str) and model_value.strip():
-                        model_provider = provider_value.strip()
-                        model = model_value.strip()
-                elif obj.get("type") == "thinking_level_change":
-                    effort_value = obj.get("thinkingLevel")
-                    if isinstance(effort_value, str) and effort_value.strip():
-                        reasoning_effort = effort_value.strip()
-        elif agent_backend == "cc":
-            for obj in reversed(objs):
-                if not isinstance(obj, dict) or obj.get("type") != "assistant":
-                    continue
-                message = obj.get("message")
-                model_value = message.get("model") if isinstance(message, dict) else None
-                if isinstance(model_value, str) and model_value.strip():
-                    model = model_value.strip()
-                    break
-        else:
-            for obj in reversed(objs):
-                if not isinstance(obj, dict) or obj.get("type") != "turn_context":
-                    continue
-                model, reasoning_effort = self.turn_context_run_settings(obj.get("payload"))
-                break
-        with self.lock:
-            session = self.sessions().get(session_id)
-            if session:
-                if isinstance(last_ts, (int, float)):
-                    tsf = float(last_ts)
-                    session.last_chat_ts = tsf if session.last_chat_ts is None else max(session.last_chat_ts, tsf)
-                if model_provider is not None:
-                    session.model_provider = model_provider
-                if model is not None:
-                    session.model = model
-                if reasoning_effort is not None:
-                    session.reasoning_effort = reasoning_effort
-                session.idle_cache_log_off = -1
+            if current is None:
+                return False
+            agent_backend = current.agent_backend
+            log_path = expected_log_path if expected_log_path is not None else current.log_path
+        if log_path is None:
+            return False
+        observed_revision = revision if revision is not None else log_revision(log_path)
+        if observed_revision is None:
+            return False
+        observation = self.observation_from_rows(
+            agent_backend=agent_backend,
+            log_path=log_path,
+            revision=observed_revision,
+            start_off=start_off,
+            end_off=new_off,
+            objs=objs,
+        )
+        return self.commit_log_observation(session_id, observation)
 
     def idle_from_log(self, session_id: str) -> bool:
         with self.lock:

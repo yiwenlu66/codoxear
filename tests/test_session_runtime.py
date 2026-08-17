@@ -313,10 +313,26 @@ def _staged_listing_row(log_path: Path) -> dict[str, Any]:
     }
 
 
-def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projection() -> None:
-    log_path = Path("/tmp/log.jsonl")
+def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projection(tmp_path: Path) -> None:
+    log_path = tmp_path / "log.jsonl"
+    log_path.write_text("{}\n", encoding="utf-8")
     session = _session(log_path)
     store = _RecentCwdStore()
+
+    def commit_observation(_sid, observation):
+        if observation.last_conversation_ts is not None:
+            session.last_chat_ts = observation.last_conversation_ts
+        if observation.history_scanned:
+            session.last_chat_history_scanned = True
+        if observation.model_provider is not None:
+            session.model_provider = observation.model_provider
+        if observation.model is not None:
+            session.model = observation.model
+        if observation.reasoning_effort is not None:
+            session.reasoning_effort = observation.reasoning_effort
+        if observation.settings_revision is not None:
+            session.run_settings_log_revision = observation.settings_revision
+        return True
 
     result = build_runtime_enriched_session_rows(
         staged_rows=[_staged_listing_row(log_path)],
@@ -326,6 +342,7 @@ def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projec
         probes=ListingRuntimeProbes(
             last_conversation_ts_from_tail=lambda path: 25.0,
             read_run_settings_from_log=lambda path, agent_backend: ("provider", "log-model", "high"),
+            commit_log_observation=commit_observation,
             log_size_or_none=lambda path: 100,
             send_boundary_unresolved=lambda sid, path, size: False,
             idle_from_log_path=lambda sid, path: True,
@@ -374,6 +391,7 @@ def test_build_runtime_enriched_session_rows_keeps_busy_when_send_boundary_unres
         probes=ListingRuntimeProbes(
             last_conversation_ts_from_tail=lambda path: None,
             read_run_settings_from_log=lambda path, agent_backend: (None, None, None),
+            commit_log_observation=lambda _sid, _observation: True,
             log_size_or_none=lambda path: 100,
             send_boundary_unresolved=lambda sid, path, size: True,
             idle_from_log_path=idle_from_log_path,

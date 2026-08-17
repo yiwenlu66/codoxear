@@ -55,6 +55,7 @@ class DiscoveryRegistration:
     lost: bool = False
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
+    log_revision: tuple[int, int, int, int] | None = None
 
 @dataclass(frozen=True)
 class DiscoveryStaleAction:
@@ -328,8 +329,11 @@ def discover_sessions(
             continue
 
         log_size = 0
+        log_revision = None
         if log_path is not None:
-            log_size = int(log_path.stat().st_size)
+            stat = log_path.stat()
+            log_size = int(stat.st_size)
+            log_revision = (int(stat.st_dev), int(stat.st_ino), log_size, int(stat.st_mtime_ns))
             token = deps.token_update_finder(log_path)
         else:
             token = None
@@ -369,6 +373,7 @@ def discover_sessions(
                 queue_len=broker_queue_len,
                 token=token,
                 meta_log_off=meta_log_off,
+                log_revision=log_revision,
                 model_provider=model_provider,
                 preferred_auth_method=preferred_auth_method,
                 model=model,

@@ -1257,6 +1257,9 @@ class SessionManager:
     def _attach_notification_texts(self, *args: Any, **kwargs: Any) -> Any:
         return self._voice_runtime_for_manager().attach_notification_texts(*args, **kwargs)
 
+    def commit_log_observation(self, *args: Any, **kwargs: Any) -> Any:
+        return self._log_runtime_for_manager().commit_log_observation(*args, **kwargs)
+
     def mark_log_delta(self, *args: Any, **kwargs: Any) -> Any:
         return self._log_runtime_for_manager().mark_log_delta(*args, **kwargs)
 

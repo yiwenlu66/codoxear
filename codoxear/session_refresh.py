@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
 from .agent_backend import normalize_agent_backend
+from .session_log_projection import LogDerivedSessionObservation
+from .session_log_projection import log_revision
 from .session_model import Session
 from .sidecar_metadata import detaches_current_log as metadata_detaches_current_log
 from .sidecar_metadata import ignored_rollout_paths as metadata_ignored_rollout_paths
@@ -45,6 +47,7 @@ class SessionRefreshCoordinator:
     reset_log_caches: Callable[[Session, int], None]
     queue_len: Callable[[str], int]
     maybe_drain_session_queue: Callable[[str], None]
+    commit_log_observation: Callable[[str, LogDerivedSessionObservation], bool] = lambda _sid, _observation: False
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         with self.lock:
@@ -109,6 +112,7 @@ class SessionRefreshCoordinator:
             thread_id, log_path = self.coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
         resume_session_id = self.clean_optional_text(meta.get("resume_session_id"))
+        settings_revision = log_revision(log_path) if log_path is not None else None
         model_provider, preferred_auth_method, model, reasoning_effort = self.session_run_settings(
             meta=meta,
             log_path=log_path,
@@ -135,10 +139,7 @@ class SessionRefreshCoordinator:
                 else:
                     log_off = 0
                 self.reset_log_caches(current, log_off)
-            current.model_provider = model_provider
             current.preferred_auth_method = preferred_auth_method
-            current.model = model
-            current.reasoning_effort = reasoning_effort
             current.service_tier = service_tier
             current.tmux_session = tmux_session
             current.tmux_window = tmux_window
@@ -147,5 +148,28 @@ class SessionRefreshCoordinator:
             current.key_write_errors_supported = key_write_errors_supported
             current.pi_thinking_command = bool(pi_thinking_command)
             current.slash_commands = slash_commands
+        if log_path is None or settings_revision is None:
+            with self.lock:
+                current = self.sessions().get(session_id)
+                if current is not None and current.log_path is None:
+                    current.model_provider = model_provider
+                    current.model = model
+                    current.reasoning_effort = reasoning_effort
+        else:
+            self.commit_log_observation(
+                session_id,
+                LogDerivedSessionObservation(
+                    log_path=log_path,
+                    revision=settings_revision,
+                    start_off=0,
+                    end_off=settings_revision[2],
+                    model_provider=model_provider,
+                    model=model,
+                    reasoning_effort=reasoning_effort,
+                    settings_revision=settings_revision,
+                    effective_settings=True,
+                    replace_settings=True,
+                ),
+            )
         if drain_queue and self.queue_len(session_id) > 0:
             self.maybe_drain_session_queue(session_id)

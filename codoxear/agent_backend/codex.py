@@ -214,6 +214,18 @@ class CodexBackend(AgentBackend):
                 reasoning_effort = context_effort
         return model_provider, model, reasoning_effort
 
+    def run_settings_from_log_rows(
+        self,
+        objs: list[dict[str, Any]],
+        *,
+        turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]],
+    ) -> tuple[str | None, str | None, str | None]:
+        for obj in reversed(objs):
+            if isinstance(obj, dict) and obj.get("type") == "turn_context":
+                model, effort = turn_context_run_settings(obj.get("payload"))
+                return None, model, effort
+        return None, None, None
+
     def build_launch_args(
         self,
         *,

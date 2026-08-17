@@ -12,6 +12,7 @@ import urllib.parse
 from . import rollout_log as _rollout_log
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
+from .session_log_projection import log_revision
 from .transcript_search import clip_search_match_text as _clip_search_match_text
 from .transcript_search import read_chat_window_around as _read_chat_window_around
 from .transcript_search import search_chat_logs_bounded as _search_chat_logs_bounded
@@ -346,6 +347,7 @@ def _live_payload_from_records(
     next_after: int,
     log_path: Path,
     after_byte: int,
+    source_revision: tuple[int, int, int, int] | None,
     session: Any,
     session_id: str,
     manager: Any,
@@ -372,10 +374,15 @@ def _live_payload_from_records(
         prior_turn_has_assistant=prior_turn_has_assistant,
     )
     if objs:
-        manager.mark_log_delta(session_id, objs=objs, new_off=next_after)
-    s2 = manager.get_session(session_id)
-    if token_update.observed and s2 is not None:
-        s2.token = token_update.public_token
+        if source_revision is not None:
+            manager.mark_log_delta(
+                session_id,
+                objs=objs,
+                start_off=after_byte,
+                new_off=next_after,
+                expected_log_path=log_path,
+                revision=source_revision,
+            )
     events = manager._attach_notification_texts(events)
     events = _attach_history_cursors_impl(events, session=session, encode_cursor=deps.encode_message_cursor)
     _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(
@@ -510,6 +517,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                         offset = 0
                         next_after = 0
                 elif next_after is not None and size > next_after:
+                    source_revision = log_revision(current_path)
                     records, next_after = _rollout_log._read_jsonl_records_from_offset(
                         current_path,
                         next_after,
@@ -521,6 +529,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                             next_after=next_after,
                             log_path=current_path,
                             after_byte=offset,
+                            source_revision=source_revision,
                             session=session,
                             session_id=session_id,
                             manager=manager,
@@ -1224,12 +1233,14 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     except OSError:
         size = 0
     if size > after_byte:
+        source_revision = log_revision(s.log_path)
         records, next_after = _rollout_log._read_jsonl_records_from_offset(
             s.log_path,
             after_byte,
             max_bytes=LIVE_POLL_READ_MAX_BYTES,
         )
     else:
+        source_revision = None
         # A cursor at EOF is the steady state. Avoid opening/parsing the log
         # again; a later append makes ``size > after_byte`` and consumes only
         # those new bytes. Truncation retains the existing cursor-clamp
@@ -1253,10 +1264,15 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
         prior_turn_has_assistant=prior_turn_has_assistant,
     )
     if objs:
-        manager.mark_log_delta(session_id, objs=objs, new_off=next_after)
-    s2 = manager.get_session(session_id)
-    if token_update.observed and s2 is not None:
-        s2.token = token_update.public_token
+        if source_revision is not None:
+            manager.mark_log_delta(
+                session_id,
+                objs=objs,
+                start_off=after_byte,
+                new_off=next_after,
+                expected_log_path=s.log_path,
+                revision=source_revision,
+            )
     events = manager._attach_notification_texts(events)
     events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
     live_cursor = deps.encode_message_cursor(kind="live", session=s, pos=next_after)
