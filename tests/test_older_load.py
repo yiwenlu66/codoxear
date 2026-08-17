@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSCRIPT_JS = module_path("app_transcript.js")
+MESSAGE_HISTORY_JS = module_path("app_message_history.js")
 
 
 def run_vm(script: str) -> dict:
@@ -27,13 +28,16 @@ def run_vm(script: str) -> dict:
 class TestOlderLoad(unittest.TestCase):
     def test_top_scroll_load_preserves_anchor_deduplicates_ids_and_hides_terminal_boundary(self) -> None:
         source = TRANSCRIPT_JS.read_text(encoding="utf-8")
+        message_history_source = MESSAGE_HISTORY_JS.read_text(encoding="utf-8")
         script = textwrap.dedent(
             f"""
             const vm = require("vm");
             const ctx = {{ window: {{}}, AbortController }};
             vm.createContext(ctx);
             vm.runInContext({json.dumps(source)}, ctx);
+            vm.runInContext({json.dumps(message_history_source)}, ctx);
             const tx = ctx.window.CodoxearTranscript;
+            const history = ctx.window.CodoxearMessageHistory;
 
             const chat = {{ scrollTop: 100, scrollHeight: 1000, clientHeight: 200 }};
             const jumpButton = {{ style: {{ display: "" }} }};
@@ -43,7 +47,7 @@ class TestOlderLoad(unittest.TestCase):
             const olderError = {{ style: {{ display: "" }} }};
             const olderErrorText = {{ textContent: "" }};
             let now = 1000;
-            const older = tx.createOlderLoadRuntime({{
+            const older = history.createOlderLoadRuntime({{
               olderWrap,
               olderButton,
               olderError,

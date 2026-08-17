@@ -6,17 +6,15 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSCRIPT = module_path("app_transcript.js")
 CHAT_SEARCH = module_path("app_chat_search.js")
 
 
 def run_chat(body: str) -> dict:
-    transcript = json.dumps(TRANSCRIPT.read_text(encoding="utf-8"))
     module = json.dumps(CHAT_SEARCH.read_text(encoding="utf-8"))
     script = f"""
 const vm = require('vm');
 const ctx = {{ window: {{ setTimeout, clearTimeout }}, AbortController, document: {{}} }};
-vm.createContext(ctx); vm.runInContext({transcript}, ctx); vm.runInContext({module}, ctx);
+vm.createContext(ctx); vm.runInContext({module}, ctx);
 {body}
 """
     proc = subprocess.run(["node", "-e", textwrap.dedent(script)], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -33,11 +31,8 @@ const matches = [
   { message_id: 'm2', before_byte: 'c2', role: 'assistant', snippet: 'second needle' },
 ];
 let windowLoads = 0;
-const transcript = ctx.window.CodoxearTranscript;
 const controller = ctx.window.CodoxearChatSearch.createChatSearchController({
   ...nodes,
-  createLoadedChatSearchRuntime: transcript.createLoadedChatSearchRuntime,
-  createChatSearchAllRuntime: transcript.createChatSearchAllRuntime,
   sessionState: { get: () => 'sid-1', subscribe: () => () => {} }, currentGeneration: () => 1,
   api: async (url) => { events.push(`api:${url}`); return { total: 5, matches, truncated: true }; },
   loadTranscriptWindowAtCursor: async (cursor) => { windowLoads += 1; events.push(`window:${cursor}`); rows = [{ dataset: { messageId: 'm1', historyCursor: 'c1' }, text: 'first needle', scrollIntoView() { events.push('scroll:m1'); } }]; return { jumped_window: true }; },

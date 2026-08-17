@@ -13,6 +13,8 @@ APP_POLLING_JS = module_path("app_polling.js")
 APP_COMPOSER_JS = module_path("app_composer.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
+APP_CHAT_SEARCH_JS = module_path("app_chat_search.js")
+APP_MESSAGE_HISTORY_RUNTIME_JS = module_path("app_message_history.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 APP_SESSION_REFRESH_JS = module_path("app_session_refresh.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
@@ -782,19 +784,19 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["frozen"])
 
     def test_older_load_runtime_owns_state_currentness_and_ui_projection(self) -> None:
-        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        message_history_source = APP_MESSAGE_HISTORY_RUNTIME_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
             const ctx = {{ window: {{}}, AbortController }};
             const vm = require("vm");
             vm.createContext(ctx);
-            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(message_history_source)}, ctx);
             let now = 1000;
             const olderWrap = {{ style: {{ display: "" }} }};
             const olderButton = {{ disabled: false, textContent: "" }};
             const olderError = {{ style: {{ display: "" }} }};
             const olderErrorText = {{ textContent: "" }};
-            const runtime = ctx.window.CodoxearTranscript.createOlderLoadRuntime({{
+            const runtime = ctx.window.CodoxearMessageHistory.createOlderLoadRuntime({{
               olderWrap,
               olderButton,
               olderError,
@@ -822,7 +824,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             runtime.setState({{ hasMore: false, isLoading: false }});
             const afterHide = {{ snapshot: runtime.snapshot(), wrap: olderWrap.style.display, error: olderError.style.display, errorText: olderErrorText.textContent }};
             let missingError = "";
-            try {{ ctx.window.CodoxearTranscript.createOlderLoadRuntime({{ olderWrap }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            try {{ ctx.window.CodoxearMessageHistory.createOlderLoadRuntime({{ olderWrap }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
             process.stdout.write(JSON.stringify({{
               initial,
               visible,
@@ -859,18 +861,18 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["afterHide"]["wrap"], "none")
         self.assertEqual(out["afterHide"]["error"], "none")
         self.assertEqual(out["afterHide"]["errorText"], "")
-        self.assertContains("transcript dependency missing: olderButton", out["missingError"])
+        self.assertContains("message history dependency missing: olderButton", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_loaded_chat_search_runtime_owns_open_query_matches_and_index(self) -> None:
-        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        chat_search_source = APP_CHAT_SEARCH_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
             const ctx = {{ window: {{}} }};
             const vm = require("vm");
             vm.createContext(ctx);
-            vm.runInContext({json.dumps(transcript_source)}, ctx);
-            const runtime = ctx.window.CodoxearTranscript.createLoadedChatSearchRuntime();
+            vm.runInContext({json.dumps(chat_search_source)}, ctx);
+            const runtime = ctx.window.CodoxearChatSearch.createLoadedChatSearchRuntime();
             const rowA = {{ dataset: {{}}, id: "a" }};
             const rowB = {{ dataset: {{}}, id: "b" }};
             const rowC = {{ dataset: {{}}, id: "c" }};
@@ -912,16 +914,16 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["frozen"])
 
     def test_chat_search_all_runtime_owns_debounce_currentness_and_result_state(self) -> None:
-        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        chat_search_source = APP_CHAT_SEARCH_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
             const ctx = {{ window: {{}}, AbortController }};
             const vm = require("vm");
             vm.createContext(ctx);
-            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(chat_search_source)}, ctx);
             const timers = [];
             const cleared = [];
-            const runtime = ctx.window.CodoxearTranscript.createChatSearchAllRuntime({{
+            const runtime = ctx.window.CodoxearChatSearch.createChatSearchAllRuntime({{
               setTimeout: (fn, ms) => {{ const timer = {{ fn, ms, id: timers.length + 1 }}; timers.push(timer); return timer; }},
               clearTimeout: (timer) => cleared.push(timer && timer.id),
               AbortControllerCtor: AbortController,
@@ -948,7 +950,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             runtime.dispose();
             const afterDispose = runtime.snapshot();
             let missingError = "";
-            try {{ ctx.window.CodoxearTranscript.createChatSearchAllRuntime({{ setTimeout: () => {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            try {{ ctx.window.CodoxearChatSearch.createChatSearchAllRuntime({{ setTimeout: () => {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
             process.stdout.write(JSON.stringify({{
               empty,
               scheduled,
@@ -990,7 +992,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["afterDispose"]["hasAbort"])
         self.assertFalse(out["afterDispose"]["hasTimer"])
         self.assertContains(2, out["cleared"])
-        self.assertContains("transcript dependency missing: clearTimeout", out["missingError"])
+        self.assertContains("chat search controller dependency missing: clearTimeout", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_transcript_module_normalizes_and_trims_tail_cache(self) -> None:

@@ -13,6 +13,207 @@
     return value;
   }
 
+  function createLoadedChatSearchRuntime() {
+    let open = false;
+    let query = "";
+    let matches = [];
+    let index = -1;
+    let loadingOlder = false;
+
+    function normalizeQuery(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function snapshot() {
+      return Object.freeze({ open, query, matches: matches.slice(), index, loadingOlder });
+    }
+
+    function setOpen(nextOpen) {
+      open = Boolean(nextOpen);
+      return snapshot();
+    }
+
+    function setLoadingOlder(nextLoading) {
+      loadingOlder = Boolean(nextLoading);
+      return snapshot();
+    }
+
+    function setQuery(value) {
+      query = normalizeQuery(value);
+      return query;
+    }
+
+    function clearMatches() {
+      matches = [];
+      index = -1;
+      return snapshot();
+    }
+
+    function setMatches(nextMatches, { preserveCurrent = true } = {}) {
+      const previous = preserveCurrent && index >= 0 ? matches[index] : null;
+      matches = Array.isArray(nextMatches) ? nextMatches.filter(Boolean) : [];
+      if (!matches.length) {
+        index = -1;
+        return snapshot();
+      }
+      const nextIndex = previous ? matches.indexOf(previous) : -1;
+      index = nextIndex >= 0 ? nextIndex : 0;
+      return snapshot();
+    }
+
+    function focusIndex(nextIndex) {
+      if (!matches.length) {
+        index = -1;
+        return Object.freeze({ index, row: null, matches: [] });
+      }
+      const total = matches.length;
+      index = ((Number(nextIndex) % total) + total) % total;
+      return Object.freeze({ index, row: matches[index], matches: matches.slice() });
+    }
+
+    function ensureTargetRow(target, forcedQuery, compareRowsInDomOrder) {
+      if (!target) return -1;
+      target.dataset.searchForcedQuery = normalizeQuery(forcedQuery);
+      if (!matches.includes(target)) {
+        matches.push(target);
+        if (typeof compareRowsInDomOrder === "function") matches.sort(compareRowsInDomOrder);
+      }
+      index = matches.indexOf(target);
+      return index;
+    }
+
+    function reset() {
+      open = false;
+      query = "";
+      loadingOlder = false;
+      return clearMatches();
+    }
+
+    return Object.freeze({
+      clearMatches,
+      ensureTargetRow,
+      focusIndex,
+      reset,
+      setLoadingOlder,
+      setMatches,
+      setOpen,
+      setQuery,
+      snapshot,
+    });
+  }
+
+  function createChatSearchAllRuntime(options = {}) {
+    const setTimeoutFn = requireFunction(options.setTimeout, "setTimeout");
+    const clearTimeoutFn = requireFunction(options.clearTimeout, "clearTimeout");
+    const AbortControllerCtor = requireFunction(options.AbortControllerCtor, "AbortControllerCtor");
+    const debounceMs = Math.max(0, Number(options.debounceMs) || 0);
+    let count = null;
+    let truncated = false;
+    let hint = "";
+    let requestId = 0;
+    let abortController = null;
+    let timer = null;
+
+    function snapshot() {
+      return Object.freeze({
+        count,
+        truncated,
+        hint,
+        requestId,
+        hasAbort: Boolean(abortController),
+        hasTimer: Boolean(timer),
+      });
+    }
+
+    function abortActive() {
+      if (!abortController) return;
+      const ctl = abortController;
+      abortController = null;
+      try {
+        ctl.abort();
+      } catch (_) {}
+    }
+
+    function clearTimer() {
+      if (!timer) return;
+      clearTimeoutFn(timer);
+      timer = null;
+    }
+
+    function reset() {
+      count = null;
+      truncated = false;
+      hint = "";
+      requestId += 1;
+      clearTimer();
+      abortActive();
+      return snapshot();
+    }
+
+    function schedule(query, callback) {
+      const run = requireFunction(callback, "callback");
+      const cleanQuery = String(query || "").trim();
+      reset();
+      if (!cleanQuery) return Object.freeze({ scheduled: false, requestId, query: "" });
+      const reqId = requestId;
+      timer = setTimeoutFn(() => {
+        timer = null;
+        if (reqId !== requestId) return;
+        run(cleanQuery);
+      }, debounceMs);
+      return Object.freeze({ scheduled: true, requestId: reqId, query: cleanQuery });
+    }
+
+    function beginRequest() {
+      requestId += 1;
+      abortActive();
+      const ctl = new AbortControllerCtor();
+      abortController = ctl;
+      return Object.freeze({ requestId, controller: ctl, signal: ctl.signal });
+    }
+
+    function isCurrent(request) {
+      return Boolean(request && request.requestId === requestId);
+    }
+
+    function completeRequest(request, result = {}) {
+      if (!isCurrent(request)) return false;
+      count = Number.isFinite(Number(result.count)) ? Number(result.count) : 0;
+      truncated = Boolean(result.truncated);
+      hint = String(result.hint || "");
+      return true;
+    }
+
+    function failRequest(request) {
+      if (!isCurrent(request)) return false;
+      count = null;
+      truncated = false;
+      hint = "";
+      return true;
+    }
+
+    function finishRequest(request) {
+      if (request && abortController === request.controller) abortController = null;
+      return snapshot();
+    }
+
+    function dispose() {
+      return reset();
+    }
+
+    return Object.freeze({
+      beginRequest,
+      completeRequest,
+      dispose,
+      failRequest,
+      finishRequest,
+      isCurrent,
+      reset,
+      schedule,
+      snapshot,
+    });
+  }
+
   function createChatSearchController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("chat search controller dependency missing: options");
 
@@ -25,8 +226,6 @@
     const chatSearchAllHintEl = requireNode(options.chatSearchAllHintEl, "chatSearchAllHintEl");
     const chatSearchBar = requireNode(options.chatSearchBar, "chatSearchBar");
 
-    const createLoadedChatSearchRuntime = requireFunction(options.createLoadedChatSearchRuntime, "createLoadedChatSearchRuntime");
-    const createChatSearchAllRuntime = requireFunction(options.createChatSearchAllRuntime, "createChatSearchAllRuntime");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
     const currentGeneration = options.currentGeneration;
@@ -346,4 +545,4 @@
     });
   }
 
-export { createChatSearchController };
+export { createLoadedChatSearchRuntime, createChatSearchAllRuntime, createChatSearchController };

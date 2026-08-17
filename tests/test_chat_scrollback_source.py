@@ -95,6 +95,10 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
         f"""
         const vm = require("vm");
         const calls = [];
+        class AbortController {{
+          constructor() {{ this.signal = {{}}; }}
+          abort() {{ calls.push("invalidate-older"); }}
+        }}
         const transcriptHelpers = {{
           normalizeTailEvent: () => null, normalizeTranscriptState: () => null,
           normalizedTranscriptEvents: () => [], transcriptKey: () => "",
@@ -105,8 +109,6 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
           createTypingRowRuntime: () => ({{}}), hasHumanOriginatedUserEvent: () => false,
           createTranscriptRenderRuntime: () => ({{}}), createTranscriptDomRuntime: () => ({{}}),
           createTranscriptScrollRuntime: () => ({{}}), createTranscriptEventRuntime: () => ({{}}),
-          createOlderLoadRuntime: () => ({{ invalidate: () => calls.push("invalidate-older") }}),
-          createLoadedChatSearchRuntime: () => ({{}}), createChatSearchAllRuntime: () => ({{}}),
         }};
         const ctx = {{ window: {{ CodoxearTranscript: transcriptHelpers }}, console }};
         vm.createContext(ctx);
@@ -130,8 +132,8 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
               scheduleScrollToBottom: (options) => calls.push(["scroll-bottom", options]),
             }},
           }},
-          wiring: {{ createOlderLoadOptions: () => ({{}}) }}, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}},
-          AbortController: function AbortController() {{}}, performance: {{ now: () => 0 }},
+          wiring: {{ createOlderLoadOptions: (deps) => ({{ ...deps, AbortControllerCtor: AbortController, nowMs: () => 0, autoCooldownMs: 0 }}) }}, olderWrap: {{ style: {{}} }}, olderBtn: {{ style: {{}} }}, olderError: {{ style: {{}} }}, olderErrorText: {{ style: {{}} }},
+          AbortController, performance: {{ now: () => 0 }},
           OLDER_AUTO_COOLDOWN_MS: 0, OLDER_PAGE_LIMIT: 30, api: async () => ({{}}), handleAppAuthLoss: () => {{}},
           setStatus: () => {{}}, setContext: () => {{}}, getCurrentRunning: () => false,
           syncQueueSubmitState: () => {{}}, syncComposerSendButton: () => {{}}, updateUnattendedBtnState: () => {{}},
@@ -140,6 +142,7 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
           setTimeout, clearTimeout, sessionIdFromHash: () => "", sessionSelectable: () => false, isAppDisposed: () => false,
         }});
         (async () => {{
+          controller.olderLoadRuntime.beginLoad();
           await controller.jumpToLatest();
           process.stdout.write(JSON.stringify({{ calls }}));
         }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});

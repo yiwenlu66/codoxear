@@ -460,8 +460,6 @@ chatSearchController = (function instantiateChatSearchController() {
     chatSearchStatus,
     chatSearchAllHintEl,
     chatSearchBar,
-    createLoadedChatSearchRuntime: CodoxearTranscript.createLoadedChatSearchRuntime,
-    createChatSearchAllRuntime: CodoxearTranscript.createChatSearchAllRuntime,
     sessionState,
     currentGeneration,
     api,
@@ -860,7 +858,6 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
     return Object.freeze({
       transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime,
       transcriptEventRuntime, chatSearchController, chatNavigationController,
-      transcriptView,
       resetChatRenderState, clearOlderLoadError, showOlderLoadError, setOlderState,
       clearTranscriptDom, clearRenderedTranscriptRange: () => getHistoryController().clearRenderedTranscriptRange(),
       initPageLimit, activeTranscriptSnapshot, updateSessionTranscriptSlot, getSessionTranscriptSlot,
