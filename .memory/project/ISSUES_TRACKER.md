@@ -46,6 +46,8 @@ this session and their closure status. Maintained on disk so the next agent
 | 27 | Search cross-node highlight | CLOSED | 4242ef68 | Cross-log search |
 | 28 | Markdown rendering | CLOSED | 4d8c4549, c7922080, 8c107d6a | Nested fence, long code, KaTeX |
 | 29 | Toast surface consistency | CLOSED | 9ac87675, a64bc8df | Shared toast component |
+| 30 | Ctx chip mobile hit area 32px < 44px touch contract | NOT-CLOSED | — | Pre-existing CSS; no ::after slop on #ctxChip; measured 64.78×32 at 390×844 (Phase 4 a11y verification, 2026-08-17) |
+| 31 | Interrupt button ::after 44px slop may be inert — elementFromPoint at perimeter resolves to .topbar | NOT-CLOSED | — | Computed ::after inset:-6px exists but hit-test doesn't route perimeter points to #interruptBtn; needs stacking/pointer-events investigation (Phase 4 a11y verification, 2026-08-17) |
 | 30 | Composer sendability | CLOSED | b096e460, bc0b1374 | Pinned existing behavior, no new UX |
 | 31 | Voice settings | CLOSED | 94ea9730 | Pinned existing behavior, no new volume field |
 | 32 | Queue consistency | CLOSED | ab524698, 806e2c38 | Single projection across sidebar/header/panel |
