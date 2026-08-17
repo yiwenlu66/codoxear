@@ -25,6 +25,48 @@
     return formatConversationForCopyResult(events).text;
   }
 
+  function requireFunction(value, name) {
+    if (typeof value !== "function") throw new TypeError(`conversation copy dependency missing: ${name}`);
+    return value;
+  }
+
+  // Conversation copy owns export access, stale-session rejection, formatter
+  // authority, clipboard delivery, and all user feedback for this workflow.
+  function createConversationCopyController(options = {}) {
+    if (!options || typeof options !== "object") throw new TypeError("conversation copy dependency missing: options");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("conversation copy dependency missing: sessionState");
+    const api = requireFunction(options.api, "api");
+    const copyToClipboard = requireFunction(options.copyToClipboard, "copyToClipboard");
+    const setToast = requireFunction(options.setToast, "setToast");
+    const copyConversationFailureToast = requireFunction(options.copyConversationFailureToast, "copyConversationFailureToast");
+
+    function successToast(messageCount) {
+      return messageCount === 1 ? "Copied 1 message" : `Copied ${messageCount} messages`;
+    }
+
+    async function copyConversation() {
+      const sid = sessionState.get("selected");
+      if (!sid) return;
+      try {
+        const data = await api(`/api/sessions/${sid}/messages/export`);
+        if (sessionState.get("selected") !== sid) return;
+        const events = Array.isArray(data && data.events) ? data.events : [];
+        const formatted = formatConversationForCopyResult(events);
+        if (!formatted.text) {
+          setToast("No conversation to copy");
+          return;
+        }
+        await copyToClipboard(formatted.text);
+        setToast(successToast(formatted.messageCount));
+      } catch (err) {
+        setToast(copyConversationFailureToast(err));
+      }
+    }
+
+    return Object.freeze({ copyConversation });
+  }
+
   function formatCopyLimitBytes(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return "";
@@ -55,4 +97,4 @@
     return `Conversation too large to copy${limit ? ` (max ${limit})` : ""}. Use search or copy a smaller range.`;
   }
 
-export { formatConversationForCopy, formatConversationForCopyResult, transcriptExportTooLargeCopyMessage };
+export { createConversationCopyController, formatConversationForCopy, formatConversationForCopyResult, transcriptExportTooLargeCopyMessage };

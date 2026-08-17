@@ -598,7 +598,7 @@ const global = window;
         sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
         sessionHasOrphanQueueRecovery, sessionSidebarGroupKey, sidebarSessionEntries,
         sidebarRenderSignature, sessionSelectable, diagnosticsProviderDisplay, diagnosticsCopyText,
-        normalizeQueueItems, codoxearPolling: CodoxearPolling, codoxearNetwork: CodoxearNetwork, codoxearConversationCopy: CodoxearConversationCopy,
+        normalizeQueueItems, codoxearPolling: CodoxearPolling, codoxearNetwork: CodoxearNetwork,
         transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
         agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
         emptyPiLaunchDefaults, emptyCcLaunchDefaults, redactedLaunchErrorText, sessionLaunchLabel,

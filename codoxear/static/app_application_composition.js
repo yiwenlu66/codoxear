@@ -1,11 +1,13 @@
 import * as CodoxearChatInteraction from "./app_chat_interaction.js";
 import * as CodoxearClipboard from "./app_file_ops.js";
+import * as CodoxearConversationCopy from "./app_conversation_copy.js";
 import * as CodoxearCodeCopy from "./app_code_copy.js";
 import * as CodoxearDiagnostics from "./app_diagnostics.js";
 import * as CodoxearDialogMenu from "./app_dialog_menu.js";
 import * as CodoxearFileEditorOps from "./app_file_editor_ops.js";
 import * as CodoxearFileOps from "./app_file_ops.js";
 import * as CodoxearFilePickerOps from "./app_file_picker_ops.js";
+import * as CodoxearHelp from "./app_help.js";
 import * as CodoxearIOSViewport from "./app_ios_viewport.js";
 import * as CodoxearMessageHistory from "./app_message_history.js";
 import * as CodoxearModal from "./app_modal.js";
@@ -88,7 +90,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
       sessionHasOrphanQueueRecovery, sessionSidebarGroupKey, sidebarSessionEntries,
       sidebarRenderSignature, sessionSelectable, diagnosticsProviderDisplay, diagnosticsCopyText,
-      normalizeQueueItems, codoxearPolling, codoxearNetwork, codoxearConversationCopy,
+      normalizeQueueItems, codoxearPolling, codoxearNetwork,
       transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
       agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
       emptyPiLaunchDefaults, emptyCcLaunchDefaults, redactedLaunchErrorText, sessionLaunchLabel,
@@ -212,6 +214,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
         let sessionEditController = null;
         let interruptController = null;
+        let modalPolicyController = null;
               // Unattended menu state, cfg cache, number-input drafts, and the
               // per-session save timers/in-flight/pending maps live in the
               // CodoxearUnattended controller (codoxear/static/app_unattended.js).
@@ -353,7 +356,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
         }));
 
-        let helpReturnFocusEl = null;
         const applicationModalDOM = codoxearShell.createApplicationModalDOM(wiring.createApplicationModalDOMOptions({
           root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost: shellDOM.elements.voiceHost,
         }));
@@ -377,19 +379,37 @@ import * as CodoxearWiring from "./app_wiring.js";
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
         } = applicationModalDOM;
 
-        function setPickerButtonContent(button, primaryText, secondaryText = "", placeholder = false) {
-          if (!button) return;
-          button.innerHTML = "";
-          const textWrap = el("span", { class: `pickerButtonText${placeholder ? " placeholder" : ""}` });
-          textWrap.appendChild(el("span", { class: "pickerButtonPrimary", text: String(primaryText || "") }));
-          if (secondaryText) textWrap.appendChild(el("span", { class: "pickerButtonSecondary", text: String(secondaryText) }));
-          button.appendChild(textWrap);
-          button.appendChild(el("span", { class: "pickerButtonChevron", html: iconSvg("chevronDown") }));
-        }
-
         const dialogMenuController = CodoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
 
-        const newSessionDialogController = codoxearNewSession.createNewSessionDialogController(wiring.createNewSessionDialogOptions({
+        let newSessionDialogController = null;
+        let modalIsolationTargets = null;
+        modalPolicyController = CodoxearModal.createModalPolicyController(wiring.createModalPolicyOptions({
+          app,
+          modalTargets: () => modalIsolationTargets,
+          closeUnattended: () => hideUnattendedMenu(),
+          isUnattendedOpen: () => unattendedController.isOpen(),
+          closeSearch: () => closeChatSearch(),
+          isSearchOpen: () => chatSearchController.isOpen(),
+          isSidebarOpen: () => document.body.classList.contains("sidebar-open"),
+          closeSidebar: () => setSidebarOpen(false),
+          closeFilePicker: () => {
+            if (fileOpsController) fileOpsController.closeFilePickerMenu({ restoreInput: false });
+          },
+          closeNewSessionMenus: () => newSessionDialogController.closeMenus(),
+          closeSessionDependencyMenu: () => sessionEditController.closeDependencyMenu(),
+          el,
+          iconSvg,
+        }));
+        const {
+          afterModalVisibilityChanged,
+          focusModalCloseButton,
+          isModalTargetOpen,
+          prepareModalOpen,
+          restoreModalFocus,
+          setPickerButtonContent,
+        } = modalPolicyController;
+
+        newSessionDialogController = codoxearNewSession.createNewSessionDialogController(wiring.createNewSessionDialogOptions({
           root,
           el,
           iconSvg,
@@ -409,7 +429,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
 
-        const modalIsolationTargets = [
+        modalIsolationTargets = [
           fileUnsavedDialog,
           filePasteDialog,
           fileViewer,
@@ -423,113 +443,25 @@ import * as CodoxearWiring from "./app_wiring.js";
           newSessionDialogController.viewer,
         ];
 
-        function isModalTargetOpen(node) {
-          return CodoxearModal.isModalTargetOpen(node);
-        }
-
-        function syncModalIsolation() {
-          return CodoxearModal.syncModalIsolation(app, modalIsolationTargets);
-        }
-
-        function closeFilePickerMenu() {
-          if (!fileOpsController) return;
-          fileOpsController.closeFilePickerMenu({ restoreInput: false });
-        }
-
-        function closeTransientOverlays({ closeSearch = false } = {}) {
-          if (unattendedController.isOpen()) hideUnattendedMenu();
-          if (closeSearch && chatSearchController.isOpen()) closeChatSearch();
-          if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
-          closeFilePickerMenu();
-          newSessionDialogController.closeMenus();
-          sessionEditController.closeDependencyMenu();
-        }
-
-        function prepareModalOpen(options = {}) {
-          closeTransientOverlays(options);
-        }
-
-        function afterModalVisibilityChanged() {
-          syncModalIsolation();
-        }
-
-        function restoreModalFocus(target, isStillOpen) {
-          return CodoxearModal.restoreModalFocus(target, isStillOpen);
-        }
-
-        function focusModalCloseButton(viewer, closeBtn) {
-          return CodoxearModal.focusModalCloseButton(viewer, closeBtn);
-        }
-
-        let appConfirmPending = null;
-        let appConfirmReturnFocusEl = null;
-
-        function normalizeAppConfirmOptions(options = {}) {
-          if (typeof options === "string") return { title: "Confirm action", message: options, confirmText: "Confirm", cancelText: "Cancel", destructive: false };
-          const raw = options && typeof options === "object" ? options : {};
-          return {
-            title: String(raw.title || "Confirm action"),
-            message: String(raw.message || ""),
-            confirmText: String(raw.confirmText || "Confirm"),
-            cancelText: String(raw.cancelText || "Cancel"),
-            destructive: Boolean(raw.destructive),
-          };
-        }
-
-        function appConfirmFocusableControls() {
-          return [appConfirmCancelBtn, appConfirmConfirmBtn].filter((control) => control && !control.disabled && typeof control.focus === "function");
-        }
-
-        function focusAppConfirmInitial({ destructive = false } = {}) {
-          requestAnimationFrame(() => {
-            if (appConfirm.style.display !== "flex") return;
-            const preferred = destructive ? appConfirmCancelBtn : appConfirmConfirmBtn;
-            const fallback = destructive ? appConfirmConfirmBtn : appConfirmCancelBtn;
-            const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : null;
-            if (!target || typeof target.focus !== "function") return;
-            try {
-              target.focus({ preventScroll: true });
-            } catch {}
-          });
-        }
-
-        function resolveAppConfirm(result, { restoreFocus = true } = {}) {
-          const pending = appConfirmPending;
-          const target = appConfirmReturnFocusEl;
-          appConfirmPending = null;
-          appConfirmReturnFocusEl = null;
-          appConfirmBackdrop.style.display = "none";
-          appConfirm.style.display = "none";
-          afterModalVisibilityChanged();
-          if (restoreFocus) restoreModalFocus(target, () => appConfirm.style.display === "flex");
-          if (pending && !pending.settled) {
-            pending.settled = true;
-            pending.resolve(Boolean(result));
-          }
-        }
-
-        function confirmApp(options = {}) {
-          if (appConfirmPending) resolveAppConfirm(false, { restoreFocus: false });
-          const normalized = normalizeAppConfirmOptions(options);
-          prepareModalOpen();
-          appConfirmTitle.textContent = normalized.title;
-          appConfirmMessage.textContent = normalized.message;
-          appConfirmConfirmBtn.textContent = normalized.confirmText;
-          appConfirmCancelBtn.textContent = normalized.cancelText;
-          appConfirmReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          appConfirmBackdrop.style.display = "block";
-          appConfirm.style.display = "flex";
-          afterModalVisibilityChanged();
-          focusAppConfirmInitial(normalized);
-          return new Promise((resolve) => {
-            appConfirmPending = { resolve, settled: false };
-          });
-        }
-
-        eventBindings.on(appConfirmConfirmBtn, 'click', () => resolveAppConfirm(true));
-        eventBindings.on(appConfirmCancelBtn, 'click', () => resolveAppConfirm(false));
-        eventBindings.on(appConfirmBackdrop, 'click', () => resolveAppConfirm(false));
-
+        const confirmationController = CodoxearModal.createConfirmationController(wiring.createConfirmationOptions({
+          backdrop: appConfirmBackdrop,
+          viewer: appConfirm,
+          title: appConfirmTitle,
+          message: appConfirmMessage,
+          confirmButton: appConfirmConfirmBtn,
+          cancelButton: appConfirmCancelBtn,
+          documentTarget: document,
+          ElementCtor: HTMLElement,
+          requestFrame: requestAnimationFrame,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          addEvent: addAppEvent,
+        }));
+        const {
+          confirm: confirmApp,
+          focusableControls: appConfirmFocusableControls,
+          resolve: resolveAppConfirm,
+        } = confirmationController;
 
         const toastController = createToastController({ toast, setTimeout });
         function setToast(text) {
@@ -558,36 +490,14 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearTimeout,
         }));
 
-        function formatConversationForCopy(events) {
-          return codoxearConversationCopy.formatConversationForCopy(events);
-        }
-
-        function formatConversationForCopyResult(events) {
-          return codoxearConversationCopy.formatConversationForCopyResult(events);
-        }
-
-        function copiedConversationToast(messageCount) {
-          return messageCount === 1 ? "Copied 1 message" : `Copied ${messageCount} messages`;
-        }
-
-        async function copyConversation() {
-          if (!sessionState.get("selected")) return;
-          const sid = sessionState.get("selected");
-          try {
-            const data = await api(`/api/sessions/${sid}/messages/export`);
-            if (sessionState.get("selected") !== sid) return;
-            const events = Array.isArray(data && data.events) ? data.events : [];
-            const formatted = formatConversationForCopyResult(events);
-            if (!formatted.text) {
-              setToast("No conversation to copy");
-              return;
-            }
-            await copyToClipboard(formatted.text);
-            setToast(copiedConversationToast(formatted.messageCount));
-          } catch (err) {
-            setToast(copyConversationFailureToast(err));
-          }
-        }
+        const conversationCopyController = CodoxearConversationCopy.createConversationCopyController(wiring.createConversationCopyOptions({
+          sessionState,
+          api,
+          copyToClipboard,
+          setToast,
+          copyConversationFailureToast,
+        }));
+        const { copyConversation } = conversationCopyController;
 
         let fileOpsController = null;
 
@@ -967,23 +877,21 @@ import * as CodoxearWiring from "./app_wiring.js";
           return queueController.hideQueueViewer();
         }
 
-        function showHelpViewer({ opener = null } = {}) {
-          helpReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          prepareModalOpen();
-          helpBackdrop.style.display = "block";
-          helpViewer.style.display = "flex";
-          afterModalVisibilityChanged();
-          focusModalCloseButton(helpViewer, helpCloseBtn);
-        }
-        function hideHelpViewer() {
-          const wasOpen = isModalTargetOpen(helpViewer);
-          const focusTarget = helpReturnFocusEl;
-          helpReturnFocusEl = null;
-          helpBackdrop.style.display = "none";
-          helpViewer.style.display = "none";
-          afterModalVisibilityChanged();
-          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
-        }
+        const helpController = CodoxearHelp.createHelpController(wiring.createHelpOptions({
+          backdrop: helpBackdrop,
+          viewer: helpViewer,
+          closeButton: helpCloseBtn,
+          openButton: $("#helpBtnSide"),
+          documentTarget: document,
+          ElementCtor: HTMLElement,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          addEvent: addAppEvent,
+          focusModalCloseButton,
+          isModalTargetOpen,
+          restoreModalFocus,
+        }));
+        const { hide: hideHelpViewer } = helpController;
 
         // Details/diagnostics modal state, rendering decisions, and the
         // Copy conversation / Copy details / show / hide
@@ -1151,23 +1059,11 @@ import * as CodoxearWiring from "./app_wiring.js";
           maybeSelectPendingHashSession,
         }));
 
-        eventBindings.on($("#helpBtnSide"), 'click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          showHelpViewer({ opener: e.currentTarget });
-        });
         eventBindings.on($("#settingsBtnSide"), 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           showVoiceSettingsDialog();
         });
-        eventBindings.on(helpCloseBtn, 'click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          hideHelpViewer();
-        });
-        eventBindings.on(helpBackdrop, 'click', () => hideHelpViewer());
-
         eventBindings.on(diagBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();

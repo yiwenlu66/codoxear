@@ -54,6 +54,7 @@ MODULE_NAMESPACES = {
     "app_file_viewer_operations.js": ["CodoxearFileViewerOperations"],
     "app_file_viewer_panel.js": ["CodoxearFileViewerPanel"],
     "app_hint_mode.js": ["CodoxearHintMode"],
+    "app_help.js": ["CodoxearHelp"],
     "app_ios_viewport.js": ["CodoxearIOSViewport"],
     "app_launch.js": ["CodoxearLaunch"],
     "app_markdown.js": ["CodoxearMarkdown"],

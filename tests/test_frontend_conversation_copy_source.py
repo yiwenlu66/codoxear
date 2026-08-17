@@ -50,6 +50,52 @@ def eval_conversation_copy_helpers(expression: str) -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_conversation_copy_controller(scenario: str) -> dict:
+    source = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const copies = [];
+        const toasts = [];
+        const urls = [];
+        let selected = "s-1";
+        let release;
+        const gate = new Promise((resolve) => {{ release = resolve; }});
+        const exportsByScenario = {{
+          success: {{ events: [
+            {{ role: "system", text: "ignore" }},
+            {{ role: "user", text: "hello" }},
+            {{ role: "assistant", text: "answer" }},
+            {{ role: "assistant", text: "   " }},
+          ] }},
+          singular: {{ events: [{{ role: "user", text: "only" }}, {{ role: "tool", text: "ignore" }}] }},
+          empty: {{ events: [{{ role: "system", text: "ignore" }}] }},
+        }};
+        const api = async (url) => {{
+          urls.push(url);
+          if ({json.dumps(scenario)} === "stale") {{ await gate; return {{ events: [{{ role: "user", text: "stale" }}] }}; }}
+          if ({json.dumps(scenario)} === "failure") throw Object.assign(new Error("network down"), {{ code: "boom" }});
+          return exportsByScenario[{json.dumps(scenario)}];
+        }};
+        const controller = ctx.window.CodoxearConversationCopy.createConversationCopyController({{
+          sessionState: {{ get: () => selected }},
+          api,
+          copyToClipboard: async (text) => {{ copies.push(text); }},
+          setToast: (text) => toasts.push(text),
+          copyConversationFailureToast: (error) => `handled:${{error.message}}`,
+        }});
+        const pending = controller.copyConversation();
+        if ({json.dumps(scenario)} === "stale") {{ selected = "s-2"; release(); }}
+        pending.then(() => process.stdout.write(JSON.stringify({{ frozen: Object.isFrozen(controller), copies, toasts, urls }})));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_app_clipboard_fallback() -> dict:
     source = APP_FILE_OPS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -72,6 +118,28 @@ def eval_app_clipboard_fallback() -> dict:
 
 
 class TestFrontendConversationCopyBehavior(unittest.TestCase):
+    def test_controller_uses_formatter_owned_count_and_clipboard_payload(self) -> None:
+        success = eval_conversation_copy_controller("success")
+        self.assertTrue(success["frozen"])
+        self.assertEqual(success["urls"], ["/api/sessions/s-1/messages/export"])
+        self.assertEqual(success["toasts"], ["Copied 2 messages"])
+        self.assertEqual(len(success["copies"]), 1)
+        self.assertContains("## User", success["copies"][0])
+        self.assertContains("## Assistant", success["copies"][0])
+        self.assertNotContains("ignore", success["copies"][0])
+        self.assertEqual(eval_conversation_copy_controller("singular")["toasts"], ["Copied 1 message"])
+
+    def test_controller_rejects_stale_session_and_preserves_feedback_contracts(self) -> None:
+        stale = eval_conversation_copy_controller("stale")
+        self.assertEqual(stale["copies"], [])
+        self.assertEqual(stale["toasts"], [])
+        empty = eval_conversation_copy_controller("empty")
+        self.assertEqual(empty["copies"], [])
+        self.assertEqual(empty["toasts"], ["No conversation to copy"])
+        failure = eval_conversation_copy_controller("failure")
+        self.assertEqual(failure["copies"], [])
+        self.assertEqual(failure["toasts"], ["handled:network down"])
+
     def test_transcript_export_too_large_helper_recognizes_api_error_shape(self) -> None:
         result = eval_conversation_copy_helpers(
             """
