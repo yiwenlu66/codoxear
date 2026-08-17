@@ -62,9 +62,11 @@ class SessionLogRuntimeCoordinator:
     def commit_log_observation(self, session_id: str, observation: LogDerivedSessionObservation) -> bool:
         """Atomically commit a current, monotonic JSONL observation.
 
-        The session binding path and the file's exact revision must still match
-        what the reader observed. Within one path/device/inode generation, a
-        commit whose end precedes the last accepted end is rejected. A changed
+        The session binding path and the file identity must still match what
+        the reader observed. An unchanged exact revision is accepted; ordinary
+        append growth is also accepted when it covers every byte the reader
+        actually consumed. Within one path/device/inode generation, a commit
+        whose end precedes the last accepted end is rejected. A changed
         path/inode (rebind) or a current same-file revision smaller than the
         prior end (truncation) starts a legitimate new offset generation.
 
@@ -74,7 +76,19 @@ class SessionLogRuntimeCoordinator:
         """
         identity = log_identity(observation.log_path, observation.revision)
         with self.lock:
-            if log_revision(observation.log_path) != observation.revision:
+            current_revision = log_revision(observation.log_path)
+            if current_revision is None:
+                return False
+            current_identity = log_identity(observation.log_path, current_revision)
+            revision_unchanged = current_revision == observation.revision
+            observed_growth = int(observation.end_off) > int(observation.revision[2])
+            append_only_growth = (
+                observed_growth
+                and current_identity == identity
+                and int(current_revision[2]) >= int(observation.end_off)
+                and int(current_revision[3]) >= int(observation.revision[3])
+            )
+            if not revision_unchanged and not append_only_growth:
                 return False
             session = self.sessions().get(session_id)
             if session is None or session.log_path != observation.log_path:
@@ -121,7 +135,7 @@ class SessionLogRuntimeCoordinator:
                 session.run_settings_log_revision = observation.settings_revision
             if observation.invalidate_idle_cache:
                 session.idle_cache_log_off = -1
-            session.log_projection_revision = observation.revision
+            session.log_projection_revision = current_revision
             session.log_projection_end = int(observation.end_off)
             return True
 

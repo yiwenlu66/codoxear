@@ -161,7 +161,13 @@ class SessionDiscoveryRegistryCoordinator:
                     previous.model_provider = session.model_provider
                     previous.model = session.model
                     previous.reasoning_effort = session.reasoning_effort
-                    should_commit_log = registration.log_revision is not None and registration.log_path is not None
+                # Discovery has already reconciled live bridge/sidecar settings
+                # ahead of delayed JSONL evidence. Route that effective result
+                # through the same ordered log boundary even when the bound path
+                # is unchanged: equal-end commits allow a live setting change
+                # without inventing a second registry writer, while a discovery
+                # snapshot behind a newer cursor observation is still rejected.
+                should_commit_log = registration.log_revision is not None and registration.log_path is not None
                 previous.preferred_auth_method = registration.preferred_auth_method
                 previous.service_tier = registration.service_tier
                 previous.tmux_session = registration.tmux_session

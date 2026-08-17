@@ -373,6 +373,49 @@ def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projec
     assert "_cwd_path_obj" not in row
 
 
+def test_build_runtime_enriched_session_rows_reprojects_rejected_settings_from_registry() -> None:
+    log_path = Path("/tmp/log.jsonl")
+    session = _session(log_path)
+    session.model_provider = "new-provider"
+    session.preferred_auth_method = "api-key"
+    session.model = "new-model"
+    session.reasoning_effort = "high"
+    staged = {
+        **_staged_listing_row(log_path),
+        "needs_history_scan": False,
+        "model_provider": "old-provider",
+        "preferred_auth_method": None,
+        "model": "old-model",
+        "reasoning_effort": "low",
+        "provider_choice": "old-choice",
+    }
+
+    result = build_runtime_enriched_session_rows(
+        staged_rows=[staged],
+        sessions={"s1": session},
+        lock=threading.Lock(),
+        store=_RecentCwdStore(),  # type: ignore[arg-type]
+        probes=ListingRuntimeProbes(
+            last_conversation_ts_from_tail=lambda path: None,
+            read_run_settings_from_log=lambda path, agent_backend: ("older-provider", "older-model", "low"),
+            commit_log_observation=lambda _sid, _observation: False,
+            log_size_or_none=lambda path: 100,
+            send_boundary_unresolved=lambda sid, path, size: False,
+            idle_from_log_path=lambda sid, path: True,
+            current_git_branch=lambda path: None,
+        ),
+        now_ts=30.0,
+        provider_choice_for_settings=lambda model_provider, preferred_auth_method: f"choice:{model_provider}:{preferred_auth_method}",
+        priority_half_life_seconds=60.0,
+        priority_bucket_seconds=1.0,
+    )
+
+    assert result.rows[0]["model_provider"] == "new-provider"
+    assert result.rows[0]["model"] == "new-model"
+    assert result.rows[0]["reasoning_effort"] == "high"
+    assert result.rows[0]["provider_choice"] == "choice:new-provider:api-key"
+
+
 def test_build_runtime_enriched_session_rows_keeps_busy_when_send_boundary_unresolved() -> None:
     log_path = Path("/tmp/log.jsonl")
     session = _session(log_path)

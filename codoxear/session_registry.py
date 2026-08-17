@@ -5,6 +5,18 @@ from contextlib import AbstractContextManager
 from typing import Any
 
 
+# Compatibility fixtures can enter registry/coordinator access on a manager
+# built via ``__new__``. Serialize those exceptional lazy constructions so all
+# callers observe one registry and one coordinator graph identity. The locks
+# are separate because graph construction legitimately initializes a registry.
+_SESSION_REGISTRY_LAZY_INIT_LOCK = threading.Lock()
+_SESSION_COORDINATOR_LAZY_INIT_LOCK = threading.Lock()
+
+
+def session_coordinator_lazy_init_lock() -> threading.Lock:
+    return _SESSION_COORDINATOR_LAZY_INIT_LOCK
+
+
 class SessionRegistry:
     def __init__(self, *, lock: Any | None = None, stop_event: threading.Event | None = None) -> None:
         self.lock = threading.Lock() if lock is None else lock
@@ -28,9 +40,13 @@ def session_registry_for_manager(manager: Any) -> SessionRegistry:
     registry = getattr(manager, "_registry", None)
     if isinstance(registry, SessionRegistry):
         return registry
-    registry = SessionRegistry()
-    object.__setattr__(manager, "_registry", registry)
-    return registry
+    with _SESSION_REGISTRY_LAZY_INIT_LOCK:
+        registry = getattr(manager, "_registry", None)
+        if isinstance(registry, SessionRegistry):
+            return registry
+        registry = SessionRegistry()
+        object.__setattr__(manager, "_registry", registry)
+        return registry
 
 
 def registry_backed_attr(registry_attr: str) -> property:

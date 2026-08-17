@@ -170,6 +170,7 @@ from .session_manager_store import session_store_for_manager as _session_store_f
 from .session_manager_store import session_store_paths as _session_store_paths_impl
 from .session_model import Session
 from .session_registry import registry_backed_attr as _registry_backed_attr
+from .session_registry import session_coordinator_lazy_init_lock as _session_coordinator_lazy_init_lock
 from .session_registry import session_registry_for_manager as _session_registry_for_manager
 from .session_runtime import RuntimeStatus
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
@@ -1020,11 +1021,15 @@ class SessionManager:
 
     def _coordinator_graph(self) -> Any:
         graph = getattr(self, "_coordinators", None)
-        if graph is None:
-            deps = _session_manager_coordinator_deps(sys.modules[__name__])
-            graph = _build_session_manager_coordinator_graph(self, deps)
-            self._coordinators = graph
-        return graph
+        if graph is not None:
+            return graph
+        with _session_coordinator_lazy_init_lock():
+            graph = getattr(self, "_coordinators", None)
+            if graph is None:
+                deps = _session_manager_coordinator_deps(sys.modules[__name__])
+                graph = _build_session_manager_coordinator_graph(self, deps)
+                self._coordinators = graph
+            return graph
 
     def _discovery_deps(self) -> Any:
         return self._coordinator_graph().discovery

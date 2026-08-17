@@ -275,6 +275,37 @@ def test_old_token_update_and_clear_cannot_replace_newer_token(tmp_path: Path) -
     assert session.token == newer_token
 
 
+def test_append_between_stat_and_read_commits_consumed_boundary(tmp_path: Path) -> None:
+    path = tmp_path / "pi-append-race.jsonl"
+    old = _pi_model("old-provider", "old-model")
+    path.write_bytes(_row_bytes(old))
+    session = _session(path)
+    runtime = _runtime(session)
+    captured_revision = log_revision(path)
+    assert captured_revision is not None
+
+    new = _pi_model("new-provider", "new-model")
+    with path.open("ab") as stream:
+        stream.write(_row_bytes(new))
+    objs, consumed_end = read_jsonl_from_offset(path, 0, max_bytes=1024 * 1024)
+    grown_revision = log_revision(path)
+    assert grown_revision is not None
+    assert consumed_end > captured_revision[2]
+
+    observation = runtime.observation_from_rows(
+        agent_backend="pi",
+        log_path=path,
+        revision=captured_revision,
+        start_off=0,
+        end_off=consumed_end,
+        objs=objs,
+    )
+    assert runtime.commit_log_observation("sid", observation)
+    assert session.log_projection_end == consumed_end
+    assert session.log_projection_revision == grown_revision
+    assert (session.model_provider, session.model) == ("new-provider", "new-model")
+
+
 def test_same_path_truncation_accepts_offset_reset_and_rejects_old_revision(tmp_path: Path) -> None:
     path = tmp_path / "pi.jsonl"
     old = _pi_model("old-provider", "old-model")

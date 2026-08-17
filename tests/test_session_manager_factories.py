@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import fields
+import threading
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from codoxear import server
@@ -52,6 +55,40 @@ def test_manager_retains_one_coordinator_graph() -> None:
     assert manager._queue_coordinator_for_manager() is manager._queue_coordinator_for_manager()
     assert manager._log_runtime_for_manager() is manager._log_runtime_for_manager()
     assert manager._queue_coordinator_for_manager() is manager._coordinators.queue
+
+
+def test_compatibility_lazy_graph_initialization_builds_once_across_threads() -> None:
+    manager = server.SessionManager.__new__(server.SessionManager)
+    barrier = threading.Barrier(2)
+    builder_calls = 0
+    builder_lock = threading.Lock()
+    returned: list[object] = []
+
+    def build_graph(_manager, _deps):
+        nonlocal builder_calls
+        with builder_lock:
+            builder_calls += 1
+        time.sleep(0.05)
+        return SimpleNamespace(queue=object())
+
+    def get_queue() -> None:
+        barrier.wait()
+        returned.append(manager._queue_coordinator_for_manager())
+
+    with (
+        patch.object(server, "_session_manager_coordinator_deps", lambda _module: object()),
+        patch.object(server, "_build_session_manager_coordinator_graph", build_graph),
+    ):
+        threads = [threading.Thread(target=get_queue) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert builder_calls == 1
+    assert len(returned) == 2
+    assert returned[0] is returned[1]
 
 
 def test_queue_sweep_cursor_lives_on_retained_coordinator() -> None:

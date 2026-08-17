@@ -60,5 +60,7 @@ class LogDerivedSessionObservation:
         end = int(self.end_off)
         if start < 0 or end < start:
             raise ValueError("invalid log observation byte range")
-        if end > int(self.revision[2]):
-            raise ValueError("log observation ends beyond its revision")
+        # A backend may append after the caller captures ``revision`` but before
+        # its bounded read completes. ``end_off`` records bytes actually
+        # consumed and may therefore exceed the pre-read size; commit-time
+        # identity/growth validation decides whether that range is current.

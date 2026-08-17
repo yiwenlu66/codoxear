@@ -510,7 +510,11 @@ def build_runtime_enriched_session_rows(
             )
             with lock:
                 s_cur = sessions.get(sid)
-                if committed and s_cur is not None:
+                # A rejected observation means a newer concurrent commit or a
+                # rebind won while the full-log read ran outside the lock. The
+                # response must still project the registry's current authority,
+                # rather than returning the stale row staged before that work.
+                if s_cur is not None:
                     it["model_provider"] = s_cur.model_provider
                     it["preferred_auth_method"] = s_cur.preferred_auth_method
                     it["model"] = s_cur.model

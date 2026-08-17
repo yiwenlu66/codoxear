@@ -51,9 +51,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codoxear import server
+from codoxear.rollout_idle import _analyze_log_chunk
+from codoxear.rollout_log import _compute_idle_from_log
+from codoxear.rollout_log import _find_latest_token_update
 from codoxear.session_cleanup import SessionCleanupCoordinator
+from codoxear.session_discovery import DiscoveryRegistration
+from codoxear.session_discovery_registry import SessionDiscoveryRegistryCoordinator
 from codoxear.session_lifecycle import SessionLifecycleCoordinator
 from codoxear.session_list import SessionListCoordinator
+from codoxear.session_log_metadata import turn_context_run_settings
+from codoxear.session_log_projection import log_revision
+from codoxear.session_log_runtime import SessionLogRuntimeCoordinator
 from codoxear.session_model import Session
 from codoxear.session_recent_cwd import SessionRecentCwdCoordinator
 from codoxear.session_runtime import ListingRuntimeProbes
@@ -61,6 +69,7 @@ from codoxear.session_runtime import log_path_size_or_none
 from codoxear.session_store import SessionStore
 from codoxear.session_store import SessionStorePaths
 from codoxear.session_ui_state import SessionUiStateCoordinator
+from codoxear.util import read_jsonl_from_offset
 
 HALF_LIFE = server.SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 BUCKET = server.SIDEBAR_PRIORITY_BUCKET_SECONDS
@@ -399,6 +408,89 @@ class TestSessionSidebarPriority(unittest.TestCase):
             self.assertEqual(rows[0]["model"], "gpt-5.4")
             self.assertEqual(rows[0]["reasoning_effort"], "high")
             self.assertEqual(current.model, "gpt-5.4")
+
+    def test_same_log_discovery_live_effort_reaches_registry_and_listing(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "pi.jsonl"
+            log_path.write_text('{}\n', encoding="utf-8")
+            revision = log_revision(log_path)
+            self.assertIsNotNone(revision)
+            lock = threading.Lock()
+            current = _session(sid="current", start_ts=time.time(), last_chat_ts=time.time())
+            current.agent_backend = "pi"
+            current.log_path = log_path
+            current.reasoning_effort = "low"
+            sessions = {current.session_id: current}
+            runtime = SessionLogRuntimeCoordinator(
+                lock=lock,
+                sessions=lambda: sessions,
+                analyze_log_chunk=_analyze_log_chunk,
+                turn_context_run_settings=lambda payload: turn_context_run_settings(
+                    payload,
+                    clean_optional_text=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+                    display_reasoning_effort=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+                ),
+                compute_idle_from_log=_compute_idle_from_log,
+                read_jsonl_from_offset=read_jsonl_from_offset,
+                find_latest_token_update=_find_latest_token_update,
+            )
+            registry = SessionDiscoveryRegistryCoordinator(
+                lock=lock,
+                sessions=lambda: sessions,
+                pending_attachment_ids=lambda: set(),
+                commit_unknown_sends=lambda: {},
+                reset_log_caches=lambda session, log_off: server._reset_session_log_caches_impl(session, meta_log_off=log_off),
+                record_launch_attempt=lambda _record: None,
+                prune_stale_socket_without_metadata=lambda _sid, _sock: None,
+                unhide_session=lambda _sid: None,
+                unlink_quiet=lambda _path: None,
+                remember_recent_cwd=lambda *_args, **_kwargs: False,
+                save_recent_cwds=lambda: None,
+                commit_log_observation=runtime.commit_log_observation,
+            )
+            registry.upsert_registration(
+                DiscoveryRegistration(
+                    session_id=current.session_id,
+                    thread_id=current.thread_id,
+                    broker_pid=current.broker_pid,
+                    codex_pid=current.codex_pid,
+                    agent_backend=current.agent_backend,
+                    owned=current.owned,
+                    transport=current.transport,
+                    start_ts=current.start_ts,
+                    cwd=current.cwd,
+                    log_path=log_path,
+                    sock_path=current.sock_path,
+                    busy=current.busy,
+                    queue_len=current.queue_len,
+                    token=current.token,
+                    meta_log_off=revision[2],
+                    model_provider=current.model_provider,
+                    preferred_auth_method=current.preferred_auth_method,
+                    model=current.model,
+                    reasoning_effort="high",
+                    service_tier=current.service_tier,
+                    tmux_session=current.tmux_session,
+                    tmux_window=current.tmux_window,
+                    launch_id=current.launch_id,
+                    spawn_nonce=current.spawn_nonce,
+                    resume_session_id=current.resume_session_id,
+                    sync_send_supported=current.sync_send_supported,
+                    key_write_errors_supported=current.key_write_errors_supported,
+                    interrupted_idle=current.interrupted_idle,
+                    log_revision=revision,
+                )
+            )
+
+            self.assertEqual(current.reasoning_effort, "high")
+            rows = _list_coordinator(
+                store=_store(root),
+                sessions=sessions,
+                lock=lock,
+                probes=_probes(commit_log_observation=runtime.commit_log_observation),
+            ).list_sessions()
+            self.assertEqual(rows[0]["reasoning_effort"], "high")
 
     def test_delete_session_kills_terminal_owned_and_clears_dependents(self) -> None:
         # ``SessionLifecycleCoordinator.delete_session`` is wired with an
