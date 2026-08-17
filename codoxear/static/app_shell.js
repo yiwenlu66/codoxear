@@ -61,13 +61,6 @@ function requireFunction(value, name) {
     chat.appendChild(chatInner);
 
     const titleLabel = el("div", { id: "threadTitle", "data-hint": "t", text: "No session selected" });
-    const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "" });
-    statusChip.style.display = "none";
-    const ctxChip = el("button", { class: "status-chip", id: "ctxChip", text: "", type: "button", "aria-label": "Context usage details", "data-hint": "y" });
-    ctxChip.style.display = "none";
-    ctxChip.disabled = true;
-    const interruptBtn = el("button", { id: "interruptBtn", class: "icon-btn", title: "Interrupt (Esc)", "aria-label": "Interrupt (Esc)", "data-hint": "z", type: "button", html: iconSvg("stop") });
-    interruptBtn.style.display = "none";
     const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
     const networkBanner = el("div", { class: "networkBanner", id: "networkBanner", role: "status", "aria-live": "polite", "aria-atomic": "true", "aria-hidden": "true" });
     networkBanner.hidden = true;
@@ -86,14 +79,15 @@ function requireFunction(value, name) {
     prevUserBtn.disabled = nextUserBtn.disabled = chatSearchBtn.disabled = fileBtn.disabled = true;
     const voiceHost = el("div", { class: "actions voiceActions", id: "voiceActions" });
     sidebarHeaderActions.appendChild(voiceHost);
-    const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
+    const topMeta = el("div", { class: "topMeta" });
     const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
     const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
     const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [prevUserBtn, nextUserBtn]);
     const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [chatSearchBtn, chatMessageNavControls]);
     const chatHeader = el("div", { class: "chatHeader", id: "chatHeader" }, [chatTimeChip, chatNavRail]);
     chatWrap.append(chatHeader, chat, chatEmptyState, jumpBtn, chatSearchBar);
-    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn, interruptBtn])]);
+    const topActions = el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn]);
+    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), topActions]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
     const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message", "data-hint": "i" });
@@ -117,7 +111,7 @@ function requireFunction(value, name) {
     app.append(sidebar, main, backdrop);
     root.append(app);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, topMeta, topActions, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

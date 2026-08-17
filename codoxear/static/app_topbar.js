@@ -1,22 +1,64 @@
-/* Session display authority: status, context pressure, and interrupt visibility. */
+/* Topbar widget authority: elements, store projections, and interactions. */
 
 function requireFunction(value, name) {
-  if (typeof value !== "function") throw new TypeError(`session display dependency missing: ${name}`);
+  if (typeof value !== "function") throw new TypeError(`topbar dependency missing: ${name}`);
+  return value;
+}
+
+function requireNode(value, name) {
+  if (!value || typeof value.appendChild !== "function") {
+    throw new TypeError(`topbar dependency missing: ${name}`);
+  }
   return value;
 }
 
 function requireSessionState(value) {
   if (!value || typeof value.get !== "function" || typeof value.subscribe !== "function") {
-    throw new TypeError("session display dependency missing: sessionState");
+    throw new TypeError("topbar dependency missing: sessionState");
   }
   return value;
 }
 
-function createSessionDisplayController(options = {}) {
+function createTopbarController(options = {}) {
+  const el = requireFunction(options.el, "el");
+  const iconSvg = requireFunction(options.iconSvg, "iconSvg");
   const setToast = requireFunction(options.setToast, "setToast");
+  const onInterrupt = requireFunction(options.onInterrupt, "onInterrupt");
   const sessionState = requireSessionState(options.sessionState);
-  const { statusChip, interruptBtn, ctxChip, eventBindings } = options;
-  if (!statusChip || !interruptBtn || !ctxChip || !eventBindings) throw new TypeError("session display dependency missing: status DOM");
+  const topMeta = requireNode(options.topMeta, "topMeta");
+  const topActions = requireNode(options.topActions, "topActions");
+  const eventBindings = options.eventBindings;
+  if (!eventBindings || typeof eventBindings.on !== "function") {
+    throw new TypeError("topbar dependency missing: eventBindings");
+  }
+
+  // The shell owns the title row and action layout. This controller owns every
+  // topbar status widget that occupies those layout slots.
+  const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "" });
+  statusChip.style.display = "none";
+  const ctxChip = el("button", {
+    class: "status-chip",
+    id: "ctxChip",
+    text: "",
+    type: "button",
+    "aria-label": "Context usage details",
+    "data-hint": "y",
+  });
+  ctxChip.style.display = "none";
+  ctxChip.disabled = true;
+  const interruptBtn = el("button", {
+    id: "interruptBtn",
+    class: "icon-btn",
+    title: "Interrupt (Esc)",
+    "aria-label": "Interrupt (Esc)",
+    "data-hint": "z",
+    type: "button",
+    html: iconSvg("stop"),
+  });
+  interruptBtn.style.display = "none";
+  topMeta.append(statusChip, ctxChip);
+  topActions.appendChild(interruptBtn);
+
   let lastToken = null;
 
   function renderStatus() {
@@ -83,12 +125,20 @@ function createSessionDisplayController(options = {}) {
     if (!lastToken) return;
     setToast(`ctx ${lastToken.used}/${lastToken.contextWindow} (${lastToken.percent ?? "?"}% left)`);
   });
+  eventBindings.on(interruptBtn, "click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void onInterrupt();
+  });
 
   function dispose() {
     while (unsubscribers.length) unsubscribers.pop()();
   }
 
-  return Object.freeze({ dispose });
+  return Object.freeze({
+    elements: Object.freeze({ statusChip, ctxChip, interruptBtn }),
+    dispose,
+  });
 }
 
-export { createSessionDisplayController };
+export { createTopbarController };

@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_HINT_MODE_JS = module_path("app_hint_mode.js")
 APP_SHELL_JS = module_path("app_shell.js")
+APP_TOPBAR_JS = module_path("app_topbar.js")
 
 
 def run_shell_hint_coverage() -> dict:
@@ -20,6 +21,7 @@ def run_shell_hint_coverage() -> dict:
         const vm = require("node:vm");
         const hintSource = {json.dumps(hint_source)};
         const shellSource = {json.dumps(shell_source)};
+        const topbarSource = {json.dumps(APP_TOPBAR_JS.read_text(encoding="utf-8"))};
 
         class Node {{
           constructor(tag, attrs = {{}}) {{
@@ -124,6 +126,7 @@ def run_shell_hint_coverage() -> dict:
         const ctx = {{ window: {{}}, document: documentTarget }};
         vm.createContext(ctx);
         vm.runInContext(shellSource, ctx);
+        vm.runInContext(topbarSource, ctx);
         vm.runInContext(hintSource, ctx);
         const root = new Node("root");
         body.appendChild(root);
@@ -133,6 +136,13 @@ def run_shell_hint_coverage() -> dict:
           iconSvg: (name) => `<${{name}}>`,
           resolveAppUrl: (value) => value,
           versionedShellAssetPath: (value) => value,
+        }});
+
+        const eventBindings = {{ on: (target, type, handler) => {{ target[`on${{type}}`] = handler; }} }};
+        ctx.window.CodoxearTopbar.createTopbarController({{
+          el, iconSvg: (name) => `<${{name}}>`, setToast: () => {{}}, onInterrupt: () => {{}},
+          sessionState: {{ get: (field) => field === "selected" ? null : field === "running" ? false : field === "queueLen" ? 0 : null, subscribe: () => () => {{}} }},
+          topMeta: elements.topMeta, topActions: elements.topActions, eventBindings,
         }});
 
         const interactive = descendants(root).filter((node) => ["BUTTON", "INPUT", "TEXTAREA", "SELECT"].includes(node.tagName) || (node.tagName === "A" && node.hasAttribute("href")) || node.getAttribute("role") === "button");

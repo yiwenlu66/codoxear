@@ -11,7 +11,6 @@ import * as CodoxearMessageHistory from "./app_message_history.js";
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearQueue from "./app_queue.js";
 import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
-import * as CodoxearSessionDisplay from "./app_session_display.js";
 import * as CodoxearSessionLifecycle from "./app_session_lifecycle.js";
 import * as CodoxearSessionRefresh from "./app_session_refresh.js";
 import * as CodoxearSessionState from "./app_session_state.js";
@@ -72,7 +71,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
       isTextEntryElement, updateAppHeightVar,
       codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
-      codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments,
+      codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
       codoxearMessageFlow, codoxearSecondaryPoll, codoxearInterrupt, codoxearDialogMenus,
       codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
       codoxearFileTouch, codoxearPerfHelpers, pushPerfSample, summarizePerf, codoxearUrls,
@@ -149,9 +148,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           chatSearchBar,
           chatNavRail,
           titleLabel,
-          statusChip,
-          ctxChip,
-          interruptBtn,
+          topMeta,
+          topActions,
           toast,
           networkBanner,
           toggleSidebarBtn,
@@ -219,6 +217,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           if (composerController) composerController.hideSendChoice(options);
         }
         let sessionEditController = null;
+        let interruptController = null;
         newSessionDefaults = {
           default_backend: "pi",
           backends: {
@@ -262,7 +261,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           if (chatSearchController) chatSearchController.dispose();
           if (sessionTitleController) sessionTitleController.dispose();
           if (chatInteractionController) chatInteractionController.dispose();
-          if (sessionDisplayController) sessionDisplayController.dispose();
+          if (topbarController) topbarController.dispose();
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
           if (chatNavigationController) chatNavigationController.dispose();
@@ -579,6 +578,17 @@ import * as CodoxearWiring from "./app_wiring.js";
           return toastController.show(text);
         }
 
+        const topbarController = codoxearTopbar.createTopbarController(wiring.createTopbarOptions({
+          el,
+          iconSvg,
+          setToast,
+          onInterrupt: () => interruptController && interruptController.interruptSelectedSession(),
+          sessionState,
+          topMeta,
+          topActions,
+          eventBindings,
+        }));
+
         async function copyToClipboard(text) {
           return CodoxearClipboard.copyToClipboard(text);
         }
@@ -621,10 +631,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           }
         }
 
-        const sessionDisplayController = CodoxearSessionDisplay.createSessionDisplayController(wiring.createSessionDisplayOptions({
-          sessionState,
-          setToast, statusChip, interruptBtn, ctxChip, eventBindings,
-        }));
         let fileOpsController = null;
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
@@ -1229,7 +1235,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         eventBindings.on($("#chatEmptyNewBtn"), 'click', async () => {
           newSessionDialogController.open();
         });
-        const interruptController = codoxearInterrupt.createInterruptController(wiring.createInterruptOptions({
+        interruptController = codoxearInterrupt.createInterruptController(wiring.createInterruptOptions({
           sessionState,
           setToast,
           api,
@@ -1237,11 +1243,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           setPollFastUntilMs,
           kickPoll,
         }));
-        eventBindings.on(interruptBtn, 'click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          void interruptController.interruptSelectedSession();
-        });
 
         eventBindings.on($("#logoutBtnSide"), 'click', async () => {
           try {

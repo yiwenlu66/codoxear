@@ -5,7 +5,7 @@ import subprocess
 
 
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
-APP_SESSION_DISPLAY_JS = module_path("app_session_display.js")
+APP_TOPBAR_JS = module_path("app_topbar.js")
 
 
 def run_node_json(script: str) -> dict:
@@ -28,17 +28,26 @@ def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
     const ctx = {{ window: {{}}, console }};
     vm.createContext(ctx);
     vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
-    vm.runInContext({json.dumps(APP_SESSION_DISPLAY_JS.read_text(encoding="utf-8"))}, ctx);
+    vm.runInContext({json.dumps(APP_TOPBAR_JS.read_text(encoding="utf-8"))}, ctx);
     const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
-    const statusChip = {{ style: {{}}, textContent: "" }};
-    const interruptBtn = {{ style: {{}}, disabled: false }};
-    const ctxChip = {{ style: {{}}, disabled: false, textContent: "", title: "" }};
+    class Node {{
+      constructor(tag, attrs = {{}}) {{ this.tag = tag; this.attrs = attrs; this.children = []; this.style = {{}}; this.textContent = attrs.text || ""; this.disabled = false; }}
+      appendChild(child) {{ child.parent = this; this.children.push(child); return child; }}
+      append(...children) {{ children.forEach((child) => this.appendChild(child)); }}
+      setAttribute(name, value) {{ this.attrs[name] = String(value); }}
+    }}
+    const el = (tag, attrs = {{}}) => new Node(tag, attrs);
+    const topMeta = new Node("div");
+    const topActions = new Node("div");
+    const events = {{ on: (target, type, handler) => {{ target[type] = handler; }} }};
+    const toasts = [];
+    let interrupts = 0;
     sessionState.set("selected", "sid");
-    const controller = ctx.window.CodoxearSessionDisplay.createSessionDisplayController({{
-      sessionState,
-      setToast: () => {{}},
-      statusChip, interruptBtn, ctxChip, eventBindings: {{ on: () => {{}} }},
+    const controller = ctx.window.CodoxearTopbar.createTopbarController({{
+      el, iconSvg: () => "", sessionState, setToast: (text) => toasts.push(text), onInterrupt: () => {{ interrupts += 1; }},
+      topMeta, topActions, eventBindings: events,
     }});
+    const {{ statusChip, interruptBtn, ctxChip }} = controller.elements;
     const snap = () => ({{
       status: {{ text: statusChip.textContent, display: statusChip.style.display }},
       interrupt: {{ display: interruptBtn.style.display, disabled: interruptBtn.disabled }},
@@ -51,12 +60,24 @@ def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
       token: {{ context_window: 100, tokens_in_context: 40, percent_remaining: 60, max_input_tokens: 80, reserved_tokens: 20 }},
     }});
     const active = snap();
+    ctxChip.click();
+    interruptBtn.click({{ preventDefault: () => {{}}, stopPropagation: () => {{}} }});
+    const interactions = {{
+      toast: toasts[0],
+      interrupts,
+      mounted: {{
+        topMeta: topMeta.children.map((node) => node.attrs.id),
+        topActions: topActions.children.map((node) => node.attrs.id),
+        contextHint: ctxChip.attrs["data-hint"],
+        interruptHint: interruptBtn.attrs["data-hint"],
+      }},
+    }};
     sessionState.applyRuntime({{ running: false, queueLen: 0, token: null }});
     const cleared = snap();
     controller.dispose();
     sessionState.applyRuntime({{ running: true, queueLen: 7 }});
     const disposed = snap();
-    process.stdout.write(JSON.stringify({{ initial, active, cleared, disposed }}));
+    process.stdout.write(JSON.stringify({{ initial, active, interactions, cleared, disposed }}));
     """
     assert run_node_json(script) == {
         "initial": {
@@ -72,6 +93,16 @@ def test_session_display_subscribes_to_runtime_store_and_disposes() -> None:
                 "display": "inline-flex",
                 "disabled": False,
                 "title": "Context input: 40/80 tokens (20 reserved; window 100).",
+            },
+        },
+        "interactions": {
+            "toast": "ctx 40/100 (60% left)",
+            "interrupts": 1,
+            "mounted": {
+                "topMeta": ["statusChip", "ctxChip"],
+                "topActions": ["interruptBtn"],
+                "contextHint": "y",
+                "interruptHint": "z",
             },
         },
         "cleared": {

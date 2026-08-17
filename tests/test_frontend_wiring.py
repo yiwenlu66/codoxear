@@ -14,9 +14,9 @@ def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
         name: module_path(name).read_text(encoding="utf-8")
         for name in ("app_wiring.js", "app_application_composition.js")
     }
-    session_display_keys = [
-        "sessionState", "setToast", "statusChip",
-        "interruptBtn", "ctxChip", "eventBindings",
+    topbar_keys = [
+        "el", "iconSvg", "setToast", "onInterrupt", "sessionState",
+        "topMeta", "topActions", "eventBindings",
     ]
     file_viewer_operations_keys = [
         "el", "fileStatus", "fileEditButton", "iconSvg", "currentSessionId", "currentFileSessionId", "normalizeSessionId", "normalizeFileApiPath", "isFileViewerOpen", "hideFileUnsavedDialog", "resetFileSearchState", "closeFilePickerMenu", "isTextFileKind", "isDiffableFileKind", "confirmReload", "promptUnsavedFileChoice", "restoreFileEditorText", "hideFileViewer", "setFilePath", "resetFileViewerPanel", "applyFileLoadResult", "normalizeDraftFilePath", "inspectSessionFilePath", "api", "focusEditor", "disposeOpenRender", "isMarkdownPreviewable", "updateFileTouchToolbar", "useTouchFileEditorControls", "hasActiveFileCodeEditor", "hasBlockingFileEditorModal", "isTextEntryTarget", "eventTargetElement", "normalizeFileEditorPosition", "applyFileEditorSelection", "isCollapsedFileSelection", "positionAfterInsertedText", "fileEditorEditSupportAvailable", "updateFileDiffEditorOptions", "showFilePasteDialog", "hideFilePasteDialog", "clipboardReadAvailable", "readClipboardText", "fileEditorDeleteCommandForKey", "isActiveFileEditorInput", "getActiveFileSelectionText", "copyToClipboard", "focusActiveFileCodeEditor", "nowMs", "setToast", "renderMonacoFile", "getFileEditorText", "fmtBytes", "applyFileMode", "rememberOpenedFile", "renderFilePickerMenu", "currentFileViewMode", "currentFileNonDiffMode", "setFileViewMode", "currentFileEditMode", "currentFileEditorKind", "setFileEditorKind", "setFileEditMode", "currentActiveFileKind", "currentActiveFileText", "currentActiveFileEditable", "currentActiveFileVersion", "currentActiveFileDraft", "applyActiveFileTextState", "applyActiveFileDiffState", "applyActiveFileNonTextState", "currentActiveFileIdentity", "currentActiveFileLine", "startFileOpenRequest", "isCurrentFileOpenRequest", "normalizeExplicitFileOpenMode", "resolveFileOpenMode", "isFileOpenAbortError", "activeFileEntry", "isGitFileCandidatePath", "currentFileCandidateGitStateFresh", "activeFileCanEnterEditMode", "activeFileEditorWritable", "activeFileEditorIdleTextWritable", "currentFileEditorState", "isUnavailable", "blockUnavailableFileAction", "fileEntryForPath", "resetActiveFileBufferState", "resolveFileOpenViewMode", "activeFileEditorIdleWritable", "isFileViewerSessionUnavailable", "rememberActiveFileSelection", "setActiveFileIdentity",
@@ -39,7 +39,7 @@ def test_wiring_factories_preserve_explicit_controller_dependencies() -> None:
     program = """
 const vm = require("vm");
 const sources = __SOURCES__;
-const sessionDisplayKeys = __SESSION_DISPLAY_KEYS__;
+const topbarKeys = __TOPBAR_KEYS__;
 const fileOpsKeys = __FILE_OPS_KEYS__;
 const fileViewerOperationsKeys = __FILE_VIEWER_OPERATIONS_KEYS__;
 const filePickerOpsKeys = __FILE_PICKER_OPS_KEYS__;
@@ -60,9 +60,9 @@ const lifecycle = wiring.createSessionLifecycleOptions({
   sessionState,
   clearDeletedSessionClientState: "not a lifecycle dependency",
 });
-const sessionDisplayInput = Object.fromEntries(sessionDisplayKeys.map((key) => [key, key]));
+const topbarInput = Object.fromEntries(topbarKeys.map((key) => [key, key]));
 const fileOpsInput = Object.fromEntries(fileOpsKeys.map((key) => [key, key]));
-const sessionDisplay = wiring.createSessionDisplayOptions({ ...sessionDisplayInput, accidental: "must not reach controller" });
+const topbar = wiring.createTopbarOptions({ ...topbarInput, accidental: "must not reach controller" });
 const fileOps = wiring.createFileOpsOptions({ ...fileOpsInput, accidental: "must not reach controller" });
 const optionContracts = [
   ["fileViewerOperations", "createFileViewerOperationsOptions", fileViewerOperationsKeys],
@@ -92,14 +92,14 @@ const bound = events.onClick(target, handler, { capture: true });
 process.stdout.write(JSON.stringify({
   flowKeys: Object.keys(flow).sort(),
   lifecycleKeys: Object.keys(lifecycle).sort(),
-  sessionDisplayKeys: Object.keys(sessionDisplay).sort(),
-  sessionDisplayValues: Object.values(sessionDisplay).sort(),
+  topbarKeys: Object.keys(topbar).sort(),
+  topbarValues: Object.values(topbar).sort(),
   fileOpsKeys: Object.keys(fileOps).sort(),
   fileOpsValues: Object.values(fileOps).sort(),
   optionContracts,
   event: { registered: registered.length, type: listeners[0][1], sameHandler: bound === handler, capture: listeners[0][3].capture },
 }));
-""".replace("__SOURCES__", json.dumps(sources)).replace("__SESSION_DISPLAY_KEYS__", json.dumps(session_display_keys)).replace("__FILE_OPS_KEYS__", json.dumps(file_ops_keys)).replace("__FILE_VIEWER_OPERATIONS_KEYS__", json.dumps(file_viewer_operations_keys)).replace("__FILE_PICKER_OPS_KEYS__", json.dumps(file_picker_ops_keys)).replace("__FILE_EDITOR_OPS_KEYS__", json.dumps(file_editor_ops_keys)).replace("__FILE_PICKER_DELEGATE_KEYS__", json.dumps(file_picker_delegate_keys)).replace("__FILE_PICKER_INTERACTION_KEYS__", json.dumps(file_picker_interaction_keys))
+""".replace("__SOURCES__", json.dumps(sources)).replace("__TOPBAR_KEYS__", json.dumps(topbar_keys)).replace("__FILE_OPS_KEYS__", json.dumps(file_ops_keys)).replace("__FILE_VIEWER_OPERATIONS_KEYS__", json.dumps(file_viewer_operations_keys)).replace("__FILE_PICKER_OPS_KEYS__", json.dumps(file_picker_ops_keys)).replace("__FILE_EDITOR_OPS_KEYS__", json.dumps(file_editor_ops_keys)).replace("__FILE_PICKER_DELEGATE_KEYS__", json.dumps(file_picker_delegate_keys)).replace("__FILE_PICKER_INTERACTION_KEYS__", json.dumps(file_picker_interaction_keys))
     completed = subprocess.run(
         ["node", "-e", program],
         check=True,
@@ -111,8 +111,8 @@ process.stdout.write(JSON.stringify({
 
     assert result["flowKeys"] == ["api", "sessionState"]
     assert result["lifecycleKeys"] == ["sessionState"]
-    assert result["sessionDisplayKeys"] == sorted(session_display_keys)
-    assert result["sessionDisplayValues"] == sorted(session_display_keys)
+    assert result["topbarKeys"] == sorted(topbar_keys)
+    assert result["topbarValues"] == sorted(topbar_keys)
     assert result["fileOpsKeys"] == sorted(file_ops_keys)
     assert result["fileOpsValues"] == sorted(file_ops_keys)
     expected_contracts = [

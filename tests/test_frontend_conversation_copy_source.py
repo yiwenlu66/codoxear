@@ -111,7 +111,7 @@ def eval_app_copy_conversation_success(events) -> dict:
     app_source = APP_JS.read_text(encoding="utf-8")
     helper_source = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
     start = app_source.index("function formatConversationForCopy(events)")
-    end = app_source.index("const sessionDisplayController =", start)
+    end = app_source.index("let fileOpsController = null", start)
     copy_source = app_source[start:end]
     runtime_source = "const codoxearConversationCopy = window.CodoxearConversationCopy;\n" + copy_source + "\nthis.__copyConversation = copyConversation;"
     js = textwrap.dedent(
