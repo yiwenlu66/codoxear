@@ -891,7 +891,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           isModalTargetOpen,
           restoreModalFocus,
         }));
-        const { hide: hideHelpViewer } = helpController;
+        function hideHelpViewer() {
+          return helpController.hide();
+        }
 
         // Details/diagnostics modal state, rendering decisions, and the
         // Copy conversation / Copy details / show / hide
