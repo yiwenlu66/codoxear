@@ -326,3 +326,27 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   merger (all LATENT-STRUCTURAL at worst). Scoped phases: B1 monotonic
   log-derived projection owner, B2 poll/SSE unified live-delta
   projection, B3 manager wiring contracts (lowest priority).
+- B1 (73d20c50 + amendment): LogDerivedSessionObservation (log path,
+  device/inode/size/mtime revision, byte range) committed atomically
+  via commit_log_observation under the registry lock; stale/prior-
+  generation observations rejected; rebind/truncation accepted as new
+  generations. Regression-verified against pre-fix archive.
+- B2 (8faf4a31): _project_live_record_window unifies poll and SSE;
+  parity tests through both production handlers incl. mutation-spy
+  verification that bypassing the shared seam fails.
+- B3 (e51bb6a3): retained coordinator graph (96 vararg methods → 0,
+  mega-caps → 22 focused dependency records, queue-sweep cursor homed,
+  13 dead relays removed, 63 relay signatures mechanically checked).
+- FINAL ADVERSARIAL REVIEW (critic sol, 3df58821): B2 accepted; B1
+  rejected pending correction — 5 objections, all ACCEPTED and fixed
+  (c2daefd4): same-log live bridge settings dropped (priority
+  violation), append-between-stat-and-read ValueError killing polls/
+  SSE during normal generation, stale listing rows on rejected
+  backfills, B3 lazy-init race; truncate-regrow DOCUMENTED not fixed
+  (partial fingerprint would be worse — full design recorded in audit
+  boundary). Each correction regression-verified against pre-correction
+  archive (5 failures there). Commit 912f58db.
+- REFACTOR COMPLETE 2026-08-17: suite 1728, guards clean, docker_verify
+  + ui_flows PASS (912f58db), behavior judged "identical" across all
+  phases by live Docker browser subagents, all adversarial reviews
+  adjudicated to zero open objections.

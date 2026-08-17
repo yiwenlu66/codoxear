@@ -1,6 +1,40 @@
 # EPISTEMIC — frontend architecture refactor
 
-## What is being explained
+## STATUS: COMPLETE (2026-08-17)
+
+All plan phases done and gated: 0 guards, 1 ESM hygiene, 2 wiring
+discipline, 3 session-state store, 4 widget cohesion, 5 composition
+residual, 6 evidence-gated splits (3 splits, 1 respected COHESIVE
+verdict), 7 backend (audit → GO on demonstrated live defect → B1
+ordered projection, B2 unified live-delta, B3 manager wiring, plus
+5 corrections from the final review). Suite 1728 green; guards clean;
+Docker behavior parity judged "identical" per phase; all adversarial
+reviews adjudicated to zero open objections.
+
+## What the architecture is now
+- Every mutable state field has one owner: app_session_state (7-field
+  runtime), app_session_catalog (session list/defaults, derived index,
+  observable patchSession, atomic applySnapshot), app_polling
+  (scheduling/streaks + separate createAsyncEpoch).
+- Every rendered value has one trigger: widget-internal subscriptions.
+  No cross-module renderer calls; imperative render relays are gone.
+- Controller wiring is explicit per-controller select() contracts; the
+  wiring guard (pass-through/bag-spread/direct-bag/global-registration/
+  undercoverage/unbound-value/callsite-coverage) with a monotonic
+  allowlist ratchet prevents regrowth.
+- Backend: log-derived session projection commits through one ordered,
+  log-identity-aware boundary; poll and SSE share one live-delta
+  projection; manager coordinators are retained with focused contracts.
+
+## Documented residuals (not defects of the refactor)
+- Truncate-regrow projection poisoning: same-inode truncate+regrow past
+  the old boundary can be accepted as forward progress. Full fix needs
+  read-coherent prefix fingerprints; design recorded in
+  phase7-backend-audit.md boundary section. Low benign likelihood.
+- Issues #30/#31 (topbar geometry, pre-existing) in ISSUES_TRACKER.md.
+- VM projection limitation: namespace globals resolve dynamically in
+  tests (Phase 1, accepted).
+- Backend audit was bounded: not every route/auth/git path reviewed.
 Why a one-concept UI change (remove Busy/Idle + ▸N from the topbar chip)
 required edits in 6 JS files, and what target architecture makes that class of
 change single-module by construction.
