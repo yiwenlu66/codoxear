@@ -42,13 +42,15 @@ def run_vm(body: str) -> dict:
         const timers = [];
         function node(id) {{
           return {{
-            id, textContent: "", value: "", checked: false, disabled: false, open: false,
+            id, textContent: "", value: "", checked: false, disabled: false, open: false, title: "", dataset: {{}},
             style: {{}}, _attrs: {{}}, _children: [],
             classList: {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }},
             setAttribute(name, value) {{ this._attrs[name] = String(value); }},
             getAttribute(name) {{ return this._attrs[name]; }},
             removeAttribute(name) {{ delete this._attrs[name]; }},
+            append(...children) {{ this._children.push(...children); }},
             appendChild(child) {{ this._children.push(child); return child; }},
+            replaceChildren(...children) {{ this._children = children; }},
             addEventListener() {{}}, removeEventListener() {{}}, matches() {{ return false; }},
             focus() {{}}, play() {{ return Promise.resolve(); }}, pause() {{}}, load() {{}},
             showModal() {{ this.open = true; }}, close() {{ this.open = false; }},
@@ -135,14 +137,15 @@ sessionState.set("selected", selected);
               await fileReferences.openReference({ path: "not-a-file-reference", literal: false });
 
               const voiceNodes = {
-                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), liveAudio: node("liveAudio"), voiceSettingsBackdrop: node("voiceSettingsBackdrop"),
+                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), notificationEnableBtn: node("notificationEnableBtn"), liveAudio: node("liveAudio"), voiceSettingsBackdrop: node("voiceSettingsBackdrop"),
                 voiceSettingsCloseBtn: node("voiceSettingsCloseBtn"), voiceSettingsStatus: node("voiceSettingsStatus"), voiceBaseUrlInput: node("voiceBaseUrlInput"),
                 voiceApiKeyInput: node("voiceApiKeyInput"), voiceClearApiKeyToggle: node("voiceClearApiKeyToggle"), narrationSettingToggle: node("narrationSettingToggle"),
                 voiceSettingsViewer: node("voiceSettingsViewer"), voiceSettingsCancelBtn: node("voiceSettingsCancelBtn"), voiceSettingsSaveBtn: node("voiceSettingsSaveBtn"),
               };
               const voiceController = ctx.window.CodoxearVoice.createVoiceController(Object.assign(voiceNodes, {
                 notificationOptions: {
-                  notificationBtn: voiceNodes.notificationBtn,
+                  root: { appendChild() {} }, voiceHost: { style: {}, firstChild: null, appendChild() {}, insertBefore() {} },
+                  el: (_tag, attrs = {}) => attrs.id && voiceNodes[attrs.id] ? voiceNodes[attrs.id] : node(attrs.id || "notification-node"), iconSvg: () => "",
                   isAppDisposed: () => false,
                   api: async () => ({ subscriptions: [], items: [] }),
                   setToast: notify("voice"), handleAppAuthLoss() {}, resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
@@ -157,7 +160,7 @@ sessionState.set("selected", selected);
                 windowTarget: { isSecureContext: false }, navigatorTarget: { userAgent: "X11 Linux x86_64" }, documentTarget: { activeElement: null, contains: () => true },
                 Notification: undefined, requestFrame: (fn) => fn(), setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
               }));
-              await voiceNodes.notificationBtn.onclick({ preventDefault() {}, stopPropagation() {} });
+              await voiceNodes.notificationEnableBtn.onclick();
 
               const lastTimer = timers[timers.length - 1];
               const beforeDismiss = toast.textContent;

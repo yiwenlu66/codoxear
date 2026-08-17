@@ -1031,8 +1031,4 @@ function requireFunction(value, name) {
     return Object.freeze({ ensure });
   }
 
-  function fileSaveConflictTarget(sessionId, path) {
-    return Object.freeze({ sessionId, path });
-  }
-
 export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileVideoPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };

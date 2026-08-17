@@ -42,15 +42,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const voiceHost = requireNode(options.voiceHost, "voiceHost");
     if (!root || typeof root.appendChild !== "function") throw new TypeError("voice DOM dependency missing: root");
 
-    const notificationDom = CodoxearNotifications.createNotificationDom({ root, el, iconSvg, voiceHost });
-    const {
-      notificationBtn,
-      notificationPanel,
-      notificationList,
-      notificationEmpty,
-      notificationClearBtn,
-      notificationEnableBtn,
-    } = notificationDom;
     const announceBtn = el("button", { id: "announceBtn", class: "icon-btn", title: "Voice announcements", "aria-label": "Voice announcements", type: "button", html: iconSvg("volume") });
     voiceHost.appendChild(announceBtn);
 
@@ -116,12 +107,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     root.appendChild(voiceSettingsViewer);
     return Object.freeze({
       announceBtn,
-      notificationBtn,
-      notificationPanel,
-      notificationList,
-      notificationEmpty,
-      notificationClearBtn,
-      notificationEnableBtn,
       liveAudio,
       voiceSettingsBackdrop,
       voiceSettingsCloseBtn,

@@ -20,10 +20,10 @@ def run_modal_behavior() -> dict:
         const vm = require("vm");
         const calls = [];
         class HTMLElement {{ constructor() {{ this.isConnected = true; }} }}
-        function node() {{ return {{ style: {{}}, value: "", checked: false, textContent: "", disabled: false,
+        function node() {{ return {{ style: {{}}, dataset: {{}}, title: "", value: "", checked: false, textContent: "", disabled: false,
           classList: {{ add() {{}}, remove() {{}}, toggle() {{}} }}, attrs: {{}},
           setAttribute(k,v) {{ this.attrs[k] = String(v); }}, getAttribute(k) {{ return this.attrs[k]; }},
-          removeAttribute(k) {{ delete this.attrs[k]; }}, addEventListener() {{}}, matches() {{ return false; }}, focus() {{ calls.push("focus"); }},
+          removeAttribute(k) {{ delete this.attrs[k]; }}, append() {{}}, appendChild(child) {{ return child; }}, replaceChildren() {{}}, addEventListener() {{}}, matches() {{ return false; }}, focus() {{ calls.push("focus"); }},
           showModal() {{ this.open = true; calls.push("showModal"); }}, close() {{ this.open = false; calls.push("close"); }} }}; }}
         const opener = new HTMLElement(); opener.focus = () => calls.push("restore-focus");
         const dialog = node(); const backdrop = node();
@@ -35,7 +35,7 @@ def run_modal_behavior() -> dict:
         const active = ctx.window.CodoxearModal.syncModalIsolation(app, [{{style: {{display:"none"}}}}, {{style: {{display:"flex"}}}}]);
         const notificationBtn = node();
         const deps = {{ announceBtn: node(), notificationBtn, liveAudio: node(), voiceSettingsBackdrop: backdrop, voiceSettingsCloseBtn: node(), voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(), voiceSettingsViewer: dialog, voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
-          notificationOptions: {{ notificationBtn, isAppDisposed: () => false, api: async () => ({{ subscriptions: [], items: [] }}), setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (v) => v, versionedShellAssetPath: (v) => v, storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document, clearTimeout() {{}} }},
+          notificationOptions: {{ root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, firstChild: null, appendChild() {{}}, insertBefore() {{}} }}, el: () => node(), iconSvg: () => "", isAppDisposed: () => false, api: async () => ({{ subscriptions: [], items: [] }}), setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (v) => v, versionedShellAssetPath: (v) => v, storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document, clearTimeout() {{}} }},
           isAppDisposed: () => false, api: async () => ({{}}), setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen: () => calls.push("prepare"), afterModalVisibilityChanged: () => calls.push("visibility"), resolveAppUrl: (v) => v, versionedShellAssetPath: (v) => v, storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}} }};
         deps.eventBindings = {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }};
         const controller = ctx.window.CodoxearVoice.createVoiceController(deps);

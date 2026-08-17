@@ -22,9 +22,9 @@ def run_voice_resume_harness() -> dict:
 
         function node() {{
           return {{
-            style: {{}}, value: "", checked: false, textContent: "", open: false,
+            style: {{}}, dataset: {{}}, title: "", disabled: false, value: "", checked: false, textContent: "", open: false,
             classList: {{ toggle() {{}}, add() {{}}, remove() {{}} }},
-            setAttribute() {{}}, removeAttribute() {{}}, addEventListener() {{}}, removeEventListener() {{}},
+            setAttribute() {{}}, removeAttribute() {{}}, append() {{}}, appendChild(child) {{ return child; }}, replaceChildren() {{}}, addEventListener() {{}}, removeEventListener() {{}},
             matches: () => false, load() {{}}, pause() {{}}, play: async () => {{}}, canPlayType: () => "",
           }};
         }}
@@ -38,6 +38,8 @@ def run_voice_resume_harness() -> dict:
           return ctx.window.CodoxearVoice.createVoiceController({{
             ...dom,
             notificationOptions: {{
+              root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
+              el: () => node(), iconSvg: () => "",
               notificationBtn: dom.notificationBtn,
               isAppDisposed: () => false,
               api: async () => ({{ subscriptions: [], items: [] }}),

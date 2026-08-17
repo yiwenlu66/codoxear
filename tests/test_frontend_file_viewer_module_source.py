@@ -196,11 +196,17 @@ const runtime = module.createFileViewerOperationsRuntime({
   currentActiveFileIdentity: () => identity,
   isUnavailable: () => unavailable,
 });
-const conflict = runtime.renderSaveConflict('session-1', 'notes.txt', 'disk changed');
+const conflictIdentity = { path: 'notes.txt', gitPath: false, apiPath: 'raw-token' };
+identity = conflictIdentity;
+const conflict = runtime.renderSaveConflict('session-1', conflictIdentity, 'disk changed');
 const current = runtime.isSaveConflictCurrent(conflict);
-identity = { path: 'other.txt', gitPath: false, apiPath: '' };
+identity = { path: 'notes.txt', gitPath: false, apiPath: 'other-token' };
+const afterApiPathChange = runtime.isSaveConflictCurrent(conflict);
+identity = { path: 'notes.txt', gitPath: true, apiPath: 'raw-token' };
+const afterGitPathChange = runtime.isSaveConflictCurrent(conflict);
+identity = { path: 'other.txt', gitPath: false, apiPath: 'raw-token' };
 const afterPathChange = runtime.isSaveConflictCurrent(conflict);
-identity = { path: 'notes.txt', gitPath: false, apiPath: '' };
+identity = conflictIdentity;
 sessionId = 'session-2';
 const afterSessionChange = runtime.isSaveConflictCurrent(conflict);
 sessionId = 'session-1';
@@ -210,6 +216,8 @@ process.stdout.write(JSON.stringify({
   conflict,
   frozen: Object.isFrozen(conflict),
   current,
+  afterApiPathChange,
+  afterGitPathChange,
   afterPathChange,
   afterSessionChange,
   whileUnavailable,
@@ -219,9 +227,16 @@ process.stdout.write(JSON.stringify({
 }));
 '''
         )
-        self.assertEqual(result["conflict"], {"sessionId": "session-1", "path": "notes.txt"})
+        self.assertEqual(result["conflict"], {
+            "sessionId": "session-1",
+            "path": "notes.txt",
+            "gitPath": False,
+            "apiPath": "raw-token",
+        })
         self.assertTrue(result["frozen"])
         self.assertTrue(result["current"])
+        self.assertFalse(result["afterApiPathChange"])
+        self.assertFalse(result["afterGitPathChange"])
         self.assertFalse(result["afterPathChange"])
         self.assertFalse(result["afterSessionChange"])
         self.assertFalse(result["whileUnavailable"])

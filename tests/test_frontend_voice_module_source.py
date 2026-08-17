@@ -76,6 +76,8 @@ function makeNode(extra = {}) {
   const listeners = new Map();
   const node = {
     style: { display: "none" },
+    dataset: {},
+    title: "",
     classList: {
       _classes: new Set(),
       add(c) { this._classes.add(c); },
@@ -96,7 +98,9 @@ function makeNode(extra = {}) {
     setAttribute(name, value) { this._attrs[name] = String(value); },
     getAttribute(name) { return this._attrs[name]; },
     removeAttribute(name) { delete this._attrs[name]; },
+    append(...children) { this._children.push(...children); },
     appendChild(child) { this._children.push(child); return child; },
+    replaceChildren(...children) { this._children = children; },
     addEventListener(type, handler, options) { listenerLog.push(["add", this._domId || "?", type]); if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(handler); },
     removeEventListener(type, handler, options) { listenerLog.push(["remove", this._domId || "?", type]); const s = listeners.get(type); if (s) s.delete(handler); },
     focus() { calls.push(["focus", this._domId]); },
@@ -192,7 +196,10 @@ function buildDeps(overrides = {}) {
     storageRemoveItem: (k) => { calls.push(["storageRemoveItem", k]); storage.delete(k); },
     eventBindings: { on(target, type, handler, options) { target.addEventListener(type, handler, options); return handler; } },
     notificationOptions: {
-      notificationBtn: dom.notificationBtn,
+      root: { appendChild() {} },
+      voiceHost: { style: {}, firstChild: null, appendChild() {}, insertBefore() {} },
+      el: (_tag, attrs = {}) => attrs.id === "notificationBtn" ? dom.notificationBtn : makeNode(),
+      iconSvg: () => "",
       isAppDisposed: () => disposed,
       api: (url, options = {}) => {
         const body = options && options.body ? JSON.parse(JSON.stringify(options.body)) : null;
@@ -315,7 +322,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertTrue(result["announcements"])
-        self.assertEqual(result["notificationTitle"], "Notifications off")
+        self.assertEqual(result["notificationTitle"], "Notifications")
         self.assertTrue(result["clientIdStored"])
 
     def test_announcement_client_id_reuses_persisted_value(self) -> None:
@@ -505,10 +512,10 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["desktop"]["title"], "Notifications on")
-        self.assertTrue(result["desktop"]["active"])
-        self.assertEqual(result["mobile"]["title"], "Notifications pending")
-        self.assertEqual(result["off"]["title"], "Notifications off")
+        self.assertEqual(result["desktop"]["title"], "Notifications")
+        self.assertFalse(result["desktop"]["active"])
+        self.assertEqual(result["mobile"]["title"], "Notifications")
+        self.assertEqual(result["off"]["title"], "Notifications")
         self.assertFalse(result["off"]["active"])
 
     def test_background_refresh_coalesces_subscription_snapshot_and_skips_inactive_polling(self) -> None:

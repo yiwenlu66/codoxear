@@ -560,15 +560,9 @@ function requireFunction(value, name) {
     ]);
     root.appendChild(editViewer);
     editViewer.appendChild(editDependencyMenu);
-    const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost: voiceHost });
+    const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost });
     const {
       announceBtn,
-      notificationBtn,
-      notificationPanel,
-      notificationList,
-      notificationEmpty,
-      notificationClearBtn,
-      notificationEnableBtn,
       liveAudio,
       voiceSettingsBackdrop,
       voiceSettingsCloseBtn,
@@ -598,8 +592,7 @@ function requireFunction(value, name) {
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, notificationBtn, notificationPanel, notificationList,
-      notificationEmpty, notificationClearBtn, notificationEnableBtn, liveAudio, voiceSettingsBackdrop,
+      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn

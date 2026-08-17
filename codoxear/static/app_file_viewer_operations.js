@@ -1,8 +1,13 @@
   function requireFunction(value, name) { if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`); return value; }
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
   const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
-  function fileSaveConflictTarget(sessionId, path) {
-    return Object.freeze({ sessionId, path });
+  function fileSaveConflictTarget(sessionId, identity) {
+    return Object.freeze({
+      sessionId,
+      path: identity.path,
+      gitPath: identity.gitPath,
+      apiPath: identity.apiPath,
+    });
   }
   function createFileViewerOperationsRuntime(options = {}) {
     const { el, fileStatus, fileEditButton, iconSvg, currentSessionId, currentFileSessionId, normalizeSessionId, normalizeFileApiPath, isFileViewerOpen, hideFileUnsavedDialog, resetFileSearchState, closeFilePickerMenu, isTextFileKind, isDiffableFileKind, confirmReload, promptUnsavedFileChoice, restoreFileEditorText, hideFileViewer, setFilePath, resetFileViewerPanel, applyFileLoadResult, normalizeDraftFilePath, inspectSessionFilePath, api, focusEditor, disposeOpenRender, isMarkdownPreviewable, updateFileTouchToolbar, hasBlockingFileEditorModal, isTextEntryTarget, eventTargetElement, isActiveFileEditorInput, focusActiveFileCodeEditor, nowMs, setToast, renderMonacoFile, getFileEditorText, fmtBytes, applyFileMode, rememberOpenedFile, renderFilePickerMenu, currentFileViewMode, currentFileNonDiffMode, setFileViewMode, currentFileEditMode, currentFileEditorKind, setFileEditorKind, setFileEditMode, currentActiveFileKind, currentActiveFileText, currentActiveFileEditable, currentActiveFileVersion, currentActiveFileDraft, applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState, currentActiveFileIdentity, currentActiveFileLine, startFileOpenRequest, isCurrentFileOpenRequest, normalizeExplicitFileOpenMode, resolveFileOpenMode, isFileOpenAbortError, activeFileEntry, isGitFileCandidatePath, currentFileCandidateGitStateFresh, activeFileCanEnterEditMode, activeFileEditorWritable, activeFileEditorIdleTextWritable, currentFileEditorState, isUnavailable, blockUnavailableFileAction, fileEntryForPath, resetActiveFileBufferState, resolveFileOpenViewMode, isFileViewerSessionUnavailable, rememberActiveFileSelection, setActiveFileIdentity } = options;
@@ -390,7 +395,7 @@
 
     function renderActiveFileSaveError(save, error) {
       if (error && error.status === 409) {
-        renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
+        renderSaveConflict(save.sessionId, save, error && error.message ? error.message : "conflict");
       } else {
         fileStatus.textContent = `save error: ${error && error.message ? error.message : "unknown error"}`;
       }
@@ -804,7 +809,14 @@
 
     function isSaveConflictCurrent(conflict) {
       const identity = currentActiveFileIdentity();
-      return Boolean(conflict && currentSessionId() === conflict.sessionId && identity.path === conflict.path && !isUnavailable());
+      return Boolean(
+        conflict &&
+          currentSessionId() === conflict.sessionId &&
+          identity.path === conflict.path &&
+          identity.gitPath === conflict.gitPath &&
+          identity.apiPath === conflict.apiPath &&
+          !isUnavailable()
+      );
     }
 
     async function reloadSaveConflict(conflict) {
@@ -831,8 +843,9 @@
       return action();
     }
 
-    function renderSaveConflict(saveSessionId, savePath, message = "conflict") {
-      const conflict = fileSaveConflictTarget(saveSessionId, savePath);
+    function renderSaveConflict(saveSessionId, saveIdentity, message = "conflict") {
+      const conflict = fileSaveConflictTarget(saveSessionId, saveIdentity);
+      const savePath = conflict.path;
       activeSaveConflict = conflict;
       const label = el("span", { class: "fileConflictText", text: `${savePath} - save conflict: ${message}` });
       const reloadBtn = el("button", {

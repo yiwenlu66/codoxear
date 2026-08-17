@@ -159,7 +159,7 @@ fileDiff.addEventListener("click", (e) => {
 addAppEvent(document, "click", (e) => {
   const t = e.target instanceof Element ? e.target : null;
   if (!t) return;
-  if (isFileViewerOpen() && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
+  if (isFileViewerOpen() && menuState.isOpen() && !t.closest("#fileCandRow")) {
     closeFilePickerMenu({ restoreInput: true });
   }
 });

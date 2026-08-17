@@ -16,12 +16,10 @@ function requireNode(value, name) {
   return value;
 }
 
-function createNotificationDom(options = {}) {
-  if (!options || typeof options !== "object") throw new TypeError("notification DOM dependency missing: options");
-  const root = options.root;
-  const el = requireFunction(options.el, "el");
-  const iconSvg = requireFunction(options.iconSvg, "iconSvg");
-  const voiceHost = requireNode(options.voiceHost, "voiceHost");
+function createNotificationDom(root, elValue, iconSvgValue, voiceHostValue) {
+  const el = requireFunction(elValue, "el");
+  const iconSvg = requireFunction(iconSvgValue, "iconSvg");
+  const voiceHost = requireNode(voiceHostValue, "voiceHost");
   if (!root || typeof root.appendChild !== "function") throw new TypeError("notification DOM dependency missing: root");
 
   const notificationBtn = el("button", {
@@ -68,7 +66,8 @@ function createNotificationDom(options = {}) {
   });
   notificationPanel.append(notificationPanelHeader, notificationEnableBtn, notificationEmpty, notificationList);
   notificationPanel.style.display = "none";
-  voiceHost.appendChild(notificationBtn);
+  if (typeof voiceHost.insertBefore === "function") voiceHost.insertBefore(notificationBtn, voiceHost.firstChild || null);
+  else voiceHost.appendChild(notificationBtn);
   root.appendChild(notificationPanel);
 
   return Object.freeze({
@@ -84,15 +83,14 @@ function createNotificationDom(options = {}) {
 function createNotificationRuntime(options = {}) {
   if (!options || typeof options !== "object") throw new TypeError("notification runtime dependency missing: options");
 
-  const notificationBtn = requireNode(options.notificationBtn, "notificationBtn");
-  const notificationPanel = options.notificationPanel || null;
-  const notificationList = options.notificationList || null;
-  const notificationEmpty = options.notificationEmpty || null;
-  const notificationClearBtn = options.notificationClearBtn || null;
-  const notificationEnableBtn = options.notificationEnableBtn || null;
-  const hasNotificationPanel = Boolean(
-    notificationPanel && notificationList && notificationEmpty && notificationClearBtn && notificationEnableBtn
-  );
+  const {
+    notificationBtn,
+    notificationPanel,
+    notificationList,
+    notificationEmpty,
+    notificationClearBtn,
+    notificationEnableBtn,
+  } = createNotificationDom(options.root, options.el, options.iconSvg, options.voiceHost);
   const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
   const api = requireFunction(options.api, "api");
   const setToast = requireFunction(options.setToast, "setToast");
@@ -289,20 +287,6 @@ function createNotificationRuntime(options = {}) {
 
   function render() {
     notificationState.permission = NotificationCtor ? NotificationCtor.permission : "unsupported";
-    if (!hasNotificationPanel) {
-      const transport = activeNotificationTransport();
-      notificationBtn.classList.toggle("active", enabledLocally());
-      notificationBtn.title = enabledLocally()
-        ? transport === "push"
-          ? "Notifications on (push)"
-          : transport === "desktop"
-            ? "Notifications on"
-            : "Notifications pending"
-        : "Notifications off";
-      notificationBtn.setAttribute("aria-label", notificationBtn.title);
-      return;
-    }
-
     // The panel widget has one render authority. Unread state owns the active
     // affordance whenever the panel exists; this preserves the former final
     // write from renderNotificationPanel without a competing enablement write.
@@ -494,16 +478,6 @@ function createNotificationRuntime(options = {}) {
   eventBindings.on(notificationBtn, "click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!hasNotificationPanel) {
-      try {
-        await enableNotificationsOnDevice();
-      } catch (error) {
-        console.error("notification toggle failed", error);
-        setNotificationEnabledLocal(false);
-        setToast(`notification error: ${error && error.message ? error.message : "unknown error"}`);
-      }
-      return;
-    }
     notificationPanelOpen = !notificationPanelOpen;
     if (notificationPanelOpen) {
       markAllNotificationsRead();
@@ -564,4 +538,4 @@ function createNotificationRuntime(options = {}) {
   return Object.freeze({ enabledLocally, syncState, pollFeed, dispose });
 }
 
-export { createNotificationDom, createNotificationRuntime };
+export { createNotificationRuntime };

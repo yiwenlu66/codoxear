@@ -362,8 +362,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, notificationBtn, notificationPanel, notificationList,
-      notificationEmpty, notificationClearBtn, notificationEnableBtn, liveAudio, voiceSettingsBackdrop,
+      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
       unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
@@ -666,15 +665,13 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
 
         // Voice settings coordinate the combined server snapshot; notification
-        // state, transport, widget rendering, and handlers stay behind the
-        // notification runtime constructed through the voice module.
+        // state, transport, DOM construction, widget rendering, and handlers
+        // stay behind the notification runtime hosted by the shell's voice slot.
         const notificationOptions = wiring.createNotificationOptions({
-          notificationBtn,
-          notificationPanel,
-          notificationList,
-          notificationEmpty,
-          notificationClearBtn,
-          notificationEnableBtn,
+          root,
+          voiceHost: shellDOM.elements.voiceHost,
+          el,
+          iconSvg,
           isAppDisposed: () => appDisposed,
           api,
           setToast,

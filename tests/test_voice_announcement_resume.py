@@ -33,7 +33,7 @@ def run_voice_announcement_resume_harness() -> dict:
         function eventTarget(extra = {{}}) {{
           const listeners = new Map();
           return Object.assign({{
-            style: {{}}, classList: {{ toggle() {{}}, add() {{}}, remove() {{}} }},
+            style: {{}}, dataset: {{}}, title: "", disabled: false, classList: {{ toggle() {{}}, add() {{}}, remove() {{}} }},
             value: "", checked: false, textContent: "", open: false,
             addEventListener(type, listener) {{
               if (!listeners.has(type)) listeners.set(type, new Set());
@@ -47,6 +47,7 @@ def run_voice_announcement_resume_harness() -> dict:
               for (const listener of listeners.get(type) || []) listener({{ type, preventDefault() {{}} }});
             }},
             setAttribute() {{}}, removeAttribute() {{}}, matches: () => false,
+            append() {{}}, appendChild(child) {{ return child; }}, replaceChildren() {{}},
             load() {{}}, pause() {{}}, canPlayType: () => "probably",
           }}, extra);
         }}
@@ -74,6 +75,8 @@ def run_voice_announcement_resume_harness() -> dict:
           const controller = ctx.window.CodoxearVoice.createVoiceController({{
             ...dom,
             notificationOptions: {{
+              root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
+              el: () => eventTarget(), iconSvg: () => "",
               notificationBtn: dom.notificationBtn,
               isAppDisposed: () => false,
               api: async () => ({{ subscriptions: [], items: [] }}),
