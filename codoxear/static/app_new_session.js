@@ -42,9 +42,11 @@ function requireFunction(value, name) {
     const reasoningEffort = requireFunction(options.reasoningEffort, "reasoningEffort");
     const literalModelInputValue = requireFunction(options.literalModelInputValue, "literalModelInputValue");
     const launchPresetProviderAbsent = requireFunction(options.launchPresetProviderAbsent, "launchPresetProviderAbsent");
-    const defaultsSource = requireFunction(options.defaultsSource, "defaultsSource");
-    const latestSessions = requireFunction(options.latestSessions, "latestSessions");
-    const tmuxAvailable = requireFunction(options.tmuxAvailable, "tmuxAvailable");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("new session controller dependency missing: sessionCatalog");
+    const defaultsSource = () => sessionCatalog.get("newSessionDefaults");
+    const latestSessions = () => sessionCatalog.get("latestSessions");
+    const tmuxAvailable = () => sessionCatalog.get("tmuxAvailable");
 
     const assignProvider = requireFunction(options.assignProvider, "assignProvider");
     const assignReasoningEffort = requireFunction(options.assignReasoningEffort, "assignReasoningEffort");
@@ -71,7 +73,7 @@ function requireFunction(value, name) {
     const cwdField = requireClassListNode(options.cwdField, "cwdField");
     const cwdHint = requirePresentNode(options.cwdHint, "cwdHint");
     const nameInput = requireInputNode(options.nameInput, "nameInput");
-    const recentCwds = requireFunction(options.recentCwds, "recentCwds");
+    const recentCwds = () => sessionCatalog.get("recentCwds");
     const cwdMenuFocus = requireFunction(options.cwdMenuFocus, "cwdMenuFocus");
     const assignCwdMenuFocus = requireFunction(options.assignCwdMenuFocus, "assignCwdMenuFocus");
     const closeCwdMenu = requireFunction(options.closeCwdMenu, "closeCwdMenu");
@@ -782,13 +784,17 @@ function requireFunction(value, name) {
     const doc = requirePresentNode(options.document, "document");
     const win = requirePresentNode(options.window, "window");
     const addEvent = requireFunction(options.addEvent, "addEvent");
-    const defaultsSource = requireFunction(options.defaultsSource, "defaultsSource");
-    const latestSessions = requireFunction(options.latestSessions, "latestSessions");
-    const recentCwds = requireFunction(options.recentCwds, "recentCwds");
-    const tmuxAvailable = requireFunction(options.tmuxAvailable, "tmuxAvailable");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.subscribe !== "function") {
+      throw new TypeError("new session dialog dependency missing: sessionCatalog");
+    }
+    const defaultsSource = () => sessionCatalog.get("newSessionDefaults");
+    const latestSessions = () => sessionCatalog.get("latestSessions");
+    const recentCwds = () => sessionCatalog.get("recentCwds");
+    const tmuxAvailable = () => sessionCatalog.get("tmuxAvailable");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("new session dialog dependency missing: sessionState");
-    const sessionForId = requireFunction(options.sessionForId, "sessionForId");
+    const sessionForId = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId);
     const isMobile = requireFunction(options.isMobile, "isMobile");
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
     const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
@@ -907,12 +913,12 @@ function requireFunction(value, name) {
     const controller = createNewSessionController({
       backend: () => backend, provider: () => provider, reasoningEffort: () => reasoningEffort,
       literalModelInputValue: () => literalModelInputValue, launchPresetProviderAbsent: () => launchPresetProviderAbsent,
-      defaultsSource, latestSessions, tmuxAvailable,
+      sessionCatalog,
       assignProvider: (value) => { provider = value; }, assignReasoningEffort: (value) => { reasoningEffort = value; },
       assignLiteralModelInputValue: (value) => { literalModelInputValue = value; }, assignLaunchPresetProviderAbsent: (value) => { launchPresetProviderAbsent = Boolean(value); },
       modelInput, modelField, status, reasoningBtn, setPickerButtonContent, renderReasoningMenu, renderModelMenu,
       setFast: (value) => { fast = !!value; fastToggle.checked = fast; }, setBackend: (value, opts) => setBackend(value, opts), setTmuxChecked: (value) => { tmuxToggle.checked = value; }, applyDialogMenus,
-      closeModelMenu: () => { modelMenuOpen = false; modelMenuFocus = -1; }, cwdInput, cwdMenu, cwdField, cwdHint, nameInput, recentCwds,
+      closeModelMenu: () => { modelMenuOpen = false; modelMenuFocus = -1; }, cwdInput, cwdMenu, cwdField, cwdHint, nameInput,
       cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, closeCwdMenu: () => { cwdMenuOpen = false; cwdMenuFocus = -1; }, el,
       resumeMenu, resumeBtn, closeResumeMenu: () => { resumeMenuOpen = false; }, fetchResumeCandidates,
       tmuxToggle, tmuxField, worktreeToggle, worktreeInput, worktreeField, startBtn,
@@ -1027,7 +1033,36 @@ function requireFunction(value, name) {
     addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
     addEvent(doc, "keydown", (event) => { if (event.key !== "Escape" || !isModalTargetOpen(viewer)) return; event.preventDefault(); event.stopPropagation(); close(); });
 
-    return Object.freeze({ viewer, open, close, isOpen: () => isModalTargetOpen(viewer), closeMenus, applyMenus, refreshDefaults: () => { if (!isModalTargetOpen(viewer)) return; const text = String(status.textContent || "").trim(); controller.syncNewSessionTmuxUi(); renderModelMenu(); renderReasoningMenu(); syncRunConfigUi(); if (!text || text.startsWith("Launch defaults degraded for ")) status.textContent = controller.newSessionDefaultsWarningText(); } });
+    function refreshDefaults() {
+      if (!isModalTargetOpen(viewer)) return;
+      const text = String(status.textContent || "").trim();
+      controller.syncNewSessionTmuxUi();
+      renderModelMenu();
+      renderReasoningMenu();
+      syncRunConfigUi();
+      if (!text || text.startsWith("Launch defaults degraded for ")) status.textContent = controller.newSessionDefaultsWarningText();
+    }
+
+    const catalogUnsubscribers = [
+      sessionCatalog.subscribe("newSessionDefaults", refreshDefaults),
+      sessionCatalog.subscribe("tmuxAvailable", refreshDefaults),
+      sessionCatalog.subscribe("recentCwds", () => { if (isModalTargetOpen(viewer)) controller.renderRecentCwdMenu(); }),
+      sessionCatalog.subscribe("latestSessions", () => { if (isModalTargetOpen(viewer)) renderModelMenu(); }),
+    ];
+
+    return Object.freeze({
+      viewer,
+      open,
+      close,
+      isOpen: () => isModalTargetOpen(viewer),
+      closeMenus,
+      applyMenus,
+      refreshDefaults,
+      dispose() {
+        controller.disposeResumeLoadTimer();
+        while (catalogUnsubscribers.length) catalogUnsubscribers.pop()();
+      },
+    });
   }
 
 export { createNewSessionController, createNewSessionDialogController };

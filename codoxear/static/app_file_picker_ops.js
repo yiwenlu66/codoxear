@@ -168,8 +168,10 @@ addAppEvent(document, "click", (e) => {
   function createFilePickerOperationDelegates(options = {}) {
     const { fileViewerController, fileModeControlsRuntime, filePickerDomRuntime, filePickerMenuState,
       filePickerInput, filePickerInputRuntime, activeFilePathValue, openedFileRuntime, fileReferenceRuntime,
-      filePickerSearchState, filePickerRenderRuntime, fileViewerPanelRuntime, sessionState, getSessionIndex,
+      filePickerSearchState, filePickerRenderRuntime, fileViewerPanelRuntime, sessionState, sessionCatalog,
       stripPathLocationSuffix } = options;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("file picker delegates dependency missing: sessionCatalog");
+    const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     return Object.freeze({
       openDraftFilePathWithGuard: async (path) => fileViewerController.openDraftFilePathWithGuard(path),
       requestHideFileViewer: async () => fileViewerController.requestHideFileViewer(),

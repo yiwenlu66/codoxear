@@ -12,6 +12,7 @@ import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearQueue from "./app_queue.js";
 import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
 import * as CodoxearSessionLifecycle from "./app_session_lifecycle.js";
+import * as CodoxearSessionCatalog from "./app_session_catalog.js";
 import * as CodoxearSessionRefresh from "./app_session_refresh.js";
 import * as CodoxearSessionState from "./app_session_state.js";
 import * as CodoxearSessionTitle from "./app_session_title.js";
@@ -90,8 +91,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       normalizeQueueItems, codoxearPolling, codoxearNetwork, codoxearConversationCopy,
       transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
       agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
-      emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend,
-      reasoningChoicesForBackend, backendSupportsFast, redactedLaunchErrorText, sessionLaunchLabel,
+      emptyPiLaunchDefaults, emptyCcLaunchDefaults, redactedLaunchErrorText, sessionLaunchLabel,
       sessionIsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches,
       providerModelDisplay, fmtIdleAge, fmtRelativeAge, sessionTitleWithId, stripPathLocationSuffix,
       isTextFileKind, isDiffableFileKind, blockedFileMessage, formatPriorityOffset, fileSearchScore,
@@ -108,8 +108,6 @@ import * as CodoxearWiring from "./app_wiring.js";
     if (typeof cleanupActiveApp !== "function" || typeof setActiveAppCleanup !== "function" || typeof clearActiveAppCleanup !== "function") {
       throw new Error("Codoxear application runtime requires cleanup lifecycle dependencies");
     }
-    let newSessionDefaults = { default_backend: "pi", backends: { codex: null, pi: null, cc: null } };
-    let latestSessions = [];
 
       function renderApp() {
             cleanupActiveApp();
@@ -185,8 +183,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         const OLDER_AUTO_COOLDOWN_MS = 450;
         const pollingRuntime = codoxearPolling.createPollingRuntime({ setTimeout, clearTimeout });
         const sessionState = CodoxearSessionState.createSessionState({ consoleError: (...args) => console.error(...args) });
-	        let sessionIndex = new Map(); // session_id -> session info
-        let recentCwds = [];
+        const sessionCatalog = CodoxearSessionCatalog.createSessionCatalog({ consoleError: (...args) => console.error(...args) });
         let attachmentsController = null;
         let composerController = null;
         let messageFlowController = null;
@@ -212,16 +209,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
         let sessionEditController = null;
         let interruptController = null;
-        newSessionDefaults = {
-          default_backend: "pi",
-          backends: {
-            codex: legacyCodexLaunchDefaults(),
-            pi: emptyPiLaunchDefaults(),
-            cc: emptyCcLaunchDefaults(),
-          },
-        };
-        latestSessions = [];
-        let tmuxAvailable = false;
               // Unattended menu state, cfg cache, number-input drafts, and the
               // per-session save timers/in-flight/pending maps live in the
               // CodoxearUnattended controller (codoxear/static/app_unattended.js).
@@ -245,7 +232,10 @@ import * as CodoxearWiring from "./app_wiring.js";
           appDisposed = true;
           pollingRuntime.disable();
           stopMessagePolling();
-          if (newSessionDialogController) newSessionDialogController.close();
+          if (newSessionDialogController) {
+            newSessionDialogController.close();
+            newSessionDialogController.dispose();
+          }
           if (voiceController) voiceController.dispose();
           if (unattendedController) unattendedController.dispose();
           filePickerSearchState.dispose();
@@ -403,12 +393,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           document,
           window,
           addEvent: addAppEvent,
-          defaultsSource: () => newSessionDefaults,
-          latestSessions: () => latestSessions,
-          recentCwds: () => recentCwds,
-          tmuxAvailable: () => tmuxAvailable,
+          sessionCatalog,
           sessionState,
-          sessionForId: (sessionId) => sessionIndex.get(sessionId),
           isMobile: () => codoxearViewport.isMobile(),
           prepareModalOpen,
           afterModalVisibilityChanged,
@@ -604,7 +590,7 @@ import * as CodoxearWiring from "./app_wiring.js";
 
         const chatInteractionController = CodoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
           pollingRuntime,
-          getSessionIndex: () => sessionIndex,
+          sessionCatalog,
           getSessionLifecycleController: () => sessionLifecycleController,
           getSessionRefreshController: () => sessionRefreshController,
           sessionState,
@@ -757,7 +743,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             remainingEl: unattendedRemainingEl,
             requestEl: unattendedRequestEl,
             sessionState,
-            getSessionInfo: (sid) => sessionIndex.get(sid),
+            getSessionInfo: (sid) => sessionCatalog.get("sessionIndex").get(sid),
             isAppDisposed: () => appDisposed,
             api,
             refreshSessions,
@@ -914,7 +900,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
           hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog,
           sessionState,
-          getSessionIndex: () => sessionIndex,
+          sessionCatalog,
           getSessionLifecycleController: () => sessionLifecycleController,
         }));
         const {
@@ -933,7 +919,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             queueViewer,
             queueBtn: $("#queueBtn"),
             sessionState,
-            getSessionInfo: (sid) => sessionIndex.get(sid),
+            getSessionInfo: (sid) => sessionCatalog.get("sessionIndex").get(sid),
             isAppDisposed: () => appDisposed,
             api,
             setToast,
@@ -955,7 +941,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         })();
 
         function selectedSessionLaunchFailed() {
-          return sessionLaunchFailed(sessionState.get("selected") ? sessionIndex.get(sessionState.get("selected")) : null);
+          return sessionLaunchFailed(sessionState.get("selected") ? sessionCatalog.get("sessionIndex").get(sessionState.get("selected")) : null);
         }
 
         function syncQueueSubmitState() {
@@ -1012,7 +998,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             diagCopyConversationBtn,
             diagCopyBtn,
             sessionState,
-            getSessionInfo: (sid) => sessionIndex.get(sid),
+            getSessionInfo: (sid) => sessionCatalog.get("sessionIndex").get(sid),
             api,
             setToast,
             copyToClipboard,
@@ -1068,7 +1054,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
           resetChatRenderState,
-          getSession: (sessionId) => sessionIndex.get(sessionId),
+          getSession: (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId),
           isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollingRuntime.currentGeneration() === generation,
           setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
           setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
@@ -1125,7 +1111,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionSelectable,
           normalizeAgentBackendName,
           providerChoiceToSettings,
-          backendSupportsFast,
+          sessionCatalog,
+          backendSupportsFastForDefaults: (backend, defaults) => codoxearLaunch.backendSupportsFast(backend, defaults),
           setToast,
           confirmAction: (options) => confirmApp(options),
           syncRecoveryUiForSession,
@@ -1137,21 +1124,13 @@ import * as CodoxearWiring from "./app_wiring.js";
           api,
           isDisposed: () => appDisposed,
           apiResponseNotModified,
-          getLatestSessions: () => latestSessions,
-          setLatestSessions: (sessions) => { latestSessions = sessions; },
-          setNewSessionDefaults: (defaults) => { newSessionDefaults = defaults; },
+          sessionCatalog,
           emptyDefaults: () => ({
             default_backend: "pi",
             backends: { codex: legacyCodexLaunchDefaults(), pi: emptyPiLaunchDefaults(), cc: emptyCcLaunchDefaults() },
           }),
-          setTmuxAvailable: (available) => { tmuxAvailable = Boolean(available); },
-          setRecentCwds: (cwds) => { recentCwds = cwds; },
-          refreshNewSessionDefaults: () => {
-            if (newSessionDialogController.isOpen()) newSessionDialogController.refreshDefaults();
-          },
           clearFileDiscoveryCaches: () => fileReferenceRuntime.clearDiscoveryCaches(),
           useDesktopSessionActions,
-          setSessionIndex: (index) => { sessionIndex = index; },
           sessionState,
           clearSelectedSessionAfterRemoval: (...args) => sessionLifecycleController.clearSelectedSessionAfterRemoval(...args),
           applySessionListTranscriptIdentity,
@@ -1297,8 +1276,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sendChoiceLaterBtn: $("#sendChoiceLater"),
           sendChoiceCancelBtn: $("#sendChoiceCancel"),
           sessionState,
-          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
-          getNewSessionDefaults: () => newSessionDefaults,
+          sessionCatalog,
           sessionLaunchFailed,
           getStagedAttachments: () => attachmentsController.getStagedAttachments(),
           isModalOpen: () => modalIsolationTargets.some(isModalTargetOpen),
@@ -1339,9 +1317,9 @@ import * as CodoxearWiring from "./app_wiring.js";
 	            const remembered = storageGetItem("codexweb.selected");
 	            const first = sessions && sessions.length ? (sessions.find(sessionSelectable) || {}).session_id || null : null;
 	            const pick =
-	              hashed && sessionSelectable(sessionIndex.get(hashed))
+	              hashed && sessionSelectable(sessionCatalog.get("sessionIndex").get(hashed))
 	                ? hashed
-	                : remembered && sessionSelectable(sessionIndex.get(remembered))
+	                : remembered && sessionSelectable(sessionCatalog.get("sessionIndex").get(remembered))
 	                  ? remembered
 	                  : first;
 	            if (pick) await sessionLifecycleController.selectSession(pick);

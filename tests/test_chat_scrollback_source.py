@@ -12,6 +12,7 @@ APP_COMPOSITION_JS = module_path("app_application_composition.js")
 APP_CHAT_INTERACTION_JS = module_path("app_chat_interaction.js")
 APP_MESSAGE_HISTORY_JS = module_path("app_message_history.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_DISPLAY_JS = module_path("app_display.js")
 APP_LAUNCH_JS = module_path("app_launch.js")
@@ -110,12 +111,14 @@ def eval_jump_to_latest_forces_tail_render() -> dict:
         const ctx = {{ window: {{ CodoxearTranscript: transcriptHelpers }}, console }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+        vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid");
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         const controller = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
-          sessionState,
-          pollingRuntime: {{ currentGeneration: () => 7 }}, getSessionIndex: () => new Map(),
+          sessionState, sessionCatalog,
+          pollingRuntime: {{ currentGeneration: () => 7 }},
           getSessionLifecycleController: () => ({{ openSession: async (...args) => calls.push(["open", ...args]) }}),
           getSessionRefreshController: () => ({{ refreshSessions: async () => {{}} }}),
           getSendLifecycleController: () => ({{ kickPoll: (delay) => calls.push(["kick", delay]) }}),
@@ -171,6 +174,7 @@ def eval_open_session_tail_request_abort() -> dict:
         const ctx = {{ window: {{}}, console, AbortController }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+        vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const sessions = new Map([
           ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
@@ -178,6 +182,8 @@ def eval_open_session_tail_request_abort() -> dict:
         ]);
         const state = {{ pollGen: 0, title: "" }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+        sessionCatalog.set("latestSessions", Array.from(sessions.values()));
         let activeTailController = null;
         const abortOpen = () => {{
           const controller = activeTailController;
@@ -210,7 +216,7 @@ def eval_open_session_tail_request_abort() -> dict:
           }});
         }});
         const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController({{
-          sessionState,
+          sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
           pollingRuntime: {{
             currentGeneration: () => state.pollGen,
             nextGeneration: () => ++state.pollGen,
@@ -244,7 +250,7 @@ def eval_open_session_tail_request_abort() -> dict:
           setActiveTranscriptPending: () => {{}},
           deleteTranscriptSession: () => {{}}, dropPendingUserRows: () => {{}}, sessionIdFromHash: () => "", rememberPendingHashSession: () => {{}},
           sessionSelectable: () => false, normalizeAgentBackendName: (value) => value, providerChoiceToSettings: () => ({{}}),
-          backendSupportsFast: () => false, setToast: () => {{}}, confirmAction: async () => false, syncRecoveryUiForSession: () => {{}}, sleep: async () => {{}}, consoleError: () => {{}},
+          setToast: () => {{}}, confirmAction: async () => false, syncRecoveryUiForSession: () => {{}}, sleep: async () => {{}}, consoleError: () => {{}},
         }});
         (async () => {{
           const firstPromise = controller.openSession("sid-a", {{ useCache: false }});
@@ -280,13 +286,15 @@ def _run_lifecycle(body: str) -> dict:
         const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+        vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const calls = [];
         const noop = () => {{}};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid-1");
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         const options = new Proxy({{
-          sessionState,
+          sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
           pollingRuntime: {{
             currentGeneration: () => 0,
             nextGeneration: () => 0,

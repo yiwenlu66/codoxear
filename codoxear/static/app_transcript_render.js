@@ -87,7 +87,9 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
     if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
       throw new TypeError("transcript render dependency missing: pollingRuntime");
     }
-    const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("transcript render dependency missing: sessionCatalog");
+    const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const sessionState = options.sessionState;

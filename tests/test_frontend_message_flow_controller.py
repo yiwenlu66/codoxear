@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
@@ -17,6 +18,7 @@ def run_flow(body: str) -> dict:
         APP_POLLING_JS.read_text(encoding="utf-8"),
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"),
         APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     script = textwrap.dedent(
@@ -39,8 +41,9 @@ def run_flow(body: str) -> dict:
           }};
           const options = {{
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }}); return store; }})(),
+            sessionCatalog: (() => {{ const catalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }}); catalog.set("latestSessions", [state.session]); return catalog; }})(),
             getGeneration: () => state.generation,
-            isAppDisposed: () => state.disposed,             getSessionInfo: () => state.session, patchSessionInfo: noop, sessionLaunchFailed: () => false,
+            isAppDisposed: () => state.disposed, sessionLaunchFailed: () => false,
             api: async () => ({{ events: [], busy: false, queue_len: 0, token: null }}),
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
             refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,

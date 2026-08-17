@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_SESSIONS_JS = module_path("app_sessions.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 CC_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 
@@ -60,6 +61,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
     transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
     message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
     session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+    catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -76,6 +78,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
         vm.runInContext({json.dumps(transcript_source)}, ctx);
         vm.runInContext({json.dumps(message_flow_source)}, ctx);
         vm.runInContext({json.dumps(session_state_source)}, ctx);
+        vm.runInContext({json.dumps(catalog_source)}, ctx);
         vm.runInContext({json.dumps(sessions_source)}, ctx);
 
         function node(attrs = {{}}, children = []) {{
@@ -186,11 +189,12 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             concreteTypingRuntime.updateSubagentGauge(count);
             concreteTypingRuntime.setSubagentVisible(true);
           }});
+          const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+          sessionCatalog.set("latestSessions", [{{ ...row, session_id: row.session_id || "sid" }}]);
           const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState,
+            sessionState, sessionCatalog,
             getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen: noop,
-            getSessionInfo: () => ({{ agent_backend: row.agent_backend }}), patchSessionInfo: noop,
             sessionLaunchFailed: () => false, api: async () => ({{}}), resolveAppUrl: (path) => path,
             handleAppAuthLoss: noop, refreshSessions: async () => [], openSession: async () => null,
             clearSelectedSessionAfterRemoval: noop,

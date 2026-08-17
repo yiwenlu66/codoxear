@@ -26,8 +26,13 @@
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
       throw new TypeError("attachments controller dependency missing: sessionState");
     }
-    const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
-    const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("attachments controller dependency missing: sessionCatalog");
+    const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
+    const patchSessionInfo = (sessionId, patch) => {
+      const current = getSessionInfo(sessionId);
+      if (current) Object.assign(current, patch || {});
+    };
 
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const sessionHasUnknownSend = requireFunction(options.sessionHasUnknownSend, "sessionHasUnknownSend");

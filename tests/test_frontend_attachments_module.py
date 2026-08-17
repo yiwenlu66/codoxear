@@ -8,12 +8,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_ATTACHMENTS_JS = module_path("app_attachments.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
 def run_attachments(body: str) -> dict:
     source = APP_ATTACHMENTS_JS.read_text(encoding="utf-8")
     state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+    catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -55,6 +57,7 @@ def run_attachments(body: str) -> dict:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(state_source)}, ctx, {{ filename: "app_session_state.js" }});
+        vm.runInContext({json.dumps(catalog_source)}, ctx, {{ filename: "app_session_catalog.js" }});
         vm.runInContext({json.dumps(source)}, ctx, {{ filename: "app_attachments.js" }});
         function el(tag, attrs = {{}}) {{
           const out = node(tag);
@@ -67,10 +70,10 @@ def run_attachments(body: str) -> dict:
         }}
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", selected);
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+        sessionCatalog.set("latestSessions", Array.from(sessions.values()));
         const controller = ctx.window.CodoxearAttachments.createAttachmentsController({{
-          attachBtn, imgInput, composer, textarea, sessionState,
-          getSessionInfo: (sid) => sessions.get(sid) || null,
-          patchSessionInfo: (sid, patch) => sessions.set(sid, Object.assign({{}}, sessions.get(sid), patch)),
+          attachBtn, imgInput, composer, textarea, sessionState, sessionCatalog,
           sessionLaunchFailed: (info) => !!(info && info.launch_state === "failed"),
           sessionHasUnknownSend: (info) => !!(info && info.commit_unknown_send),
           sessionIsOrphanRecovery: (info) => !!(info && info.orphan_recovery),

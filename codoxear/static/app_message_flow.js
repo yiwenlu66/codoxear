@@ -43,8 +43,13 @@ import * as CodoxearTranscript from "./app_transcript.js";
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("message flow dependency missing: sessionState");
     }
-    const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
-    const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("message flow dependency missing: sessionCatalog");
+    const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
+    const patchSessionInfo = (sessionId, patch) => {
+      const current = getSessionInfo(sessionId);
+      if (current) Object.assign(current, patch || {});
+    };
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const api = requireFunction(options.api, "api");
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");

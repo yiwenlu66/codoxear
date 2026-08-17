@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = module_path("app_composer.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
@@ -45,6 +46,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const document = {{ createElement: () => new Node(), activeElement: null }};
             const ctx = {{ window: {{}}, document, console, Date, Set, Object, String, Number, Promise }};
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(source)}, ctx);
             const nodes = Array.from({{ length: 10 }}, () => new Node());
@@ -54,31 +56,26 @@ class TestComposerModelPicker(unittest.TestCase):
             const noop = () => {{}};
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
             sessionState.set("selected", "sid");
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+            const sessionInfo = {{
+              session_id: "sid",
+              get agent_backend() {{ return state.backend; }},
+              get pi_thinking_command() {{ return state.thinkingCapability; }},
+              model_provider: "anthropic",
+              get model() {{ return state.backend === "cc" ? state.ccModel : state.backend === "codex" ? "gpt-5.4" : "claude-sonnet-4"; }},
+              get reasoning_effort() {{ return state.backend === "cc" ? state.ccEffort : "high"; }},
+              get slash_commands() {{ return state.backend === "codex" && state.codexCapability ? [{{ name: "model" }}, {{ name: "effort" }}] : []; }},
+            }};
+            sessionCatalog.set("latestSessions", [sessionInfo]);
+            sessionCatalog.set("newSessionDefaults", {{ backends: {{ pi: {{
+              provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
+              reasoning_efforts_by_model: {{ "anthropic/claude-sonnet-4": ["off", "low", "high"] }},
+            }}, cc: {{ models: ["sonnet", "opus", "fable", "haiku", "best", "default", "claude-sonnet-4-6"], reasoning_efforts: ["low", "medium", "high", "xhigh", "max", "auto"], reasoning_efforts_by_model: {{ "claude-sonnet-4-6": ["low", "high", "auto"] }} }}, codex: {{ models: ["gpt-5.4", "gpt-5.4-mini"], reasoning_efforts: ["minimal", "low", "medium", "high", "xhigh", "max"], reasoning_efforts_by_model: {{ "gpt-5.4": ["low", "high", "max"] }} }} }} }});
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
               modelPicker,
-              sessionState,
-              getSessionInfo: () => ({{
-                agent_backend: state.backend,
-                pi_thinking_command: state.thinkingCapability,
-                model_provider: "anthropic",
-                model: state.backend === "cc" ? state.ccModel : state.backend === "codex" ? "gpt-5.4" : "claude-sonnet-4",
-                reasoning_effort: state.backend === "cc" ? state.ccEffort : "high",
-                slash_commands: state.backend === "codex" && state.codexCapability ? [{{ name: "model" }}, {{ name: "effort" }}] : [],
-              }}),
-              getNewSessionDefaults: () => ({{ backends: {{ pi: {{
-                provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
-                reasoning_efforts_by_model: {{ "anthropic/claude-sonnet-4": ["off", "low", "high"] }},
-              }}, cc: {{
-                models: ["sonnet", "opus", "fable", "haiku", "best", "default", "claude-sonnet-4-6"],
-                reasoning_efforts: ["low", "medium", "high", "xhigh", "max", "auto"],
-                reasoning_efforts_by_model: {{ "claude-sonnet-4-6": ["low", "high", "auto"] }},
-              }}, codex: {{
-                models: ["gpt-5.4", "gpt-5.4-mini"],
-                reasoning_efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
-                reasoning_efforts_by_model: {{ "gpt-5.4": ["low", "high", "max"] }},
-              }} }} }}),
+              sessionState, sessionCatalog,
               patchSessionInfo: noop,
               sessionLaunchFailed: () => false,
               getSending: () => state.sending,

@@ -35,6 +35,7 @@ from codoxear.session_model import Session
 ROOT = Path(__file__).resolve().parents[1]
 SSE_CONTROLLER = module_path("app_sse.js")
 MESSAGE_FLOW_CONTROLLER = module_path("app_message_flow.js")
+SESSION_CATALOG = module_path("app_session_catalog.js")
 SESSION_STATE = module_path("app_session_state.js")
 POLLING_HELPERS = module_path("app_polling.js")
 TRANSCRIPT_HELPERS = module_path("app_transcript.js")
@@ -462,6 +463,7 @@ class TestSseBattleAdvanced(unittest.TestCase):
             POLLING_HELPERS.read_text(encoding="utf-8"),
             TRANSCRIPT_HELPERS.read_text(encoding="utf-8"),
             MESSAGE_FLOW_CONTROLLER.read_text(encoding="utf-8"),
+            SESSION_CATALOG.read_text(encoding="utf-8"),
             SESSION_STATE.read_text(encoding="utf-8"),
         ]
         js = f"""
@@ -479,9 +481,9 @@ const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
 vm.createContext(ctx);
 {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
 const options = new Proxy({{
+  sessionCatalog: (() => {{ const catalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }}); catalog.set("latestSessions", [{{ session_id: "sse-battle" }}]); return catalog; }})(),
   sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }}); store.set("selected", "sse-battle"); return store; }})(),
   getGeneration: () => 7, isAppDisposed: () => false,
-   getSessionInfo: () => ({{ session_id: "sse-battle" }}),
   activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),
   resolveAppUrl: (path) => "https://phone.tailnet.example" + path,
   visibilityState: () => visibility, EventSource: FakeEventSource,

@@ -19,6 +19,7 @@ POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
 SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
+SESSION_CATALOG_SOURCE = module_path("app_session_catalog.js").read_text(encoding="utf-8")
 COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 
 
@@ -57,6 +58,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
         vm.runInContext({json.dumps(POLLING_SOURCE)}, ctx);
         vm.runInContext({json.dumps(TRANSCRIPT_SOURCE)}, ctx);
         vm.runInContext({json.dumps(MESSAGE_FLOW_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(SESSION_CATALOG_SOURCE)}, ctx);
         vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
@@ -68,17 +70,16 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
             scrollHeight: 32, disabled: false, focus: () => {{}}, blur: () => {{}},
           }};
         }}
-        function createMessageFlow(state, sessionState) {{
+        function createMessageFlow(state, sessionState, sessionCatalog) {{
           const noop = () => {{}};
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
             updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState,
+            sessionState, sessionCatalog,
             getGeneration: () => 1, isAppDisposed: () => false,
 
-            getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push({{ path, body: options.body }}); return {{ queued: false, queue_len: 0, busy: true }}; }},
             resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop, refreshSessions: async () => [],
@@ -112,11 +113,13 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           const noop = () => {{}};
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
           sessionState.applyRuntime({{ selected: "busy-session", running: true, turnOpen: true }});
-          const messageFlowController = createMessageFlow(state, sessionState);
+          const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+          sessionCatalog.set("latestSessions", [{{ session_id: "busy-session", agent_backend: "pi" }}]);
+          const messageFlowController = createMessageFlow(state, sessionState, sessionCatalog);
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
             sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-            getSessionInfo: () => ({{ agent_backend: "pi" }}),
+            sessionCatalog,
             sessionLaunchFailed: () => false, getSending: () => state.sending,
             sessionState, getStagedAttachments: () => [],
             api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,

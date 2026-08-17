@@ -14,6 +14,7 @@ POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
 SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
+SESSION_CATALOG_SOURCE = module_path("app_session_catalog.js").read_text(encoding="utf-8")
 
 
 def run_voice_announcement_resume_harness() -> dict:
@@ -114,11 +115,13 @@ def run_voice_announcement_resume_harness() -> dict:
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, tools: 0 }} }}),
             updateTypingStats() {{}}, updateSubagentGauge() {{}}, resetTypingStats() {{}},
           }};
+          const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+          sessionCatalog.set("latestSessions", [{{ session_id: "session-a", agent_backend: "pi" }}]);
           const specific = {{
+            sessionCatalog,
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.set("selected", "session-a"); return store; }})(),
             getGeneration: () => 1, isAppDisposed: () => false,
             getTurnOpen: () => false, setTurnOpen() {{}},
-            getSessionInfo: () => ({{ session_id: "session-a", agent_backend: "pi" }}),
             activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-a", logPath: "/tmp/session-a.jsonl" }}),
             typingRowRuntime, visibilityState: () => documentTarget.visibilityState,
             navigatorValue: () => ({{ onLine: true }}), EventSource,
@@ -146,6 +149,7 @@ def run_voice_announcement_resume_harness() -> dict:
           {json.dumps(POLLING_SOURCE)},
           {json.dumps(TRANSCRIPT_SOURCE)},
           {json.dumps(MESSAGE_FLOW_SOURCE)},
+          {json.dumps(SESSION_CATALOG_SOURCE)},
           {json.dumps(SESSION_STATE_SOURCE)},
         ]) vm.runInContext(source, ctx);
 

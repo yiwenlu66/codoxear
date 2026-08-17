@@ -22,7 +22,9 @@
     const sendChoiceLaterBtn = requireNode(options.sendChoiceLaterBtn, "sendChoiceLaterBtn");
     const sendChoiceCancelBtn = requireNode(options.sendChoiceCancelBtn, "sendChoiceCancelBtn");
 
-    const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("composer dependency missing: sessionCatalog");
+    const getSessionInfo = (sessionId) => sessionCatalog.get("sessionIndex").get(sessionId) || null;
     const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("composer dependency missing: sessionState");
@@ -40,7 +42,7 @@
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
     const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
-    const getNewSessionDefaults = typeof options.getNewSessionDefaults === "function" ? options.getNewSessionDefaults : () => null;
+    const getNewSessionDefaults = () => sessionCatalog.get("newSessionDefaults");
     const modelPicker = options.modelPicker && typeof options.modelPicker === "object" ? options.modelPicker : null;
     const onAutoGrow = typeof options.onAutoGrow === "function" ? options.onAutoGrow : () => {};
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (callback) => requestAnimationFrame(callback);

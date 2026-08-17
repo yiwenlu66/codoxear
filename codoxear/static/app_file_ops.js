@@ -58,7 +58,9 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
   function createFileOpsController(options = {}) {
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("file operations dependency missing: sessionState");
-    const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("file operations dependency missing: sessionCatalog");
+    const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const {
       wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
@@ -759,7 +761,7 @@ const filePickerOperations = filePickerOpsModule.createFilePickerOperationDelega
   filePickerRenderRuntime: filePickerRenderRuntime,
   fileViewerPanelRuntime: fileViewerPanelRuntime,
   sessionState,
-  getSessionIndex: getSessionIndex,
+  sessionCatalog,
   stripPathLocationSuffix: stripPathLocationSuffix,
 }));
 const { openDraftFilePathWithGuard, requestHideFileViewer, handleFileDiffModeButtonPress,

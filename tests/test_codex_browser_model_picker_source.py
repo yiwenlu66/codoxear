@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = module_path("app_composer.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
@@ -47,6 +48,7 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
               const document = { createElement: (tag) => new Node(tag), activeElement: null };
               const context = { window: {}, document, console, Date, Set, Object, String, Number, Promise };
               vm.createContext(context);
+              vm.runInContext(fs.readFileSync(process.argv[3], "utf8"), context);
               vm.runInContext(fs.readFileSync(process.argv[2], "utf8"), context);
               vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);
               const nodes = Array.from({ length: 10 }, () => new Node());
@@ -54,26 +56,21 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
               form.requestSubmit = () => {};
               const settingsCalls = [];
               const noop = () => {};
+              const sessionCatalog = context.window.CodoxearSessionCatalog.createSessionCatalog({ consoleError: noop });
+              sessionCatalog.set("latestSessions", [{
+                session_id: "codex-live", agent_backend: "codex", model_provider: "openai", preferred_auth_method: "chatgpt",
+                provider_choice: "chatgpt", model: "gpt-current", reasoning_effort: "high",
+                slash_commands: [{ name: "model" }, { name: "effort" }],
+              }]);
+              sessionCatalog.set("newSessionDefaults", { backends: { codex: {
+                provider_choices: ["chatgpt", "openai-api", "custom"],
+                provider_models: { chatgpt: ["gpt-current", "gpt-small"], "openai-api": ["gpt-other"], custom: ["custom-1"] },
+                models: ["gpt-current", "gpt-small"], reasoning_efforts: ["low", "high"], reasoning_efforts_by_model: {},
+              } } });
               context.window.CodoxearComposer.createComposerController({
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn, modelPicker,
-                getSelected: () => "codex-live",
-                getSessionInfo: () => ({
-                  agent_backend: "codex", model_provider: "openai", preferred_auth_method: "chatgpt",
-                  provider_choice: "chatgpt", model: "gpt-current", reasoning_effort: "high",
-                  slash_commands: [{ name: "model" }, { name: "effort" }],
-                }),
-                getNewSessionDefaults: () => ({ backends: { codex: {
-                  provider_choices: ["chatgpt", "openai-api", "custom"],
-                  provider_models: {
-                    chatgpt: ["gpt-current", "gpt-small"],
-                    "openai-api": ["gpt-other"],
-                    custom: ["custom-1"],
-                  },
-                  models: ["gpt-current", "gpt-small"],
-                  reasoning_efforts: ["low", "high"], reasoning_efforts_by_model: {},
-                } } }),
-                patchSessionInfo: noop, sessionLaunchFailed: () => false,
+                sessionCatalog, sessionLaunchFailed: () => false,
 
                 sessionState: (() => { const store = context.window.CodoxearSessionState.createSessionState({ consoleError: noop }); store.set("selected", "codex-live"); return store; })(),
                 setTurnOpen: noop, resetTypingStats: noop, getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
@@ -120,7 +117,7 @@ class TestCodexBrowserModelPicker(unittest.TestCase):
             """
         )
         result = subprocess.run(
-            ["node", "-e", script, str(APP_COMPOSER_JS), str(APP_SESSION_STATE_JS)],
+            ["node", "-e", script, str(APP_COMPOSER_JS), str(APP_SESSION_STATE_JS), str(APP_SESSION_CATALOG_JS)],
             check=False,
             capture_output=True,
             text=True,

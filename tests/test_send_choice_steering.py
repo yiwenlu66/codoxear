@@ -16,6 +16,7 @@ POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
 SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
+SESSION_CATALOG_SOURCE = module_path("app_session_catalog.js").read_text(encoding="utf-8")
 COMPOSER_SOURCE = (module_path("app_composer.js")).read_text(encoding="utf-8")
 
 
@@ -42,6 +43,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         vm.runInContext({json.dumps(POLLING_SOURCE)}, ctx);
         vm.runInContext({json.dumps(TRANSCRIPT_SOURCE)}, ctx);
         vm.runInContext({json.dumps(MESSAGE_FLOW_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(SESSION_CATALOG_SOURCE)}, ctx);
         vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
@@ -62,11 +64,13 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
         sessionState.applyRuntime({{ selected: "busy-session", running: true, turnOpen: true }});
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+        sessionCatalog.set("latestSessions", [{{ session_id: "busy-session", agent_backend: "pi" }}]);
         const messageFlow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-          sessionState,
+          sessionState, sessionCatalog,
           getGeneration: () => 1, isAppDisposed: () => false,
 
-          getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
+
           sessionLaunchFailed: () => false,
           api: async (path, options) => {{
             state.apiCalls.push({{ path, method: options.method, body: options.body }});
@@ -100,7 +104,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         const composer = ctx.window.CodoxearComposer.createComposerController({{
           form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
           sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
-          getSessionInfo: () => ({{ agent_backend: "pi" }}), sessionLaunchFailed: () => false,
+          sessionCatalog, sessionLaunchFailed: () => false,
           getSending: () => state.sending,
           sessionState, getStagedAttachments: () => [],
           api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,

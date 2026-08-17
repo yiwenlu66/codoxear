@@ -8,6 +8,7 @@ def test_attach_button_reflects_session_selection_and_recovery_blockers() -> Non
         function record(label, info) {
           sessionState.set("selected", label === "none" ? null : "sid");
           if (info) sessions.set("sid", info); else sessions.delete("sid");
+          sessionCatalog.set("latestSessions", Array.from(sessions.values()));
           controller.syncAttachButtonState();
           states.push({ label, disabled: attachBtn.disabled, title: attachBtn.title, aria: attachBtn.attrs["aria-label"] });
         }

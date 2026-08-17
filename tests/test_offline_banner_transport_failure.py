@@ -10,6 +10,7 @@ APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_NETWORK_JS = module_path("app_network.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
@@ -19,6 +20,7 @@ def run_transport_failure_flow() -> dict:
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_NETWORK_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"),
         APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     script = textwrap.dedent(
@@ -60,11 +62,13 @@ def run_transport_failure_flow() -> dict:
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid");
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+        sessionCatalog.set("latestSessions", [state.session]);
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState,
+            sessionState, sessionCatalog,
           getGeneration: () => state.generation,
           isAppDisposed: () => state.disposed,
-          getSessionInfo: () => state.session, patchSessionInfo: noop, sessionLaunchFailed: () => false,
+          sessionLaunchFailed: () => false,
           api: async () => {{ await fetch(); return {{ events: [], busy: false, queue_len: 0, token: null }}; }},
           resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
           refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,

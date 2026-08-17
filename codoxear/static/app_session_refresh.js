@@ -9,16 +9,13 @@
     const api = requireFunction(options.api, "api");
     const isDisposed = requireFunction(options.isDisposed, "isDisposed");
     const apiResponseNotModified = requireFunction(options.apiResponseNotModified, "apiResponseNotModified");
-    const getLatestSessions = requireFunction(options.getLatestSessions, "getLatestSessions");
-    const setLatestSessions = requireFunction(options.setLatestSessions, "setLatestSessions");
-    const setNewSessionDefaults = requireFunction(options.setNewSessionDefaults, "setNewSessionDefaults");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.set !== "function") {
+      throw new TypeError("session refresh dependency missing: sessionCatalog");
+    }
     const emptyDefaults = requireFunction(options.emptyDefaults, "emptyDefaults");
-    const setTmuxAvailable = requireFunction(options.setTmuxAvailable, "setTmuxAvailable");
-    const setRecentCwds = requireFunction(options.setRecentCwds, "setRecentCwds");
-    const refreshNewSessionDefaults = requireFunction(options.refreshNewSessionDefaults, "refreshNewSessionDefaults");
     const clearFileDiscoveryCaches = requireFunction(options.clearFileDiscoveryCaches, "clearFileDiscoveryCaches");
     const useDesktopSessionActions = requireFunction(options.useDesktopSessionActions, "useDesktopSessionActions");
-    const setSessionIndex = requireFunction(options.setSessionIndex, "setSessionIndex");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("session refresh dependency missing: sessionState");    const clearSelectedSessionAfterRemoval = requireFunction(options.clearSelectedSessionAfterRemoval, "clearSelectedSessionAfterRemoval");
     const applySessionListTranscriptIdentity = requireFunction(options.applySessionListTranscriptIdentity, "applySessionListTranscriptIdentity");
@@ -44,7 +41,7 @@
         return refreshInFlight;
       }
       refreshInFlight = (async () => {
-        let result = getLatestSessions();
+        let result = sessionCatalog.get("latestSessions");
         try {
           do {
             refreshQueued = false;
@@ -60,26 +57,27 @@
 
     async function refreshSessionsOnce() {
       const data = await api("/api/sessions");
-      let latestSessions = getLatestSessions();
+      let latestSessions = sessionCatalog.get("latestSessions");
       if (isDisposed()) return latestSessions;
       const notModified = apiResponseNotModified(data);
       const firstLoadNeedsPopulation = notModified && latestSessions.length === 0 && Array.isArray(data.sessions) && data.sessions.length > 0;
       if (notModified && !hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
       if (!notModified || firstLoadNeedsPopulation) {
         latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-        setLatestSessions(latestSessions);
-        setNewSessionDefaults(
+        sessionCatalog.set("latestSessions", latestSessions);
+        sessionCatalog.set(
+          "newSessionDefaults",
           data && typeof data.new_session_defaults === "object" && data.new_session_defaults
             ? data.new_session_defaults
             : emptyDefaults()
         );
-        setTmuxAvailable(Boolean(data.tmux_available));
-        setRecentCwds(
+        sessionCatalog.set("tmuxAvailable", Boolean(data.tmux_available));
+        sessionCatalog.set(
+          "recentCwds",
           Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, index, values) => typeof cwd === "string" && cwd.trim() && values.indexOf(cwd) === index)
             : []
         );
-        refreshNewSessionDefaults();
         clearFileDiscoveryCaches();
       }
       const sessions = latestSessions.slice().sort((a, b) => {
@@ -91,9 +89,7 @@
         if (started) return started;
         return String(a.session_id || "").localeCompare(String(b.session_id || ""));
       });
-      const sessionIndex = new Map();
-      for (const session of sessions) sessionIndex.set(session.session_id, session);
-      setSessionIndex(sessionIndex);
+      const sessionIndex = sessionCatalog.get("sessionIndex");
       let selected = sessionState.get("selected");
       if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
       selected = sessionState.get("selected");

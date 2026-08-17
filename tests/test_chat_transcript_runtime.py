@@ -16,6 +16,7 @@ APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 APP_SESSION_REFRESH_JS = module_path("app_session_refresh.js")
 APP_SESSION_LIFECYCLE_JS = module_path("app_session_lifecycle.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 APP_MESSAGE_IDENTITY_JS = module_path("app_transcript.js")
 
@@ -32,6 +33,9 @@ function createMessageFlow(state, overrides = {}) {
   };
   const sessionState = state.sessionState || ctx.window.CodoxearSessionState.createSessionState({ consoleError: noop });
   state.sessionState = sessionState;
+  const sessionCatalog = state.sessionCatalog || ctx.window.CodoxearSessionCatalog.createSessionCatalog({ consoleError: noop });
+  if (!state.sessionCatalog) sessionCatalog.set("latestSessions", [state.session || { session_id: state.selected || "sid", agent_backend: "pi" }]);
+  state.sessionCatalog = sessionCatalog;
   sessionState.applyRuntime({ selected: state.selected || "sid", running: Boolean(state.running) });
   Object.defineProperty(state, "running", {
     get: () => sessionState.get("running"),
@@ -39,10 +43,10 @@ function createMessageFlow(state, overrides = {}) {
     configurable: true,
   });
   return ctx.window.CodoxearMessageFlow.createMessageFlowController({
-    sessionState,
+    sessionState, sessionCatalog,
     getGeneration: () => 1, isAppDisposed: () => false,
 
-    getSessionInfo: () => ({ agent_backend: "pi" }), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+    sessionLaunchFailed: () => false,
     api: async () => ({ queued: false, queue_len: 0 }), resolveAppUrl: (path) => `http://example.test${path}`,
     handleAppAuthLoss: noop, refreshSessions: async () => [], openSession: async () => null,
     clearSelectedSessionAfterRemoval: noop, activeTranscriptSnapshot: () => active,
@@ -106,6 +110,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(polling_source)}, ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(transcript_render_source)}, ctx);
             vm.runInContext({json.dumps(message_flow_source)}, ctx);
             vm.runInContext({json.dumps(session_refresh_source)}, ctx);
@@ -144,9 +149,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
             typingRowRuntime.updateTypingStats({{ tools: 5, thinkingTokens: 1200, thinkingMode: "tokens" }});
             const noop = () => {{}};
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+            sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
             const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-              sessionState, getGeneration: () => 1, isAppDisposed: () => false,
-              getSessionInfo: () => ({{ agent_backend: "pi" }}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+              sessionState, sessionCatalog, getGeneration: () => 1, isAppDisposed: () => false,
+              sessionLaunchFailed: () => false,
               api: async () => ({{}}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,
               refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
               activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor", logPath: "/tmp/log" }}),
@@ -164,15 +171,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 0, consoleWarn: noop, consoleError: noop,
             }});
             const listedSession = {{ session_id: "sid", busy: false, queue_len: 0, token: null, subagents_running: 0, tools: 0, thinking_tokens: 0 }};
-            let latestSessions = [];
             const refresh = ctx.window.CodoxearSessionRefresh.createSessionRefreshController({{
-              sessionState,
+              sessionState, sessionCatalog,
               api: async () => ({{ sessions: [listedSession] }}),
               isDisposed: () => false, apiResponseNotModified: () => false,
-              getLatestSessions: () => latestSessions, setLatestSessions: (sessions) => {{ latestSessions = sessions; }},
-              setNewSessionDefaults: noop, emptyDefaults: () => ({{}}), setTmuxAvailable: noop, setRecentCwds: noop,
-              refreshNewSessionDefaults: noop, clearFileDiscoveryCaches: noop, useDesktopSessionActions: () => true,
-              setSessionIndex: noop, clearSelectedSessionAfterRemoval: noop, applySessionListTranscriptIdentity: noop,
+              emptyDefaults: () => ({{}}), clearFileDiscoveryCaches: noop, useDesktopSessionActions: () => true,
+ clearSelectedSessionAfterRemoval: noop, applySessionListTranscriptIdentity: noop,
               syncRecoveryUiForSession: noop, syncAttachments: noop, clearAttachments: noop,
               renderSessions: () => true, hasDeferredRefresh: () => false, setTitle: noop, sessionTitle: () => "sid",
               updateTypingStats: flow.updateTypingStatsFromSession, updateUnattendedButton: noop,
@@ -318,6 +322,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.createContext(ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(transcript_render_source)}, ctx);
 
             function node(attrs = {{}}, children = []) {{
@@ -1032,6 +1037,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.createContext(ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
             const state = {{
@@ -1067,8 +1073,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const defaults = () => {{}};
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
             sessionState.set("selected", "sid");
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
             const options = new Proxy({{
-              sessionState,
+              sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
               pollingRuntime: {{
                 currentGeneration: () => state.generation,
                 nextGeneration: () => ++state.generation,
@@ -1147,6 +1154,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const ctx = {{ window: {{}}, console }};
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(lifecycle_source)}, ctx);
             const calls = [];
             const state = {{ generation: 0, responses: [new Error("tail unavailable"), {{ transcript_state: "bound", events: [], busy: false, queue_len: 0, token: null }}, {{ transcript_state: "bound", events: [{{ role: "assistant", text: "latest" }}], busy: false, queue_len: 0, token: null }}] }};
@@ -1162,8 +1170,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               markMessagePollSuccess: () => calls.push("poll-success"),
             }};
             const defaults = () => {{}};
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
             const options = new Proxy({{
-              sessionState,
+              sessionState, sessionCatalog, backendSupportsFastForDefaults: () => false,
               pollingRuntime: {{
                 currentGeneration: () => state.generation,
                 nextGeneration: () => ++state.generation,
@@ -1431,12 +1440,14 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const transcriptStubs = ctx.window.CodoxearTranscript;
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(APP_TRANSCRIPT_JS.read_text(encoding="utf-8"))}, ctx);
             ctx.window.CodoxearTranscript = {{ ...ctx.window.CodoxearTranscript, ...transcriptStubs }};
             vm.runInContext({json.dumps(transcript_render_source)}, ctx);
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
             const render = ctx.window.CodoxearTranscriptRender.createTranscriptRenderController({{
-              pollingRuntime: {{ currentGeneration: () => 1 }}, getSessionIndex: () => new Map(),
+              pollingRuntime: {{ currentGeneration: () => 1 }}, sessionCatalog,
               getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{}}),
               sessionState, isAppDisposed: () => false, getSessionEditController: () => null,
               getQueueController: () => null, isFileViewerOpen: () => false, upgradeCandidateFileRefs: noop,
@@ -1454,7 +1465,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }});
             vm.runInContext({json.dumps(message_history_source)}, ctx);
             const history = ctx.window.CodoxearMessageHistory.createMessageHistoryController({{
-              pollingRuntime: {{ currentGeneration: () => 1 }}, getSessionIndex: () => new Map(), getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
+              pollingRuntime: {{ currentGeneration: () => 1 }}, sessionCatalog, getSessionLifecycleController: () => ({{}}), getSessionRefreshController: () => ({{ refreshSessions: async () => [] }}), getSendLifecycleController: () => ({{ kickPoll: noop }}), getAttachmentsController: () => ({{}}),
               transcript: {{ transcriptView: render.transcriptView, markClickFirstPaint: render.markClickFirstPaint }}, sessionState,
               wiring, olderWrap: {{}}, olderBtn: {{}}, olderError: {{}}, olderErrorText: {{}}, AbortController,
               performance: {{ now: () => clock }}, OLDER_AUTO_COOLDOWN_MS: 450, OLDER_PAGE_LIMIT: 30,
@@ -1897,6 +1908,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
             ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -1969,6 +1981,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
             ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -2042,6 +2055,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
             ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -2115,6 +2129,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             ctx.sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
             ctx.sessionState.set("selected", "sid");
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -2271,6 +2286,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(message_flow_source)}, ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
             {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
@@ -2289,7 +2305,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               const controller = ctx.window.CodoxearComposer.createComposerController({{
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-                getSessionInfo: () => ({{ agent_backend: "pi" }}),
+                sessionCatalog: state.sessionCatalog,
                 sessionLaunchFailed: () => false, getSending: () => state.sending,
                 sessionState: state.sessionState, getStagedAttachments: () => [],
                 api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
@@ -2324,6 +2340,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             vm.runInContext({json.dumps(message_flow_source)}, ctx);
             vm.runInContext({json.dumps(APP_SESSION_STATE_JS.read_text(encoding="utf-8"))}, ctx);
+            vm.runInContext({json.dumps(APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"))}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
             {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
@@ -2349,7 +2366,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-              getSessionInfo: () => ({{ agent_backend: "codex" }}),
+              sessionCatalog: state.sessionCatalog,
               sessionLaunchFailed: () => false, getSending: () => state.sending,
               sessionState: state.sessionState, getStagedAttachments: () => [],
               api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,

@@ -158,15 +158,6 @@ const global = window;
         return CodoxearStorage.removeItem(key);
       }
 
-      let newSessionDefaults = {
-        default_backend: "pi",
-        backends: {
-          codex: null,
-          pi: null,
-          cc: null,
-        },
-      };
-      let latestSessions = [];
       function lastProviderKey(backend) {
         return CodoxearLaunch.lastProviderKey(backend);
       }
@@ -369,19 +360,6 @@ const global = window;
       function emptyCcLaunchDefaults(seed = {}) {
         return CodoxearLaunch.emptyCcLaunchDefaults(seed);
       }
-      function defaultsForAgentBackend(backend) {
-        return CodoxearLaunch.defaultsForAgentBackend(backend, newSessionDefaults);
-      }
-      function providerChoicesForBackend(backend) {
-        return CodoxearLaunch.providerChoicesForBackend(backend, newSessionDefaults);
-      }
-      function reasoningChoicesForBackend(backend, options = {}) {
-        return CodoxearLaunch.reasoningChoicesForBackend(backend, newSessionDefaults, options);
-      }
-      function backendSupportsFast(backend) {
-        return CodoxearLaunch.backendSupportsFast(backend, newSessionDefaults);
-      }
-
       function redactedLaunchErrorText(value) {
         return CodoxearLaunch.redactedLaunchErrorText(value);
       }
@@ -623,8 +601,7 @@ const global = window;
         normalizeQueueItems, codoxearPolling: CodoxearPolling, codoxearNetwork: CodoxearNetwork, codoxearConversationCopy: CodoxearConversationCopy,
         transcriptExportTooLargeCopyMessage, copyConversationFailureToast, normalizeAgentBackendName,
         agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults,
-        emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend,
-        reasoningChoicesForBackend, backendSupportsFast, redactedLaunchErrorText, sessionLaunchLabel,
+        emptyPiLaunchDefaults, emptyCcLaunchDefaults, redactedLaunchErrorText, sessionLaunchLabel,
         sessionIsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches,
         providerModelDisplay, fmtIdleAge, fmtRelativeAge, sessionTitleWithId, stripPathLocationSuffix,
         isTextFileKind, isDiffableFileKind, blockedFileMessage, formatPriorityOffset, fileSearchScore,

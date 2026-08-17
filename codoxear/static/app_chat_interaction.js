@@ -15,7 +15,8 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
       throw new TypeError("chat interaction dependency missing: pollingRuntime");
     }
-    const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("chat interaction dependency missing: sessionCatalog");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const sessionState = options.sessionState;
@@ -45,7 +46,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     let attachmentsController = null;
     const transcript = transcriptModule.createTranscriptRenderController(wiring.createTranscriptRenderOptions({
       pollingRuntime,
-      getSessionIndex: options.getSessionIndex,
+      sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
       sessionState,
@@ -178,7 +179,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     }));
     historyController = historyModule.createMessageHistoryController(wiring.createMessageHistoryOptions({
       pollingRuntime,
-      getSessionIndex: options.getSessionIndex,
+      sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
       getSendLifecycleController: () => sendLifecycleController,
@@ -209,7 +210,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     }));
     sendLifecycleController = sendModule.createSendLifecycleController(wiring.createSendLifecycleOptions({
       pollingRuntime,
-      getSessionIndex: options.getSessionIndex,
+      sessionCatalog,
       getSessionLifecycleController: options.getSessionLifecycleController,
       getSessionRefreshController: options.getSessionRefreshController,
       sessionState,

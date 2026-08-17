@@ -110,7 +110,10 @@
     const sessionSelectable = get("sessionSelectable");
     const normalizeAgentBackendName = get("normalizeAgentBackendName");
     const providerChoiceToSettings = get("providerChoiceToSettings");
-    const backendSupportsFast = get("backendSupportsFast");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("session lifecycle dependency missing: sessionCatalog");
+    const backendSupportsFastForDefaults = get("backendSupportsFastForDefaults");
+    const backendSupportsFast = (backend) => backendSupportsFastForDefaults(backend, sessionCatalog.get("newSessionDefaults"));
     const setToast = get("setToast");
     const confirmAction = get("confirmAction");
     const syncRecoveryUiForSession = get("syncRecoveryUiForSession");

@@ -13,6 +13,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = module_path("app_display.js")
 APP_LAUNCH_JS = module_path("app_launch.js")
 APP_NEW_SESSION_JS = module_path("app_new_session.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
@@ -132,6 +133,7 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+    catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -150,7 +152,11 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(launch_source)}, ctx, {{ filename: "app_launch.js" }});
         vm.runInContext({json.dumps(display_source)}, ctx, {{ filename: "app_display.js" }});
+        vm.runInContext({json.dumps(catalog_source)}, ctx, {{ filename: "app_session_catalog.js" }});
         vm.runInContext({json.dumps(new_session_source)}, ctx, {{ filename: "app_new_session.js" }});
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+        sessionCatalog.set("recentCwds", {json.dumps(recent_cwds)});
+        sessionCatalog.set("tmuxAvailable", true);
         const cwdInput = {{ value: {json.dumps(query)} }};
         const controller = ctx.window.CodoxearNewSession.createNewSessionController({{
           backend: () => "codex",
@@ -158,9 +164,7 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
           reasoningEffort: () => "high",
           literalModelInputValue: () => "",
           launchPresetProviderAbsent: () => false,
-          defaultsSource: () => ({{}}),
-          latestSessions: () => [],
-          tmuxAvailable: () => true,
+          sessionCatalog,
           assignProvider: () => {{}},
           assignReasoningEffort: () => {{}},
           assignLiteralModelInputValue: () => {{}},
@@ -182,7 +186,6 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
           cwdField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
           cwdHint: {{ classList: {{ toggle() {{}} }} }},
           nameInput: {{ value: "" }},
-          recentCwds: () => {json.dumps(recent_cwds)},
           cwdMenuFocus: () => -1,
           assignCwdMenuFocus: () => {{}},
           closeCwdMenu: () => {{}},

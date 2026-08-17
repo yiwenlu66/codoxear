@@ -15,7 +15,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
     if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
       throw new TypeError("message history dependency missing: pollingRuntime");
     }
-    const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("message history dependency missing: sessionCatalog");
+    const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const getSendLifecycleController = requireFunction(options.getSendLifecycleController, "getSendLifecycleController");

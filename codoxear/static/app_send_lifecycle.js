@@ -13,7 +13,9 @@
     if (!pollingRuntime || typeof pollingRuntime.currentGeneration !== "function") {
       throw new TypeError("send lifecycle dependency missing: pollingRuntime");
     }
-    const getSessionIndex = requireFunction(options.getSessionIndex, "getSessionIndex");
+    const sessionCatalog = options.sessionCatalog;
+    if (!sessionCatalog || typeof sessionCatalog.get !== "function") throw new TypeError("send lifecycle dependency missing: sessionCatalog");
+    const getSessionIndex = () => sessionCatalog.get("sessionIndex");
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const getSessionRefreshController = requireFunction(options.getSessionRefreshController, "getSessionRefreshController");
     const sessionState = options.sessionState;
@@ -54,13 +56,7 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
   imgInput,
   composer,
   textarea,
-  getSessionInfo: (sessionId) => getSessionIndex().get(sessionId) || null,
-  patchSessionInfo: (sessionId, patch) => {
-    const current = getSessionIndex().get(sessionId);
-    if (!current) return;
-    Object.assign(current, patch || {});
-    getSessionIndex().set(sessionId, current);
-  },
+  sessionCatalog,
   sessionLaunchFailed,
   sessionHasUnknownSend,
   sessionIsOrphanRecovery,
@@ -89,13 +85,7 @@ attachmentsController = codoxearAttachments.createAttachmentsController(wiring.c
 messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.createMessageFlowOptions({
   getGeneration: () => pollingRuntime.currentGeneration(),
   isAppDisposed: () => isAppDisposed(),
-  getSessionInfo: (sessionId) => getSessionIndex().get(sessionId) || null,
-  patchSessionInfo: (sessionId, patch) => {
-    const current = getSessionIndex().get(sessionId);
-    if (!current) return;
-    Object.assign(current, patch || {});
-    getSessionIndex().set(sessionId, current);
-  },
+  sessionCatalog,
   sessionLaunchFailed,
   api,
   resolveAppUrl,

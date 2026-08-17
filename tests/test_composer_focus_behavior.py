@@ -15,6 +15,7 @@ POLLING_SOURCE = (module_path("app_polling.js")).read_text(encoding="utf-8")
 TRANSCRIPT_SOURCE = (module_path("app_transcript.js")).read_text(encoding="utf-8")
 MESSAGE_FLOW_SOURCE = (module_path("app_message_flow.js")).read_text(encoding="utf-8")
 SESSION_STATE_SOURCE = (module_path("app_session_state.js")).read_text(encoding="utf-8")
+SESSION_CATALOG_SOURCE = module_path("app_session_catalog.js").read_text(encoding="utf-8")
 
 
 def _run_node(script: str) -> dict:
@@ -29,6 +30,7 @@ def test_composer_escape_blurs_only_without_an_open_dialog_and_successful_send_b
         const vm = require("vm");
         const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(SESSION_CATALOG_SOURCE)}, ctx);
         vm.runInContext({json.dumps(SESSION_STATE_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
@@ -45,13 +47,15 @@ def test_composer_escape_blurs_only_without_an_open_dialog_and_successful_send_b
           }};
         }}
         function harness(dialogOpen) {{
+          const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+          sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
           const form = node(); form.requestSubmit = () => {{}};
           const textarea = node();
           const sent = [];
           ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh: node(), sendBtn: node(), sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn: node(), sendChoiceCancelBtn: node(),
-            getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}),
+            sessionCatalog,
             sessionLaunchFailed: () => false,
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.set("selected", "sid"); return store; }})(),
             getStagedAttachments: () => [], isModalOpen: () => dialogOpen, api: async () => ({{}}),
@@ -99,7 +103,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
         const vm = require("vm");
         const ctx = {{ window: {{}}, console, Date }};
         vm.createContext(ctx);
-        for (const source of {json.dumps([POLLING_SOURCE, TRANSCRIPT_SOURCE, MESSAGE_FLOW_SOURCE, SESSION_STATE_SOURCE])}) vm.runInContext(source, ctx);
+        for (const source of {json.dumps([POLLING_SOURCE, TRANSCRIPT_SOURCE, MESSAGE_FLOW_SOURCE, SESSION_CATALOG_SOURCE, SESSION_STATE_SOURCE])}) vm.runInContext(source, ctx);
         const timers = [];
         let refreshes = 0;
         let sending = false;
@@ -110,11 +114,13 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid");
+        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+        sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
         const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-            sessionState,
+            sessionState, sessionCatalog,
           getGeneration: () => 1, isAppDisposed: () => false,
 
-          getSessionInfo: () => ({{ session_id: "sid", agent_backend: "pi" }}), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+          sessionLaunchFailed: () => false,
           api: async () => ({{ queued: false, queue_len: 0 }}), resolveAppUrl: (path) => path, handleAppAuthLoss: noop,
           refreshSessions: async () => {{ refreshes += 1; }}, openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
           activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor", logPath: "/tmp/log" }}),

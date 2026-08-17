@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCH = module_path("app_launch.js")
 DISPLAY = module_path("app_display.js")
 NEW_SESSION = module_path("app_new_session.js")
+SESSION_CATALOG = module_path("app_session_catalog.js")
 
 
 def eval_model_options(
@@ -20,7 +21,7 @@ def eval_model_options(
     provider_models: dict[str, list[str]] | None = None,
     latest_sessions: list[dict] | None = None,
 ) -> dict:
-    sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, NEW_SESSION)]
+    sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, SESSION_CATALOG, NEW_SESSION)]
     providers = provider_choices if provider_choices is not None else ["chatgpt", "openai-api", "crs"]
     model_map = provider_models if provider_models is not None else {}
     sessions = latest_sessions if latest_sessions is not None else [
@@ -36,12 +37,14 @@ def eval_model_options(
         vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);
         let currentBackend={json.dumps(backend)}, provider={json.dumps("" if backend == "pi" else "chatgpt")}, literal="", absent=false;
         const modelInput={{value:{json.dumps(query)},focus(){{}},setSelectionRange(){{}}}}, noop=()=>{{}}, cls={{toggle(){{}},remove(){{}}}}, node={{innerHTML:"",appendChild(){{}}}};
+        const sessionCatalog=ctx.window.CodoxearSessionCatalog.createSessionCatalog({{consoleError:()=>{{}}}});
+        sessionCatalog.set("newSessionDefaults",{{model:"gpt-5.4-mini",models:["gpt-5.4","o4-mini"],model_providers:{json.dumps(providers)},provider_choices:{json.dumps(providers)},provider_models:{json.dumps(model_map)},reasoning_efforts:["off","low","high"],reasoning_efforts_by_model:{{}}}});
+        sessionCatalog.set("latestSessions",{json.dumps(sessions)}); sessionCatalog.set("tmuxAvailable",true);
         const c=ctx.window.CodoxearNewSession.createNewSessionController({{
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
-          defaultsSource:()=>({{model:"gpt-5.4-mini",models:["gpt-5.4","o4-mini"],model_providers:{json.dumps(providers)},provider_choices:{json.dumps(providers)},provider_models:{json.dumps(model_map)},reasoning_efforts:["off","low","high"],reasoning_efforts_by_model:{{}}}}),
-          latestSessions:()=>{json.dumps(sessions)}, tmuxAvailable:()=>true,
+          sessionCatalog,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},recentCwds:()=>[],cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         const options=c.sessionModelOptions(); const filtered=c.filteredNewSessionModelOptions(); const parsed=c.parseNewSessionProviderModelInput(); if (filtered[0] || options[0]) c.selectNewSessionModel(filtered[0] || options[0]);
         const selectedInput = modelInput.value;

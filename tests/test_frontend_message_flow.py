@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_POLLING_JS = module_path("app_polling.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
+APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
 
 
@@ -17,6 +18,7 @@ def _run_node(body: str) -> dict:
         APP_POLLING_JS.read_text(encoding="utf-8"),
         APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
         APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+        APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"),
         APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
     ]
     js = textwrap.dedent(
@@ -45,6 +47,8 @@ def _run_node(body: str) -> dict:
           }};
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
           sessionState.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }});
+          const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
+          sessionCatalog.set("latestSessions", [state.session]);
           Object.defineProperty(state, "running", {{
             get: () => sessionState.get("running"),
             set: (value) => sessionState.applyRuntime({{ running: Boolean(value) }}),
@@ -73,11 +77,9 @@ def _run_node(body: str) -> dict:
             }},
           }};
           const options = {{
-            sessionState,
+            sessionState, sessionCatalog,
                         getGeneration: () => state.generation,
             isAppDisposed: () => state.disposed,
-                        getSessionInfo: () => state.session,
-            patchSessionInfo: (_sid, patch) => Object.assign(state.session, patch),
             sessionLaunchFailed: () => false,
             api: async (path, options) => {{ state.apiCalls.push([path, options]); return {{}}; }},
             resolveAppUrl: (path) => `http://example.test${{path}}`,
