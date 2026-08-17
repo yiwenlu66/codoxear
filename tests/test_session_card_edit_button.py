@@ -36,8 +36,9 @@ JS = textwrap.dedent("""
 
     const noop = () => {};
     const sessionsWrap = el('div');
+    const sessionState = { get: () => null, subscribe: () => () => true };
     const deps = {
-      sessionsWrap,
+      sessionState, sessionsWrap,
       sidebarEmptyHint: el('div'),
       el, iconSvg,
       agentBackendDisplayName: noop, agentBackendLogoPath: noop,

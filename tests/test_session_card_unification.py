@@ -64,8 +64,9 @@ HARNESS = textwrap.dedent(
       const wrap = node("div");
       const selections = [];
       const sidebarOpen = [];
+      const sessionState = { get: () => "s1", subscribe: () => () => true };
       const controller = ctx.window.CodoxearSessions.createSessionsController({
-        sessionsWrap: wrap, sidebarEmptyHint: node("div"), el, iconSvg: (name) => `<svg>${name}</svg>`,
+        sessionState, sessionsWrap: wrap, sidebarEmptyHint: node("div"), el, iconSvg: (name) => `<svg>${name}</svg>`,
         sidebarRenderSignature: () => `${swipeActions}`, sidebarSessionEntries: (sessions) => sessions.map((session) => ({ type: "session", session })),
         sessionDisplayName: () => "Unified card", sessionLaunchFailed: () => false, sessionLaunchPending: () => false,
         redactedLaunchErrorText: () => "", fmtRelativeAge: () => "2m", sidebarEffortCode: () => "hi", sidebarModelText: () => "model-2026",

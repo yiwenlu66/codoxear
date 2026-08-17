@@ -14,6 +14,10 @@
     if (!options || typeof options !== "object") throw new TypeError("sessions controller dependency missing: options");
     const sessionsWrap = requireNode(options.sessionsWrap, "sessionsWrap");
     const sidebarEmptyHint = requireNode(options.sidebarEmptyHint, "sidebarEmptyHint");
+    const sessionState = options.sessionState;
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("sessions controller dependency missing: sessionState");
+    }
     const el = requireFunction(options.el, "el");
     const iconSvg = requireFunction(options.iconSvg, "iconSvg");
     const sidebarRenderSignature = requireFunction(options.sidebarRenderSignature, "sidebarRenderSignature");
@@ -141,7 +145,16 @@
       content.addEventListener("pointercancel", finishSwipe);
     }
 
-    function render(entries, { selectedId = "", swipeActions = false } = {}) {
+    function applyActiveSessionClass() {
+      if (typeof sessionsWrap.querySelectorAll !== "function") return;
+      const selectedId = sessionState.get("selected");
+      sessionsWrap.querySelectorAll(".session[data-session-id]").forEach((card) => {
+        card.classList.toggle("active", card.dataset.sessionId === selectedId);
+      });
+    }
+
+    function render(entries, { swipeActions = false } = {}) {
+      const selectedId = sessionState.get("selected");
       const sidebarEntries = Array.isArray(entries) ? entries : [];
       if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
         refreshDeferred = true;
@@ -326,12 +339,15 @@
       return render(sidebarSessionEntries(sessions), options);
     }
 
+    const unsubscribeSelected = sessionState.subscribe("selected", applyActiveSessionClass);
+
     return Object.freeze({
       render,
       renderSessions,
       closeOpenSwipe,
       hasDeferredRefresh: () => refreshDeferred,
       dispose() {
+        unsubscribeSelected();
         openSwipeContent = null;
         openSwipeSessionId = null;
         openSwipeTargetX = 0;

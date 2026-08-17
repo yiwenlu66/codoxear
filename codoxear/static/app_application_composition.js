@@ -1076,11 +1076,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           incrementPollGeneration: () => { pollGen += 1; },
           prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
           sessionState,
-          setActiveSession: (sessionId) => {
-            sessionsWrap.querySelectorAll(".session.active").forEach((element) => element.classList.remove("active"));
-            const active = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
-            if (active) active.classList.add("active");
-          },
           saveComposerDraft: saveSelectedComposerDraft,
           loadComposerDraft: loadSelectedComposerDraft,
           closeUnattendedForOtherSession: (sessionId) => {
@@ -1098,7 +1093,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
           clearAttachments: () => attachmentsController.setStagedAttachments([]),
           syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
-          updateQueueBadge,
           resetChatRenderState,
           getSession: (sessionId) => sessionIndex.get(sessionId),
           isCurrent: (sessionId, generation) => sessionState.get("selected") === sessionId && pollGen === generation,

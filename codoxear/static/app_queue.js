@@ -140,6 +140,12 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const unsubscribeSelected = sessionState.subscribe("selected", updateQueueBadge);
     updateQueueBadge();
 
+    function applyQueueMutationRuntime(sessionId, response) {
+      if (sessionState.get("selected") !== sessionId) return;
+      const queueLen = response && Number.isFinite(Number(response.queue_len)) ? Number(response.queue_len) : null;
+      if (queueLen !== null) sessionState.set("queueLen", Math.max(0, queueLen));
+    }
+
     function selectedSessionHasUnknownSend() {
       const selected = sessionState.get("selected");
       return sessionHasUnknownSend(selected ? getSessionInfo(selected) : null);
@@ -209,8 +215,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         else setToast("sent");
         setPollFastUntilMs(nowFn() + 5000);
         kickPoll(0);
+        applyQueueMutationRuntime(sessionId, res);
         await refreshSessions();
-        updateQueueBadge();
         syncRecoveryUiForSession(sessionId);
         if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
           await refreshQueueViewer();
@@ -272,9 +278,9 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       queueDraftTexts.delete(key);
       renderQueueList();
       try {
-        await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
+        const response = await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
+        applyQueueMutationRuntime(sid, response);
         await refreshSessions();
-        updateQueueBadge();
         syncRecoveryUiForSession(sid);
         if (queueViewer.style.display === "flex") {
           const refreshedSession = getSessionInfo(sid);
@@ -302,10 +308,10 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       }
       queueMutationLocks.add(key);
       try {
-        await api(`/api/sessions/${sid}/queue/move`, { method: "POST", body: { id: key, to_index: toIndex } });
+        const response = await api(`/api/sessions/${sid}/queue/move`, { method: "POST", body: { id: key, to_index: toIndex } });
+        applyQueueMutationRuntime(sid, response);
         await refreshQueueViewer();
         await refreshSessions();
-        updateQueueBadge();
         syncRecoveryUiForSession(sid);
       } catch (e) {
         if (e && e.status === 401) {
@@ -337,15 +343,15 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         if (isAppDisposed()) return;
         queueMutationLocks.add(itemKey);
         try {
-          await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { id: itemKey, text } });
+          const response = await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { id: itemKey, text } });
           if (isAppDisposed()) return;
+          applyQueueMutationRuntime(sid, response);
           queueLastEditMs = 0;
           queueDraftTexts.set(itemKey, text);
           await refreshQueueViewer();
           if (isAppDisposed()) return;
           await refreshSessions();
           if (isAppDisposed()) return;
-          updateQueueBadge();
           syncRecoveryUiForSession(sid);
         } catch (e) {
           if (isAppDisposed()) return;

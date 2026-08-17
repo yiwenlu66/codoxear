@@ -99,7 +99,6 @@ sessionState.set("selected", selected);
       }});
       const badge = () => queueBtn._children.find((child) => child && child._class === "attachBadge queueBadge");
       const snapshot = (name) => {{
-        controller.updateQueueBadge();
         return {{
           name,
           sidebar: shell.sidebar,
@@ -113,14 +112,14 @@ sessionState.set("selected", selected);
       controller.showQueueViewer();
       await new Promise((resolve) => setTimeout(resolve, 0));
       nextResponses = [
-        {{ queued: true }},
+        {{ queued: true, queue_len: 1 }},
         {{ ok: true, items: [{{ id: "q1", text: "after current" }}] }},
       ];
       nextSessionQueueLens = [1];
       await controller.enqueueComposerText("after current", {{ sid: "sid" }});
       results.push(snapshot("enqueue"));
       results.push(snapshot("open-panel"));
-      nextResponses = [{{ ok: true }}];
+      nextResponses = [{{ ok: true, queue_len: 0 }}];
       nextSessionQueueLens = [0];
       await controller.deleteQueueItem("sid", "q1");
       nextResponses = [{{ ok: true, items: [] }}];

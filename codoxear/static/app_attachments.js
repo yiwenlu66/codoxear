@@ -23,7 +23,9 @@
     const composer = requireNode(options.composer, "composer");
     const textarea = requireNode(options.textarea, "textarea");
     const sessionState = options.sessionState;
-    if (!sessionState || typeof sessionState.get !== "function") throw new TypeError("attachments controller dependency missing: sessionState");
+    if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") {
+      throw new TypeError("attachments controller dependency missing: sessionState");
+    }
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
     const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
 
@@ -467,6 +469,10 @@
       clearComposerDropActive();
     }, { passive: false });
 
+    const unsubscribeSessionState = [
+      sessionState.subscribe("selected", syncAttachButtonState),
+      sessionState.subscribe("sending", syncAttachButtonState),
+    ];
     setAttachCount(0);
     syncAttachButtonState();
 
@@ -481,6 +487,9 @@
       syncAttachButtonState,
       stageFiles,
       projectSelectedAttachmentIndicator,
+      dispose() {
+        while (unsubscribeSessionState.length) unsubscribeSessionState.pop()();
+      },
     });
   }
 

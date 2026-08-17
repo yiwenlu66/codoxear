@@ -114,8 +114,9 @@ def _run_surface_projection(rows: list[dict]) -> dict:
         const rows = {json.dumps(rows)};
         const wrap = node();
         const empty = node();
+        const sidebarSessionState = {{ get: () => null, subscribe: () => () => true }};
         const sidebar = ctx.window.CodoxearSessions.createSessionsController({{
-          sessionsWrap: wrap,
+          sessionState: sidebarSessionState, sessionsWrap: wrap,
           sidebarEmptyHint: empty,
           el: (_tag, attrs, children) => node(attrs, children),
           iconSvg: () => "",

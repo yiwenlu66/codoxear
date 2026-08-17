@@ -69,8 +69,9 @@ def render_grouped_sidebar() -> dict:
         const sessionsWrap = new Node("div");
         const sidebarEmptyHint = new Node("div");
         const el = (tag, attributes = {{}}, children = []) => new Node(tag, attributes, children);
+        const sessionState = {{ get: () => null, subscribe: () => () => true }};
         const controller = ctx.window.CodoxearSessions.createSessionsController({{
-          sessionsWrap,
+          sessionState, sessionsWrap,
           sidebarEmptyHint,
           el,
           iconSvg: () => "",

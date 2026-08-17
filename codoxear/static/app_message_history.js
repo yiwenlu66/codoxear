@@ -25,7 +25,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const { wiring, olderWrap, olderBtn, olderError, olderErrorText, AbortController, performance,
       OLDER_AUTO_COOLDOWN_MS, OLDER_PAGE_LIMIT, api, handleAppAuthLoss,
       syncQueueSubmitState, syncComposerSendButton, updateUnattendedBtnState,
-      updateQueueBadge, sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
+      sessionLaunchFailed, confirmApp, setToast, codoxearDisplay, redactedLaunchErrorText,
       sessionIdFromHash, sessionSelectable } = options;
     const { transcriptSlotRuntime, transcriptScrollRuntime, setOlderState,
       restorePendingUserRowsForSession, markClickFirstPaint, updateSessionTranscriptSlot,
@@ -261,7 +261,6 @@ function syncRecoveryUiForSession(sessionId) {
   syncQueueSubmitState();
   syncComposerSendButton();
   updateUnattendedBtnState();
-  updateQueueBadge();
 }
 
 function renderPendingTranscriptSlot(sessionId) {

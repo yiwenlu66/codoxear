@@ -594,8 +594,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
       }
       const continuesOpenTurn = renderHere && sessionState.get("running");
       sessionState.set("sending", true);
-      syncSendButtonState();
-      syncAttachButtonState();
       setToast("sending...");
 
       const localId = nextLocalEchoId();
@@ -712,8 +710,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
         return false;
       } finally {
         sessionState.set("sending", false);
-        syncSendButtonState();
-        syncAttachButtonState();
       }
     }
 

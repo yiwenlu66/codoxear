@@ -41,7 +41,6 @@
     const nextPollGeneration = get("nextPollGeneration");
     const incrementPollGeneration = get("incrementPollGeneration");
     const prepareSessionOpen = get("prepareSessionOpen");
-    const setActiveSession = get("setActiveSession");
     const saveComposerDraft = get("saveComposerDraft");
     const loadComposerDraft = get("loadComposerDraft");
     const closeUnattendedForOtherSession = get("closeUnattendedForOtherSession");
@@ -53,7 +52,6 @@
     const syncAttachments = get("syncAttachments");
     const clearAttachments = get("clearAttachments");
     const syncAttachmentButton = get("syncAttachmentButton");
-    const updateQueueBadge = get("updateQueueBadge");
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.set !== "function" || typeof sessionState.applyRuntime !== "function") {
       throw new TypeError("session lifecycle dependency missing: sessionState");
@@ -134,7 +132,6 @@
       clearAttachments();
       syncAttachmentButton();
       resetChatRenderState();
-      updateQueueBadge();
       if (isUnattendedOpen()) hideUnattendedMenu();
       updateUnattendedButton();
       syncComposerSendButton();
@@ -157,7 +154,6 @@
       const reloadingSelectedSession = oldSelected === sessionId;
       if (oldSelected && oldSelected !== sessionId) saveSessionScrollPosition(oldSelected);
       sessionState.set("selected", sessionId);
-      setActiveSession(sessionId);
       if (oldSelected && oldSelected !== sessionId) saveComposerDraft(oldSelected);
       loadComposerDraft(sessionId);
       closeUnattendedForOtherSession(sessionId);
@@ -167,7 +163,6 @@
         resetTranscriptForSession();
       }
       syncAttachments();
-      updateQueueBadge();
       sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
       if (!reloadingSelectedSession) resetChatRenderState();
 
@@ -327,7 +322,6 @@
         await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
         setToast("unknown send marker cleared");
         await refreshSessions();
-        updateQueueBadge();
         if (sessionState.get("selected") === sessionId) syncRecoveryUiForSession(sessionId);
         return true;
       } catch (error) {

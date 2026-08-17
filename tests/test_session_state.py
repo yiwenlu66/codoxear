@@ -143,6 +143,24 @@ def test_session_state_apply_runtime_batches_per_changed_field() -> None:
     }
 
 
+def test_session_state_apply_runtime_notifies_shared_subscriber_once() -> None:
+    result = evaluate(
+        """
+        const state = createSessionState();
+        const calls = [];
+        const shared = (value, field) => calls.push([field, value, state.get("running"), state.get("queueLen")]);
+        state.subscribe("running", shared);
+        state.subscribe("queueLen", shared);
+        const changed = state.applyRuntime({ running: true, queueLen: 2 });
+        process.stdout.write(JSON.stringify({ changed, calls }));
+        """
+    )
+    assert result == {
+        "changed": ["running", "queueLen"],
+        "calls": [["running", True, True, 2]],
+    }
+
+
 def test_session_state_unsubscribe_stops_delivery() -> None:
     result = evaluate(
         """

@@ -28,18 +28,20 @@ function createSessionState(options = {}) {
     return field;
   }
 
-  function notify(field) {
-    for (const callback of [...subscribers[field]]) {
+  function deliver(callback, field) {
+    try {
+      callback(values[field], field);
+    } catch (error) {
       try {
-        callback(values[field], field);
-      } catch (error) {
-        try {
-          consoleError(error);
-        } catch (_) {
-          // Reporting must not prevent the remaining subscribers from running.
-        }
+        consoleError(error);
+      } catch (_) {
+        // Reporting must not prevent the remaining subscribers from running.
       }
     }
+  }
+
+  function notify(field) {
+    for (const callback of [...subscribers[field]]) deliver(callback, field);
   }
 
   function get(field) {
@@ -65,7 +67,16 @@ function createSessionState(options = {}) {
     changed.forEach((field) => {
       values[field] = patch[field];
     });
-    changed.forEach(notify);
+    // Runtime snapshots are atomic: after every changed value is present,
+    // each affected widget callback receives at most one notification.
+    const notified = new Set();
+    for (const field of changed) {
+      for (const callback of [...subscribers[field]]) {
+        if (notified.has(callback)) continue;
+        notified.add(callback);
+        deliver(callback, field);
+      }
+    }
     return changed;
   }
 

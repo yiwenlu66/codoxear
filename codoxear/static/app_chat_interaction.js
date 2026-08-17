@@ -196,7 +196,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       syncQueueSubmitState: options.syncQueueSubmitState,
       syncComposerSendButton: options.syncComposerSendButton,
       updateUnattendedBtnState: options.updateUnattendedBtnState,
-      updateQueueBadge: options.updateQueueBadge,
       sessionLaunchFailed: options.sessionLaunchFailed,
       confirmApp: options.confirmApp,
       setToast: options.setToast,
@@ -358,7 +357,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       if (queueViewer && queueViewer.style.display === "flex") void refreshQueueViewer();
     }
     const sidebarController = codoxearSessions.createSessionsController(wiring.createSessionsOptions({
-      sessionsWrap, sidebarEmptyHint, el, iconSvg, sidebarRenderSignature, sidebarSessionEntries,
+      sessionState, sessionsWrap, sidebarEmptyHint, el, iconSvg, sidebarRenderSignature, sidebarSessionEntries,
       sessionDisplayName, sessionLaunchFailed, sessionLaunchPending, redactedLaunchErrorText,
       fmtRelativeAge, sidebarEffortCode, sidebarModelText, baseName, sessionIsFast, agentBackendLogoPath,
       agentBackendDisplayName, sessionAgentBackend, sessionLaunchIcon, sessionLaunchLabel,
@@ -403,7 +402,10 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       applyCachedTail: historyController.applyCachedTail, jumpToLatest: historyController.jumpToLatest,
       rememberPendingHashSession: historyController.rememberPendingHashSession,
       maybeSelectPendingHashSession: historyController.maybeSelectPendingHashSession,
-      dispose: () => transcript.dispose(),
+      dispose: () => {
+        attachmentsController.dispose();
+        transcript.dispose();
+      },
     });
   }
 

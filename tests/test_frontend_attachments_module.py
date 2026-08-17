@@ -141,6 +141,29 @@ def test_stage_files_normalizes_dedupes_projects_badge_and_uploads_base64() -> N
     assert result["toasts"][-1] == "file staged"
 
 
+def test_attachment_button_follows_selected_and_sending_store_updates() -> None:
+    result = run_attachments(
+        """
+        sessions.set("other", { session_id: "other", launch_state: "ready" });
+        sessionState.set("sending", true);
+        const disabledWhileSending = attachBtn.disabled;
+        sessionState.set("selected", "other");
+        const disabledAfterSwitch = attachBtn.disabled;
+        sessionState.set("sending", false);
+        const enabledAfterSend = attachBtn.disabled;
+        controller.dispose();
+        sessionState.set("sending", true);
+        process.stdout.write(JSON.stringify({ disabledWhileSending, disabledAfterSwitch, enabledAfterSend, disabledAfterDispose: attachBtn.disabled }));
+        """
+    )
+    assert result == {
+        "disabledWhileSending": True,
+        "disabledAfterSwitch": True,
+        "enabledAfterSend": False,
+        "disabledAfterDispose": False,
+    }
+
+
 def test_send_cleanup_clears_selected_attachment_projection() -> None:
     result = run_attachments(
         """
