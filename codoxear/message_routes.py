@@ -341,7 +341,7 @@ def _sse_write_event(handler: Any, event_name: str, payload: Mapping[str, Any]) 
     handler.wfile.flush()
 
 
-def _live_payload_from_records(
+def _project_live_record_window(
     *,
     records: list[Any],
     next_after: int,
@@ -353,6 +353,13 @@ def _live_payload_from_records(
     manager: Any,
     deps: MessageRouteDeps,
 ) -> dict[str, Any]:
+    """Project one positioned JSONL window into the common live payload.
+
+    Polling and SSE share this entire semantic boundary: backend carry state,
+    cross-window turn context, ordered registry commitment, notification and
+    cursor decoration, and the public runtime snapshot. Transport framing and
+    lifecycle remain with their handlers.
+    """
     objs = [record.obj for record in records]
     initial_cc_pending = (
         _rollout_log._cc_pending_tool_ids_before(log_path, after_byte)
@@ -524,7 +531,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                         max_bytes=LIVE_POLL_READ_MAX_BYTES,
                     )
                     if records:
-                        payload = _live_payload_from_records(
+                        payload = _project_live_record_window(
                             records=records,
                             next_after=next_after,
                             log_path=current_path,
@@ -1246,54 +1253,18 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
         # those new bytes. Truncation retains the existing cursor-clamp
         # behavior of ``_read_jsonl_records_from_offset``.
         records, next_after = [], min(after_byte, size)
-    objs = [record.obj for record in records]
-    initial_cc_pending = (
-        _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte)
-        if records and after_byte > 0 and _rollout_log._records_contain_claude_code_rows(records)
-        else set()
+    payload = _project_live_record_window(
+        records=records,
+        next_after=next_after,
+        log_path=s.log_path,
+        after_byte=after_byte,
+        source_revision=source_revision,
+        session=s,
+        session_id=session_id,
+        manager=manager,
+        deps=deps,
     )
-    events, meta_delta, flags, _diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
-    token_update = _rollout_log._extract_token_observation(objs)
-    prior_user_byte, prior_turn_has_assistant = (
-        _rollout_log._prior_open_turn_context(s.log_path, after_byte) if records and after_byte > 0 else (None, False)
-    )
-    events = _rollout_log._extract_positioned_chat_events(
-        records,
-        initial_cc_pending_tool_ids=initial_cc_pending,
-        prior_user_byte=prior_user_byte,
-        prior_turn_has_assistant=prior_turn_has_assistant,
-    )
-    if objs:
-        if source_revision is not None:
-            manager.mark_log_delta(
-                session_id,
-                objs=objs,
-                start_off=after_byte,
-                new_off=next_after,
-                expected_log_path=s.log_path,
-                revision=source_revision,
-            )
-    events = manager._attach_notification_texts(events)
-    events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
-    live_cursor = deps.encode_message_cursor(kind="live", session=s, pos=next_after)
-    _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, s, token_update=token_update)
-    transcript = _message_transcript_identity(s)
-    deps.json_response(
-        handler,
-        200,
-        {
-            **transcript,
-            "live_cursor": live_cursor,
-            "events": events,
-            "meta_delta": meta_delta,
-            "turn_start": bool(flags.get("turn_start")),
-            "turn_end": bool(flags.get("turn_end")),
-            "turn_aborted": bool(flags.get("turn_aborted")),
-            "busy": bool(busy_val),
-            "queue_len": int(queue_val),
-            "token": token_val,
-        },
-    )
+    deps.json_response(handler, 200, payload)
     deps.record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
 
 
