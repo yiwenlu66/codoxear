@@ -1,9 +1,12 @@
   function requireFunction(value, name) { if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`); return value; }
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
   const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
+  function fileSaveConflictTarget(sessionId, path) {
+    return Object.freeze({ sessionId, path });
+  }
   function createFileViewerOperationsRuntime(options = {}) {
-    const { el, fileStatus, fileEditButton, iconSvg, currentSessionId, currentFileSessionId, normalizeSessionId, normalizeFileApiPath, isFileViewerOpen, hideFileUnsavedDialog, resetFileSearchState, closeFilePickerMenu, isTextFileKind, isDiffableFileKind, confirmReload, promptUnsavedFileChoice, restoreFileEditorText, hideFileViewer, setFilePath, resetFileViewerPanel, applyFileLoadResult, normalizeDraftFilePath, inspectSessionFilePath, api, focusEditor, disposeOpenRender, isMarkdownPreviewable, updateFileTouchToolbar, useTouchFileEditorControls, hasActiveFileCodeEditor, hasBlockingFileEditorModal, isTextEntryTarget, eventTargetElement, normalizeFileEditorPosition, applyFileEditorSelection, isCollapsedFileSelection, positionAfterInsertedText, fileEditorEditSupportAvailable, updateFileDiffEditorOptions, showFilePasteDialog, hideFilePasteDialog, clipboardReadAvailable, readClipboardText, fileEditorDeleteCommandForKey, isActiveFileEditorInput, getActiveFileSelectionText, copyToClipboard, focusActiveFileCodeEditor, nowMs, setToast, renderMonacoFile, getFileEditorText, fmtBytes, applyFileMode, rememberOpenedFile, renderFilePickerMenu, currentFileViewMode, currentFileNonDiffMode, setFileViewMode, currentFileEditMode, currentFileEditorKind, setFileEditorKind, setFileEditMode, currentActiveFileKind, currentActiveFileText, currentActiveFileEditable, currentActiveFileVersion, currentActiveFileDraft, applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState, currentActiveFileIdentity, currentActiveFileLine, startFileOpenRequest, isCurrentFileOpenRequest, normalizeExplicitFileOpenMode, resolveFileOpenMode, isFileOpenAbortError, activeFileEntry, isGitFileCandidatePath, currentFileCandidateGitStateFresh, activeFileCanEnterEditMode, activeFileEditorWritable, activeFileEditorIdleTextWritable, currentFileEditorState, isUnavailable, blockUnavailableFileAction, fileEntryForPath, resetActiveFileBufferState, resolveFileOpenViewMode, activeFileEditorIdleWritable, isFileViewerSessionUnavailable, rememberActiveFileSelection, setActiveFileIdentity } = options;
-    let activeSaveConflict = null, fileSaveSeq = 0, activeFileSaveToken = 0, fileSavePending = false, fileDirty = false, fileUnsavedPromptResolver = null, activeVideoFallback = null, activePdfRender = null, fileTouchSelectMode = false, fileTouchSelectAnchor = null, fileTouchSelectHead = null, fileTouchSelectGoalColumn = null, fileTouchDeleteNativeSuppressUntil = 0;
+    const { el, fileStatus, fileEditButton, iconSvg, currentSessionId, currentFileSessionId, normalizeSessionId, normalizeFileApiPath, isFileViewerOpen, hideFileUnsavedDialog, resetFileSearchState, closeFilePickerMenu, isTextFileKind, isDiffableFileKind, confirmReload, promptUnsavedFileChoice, restoreFileEditorText, hideFileViewer, setFilePath, resetFileViewerPanel, applyFileLoadResult, normalizeDraftFilePath, inspectSessionFilePath, api, focusEditor, disposeOpenRender, isMarkdownPreviewable, updateFileTouchToolbar, hasBlockingFileEditorModal, isTextEntryTarget, eventTargetElement, isActiveFileEditorInput, focusActiveFileCodeEditor, nowMs, setToast, renderMonacoFile, getFileEditorText, fmtBytes, applyFileMode, rememberOpenedFile, renderFilePickerMenu, currentFileViewMode, currentFileNonDiffMode, setFileViewMode, currentFileEditMode, currentFileEditorKind, setFileEditorKind, setFileEditMode, currentActiveFileKind, currentActiveFileText, currentActiveFileEditable, currentActiveFileVersion, currentActiveFileDraft, applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState, currentActiveFileIdentity, currentActiveFileLine, startFileOpenRequest, isCurrentFileOpenRequest, normalizeExplicitFileOpenMode, resolveFileOpenMode, isFileOpenAbortError, activeFileEntry, isGitFileCandidatePath, currentFileCandidateGitStateFresh, activeFileCanEnterEditMode, activeFileEditorWritable, activeFileEditorIdleTextWritable, currentFileEditorState, isUnavailable, blockUnavailableFileAction, fileEntryForPath, resetActiveFileBufferState, resolveFileOpenViewMode, isFileViewerSessionUnavailable, rememberActiveFileSelection, setActiveFileIdentity } = options;
+    let activeSaveConflict = null, fileSaveSeq = 0, activeFileSaveToken = 0, fileSavePending = false, fileDirty = false, fileUnsavedPromptResolver = null, activeVideoFallback = null, activePdfRender = null;
     function activeVideoFallbackSnapshot() {
       const state = activeVideoFallback;
       return state ? Object.freeze({ token: state.token, previewUrl: state.previewUrl, used: Boolean(state.used), preparing: Boolean(state.preparing), rel: state.rel, size: state.size }) : null;
@@ -641,298 +644,11 @@
       return true;
     }
 
-    function clearFileTouchSelectionState() {
-      fileTouchSelectMode = false;
-      fileTouchSelectAnchor = null;
-      fileTouchSelectHead = null;
-      fileTouchSelectGoalColumn = null;
-    }
-
-    function currentFileTouchSelectMode() {
-      return fileTouchSelectMode;
-    }
-
-    function isFileTouchToolbarActive() {
-      return Boolean(
-        useTouchFileEditorControls() &&
-          isFileViewerOpen() &&
-          isTextFileKind(currentActiveFileKind()) &&
-          currentFileViewMode() !== "preview" &&
-          hasActiveFileCodeEditor()
-      );
-    }
-
-    function currentFileTouchToolbarState() {
-      const visible = isFileTouchToolbarActive();
-      const selectActive = Boolean(currentFileTouchSelectMode());
-      if (!visible) return Object.freeze({ visible: false, selectActive, dpadVisible: false, copyVisible: false, pasteVisible: false });
-      return Object.freeze({
-        visible: true,
-        selectActive,
-        dpadVisible: selectActive,
-        copyVisible: Boolean(getActiveFileSelectionText()),
-        pasteVisible: activeFileEditorIdleTextWritable(),
-      });
-    }
-
-    function fileDiffSelectionHideOptions() {
-      return fileTouchSelectMode
-        ? { enabled: false }
-        : {
-            enabled: true,
-            contextLineCount: 4,
-            minimumLineCount: 1,
-            revealLineCount: 2,
-          };
-    }
-
-    function syncFileDiffSelectionMode() {
-      updateFileDiffEditorOptions({ hideUnchangedRegions: fileDiffSelectionHideOptions() });
-    }
-
-    function resetFileTouchSelectionState({ collapse = false } = {}) {
-      const editor = collapse ? focusEditor() : null;
-      const cursor = editor ? normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) : null;
-      clearFileTouchSelectionState();
-      if (editor && cursor) applyFileEditorSelection(editor, cursor, null);
-      syncFileEditorReadOnly();
-      syncFileDiffSelectionMode();
-      updateFileTouchToolbar();
-    }
-
-    function toggleFileTouchSelectionMode() {
-      if (fileTouchSelectMode) {
-        resetFileTouchSelectionState({ collapse: true });
-        focusActiveFileCodeEditor();
-        return;
-      }
-      const editor = focusEditor();
-      if (!editor) return;
-      const cursor = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-      fileTouchSelectMode = true;
-      fileTouchSelectAnchor = { ...cursor };
-      fileTouchSelectHead = { ...cursor };
-      fileTouchSelectGoalColumn = cursor.column;
-      applyFileEditorSelection(editor, cursor, cursor);
-      syncFileEditorReadOnly();
-      syncFileDiffSelectionMode();
-      updateFileTouchToolbar();
-      focusActiveFileCodeEditor();
-    }
-
-    function handleFileTouchMoveButtonPress(direction) {
-      focusActiveFileCodeEditor();
-      moveFileTouchSelection(direction);
-    }
-
-    function moveFileTouchSelection(direction) {
-      if (!fileTouchSelectMode) return;
-      const editor = focusEditor();
-      if (!editor || typeof editor.trigger !== "function") {
-        setToast("selection move unavailable");
-        return;
-      }
-      const args =
-        direction === "left"
-          ? { to: "left", by: "character", value: 1, select: true }
-          : direction === "right"
-            ? { to: "right", by: "character", value: 1, select: true }
-            : direction === "up"
-              ? { to: "up", by: "wrappedLine", value: 1, select: true }
-              : direction === "down"
-                ? { to: "down", by: "wrappedLine", value: 1, select: true }
-                : null;
-      if (!args) return;
-      try {
-        editor.trigger("file-touch-select", "cursorMove", args);
-        const pos = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition());
-        if (pos) {
-          fileTouchSelectHead = { ...pos };
-          fileTouchSelectGoalColumn = pos.column;
-        }
-        focusActiveFileCodeEditor();
-        updateFileTouchToolbar();
-      } catch (error) {
-        setToast(`selection move error: ${error && error.message ? error.message : "unknown error"}`);
-      }
-    }
-
     function fileEditorShortcutBlocked(target) {
       if (!isFileViewerOpen()) return true;
       if (hasBlockingFileEditorModal()) return true;
       if (target && isTextEntryTarget(target) && !isActiveFileEditorInput(target)) return true;
       return false;
-    }
-
-    function handleFileTouchSelectionKeydown(event) {
-      const e = event || {};
-      if (!currentFileTouchSelectMode() || !isFileTouchToolbarActive()) return;
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = eventTargetElement(e.target);
-      if (fileEditorShortcutBlocked(target)) return;
-      if (target && !target.closest("#fileViewer")) return;
-      const key = String(e.key || "").toLowerCase();
-      if (key === "escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        resetFileTouchSelectionState({ collapse: true });
-        return;
-      }
-      const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
-      if (!direction) {
-        const blocksEdit =
-          key === "enter" ||
-          key === "tab" ||
-          key === " " ||
-          key === "backspace" ||
-          key === "delete" ||
-          (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
-        if (!blocksEdit) return;
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      moveFileTouchSelection(direction);
-    }
-
-    function handleFileEditorDeleteKeydown(event) {
-      const e = event || {};
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
-      const key = String(e.key || "").toLowerCase();
-      const command = fileEditorDeleteCommandForKey(key);
-      if (!command) return false;
-      if (!activeFileEditorWritable()) return false;
-      const target = eventTargetElement(e.target);
-      if (fileEditorShortcutBlocked(target)) return false;
-      if (!isActiveFileEditorInput(target)) return false;
-      const editor = focusEditor();
-      if (!editor || typeof editor.trigger !== "function") return false;
-      fileTouchDeleteNativeSuppressUntil = nowMs() + 250;
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        focusActiveFileCodeEditor();
-        editor.trigger("file-editor-delete-key", command, null);
-        if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
-        return true;
-      } catch (error) {
-        setToast(`delete error: ${error && error.message ? error.message : "unknown error"}`);
-        return true;
-      }
-    }
-
-    function isFileEditorNativeDeleteEvent(event) {
-      const inputType = String((event && event.inputType) || "");
-      if (inputType !== "deleteContentBackward" && inputType !== "deleteContentForward") return false;
-      return isActiveFileEditorInput(eventTargetElement(event && event.target));
-    }
-
-    function suppressFileEditorNativeDelete(event) {
-      if (nowMs() > fileTouchDeleteNativeSuppressUntil || !isFileEditorNativeDeleteEvent(event)) return false;
-      if (event.cancelable) event.preventDefault();
-      event.stopPropagation();
-      fileTouchDeleteNativeSuppressUntil = 0;
-      return true;
-    }
-
-    function insertIntoActiveFileEditor(text) {
-      if (!activeFileEditorIdleWritable()) return false;
-      const editor = focusEditor();
-      if (!editor || !fileEditorEditSupportAvailable() || typeof editor.executeEdits !== "function") return false;
-      const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-      const selection = editor.getSelection && editor.getSelection();
-      const range = selection && !isCollapsedFileSelection(selection)
-        ? {
-            startLineNumber: selection.startLineNumber,
-            startColumn: selection.startColumn,
-            endLineNumber: selection.endLineNumber,
-            endColumn: selection.endColumn,
-          }
-        : {
-            startLineNumber: current.lineNumber,
-            startColumn: current.column,
-            endLineNumber: current.lineNumber,
-            endColumn: current.column,
-          };
-      if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-      editor.executeEdits("file-touch-paste", [{ range, text: String(text || ""), forceMoveMarkers: true }]);
-      const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);
-      resetFileTouchSelectionState();
-      applyFileEditorSelection(editor, nextCursor, null);
-      if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-      setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
-      focusActiveFileCodeEditor();
-      return true;
-    }
-
-    function requestManualFilePasteDialog() {
-      if (!activeFileEditorIdleTextWritable()) return false;
-      return showFilePasteDialog();
-    }
-
-    async function pasteFromClipboardIntoActiveFile() {
-      if (!activeFileEditorIdleTextWritable()) return false;
-      if (!clipboardReadAvailable()) {
-        if (requestManualFilePasteDialog()) setToast("paste manually");
-        else {
-          setToast("paste unavailable");
-          focusActiveFileCodeEditor();
-        }
-        return false;
-      }
-      try {
-        const text = await readClipboardText();
-        if (blockUnavailableFileAction()) return false;
-        if (!text) {
-          setToast("clipboard empty");
-          focusActiveFileCodeEditor();
-          return false;
-        }
-        if (!insertIntoActiveFileEditor(text)) {
-          setToast("paste unavailable");
-          focusActiveFileCodeEditor();
-          return false;
-        }
-        setToast("pasted");
-        focusActiveFileCodeEditor();
-        return true;
-      } catch (error) {
-        if (requestManualFilePasteDialog()) setToast("paste manually");
-        else {
-          setToast(`paste error: ${error && error.message ? error.message : "clipboard denied"}`);
-          focusActiveFileCodeEditor();
-        }
-        return false;
-      }
-    }
-
-    function handleFilePasteInsert(text) {
-      if (blockUnavailableFileAction()) return false;
-      if (!insertIntoActiveFileEditor(text)) return false;
-      hideFilePasteDialog();
-      setToast("text inserted");
-      return true;
-    }
-
-    async function copyActiveFileSelection() {
-      const text = getActiveFileSelectionText();
-      if (!text) {
-        setToast("nothing selected");
-        return false;
-      }
-      try {
-        await copyToClipboard(text);
-        resetFileTouchSelectionState({ collapse: true });
-        setToast("selection copied");
-        focusActiveFileCodeEditor();
-        return true;
-      } catch (error) {
-        setToast(`copy error: ${error && error.message ? error.message : "unknown error"}`);
-        focusActiveFileCodeEditor();
-        return false;
-      }
     }
 
     async function handleFileDiffModeButtonPress() {
@@ -1087,7 +803,8 @@
     }
 
     function isSaveConflictCurrent(conflict) {
-      return Boolean(conflict && currentSessionId() === conflict.sessionId && activeFilePath === conflict.path && !isUnavailable());
+      const identity = currentActiveFileIdentity();
+      return Boolean(conflict && currentSessionId() === conflict.sessionId && identity.path === conflict.path && !isUnavailable());
     }
 
     async function reloadSaveConflict(conflict) {
@@ -1143,7 +860,7 @@
 
 
     return Object.freeze({
-      setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, clearFileTouchSelectionState, currentFileTouchSelectMode, currentFileTouchToolbarState, resetFileTouchSelectionState, toggleFileTouchSelectionMode, handleFileTouchMoveButtonPress, moveFileTouchSelection, handleFileTouchSelectionKeydown, handleFileEditorDeleteKeydown, suppressFileEditorNativeDelete, insertIntoActiveFileEditor, pasteFromClipboardIntoActiveFile, handleFilePasteInsert, copyActiveFileSelection, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict
+      setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict
     });
   }
 

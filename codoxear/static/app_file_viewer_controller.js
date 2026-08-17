@@ -1,5 +1,4 @@
 import * as CodoxearFileCandidateState from "./app_file_candidate_state.js";
-import * as CodoxearFileHelpers from "./app_file_helpers.js";
 import * as CodoxearFileViewerOperations from "./app_file_viewer_operations.js";
 
 function requireFunction(value, name) {
@@ -49,32 +48,10 @@ function requireFunction(value, name) {
     const persistFileNonDiffMode = requireFunction(deps && deps.persistFileNonDiffMode, "persistFileNonDiffMode");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
-    const useTouchFileEditorControls = requireFunction(deps && deps.useTouchFileEditorControls, "useTouchFileEditorControls");
-    const hasActiveFileCodeEditor = requireFunction(deps && deps.hasActiveFileCodeEditor, "hasActiveFileCodeEditor");
     const hasBlockingFileEditorModal = requireFunction(deps && deps.hasBlockingFileEditorModal, "hasBlockingFileEditorModal");
     const isTextEntryTarget = requireFunction(deps && deps.isTextEntryTarget, "isTextEntryTarget");
     const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
-    const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
-    const applyFileEditorSelection = requireFunction(deps && deps.applyFileEditorSelection, "applyFileEditorSelection");
-    const isCollapsedFileSelection = requireFunction(deps && deps.isCollapsedFileSelection, "isCollapsedFileSelection");
-    const fileHelpers = CodoxearFileHelpers || {};
-    const positionAfterInsertedText =
-      typeof (deps && deps.positionAfterInsertedText) === "function"
-        ? deps.positionAfterInsertedText
-        : requireFunction(fileHelpers.positionAfterInsertedText, "CodoxearFileHelpers.positionAfterInsertedText");
-    const fileEditorEditSupportAvailable = requireFunction(deps && deps.fileEditorEditSupportAvailable, "fileEditorEditSupportAvailable");
-    const updateFileDiffEditorOptions = requireFunction(deps && deps.updateFileDiffEditorOptions, "updateFileDiffEditorOptions");
-    const showFilePasteDialog = requireFunction(deps && deps.showFilePasteDialog, "showFilePasteDialog");
-    const hideFilePasteDialog = requireFunction(deps && deps.hideFilePasteDialog, "hideFilePasteDialog");
-    const clipboardReadAvailable = requireFunction(deps && deps.clipboardReadAvailable, "clipboardReadAvailable");
-    const readClipboardText = requireFunction(deps && deps.readClipboardText, "readClipboardText");
-    const fileEditorDeleteCommandForKey =
-      typeof (deps && deps.fileEditorDeleteCommandForKey) === "function"
-        ? deps.fileEditorDeleteCommandForKey
-        : requireFunction(fileHelpers.fileEditorDeleteCommandForKey, "CodoxearFileHelpers.fileEditorDeleteCommandForKey");
     const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
-    const getActiveFileSelectionText = requireFunction(deps && deps.getActiveFileSelectionText, "getActiveFileSelectionText");
-    const copyToClipboard = requireFunction(deps && deps.copyToClipboard, "copyToClipboard");
     const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
     const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
     const setToast = requireFunction(deps && deps.setToast, "setToast");
@@ -111,11 +88,6 @@ function requireFunction(value, name) {
     let activePdfRender = null;
     let unavailableSessionId = "";
     let fileSessionSelections = new Map();
-    let fileTouchSelectMode = false;
-    let fileTouchSelectAnchor = null;
-    let fileTouchSelectHead = null;
-    let fileTouchSelectGoalColumn = null;
-    let fileTouchDeleteNativeSuppressUntil = 0;
     let fileViewerReturnFocusElement = null;
     let fileUnsavedReturnFocusElement = null;
     function focusReturnElement(value, ElementCtor = null) {
@@ -358,7 +330,6 @@ function requireFunction(value, name) {
       activeFileDraft = false;
       fileEditMode = false;
       clearActiveFileSaveState();
-      resetFileTouchSelectionState();
       fileDirty = false;
       updateFileEditButton();
     }
@@ -581,25 +552,10 @@ function requireFunction(value, name) {
       disposeOpenRender: deps.disposeOpenRender,
       isMarkdownPreviewable: deps.isMarkdownPreviewable,
       updateFileTouchToolbar: deps.updateFileTouchToolbar,
-      useTouchFileEditorControls: deps.useTouchFileEditorControls,
-      hasActiveFileCodeEditor: deps.hasActiveFileCodeEditor,
       hasBlockingFileEditorModal: deps.hasBlockingFileEditorModal,
       isTextEntryTarget: deps.isTextEntryTarget,
       eventTargetElement: deps.eventTargetElement,
-      normalizeFileEditorPosition: deps.normalizeFileEditorPosition,
-      applyFileEditorSelection: deps.applyFileEditorSelection,
-      isCollapsedFileSelection: deps.isCollapsedFileSelection,
-      positionAfterInsertedText: deps.positionAfterInsertedText,
-      fileEditorEditSupportAvailable: deps.fileEditorEditSupportAvailable,
-      updateFileDiffEditorOptions: deps.updateFileDiffEditorOptions,
-      showFilePasteDialog: deps.showFilePasteDialog,
-      hideFilePasteDialog: deps.hideFilePasteDialog,
-      clipboardReadAvailable: deps.clipboardReadAvailable,
-      readClipboardText: deps.readClipboardText,
-      fileEditorDeleteCommandForKey: deps.fileEditorDeleteCommandForKey,
       isActiveFileEditorInput: deps.isActiveFileEditorInput,
-      getActiveFileSelectionText: deps.getActiveFileSelectionText,
-      copyToClipboard: deps.copyToClipboard,
       focusActiveFileCodeEditor: deps.focusActiveFileCodeEditor,
       nowMs: deps.nowMs,
       setToast: deps.setToast,
@@ -643,12 +599,11 @@ function requireFunction(value, name) {
       fileEntryForPath: fileEntryForPath,
       resetActiveFileBufferState: resetActiveFileBufferState,
       resolveFileOpenViewMode: resolveFileOpenViewMode,
-      activeFileEditorIdleWritable: activeFileEditorIdleWritable,
       isFileViewerSessionUnavailable: isFileViewerSessionUnavailable,
       rememberActiveFileSelection: rememberActiveFileSelection,
       setActiveFileIdentity: setActiveFileIdentity,
     }));
-    const { setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, clearFileTouchSelectionState, currentFileTouchSelectMode, currentFileTouchToolbarState, resetFileTouchSelectionState, toggleFileTouchSelectionMode, handleFileTouchMoveButtonPress, moveFileTouchSelection, handleFileTouchSelectionKeydown, handleFileEditorDeleteKeydown, suppressFileEditorNativeDelete, insertIntoActiveFileEditor, pasteFromClipboardIntoActiveFile, handleFilePasteInsert, copyActiveFileSelection, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict } = operations;
+    const { setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict } = operations;
     return Object.freeze({
       renderSaveConflict,
       reloadSaveConflict,
@@ -799,20 +754,7 @@ function requireFunction(value, name) {
       currentFileModeControlState,
       syncFileEditorReadOnly,
       updateFileEditButton,
-      clearFileTouchSelectionState,
-      currentFileTouchSelectMode,
-      currentFileTouchToolbarState,
-      resetFileTouchSelectionState,
-      toggleFileTouchSelectionMode,
-      handleFileTouchMoveButtonPress,
-      moveFileTouchSelection,
-      handleFileTouchSelectionKeydown,
-      handleFileEditorDeleteKeydown,
-      suppressFileEditorNativeDelete,
-      insertIntoActiveFileEditor,
-      pasteFromClipboardIntoActiveFile,
-      handleFilePasteInsert,
-      copyActiveFileSelection,
+      fileEditorShortcutBlocked,
       handleFileDiffModeButtonPress,
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,

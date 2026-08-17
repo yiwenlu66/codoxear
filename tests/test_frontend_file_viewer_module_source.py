@@ -85,6 +85,150 @@ const runtime = module.createFileReferenceRuntime({ sessionState: { get: () => '
         self.assertEqual(result["linked"], "/repo/src/present.py")
         self.assertFalse(result["missingLinked"])
 
+    def test_touch_editor_runtime_owns_selection_and_edit_projection(self) -> None:
+        source = json.dumps(module_path("app_file_ops.js").read_text(encoding="utf-8"))
+        script = f'''
+const vm = require('vm');
+const ctx = {{ window: {{}}, console }};
+vm.createContext(ctx);
+vm.runInContext({source}, ctx);
+let cursor = {{ lineNumber: 2, column: 3 }};
+let selection = {{ startLineNumber: 2, startColumn: 3, endLineNumber: 2, endColumn: 3 }};
+let editorText = 'before';
+const calls = [];
+const editor = {{
+  getPosition: () => cursor,
+  getSelection: () => selection,
+  trigger(source, command, args) {{ calls.push(['trigger', source, command, args]); }},
+  executeEdits(source, edits) {{ calls.push(['edit', source, edits]); editorText = edits[0].text; }},
+  pushUndoStop() {{ calls.push(['undo']); }},
+}};
+const runtime = ctx.window.CodoxearFileTouch.createFileTouchController({{
+  isFileViewerOpen: () => true,
+  isTextFileKind: () => true,
+  focusEditor: () => editor,
+  updateFileTouchToolbar: () => calls.push(['toolbar']),
+  useTouchFileEditorControls: () => true,
+  hasActiveFileCodeEditor: () => true,
+  fileEditorShortcutBlocked: () => false,
+  normalizeFileEditorPosition: (_editor, value) => value,
+  applyFileEditorSelection: (_editor, nextCursor, anchor) => {{ cursor = nextCursor; calls.push(['selection', nextCursor, anchor]); }},
+  isCollapsedFileSelection: (value) => value.startLineNumber === value.endLineNumber && value.startColumn === value.endColumn,
+  positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text).length }}),
+  fileEditorEditSupportAvailable: () => true,
+  updateFileDiffEditorOptions: (value) => calls.push(['diff-options', value]),
+  showFilePasteDialog: () => true,
+  hideFilePasteDialog: () => calls.push(['hide-paste']),
+  clipboardReadAvailable: () => true,
+  readClipboardText: async () => 'clip',
+  fileEditorDeleteCommandForKey: (key) => key === 'backspace' ? 'deleteLeft' : '',
+  isActiveFileEditorInput: () => true,
+  getActiveFileSelectionText: () => 'selected',
+  copyToClipboard: async (text) => calls.push(['copy', text]),
+  focusActiveFileCodeEditor: () => calls.push(['focus']),
+  nowMs: () => 1000,
+  setToast: (text) => calls.push(['toast', text]),
+  getFileEditorText: () => editorText,
+  currentFileViewMode: () => 'file',
+  currentActiveFileKind: () => 'text',
+  currentActiveFileText: () => 'before',
+  activeFileEditorWritable: () => true,
+  activeFileEditorIdleWritable: () => true,
+  activeFileEditorIdleTextWritable: () => true,
+  blockUnavailableFileAction: () => false,
+  eventTargetElement: (value) => value,
+  syncFileEditorReadOnly: () => calls.push(['sync-readonly']),
+  setFileDirty: (dirty) => calls.push(['dirty', dirty]),
+}});
+runtime.toggleFileTouchSelectionMode();
+const selectedState = runtime.currentFileTouchToolbarState();
+const inserted = runtime.insertIntoActiveFileEditor('new');
+const resetState = runtime.currentFileTouchToolbarState();
+process.stdout.write(JSON.stringify({{
+  frozen: Object.isFrozen(runtime),
+  api: Object.keys(runtime).sort(),
+  selectedState,
+  inserted,
+  resetState,
+  calls,
+}}));
+'''
+        proc = subprocess.run(["node"], input=textwrap.dedent(script), check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = json.loads(proc.stdout)
+        self.assertTrue(result["frozen"])
+        self.assertEqual(
+            result["api"],
+            sorted([
+                "clearFileTouchSelectionState", "currentFileTouchSelectMode", "currentFileTouchToolbarState",
+                "resetFileTouchSelectionState", "toggleFileTouchSelectionMode", "handleFileTouchMoveButtonPress",
+                "moveFileTouchSelection", "handleFileTouchSelectionKeydown", "handleFileEditorDeleteKeydown",
+                "suppressFileEditorNativeDelete", "insertIntoActiveFileEditor", "pasteFromClipboardIntoActiveFile",
+                "handleFilePasteInsert", "copyActiveFileSelection",
+            ]),
+        )
+        self.assertEqual(result["selectedState"], {"visible": True, "selectActive": True, "dpadVisible": True, "copyVisible": True, "pasteVisible": True})
+        self.assertTrue(result["inserted"])
+        self.assertEqual(result["resetState"]["selectActive"], False)
+        self.assertIn(["sync-readonly"], result["calls"])
+        self.assertIn(["dirty", True], result["calls"])
+
+    def test_save_conflict_rendering_tracks_current_file_identity(self) -> None:
+        result = run_vm(
+            r'''
+const module = ctx.window.CodoxearFileViewerOperations;
+let sessionId = 'session-1';
+let identity = { path: 'notes.txt', gitPath: false, apiPath: '' };
+let unavailable = false;
+const created = [];
+const el = (tag, attrs = {}, children = []) => {
+  const node = { tag, attrs, children, onclick: null };
+  created.push(node);
+  return node;
+};
+const fileStatus = {
+  children: [],
+  replaceChildren(...children) { this.children = children; },
+};
+const runtime = module.createFileViewerOperationsRuntime({
+  el,
+  fileStatus,
+  currentSessionId: () => sessionId,
+  currentActiveFileIdentity: () => identity,
+  isUnavailable: () => unavailable,
+});
+const conflict = runtime.renderSaveConflict('session-1', 'notes.txt', 'disk changed');
+const current = runtime.isSaveConflictCurrent(conflict);
+identity = { path: 'other.txt', gitPath: false, apiPath: '' };
+const afterPathChange = runtime.isSaveConflictCurrent(conflict);
+identity = { path: 'notes.txt', gitPath: false, apiPath: '' };
+sessionId = 'session-2';
+const afterSessionChange = runtime.isSaveConflictCurrent(conflict);
+sessionId = 'session-1';
+unavailable = true;
+const whileUnavailable = runtime.isSaveConflictCurrent(conflict);
+process.stdout.write(JSON.stringify({
+  conflict,
+  frozen: Object.isFrozen(conflict),
+  current,
+  afterPathChange,
+  afterSessionChange,
+  whileUnavailable,
+  statusText: fileStatus.children[0].attrs.text,
+  actions: fileStatus.children[1].children.map((button) => button.attrs.text),
+  handlers: fileStatus.children[1].children.map((button) => typeof button.onclick),
+}));
+'''
+        )
+        self.assertEqual(result["conflict"], {"sessionId": "session-1", "path": "notes.txt"})
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["current"])
+        self.assertFalse(result["afterPathChange"])
+        self.assertFalse(result["afterSessionChange"])
+        self.assertFalse(result["whileUnavailable"])
+        self.assertEqual(result["statusText"], "notes.txt - save conflict: disk changed")
+        self.assertEqual(result["actions"], ["Reload from disk", "Keep editing"])
+        self.assertEqual(result["handlers"], ["function", "function"])
+
     def test_mode_controls_and_touch_toolbar_follow_active_file_capabilities(self) -> None:
         result = run_vm(
             r'''
