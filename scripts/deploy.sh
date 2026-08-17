@@ -128,20 +128,22 @@ if ! python3 "$DEPLOY_DIR/scripts/check_wiring.py" "$DEPLOY_DIR/codoxear/static"
   exit 1
 fi
 
-# Declaration tripwires cover renderApp state whose absence can otherwise
-# surface only after the async session-list render.
-for declaration in \
-  'let[[:space:]]+latestSessions[[:space:]]*=' \
-  'let[[:space:]]+selected[[:space:]]*=' \
-  'let[[:space:]]+sessionIndex[[:space:]]*='; do
-  if grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app_application.js" 2>/dev/null \
-    || grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app_application_composition.js" 2>/dev/null; then
+# Declaration tripwires cover session-runtime state ownership whose absence
+# can otherwise surface only after the async session-list render. State lives
+# in the store/catalog owners since the architecture refactor; assert those
+# owners and their field inventories exist.
+for tripwire in \
+  'codoxear/static/app_session_state.js:createSessionState' \
+  'codoxear/static/app_session_state.js:"selected"' \
+  'codoxear/static/app_session_catalog.js:createSessionCatalog' \
+  'codoxear/static/app_session_catalog.js:"latestSessions"' \
+  'codoxear/static/app_session_catalog.js:"sessionIndex"'; do
+  trip_file="${tripwire%%:*}"
+  trip_pattern="${tripwire#*:}"
+  if grep -Eq "$trip_pattern" "$DEPLOY_DIR/$trip_file" 2>/dev/null; then
     continue
   fi
-  if grep -Eq "$declaration" "$DEPLOY_DIR"/codoxear/static/app_*.js; then
-    continue
-  fi
-  echo "app.js render state declaration check failed: $declaration" >&2
+  echo "session state ownership tripwire failed: $trip_pattern in $trip_file" >&2
   exit 1
 done
 
