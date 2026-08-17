@@ -342,12 +342,6 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       return getSessionLifecycleController().clearCommitUnknownSend(sid, previewText);
     }
     function refreshSessions() { return getSessionRefreshController().refreshSessions(); }
-    function updateQueueBadge() {
-      const queueController = getQueueController();
-      if (!queueController) return;
-      queueController.updateQueueBadge();
-      if (queueViewer && queueViewer.style.display === "flex") void refreshQueueViewer();
-    }
     const sidebarController = codoxearSessions.createSessionsController(wiring.createSessionsOptions({
       sessionState, sessionsWrap, sidebarEmptyHint, el, iconSvg, sidebarRenderSignature, sidebarSessionEntries,
       sessionDisplayName, sessionLaunchFailed, sessionLaunchPending, redactedLaunchErrorText,
@@ -381,7 +375,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       clearRenderedTranscriptRange: historyController.clearRenderedTranscriptRange, initPageLimit: transcript.initPageLimit,
       dropPendingUserRows: transcript.dropPendingUserRows, updateSessionTranscriptSlot: transcript.updateSessionTranscriptSlot,
       tailCacheMatchesSession: transcript.tailCacheMatchesSession, applySessionListTranscriptIdentity: transcript.applySessionListTranscriptIdentity,
-      updateQueueBadge, updateTypingStatsFromSession: transcript.updateTypingStatsFromSession,
+      updateTypingStatsFromSession: transcript.updateTypingStatsFromSession,
       messagePollDelayMs: sendLifecycleController.messagePollDelayMs,
       kickPoll: sendLifecycleController.kickPoll, setPollFastUntilMs: sendLifecycleController.setPollFastUntilMs,
       openMessageEventSource: sendLifecycleController.openMessageEventSource, isMobile, useDesktopSessionActions,

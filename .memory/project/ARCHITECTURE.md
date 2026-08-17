@@ -1,164 +1,140 @@
-# Codoxear Frontend Architecture
+# Codoxear Architecture
 
-## Problem
+## Frontend
 
-The frontend has 66 IIFE modules connected by implicit dependency injection.
-Functions from the original monolithic `app.js` were extracted into separate
-closures without verifying that every destructured reference is actually
-provided. This creates silent runtime failures that only surface when a user
-action triggers the broken path.
+### State ownership
 
-There is no single source of truth for any displayed state. The transcript's
-rendered range, scroll position, and history cursor are managed by three
-uncoordinated runtimes. The session list's model/effort display is written
-by two functions with different priority rules. The sidebar's active-session
-highlight is applied by one CSS rule but overridden by another.
+Every mutable state field has one owner module:
 
-## Principles
+- `app_session_state.js` — 7-field observable runtime store (`selected`,
+  `running`, `queueLen`, `subagentsRunning`, `turnOpen`, `sending`, `token`).
+  API: `get`/`set`/`subscribe`/`applyRuntime`.
+- `app_session_catalog.js` — session list (`latestSessions`), derived
+  `sessionIndex`, `recentCwds`, `newSessionDefaults`, `tmuxAvailable`.
+  API: `patchSession`/`applySnapshot` (atomic writes).
+- `app_polling.js` — poll scheduling (`createPollingRuntime`) and
+  async-epoch cancellation (`createAsyncEpoch`).
 
-1. **One state authority per domain.** Every displayed value has exactly one
-   declared writer. Other modules read through the authority's interface.
+Every rendered value has one trigger: widget-internal store subscriptions.
+No cross-module renderer calls. Reducers write stores atomically
+(`applyRuntime`/`applySnapshot`/`patchSession`); imperative render relays
+are an anti-pattern the wiring guard and reviews reject.
 
-2. **Every dependency is explicit.** A module declares its required inputs
-   as a typed options object. The wiring checker verifies at deploy time that
-   every required name is provided. No implicit closure references.
+### Widget rule
 
-3. **State transitions are explicit.** The transcript, session list, and
-   modal stack each have a state machine that controls what operations are
-   legal in each state.
+Element + render + subscription in one module:
 
-4. **Design tokens encode decisions, not just values.** `--ctl` means
-   "primary action touch target." `--ctl-chrome` means "compact secondary
-   chrome control." The rule for which to use is in the token's comment.
+- `app_topbar.js` — status chip, context chip, interrupt button.
+- `app_notifications.js` — notification runtime (`enabledLocally`/
+  `syncState`/`pollFeed`/`dispose`).
+- `app_help.js` — help overlay.
+- `app_conversation_copy.js` — conversation-copy formatter and
+  message count.
 
-## Architecture
+### Wiring
 
-### State Stores
+All controllers receive per-controller `select()` contracts from
+`app_wiring.js`. No option bags, no spreads. The architecture guard
+`scripts/check_wiring.py` enforces 7 check types:
 
-Three domain stores, each owned by a single controller:
+1. `pass-through-factory` — factories that return deps verbatim
+2. `bag-spread` — `...options` / `...deps` into controller calls
+3. `direct-bag-argument` — passing a bag object directly
+4. `global-registration` — `window.Codoxear*` / `global.Codoxear*`
+5. `select-undercoverage` — selector missing keys a controller uses
+6. `unbound-option-value` — option literal with no matching dep
+7. `select-callsite-coverage` — selector keys not covered by callers
 
-**SessionStore** — owns the session list, active session ID, per-session
-metadata (model, effort, busy, queue). All writes go through this store.
-Modules like the sidebar, message flow, and new-session dialog read from it.
+A checked-in allowlist (`scripts/wiring_guard_allowlist.json`) tracks existing
+violations. Every entry requires a reason, and tests pin the exact entry count
+per check type. Cross-commit monotonicity is enforced through those visible
+reasons and counts plus review; comparing against the current commit cannot
+prove that a committed violation and exception did not grow together.
 
-**TranscriptViewController** — owns the rendered DOM range, scroll position,
-and history cursor. State machine: LIVE / BROWSING / LOADING_OLDER / REPLACING.
-Only REPLACING may clear the DOM. All other operations are append/prepend.
+### Composition
 
-**UIStore** — owns modal visibility, sidebar drawer state, and viewport
-classification (desktop/touch). One writer per modal.
+- `app.js` — 34-line boot entrypoint.
+- `app_application.js` — dependency facade / factory.
+- `app_application_composition.js` — lifecycle assembly, controller
+  creation via `app_wiring.js`, cleanup-registered listeners.
+- `app_shell.js` — layout slots (`topMeta`, `titleRow`, `topActions`).
+- `app.css` — presentation.
+- `app_modal.js` — modal policy (`createModalPolicyController`,
+  `createConfirmationController`, `createModalKeyboardHandler`).
 
-### Dependency Injection
+### Domain and peripheral controllers
 
-Every module factory declares its options:
+Domain: `app_chat_interaction.js`, `app_file_ops.js`,
+`app_session_lifecycle.js`, `app_session_refresh.js`.
 
-```javascript
-function createTranscriptViewController(options) {
-  // options: {
-  //   domRuntime: TranscriptDomRuntime,
-  //   scrollRuntime: TranscriptScrollRuntime,
-  //   olderLoadRuntime: OlderLoadRuntime,
-  //   onStateChange: (state) => void,
-  // }
-}
-```
+Peripheral: `app_message_flow.js` (confirmed-send/SSE/polling),
+`app_composer.js`, `app_unattended.js`, `app_attachments.js`, plus
+focused transcript, queue, file-viewer, launch, search, and voice
+modules.
 
-The wiring checker (`scripts/check_wiring.py`) verifies statically that
-every required option is provided by the creation call. No implicit
-references through closure or `window` globals.
+`app_session_display.js` no longer exists.
 
-### Transcript View State Machine
+### Dependency injection
 
-```
-LIVE ←→ BROWSING ←→ LOADING_OLDER
-  ↑                       ↓
-  └──── REPLACING ←───────┘
-       (session switch)
-```
+Constructor-injected DI is preserved — the VM-harness behavioral tests
+inject mocks through these seams. The wiring guard disciplines injection;
+it does not replace it.
 
-| State | Entry | Allowed operations | Exit |
-|-------|-------|-------------------|------|
-| LIVE | After openSession, after send | appendEvents, scrollToBottom | User scrolls up → BROWSING |
-| BROWSING | User scrolled up | appendEvents (no scroll), loadOlderMessages | User scrolls to bottom → LIVE, older load → LOADING_OLDER |
-| LOADING_OLDER | Top edge hit or click | prependEvents on success, stay on failure | Load completes → BROWSING |
-| REPLACING | Session switch, jump-to-latest force | replaceWith(new events) | Render complete → LIVE |
+### Transcript view
 
-**Forbidden:** DOM clearing outside REPLACING. Poll/SSE triggering REPLACING.
-Send triggering REPLACING.
+`app_transcript_view.js` owns the rendered DOM range and history cursor.
+State machine: LIVE / BROWSING / LOADING_OLDER / REPLACING. Only
+REPLACING may clear the DOM.
 
-### File Structure
+### CSS design system
 
-Target: ~20 focused domain modules. Each module has one clear responsibility.
+Two control sizes by role: `--ctl` (44px, primary actions) and
+`--ctl-chrome` (32px, secondary chrome). Touch hit area is `::after`,
+not visual size. Full design-language rules are in AGENTS.md.
 
-```
-app.js                          — boot (34 lines)
-app_application.js              — factory + deps assembly (854)
-app_application_composition.js  — renderApp + wiring (~1400)
-app_state.js                    — SessionStore, UIStore
-app_transcript_view.js          — TranscriptViewController (state machine)
-app_transcript.js               — transcript data model, message normalization
-app_transcript_render.js        — DOM rendering, row construction
-app_transcript_scroll.js        — scroll position, jump button, auto-load trigger
-app_message_flow.js             — poll/SSE transport, send lifecycle
-app_message_history.js          — older message paging, cursor management
-app_sessions.js                 — sidebar rendering, session actions
-app_session_lifecycle.js        — open/select/spawn/delete sessions
-app_session_refresh.js          — session list refresh, sidebar reconciliation
-app_file_viewer.js              — file viewer orchestration (737 lines after decomposition)
-app_file_picker.js              — file candidate picker, search, navigation
-app_file_editor.js              — Monaco editor integration, save/dirty
-app_composer.js                 — message input, draft persistence, attachments
-app_modal.js                    — dialog framework, keyboard handling
-app_wiring.js                   — options selectors for all modules
-app_shell.js                    — DOM construction, element references
-app_display.js                  — formatting, truncation, display helpers
-app_api.js                      — HTTP client, ETag caching
-```
+## Backend
 
-### CSS Design System
+### Log-derived session projection
 
-Two control sizes, defined by role:
+All log-derived session state (busy, tokens, model, effort) commits
+through one ordered, log-identity-aware boundary:
 
-| Token | Value | Use |
-|-------|-------|-----|
-| `--ctl` | 44px | Primary actions (Send, Start session, dialog confirm) |
-| `--ctl-chrome` | 32px | Secondary chrome (topbar nav, sidebar hover, composer secondary) |
+- `LogDerivedSessionObservation` (dataclass in
+  `codoxear/session_log_projection.py`) — the observation record.
+- `commit_log_observation` (in `codoxear/session_log_runtime.py`) —
+  the commit function that updates session state atomically with log
+  identity tracking.
 
-Rules:
-- All `.icon-btn` default to `--ctl-chrome` (32px)
-- `.icon-btn.primary` overrides to `--ctl` (44px)
-- Touch hit area is handled by `::after` pseudo-element, not visual size
-- No hardcoded control dimensions anywhere in the stylesheet
+### Live-delta projection
 
-## What This Fixes
+Poll and SSE share one live-delta projection:
+`_project_live_record_window` in `codoxear/message_routes.py`. Both
+transport paths produce identical transcript state.
 
-1. **"Messages disappear on send"** — TranscriptViewController's REPLACING
-   state is the only path that can clear. Poll, send, and SSE cannot trigger it.
+### SessionManager wiring
 
-2. **"Load older messages broken"** — The cursor is owned by one controller.
-   Poll responses cannot overwrite it. The history endpoint accepts stale
-   cursors via `decode_message_cursor_target`.
+`SessionManager` uses a retained coordinator graph. Coordinator
+dependencies are focused dataclass records
+(`SessionManagerCoordinatorDeps` and per-coordinator `*FactoryDeps` in
+`codoxear/session_manager_factories.py`). No mega-caps objects, no
+`*args`/`**kwargs` forwarding.
 
-3. **"Hover buttons misplaced"** — The two-branch DOM split is locked
-   (AGENTS.md). Desktop uses `sessionActionsInline`, touch uses `sessionSwipe`.
-   `.session` has `position: relative` so absolutely-positioned children
-   are contained within the card.
+### Log normalization
 
-4. **"Sidebar model name wrong"** — `apply_run_settings_backfill` respects
-   the bridge-live priority. The bridge reads `pi.getModel()` on every
-   `turn_end` and writes it to the caps file. No log scan needed for
-   active sessions.
+- `codoxear/rollout_log.py` — chat-event extraction, delivery messages,
+  idle detection, token snapshots (all backends).
+- `codoxear/pi_log.py` — Pi-specific session headers, text extraction,
+  final-turn detection, run settings, context usage.
+- `codoxear/cc_log.py` — Claude Code log parsing.
 
-5. **"Button sizes inconsistent"** — Two tokens, one rule. Base button
-   is `--ctl-chrome`. Primary is `--ctl`. No exceptions.
+## Pi integration strategy
 
-## Verification
-
-Each architectural claim must be verified behaviorally, not by assertion:
-
-- TranscriptViewController: select session, send message, verify count
-  doesn't decrease. Click load-older, verify count increases. Scroll up,
-  click jump-to-bottom, verify count returns to tail.
-- Wiring checker: deploy gate must pass with 0 definite bugs.
-- CSS: computed styles of active session vs inactive must differ visibly.
-- Button sizes: all `.icon-btn` must be 32px or 44px, no other sizes.
+Codoxear wraps all backends in a PTY so web and terminal share the same
+session. Pi `--mode rpc` is a separate headless mode that cannot coexist
+with the TUI. The extension bridge supplies Pi effort control from within
+the live TUI process, while Pi `/model` remains its shared native
+command. Extension load may write its passive capability marker and
+register lifecycle listeners, but must not call runtime action methods at
+load time. Command registration and runtime queries are deferred until
+`session_start`/`session_switch`; a failed registration retries from a
+later lifecycle event.

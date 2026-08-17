@@ -60,7 +60,7 @@ function requireFunction(value, name) {
     chatInner.append(olderWrap, bottomSentinel);
     chat.appendChild(chatInner);
 
-    const titleLabel = el("div", { id: "threadTitle", "data-hint": "t", text: "No session selected" });
+    const titleLabel = el("div", { id: "threadTitle", "data-hint": "t", text: "" });
     const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
     const networkBanner = el("div", { class: "networkBanner", id: "networkBanner", role: "status", "aria-live": "polite", "aria-atomic": "true", "aria-hidden": "true" });
     networkBanner.hidden = true;

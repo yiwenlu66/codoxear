@@ -13,9 +13,12 @@ This checker verifies both sides of that contract:
    direct shared-bag controller arguments, and direct property assignments on
    `window`, `globalThis`, or `global`.
 
-The allowlist identifies findings by check id, relative file path, and stable
-factory/call/global name. A finding absent from the allowlist fails the check;
-an allowlist entry without a current finding is stale and also fails it.
+The allowlist identifies findings by check id, relative file path, stable
+factory/call/global name, and a mandatory non-empty reason. A finding absent
+from the allowlist fails the check; an allowlist entry without a current finding
+is stale and also fails it. Cross-commit growth is made visible by exact
+per-check counts pinned in tests and is rejected through review; it is not
+inferred by comparing the working tree with the current commit.
 
 Usage: python3 scripts/check_wiring.py [static_dir] [--allowlist PATH]
 """
@@ -389,10 +392,8 @@ def load_allowlist(path: Path) -> list[GuardViolation]:
             raise ValueError(
                 f"allowlist entry {index} must contain a known check plus non-empty file and name"
             )
-        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
-            raise ValueError(f"allowlist entry {index} reason must be a non-empty string when present")
-        if check in {CHECK_SELECT_UNDERCOVERAGE, CHECK_SELECT_CALLSITE_COVERAGE} and not isinstance(reason, str):
-            raise ValueError(f"allowlist entry {index} for {check} requires a reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"allowlist entry {index} requires a non-empty reason")
         violation = GuardViolation(check, file, name)
         if violation in seen:
             raise ValueError(f"duplicate allowlist entry: [{check}] {file}:{name}")

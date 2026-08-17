@@ -11,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "check_wiring.py"
 REAL_STATIC = ROOT / "codoxear" / "static"
 REAL_ALLOWLIST = ROOT / "scripts" / "wiring_guard_allowlist.json"
+PINNED_ALLOWLIST_COUNTS = {
+    "pass-through-factory": 0,
+    "spread-into-factory": 0,
+    "bag-spread": 0,
+    "global-registration": 8,
+    "direct-bag-argument": 0,
+    "select-undercoverage": 1,
+    "select-callsite-coverage": 0,
+}
 
 
 def _run_guard(static_dir: Path, allowlist: Path) -> subprocess.CompletedProcess[str]:
@@ -35,17 +44,12 @@ def _allowlist_entries(path: Path) -> list[dict[str, str]]:
     return json.loads(path.read_text())["violations"]
 
 
-def _head_allowlist_entries() -> list[dict[str, str]] | None:
-    result = subprocess.run(
-        ["git", "show", "HEAD:scripts/wiring_guard_allowlist.json"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
+def _assert_allowlist_matches_pinned_counts(entries: list[dict[str, str]]) -> None:
+    counts = Counter(entry["check"] for entry in entries)
+    assert counts == Counter(PINNED_ALLOWLIST_COUNTS), (
+        "allowlist entry counts changed; justify the cross-commit exception growth "
+        "and visibly update PINNED_ALLOWLIST_COUNTS in this test"
     )
-    if result.returncode:
-        return None
-    return json.loads(result.stdout)["violations"]
 
 
 def test_wiring_guard_accepts_the_real_frontend_tree_and_reports_coverage() -> None:
@@ -58,24 +62,27 @@ def test_wiring_guard_accepts_the_real_frontend_tree_and_reports_coverage() -> N
     assert "option_factories=0" not in coverage
 
 
-def test_wiring_guard_allowlist_only_shrinks_from_head() -> None:
-    head_entries = _head_allowlist_entries()
-    if head_entries is None:
-        return
+def test_wiring_guard_allowlist_has_reasons_and_pinned_cross_commit_counts() -> None:
+    entries = _allowlist_entries(REAL_ALLOWLIST)
 
-    current = Counter(
-        (entry["check"], entry["file"], entry["name"])
-        for entry in _allowlist_entries(REAL_ALLOWLIST)
-    )
-    head = Counter((entry["check"], entry["file"], entry["name"]) for entry in head_entries)
-    added = current - head
+    assert all(isinstance(entry.get("reason"), str) and entry["reason"].strip() for entry in entries)
+    _assert_allowlist_matches_pinned_counts(entries)
 
-    assert all(check in {"select-undercoverage", "select-callsite-coverage"} for check, _file, _name in added), "working-tree allowlist may only add documented selector false positives"
-    entries_by_identity = {
-        (entry["check"], entry["file"], entry["name"]): entry
-        for entry in _allowlist_entries(REAL_ALLOWLIST)
-    }
-    assert all(entries_by_identity[identity].get("reason") for identity in added)
+
+def test_wiring_guard_pinned_count_tripwire_rejects_added_entry_without_count_update() -> None:
+    entries = _allowlist_entries(REAL_ALLOWLIST) + [{
+        "check": "global-registration",
+        "file": "app_planted.js",
+        "name": "window.planted",
+        "reason": "Planted count-growth fixture.",
+    }]
+
+    try:
+        _assert_allowlist_matches_pinned_counts(entries)
+    except AssertionError as exc:
+        assert "visibly update PINNED_ALLOWLIST_COUNTS" in str(exc)
+    else:
+        raise AssertionError("an added allowlist entry must trip the pinned per-check count")
 
 
 def test_wiring_guard_rejects_each_planted_architecture_violation(tmp_path: Path) -> None:
@@ -216,7 +223,7 @@ def test_wiring_guard_accepts_documented_selector_fallback_allowlist(tmp_path: P
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_wiring_guard_rejects_selector_undercoverage_allowlist_without_reason(tmp_path: Path) -> None:
+def test_wiring_guard_rejects_every_allowlist_entry_without_reason(tmp_path: Path) -> None:
     static_dir = tmp_path / "static"
     allowlist = _write_fixture(
         static_dir,
@@ -227,7 +234,7 @@ def test_wiring_guard_rejects_selector_undercoverage_allowlist_without_reason(tm
     result = _run_guard(static_dir, allowlist)
 
     assert result.returncode == 2
-    assert "requires a reason" in result.stderr
+    assert "requires a non-empty reason" in result.stderr
 
 
 def test_wiring_guard_ignores_non_object_bag_spreads_and_literal_text(tmp_path: Path) -> None:
@@ -255,7 +262,7 @@ def test_wiring_guard_rejects_a_stale_allowlist_entry_and_duplicates(tmp_path: P
     stale_allowlist = _write_fixture(
         static_dir,
         {"app_feature.js": "const ready = true;\n"},
-        [{"check": "global-registration", "file": "app_feature.js", "name": "window.gone"}],
+        [{"check": "global-registration", "file": "app_feature.js", "name": "window.gone", "reason": "Planted stale-entry fixture."}],
     )
 
     stale = _run_guard(static_dir, stale_allowlist)
@@ -264,22 +271,9 @@ def test_wiring_guard_rejects_a_stale_allowlist_entry_and_duplicates(tmp_path: P
     assert "STALE ALLOWLIST ENTRY [global-registration] app_feature.js:window.gone" in stale.stdout
 
     duplicate_allowlist = static_dir.parent / "duplicate-allowlist.json"
-    entry = {"check": "global-registration", "file": "app_feature.js", "name": "window.gone"}
+    entry = {"check": "global-registration", "file": "app_feature.js", "name": "window.gone", "reason": "Planted duplicate-entry fixture."}
     duplicate_allowlist.write_text(json.dumps({"violations": [entry, entry]}))
     duplicate = _run_guard(static_dir, duplicate_allowlist)
 
     assert duplicate.returncode == 2
     assert "duplicate allowlist entry" in duplicate.stderr
-
-
-def test_wiring_guard_allowlist_counter_handles_duplicate_head_entries(tmp_path: Path, monkeypatch) -> None:
-    entry = {"check": "global-registration", "file": "app_feature.js", "name": "window.gone"}
-    allowlist = _write_fixture(
-        tmp_path / "static",
-        {"app_feature.js": "const ready = true;\n"},
-        [entry],
-    )
-    monkeypatch.setattr(sys.modules[__name__], "REAL_ALLOWLIST", allowlist)
-    monkeypatch.setattr(sys.modules[__name__], "_head_allowlist_entries", lambda: [entry, entry])
-
-    test_wiring_guard_allowlist_only_shrinks_from_head()

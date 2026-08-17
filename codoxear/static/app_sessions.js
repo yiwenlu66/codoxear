@@ -145,11 +145,18 @@
       content.addEventListener("pointercancel", finishSwipe);
     }
 
-    function applyActiveSessionClass() {
-      if (typeof sessionsWrap.querySelectorAll !== "function") return;
+    function applyActiveClass(card = null) {
+      const cards = card
+        ? [card]
+        : typeof sessionsWrap.querySelectorAll === "function"
+          ? sessionsWrap.querySelectorAll(".session[data-session-id]")
+          : [];
       const selectedId = sessionState.get("selected");
-      sessionsWrap.querySelectorAll(".session[data-session-id]").forEach((card) => {
-        card.classList.toggle("active", card.dataset.sessionId === selectedId);
+      cards.forEach((candidate) => {
+        const active = candidate.dataset.sessionId === selectedId;
+        if (typeof candidate.classList.toggle === "function") candidate.classList.toggle("active", active);
+        else if (active) candidate.classList.add("active");
+        else if (typeof candidate.classList.remove === "function") candidate.classList.remove("active");
       });
     }
 
@@ -175,7 +182,8 @@
           }
           const session = entry.session;
           const sessionId = session.session_id;
-          const card = el("div", { class: `session${selectedId === sessionId ? " active" : ""}`, "data-session-id": sessionId, role: "link", tabindex: "0" });
+          const card = el("div", { class: "session", "data-session-id": sessionId, role: "link", tabindex: "0" });
+          applyActiveClass(card);
           const title = sessionDisplayName(session);
           const badges = [];
           const launchFailed = sessionLaunchFailed(session);
@@ -339,7 +347,7 @@
       return render(sidebarSessionEntries(sessions), options);
     }
 
-    const unsubscribeSelected = sessionState.subscribe("selected", applyActiveSessionClass);
+    const unsubscribeSelected = sessionState.subscribe("selected", () => applyActiveClass());
 
     return Object.freeze({
       render,

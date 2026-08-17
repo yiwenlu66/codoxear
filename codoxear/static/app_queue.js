@@ -579,7 +579,6 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       refreshQueueViewer,
       showQueueViewer,
       hideQueueViewer,
-      updateQueueBadge,
       dispose,
     });
   }

@@ -9,42 +9,50 @@
     {
       "check": "global-registration",
       "file": "app_application.js",
-      "name": "window.codoxearPerf"
+      "name": "window.codoxearPerf",
+      "reason": "Browser performance samples are intentionally exposed for diagnostics and Docker smoke measurements."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.CODOXEAR_ASSET_VERSION"
+      "name": "window.CODOXEAR_ASSET_VERSION",
+      "reason": "The inline pre-module bootstrap publishes the server-rendered asset version to ESM URL resolution."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.CODOXEAR_ATTACH_MAX_BYTES"
+      "name": "window.CODOXEAR_ATTACH_MAX_BYTES",
+      "reason": "The inline pre-module bootstrap publishes the server-rendered upload limit to the ESM application."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.__codoxearAppBootstrapped#1"
+      "name": "window.__codoxearAppBootstrapped#1",
+      "reason": "The bootstrap marker is initialized before module loading so the timeout can distinguish pending startup."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.__codoxearAppBootstrapped#2"
+      "name": "window.__codoxearAppBootstrapped#2",
+      "reason": "The module bootstrap callback updates the same marker when application startup completes."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.__codoxearLoadError"
+      "name": "window.__codoxearLoadError",
+      "reason": "Module load failures must cross from script error handling to the delayed inline fallback renderer."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.__codoxearMarkBootstrapped"
+      "name": "window.__codoxearMarkBootstrapped",
+      "reason": "The ESM application calls this pre-module bootstrap hook to cancel the startup timeout."
     },
     {
       "check": "global-registration",
       "file": "index.html",
-      "name": "window.__codoxearRenderLoadErrorFallback"
+      "name": "window.__codoxearRenderLoadErrorFallback",
+      "reason": "The pre-module loader exposes its fallback renderer to both module error and timeout paths."
     }
   ]
 }

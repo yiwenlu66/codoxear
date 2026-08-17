@@ -384,7 +384,6 @@ const chatNavigationController = (function instantiateChatNavigationController()
     loadedUserJumpTarget,
     loadedCopyJumpTarget,
     getScrollTop: () => chat.scrollTop,
-    prefersReducedMotion,
     pulseNavigatedRow: (row) => navigationPulseController.pulseNavigatedRow(row),
     setToast,
     openChatSearch,
@@ -392,6 +391,7 @@ const chatNavigationController = (function instantiateChatNavigationController()
     isTextEntryElement,
     modalIsolationTargets,
     isModalTargetOpen,
+    isSidebarOpen: () => Boolean(document.body && document.body.classList && document.body.classList.contains("sidebar-open")),
     addAppEvent,
     documentTarget: document,
   }));
@@ -666,14 +666,6 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
   const subagentsRunning = Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0));
   sessionState.set("turnOpen", running);
   sessionState.applyRuntime({ running, queueLen, token: sessionMeta.token || null, subagentsRunning });
-}
-
-function updateQueueBadge() {
-  const queueController = getQueueController();
-  if (queueController) {
-    queueController.updateQueueBadge();
-    if (queueViewer.style.display === "flex") void refreshQueueViewer();
-  }
 }
 
   function markClickLoad() {
