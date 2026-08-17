@@ -24,10 +24,12 @@ def session_store_paths_for_server(server: Any) -> Any:
     )
 
 
-def init_for_manager(manager: Any, server: Any) -> None:
+def init_for_manager(manager: Any, server: Any, *, coordinator_deps: Any = None) -> None:
     registry = SessionRegistry()
     manager._registry = registry
     manager._store = manager._new_session_store_for_manager(session_store_paths_for_server(server))
+    focused_deps = coordinator_deps or server._session_manager_coordinator_deps(server)
+    manager._coordinators = server._build_session_manager_coordinator_graph(manager, focused_deps)
     manager._unread_store = UnreadStore(server.SESSION_UNREAD_PATH)
     server._seed_manager_in_memory_state_impl(manager)
     server._load_manager_persistent_state_impl(manager)

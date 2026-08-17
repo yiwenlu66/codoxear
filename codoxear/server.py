@@ -120,6 +120,7 @@ from .session_cleaners import clean_optional_text as _clean_optional_text_impl
 from .session_cleaners import clean_priority_offset as _clean_priority_offset_impl
 from .session_cleaners import clean_recent_cwd as _clean_recent_cwd_impl
 from .session_cleaners import clean_snooze_until as _clean_snooze_until_impl
+from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
 from .session_errors import SessionCommitUnknownError
 from .session_errors import SessionInjectionError
@@ -136,6 +137,7 @@ from .session_log_metadata import read_session_meta as _read_session_meta_impl
 from .session_log_metadata import read_session_meta_or_none as _read_session_meta_or_none_impl
 from .session_log_metadata import sessions_dir_for_backend as _sessions_dir_for_backend_impl
 from .session_log_metadata import turn_context_run_settings as _turn_context_run_settings_impl
+from .session_log_projection import LogDerivedSessionObservation
 from .session_resume import coerce_main_thread_log as _coerce_main_thread_log_impl
 from .session_resume import first_user_message_preview_from_log as _first_user_message_preview_from_log_impl
 from .session_resume import list_resume_candidates_for_cwd as _list_resume_candidates_for_cwd_impl
@@ -156,7 +158,8 @@ from .session_manager_discovery import discover_existing_for_manager as _discove
 from .session_manager_discovery import discover_existing_if_stale_for_manager as _discover_existing_if_stale_for_manager_impl
 from . import session_manager_core_methods as _core_methods
 from . import session_manager_factories as _factories
-from .session_manager_factories import session_manager_factory_caps as _session_manager_factory_caps_impl
+from .session_manager_factories import build_session_manager_coordinator_graph as _build_session_manager_coordinator_graph
+from .session_manager_factories import session_manager_coordinator_deps as _session_manager_coordinator_deps
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store_attrs import load_store_attr as _load_store_attr
 from .session_manager_store_attrs import save_dict_store_attr as _save_dict_store_attr
@@ -168,6 +171,7 @@ from .session_manager_store import session_store_paths as _session_store_paths_i
 from .session_model import Session
 from .session_registry import registry_backed_attr as _registry_backed_attr
 from .session_registry import session_registry_for_manager as _session_registry_for_manager
+from .session_runtime import RuntimeStatus
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
@@ -945,365 +949,347 @@ class SessionManager:
     # These explicit composition methods keep SessionManager's public API visible to readers and tooling.
     # Implementations live in focused modules; this class owns their dependency wiring.
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        return _core_methods.init_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def __init__(self, *, coordinator_deps: Any = None) -> None:
+        return _core_methods.init_for_manager(self, sys.modules[__name__], coordinator_deps=coordinator_deps)
 
-    def stop(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.stop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def stop(self) -> None:
+        return _core_methods.stop_for_manager(self, sys.modules[__name__])
 
-    def _reset_log_caches(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.reset_log_caches_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _reset_log_caches(self, session: Session, *, meta_log_off: int) -> None:
+        return _core_methods.reset_log_caches_for_manager(self, sys.modules[__name__], session, meta_log_off=meta_log_off)
 
-    def _session_run_settings(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.session_run_settings_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None, agent_backend: str) -> tuple[str | None, str | None, str | None, str | None]:
+        return _core_methods.session_run_settings_for_manager(self, sys.modules[__name__], meta=meta, log_path=log_path, agent_backend=agent_backend)
 
-    def _session_transport(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.session_transport_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+        return _core_methods.session_transport_for_manager(self, sys.modules[__name__], meta=meta)
 
-    def _discover_existing_if_stale(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.discover_existing_if_stale_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _discover_existing_if_stale(self, *, force: bool = False) -> None:
+        return _core_methods.discover_existing_if_stale_for_manager(self, sys.modules[__name__], force=force)
 
-    def _new_session_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.new_session_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _new_session_store_for_manager(self, paths: Any) -> Any:
+        return _core_methods.new_session_store_for_manager(self, sys.modules[__name__], paths)
 
-    def _session_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.session_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _session_store_for_manager(self) -> Any:
+        return _core_methods.session_store_for_manager(self, sys.modules[__name__])
 
-    def _queue_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.queue_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _queue_store_for_manager(self) -> Any:
+        return _core_methods.queue_store_for_manager(self, sys.modules[__name__])
 
-    def _input_lock_for_session(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.input_lock_for_session(self, sys.modules[__name__], *args, **kwargs)
+    def _input_lock_for_session(self, session_id: str) -> Any:
+        return _core_methods.input_lock_for_session(self, sys.modules[__name__], session_id)
 
-    def _broker_busy_queue_from_state(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.broker_busy_queue_from_state_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
+        return _core_methods.broker_busy_queue_from_state_for_manager(self, sys.modules[__name__], state)
 
-    def _log_size_or_none(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.log_size_or_none_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _log_size_or_none(self, log_path: Path | None) -> int | None:
+        return _core_methods.log_size_or_none_for_manager(self, sys.modules[__name__], log_path)
 
-    def _clear_confirmed_send_boundary_locked(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.clear_confirmed_send_boundary_locked_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _clear_confirmed_send_boundary_locked(self, session: Session) -> None:
+        return _core_methods.clear_confirmed_send_boundary_locked_for_manager(self, sys.modules[__name__], session)
 
-    def _confirmed_send_boundary_unresolved_for_session(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.confirmed_send_boundary_unresolved_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _confirmed_send_boundary_unresolved_for_session(self, session_id: str, log_path: Path | None, log_size: int | None) -> bool:
+        return _core_methods.confirmed_send_boundary_unresolved_for_manager(self, sys.modules[__name__], session_id, log_path, log_size)
 
-    def _voice_push_scan_loop(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.voice_push_scan_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _voice_push_scan_loop(self) -> None:
+        return _core_methods.voice_push_scan_loop_for_manager(self, sys.modules[__name__])
 
-    def _unattended_loop(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.unattended_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _unattended_loop(self) -> None:
+        return _core_methods.unattended_loop_for_manager(self, sys.modules[__name__])
 
-    def _queue_loop(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.queue_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _queue_loop(self) -> None:
+        return _core_methods.queue_loop_for_manager(self, sys.modules[__name__])
 
-    def _broker_watchdog_loop(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.broker_watchdog_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _broker_watchdog_loop(self) -> None:
+        return _core_methods.broker_watchdog_loop_for_manager(self, sys.modules[__name__])
 
-    def _broker_watchdog_sweep(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.broker_watchdog_sweep_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _broker_watchdog_sweep(self) -> None:
+        return _core_methods.broker_watchdog_sweep_for_manager(self, sys.modules[__name__])
 
-    def _maybe_drain_session_queue(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.maybe_drain_session_queue_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _maybe_drain_session_queue(self, session_id: str, *, now_ts: float | None = None) -> bool:
+        return _core_methods.maybe_drain_session_queue_for_manager(self, sys.modules[__name__], session_id, now_ts=now_ts)
 
-    def _discover_existing(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.discover_existing_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _discover_existing(self, *, force: bool = False) -> None:
+        return _core_methods.discover_existing_for_manager(self, sys.modules[__name__], force=force)
 
-    def get_session(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.get_session_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def get_session(self, session_id: str) -> Session | None:
+        return _core_methods.get_session_for_manager(self, sys.modules[__name__], session_id)
 
-    def _sock_call(self, *args: Any, **kwargs: Any) -> Any:
-        return _core_methods.sock_call_for_manager(self, sys.modules[__name__], *args, **kwargs)
+    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
+        return _core_methods.sock_call_for_manager(self, sys.modules[__name__], sock_path, req, timeout_s, track_request_sent=track_request_sent)
+
+    def _coordinator_graph(self) -> Any:
+        graph = getattr(self, "_coordinators", None)
+        if graph is None:
+            deps = _session_manager_coordinator_deps(sys.modules[__name__])
+            graph = _build_session_manager_coordinator_graph(self, deps)
+            self._coordinators = graph
+        return graph
 
     def _discovery_deps(self) -> Any:
-        return _factories.discovery_deps_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().discovery
 
     def _queue_coordinator_for_manager(self) -> Any:
-        return _factories.queue_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().queue
 
     def _control_coordinator_for_manager(self) -> Any:
-        return _factories.control_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().control
 
     def _list_coordinator_for_manager(self) -> Any:
-        return _factories.list_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().listing
 
     def _refresh_coordinator_for_manager(self) -> Any:
-        return _factories.refresh_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().refresh
 
     def _readiness_coordinator_for_manager(self) -> Any:
-        return _factories.readiness_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().readiness
 
     def _unattended_sweep_coordinator_for_manager(self) -> Any:
-        return _factories.unattended_sweep_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().unattended_sweep
 
     def _queue_sweep_coordinator_for_manager(self) -> Any:
-        return _factories.queue_sweep_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().queue_sweep
 
     def _voice_runtime_for_manager(self) -> Any:
-        return _factories.voice_runtime_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().voice_runtime
 
     def _log_runtime_for_manager(self) -> Any:
-        return _factories.log_runtime_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().log_runtime
 
     def _files_coordinator_for_manager(self) -> Any:
-        return _factories.files_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().files
 
     def _ui_state_coordinator_for_manager(self) -> Any:
-        return _factories.ui_state_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().ui_state
 
     def _unattended_config_coordinator_for_manager(self) -> Any:
-        return _factories.unattended_config_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().unattended_config
 
     def _cleanup_coordinator_for_manager(self) -> Any:
-        return _factories.cleanup_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().cleanup
 
     def _pending_state_coordinator_for_manager(self) -> Any:
-        return _factories.pending_state_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().pending_state
 
     def _recent_cwd_coordinator_for_manager(self) -> Any:
-        return _factories.recent_cwd_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().recent_cwd
 
     def _lifecycle_coordinator_for_manager(self) -> Any:
-        return _factories.lifecycle_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().lifecycle
 
     def _discovery_registry_for_manager(self) -> Any:
-        return _factories.discovery_registry_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().discovery_registry
 
     def _prune_coordinator_for_manager(self) -> Any:
-        return _factories.prune_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().prune
 
     def _broker_watchdog_coordinator_for_manager(self) -> Any:
-        return _factories.broker_watchdog_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().broker_watchdog
 
     def _send_coordinator_for_manager(self) -> Any:
-        return _factories.send_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().send
 
     def _prelog_user_message_recorder_for_manager(self) -> Any:
-        return _factories.prelog_user_message_recorder_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().prelog_recorder
 
     def _web_launch_coordinator_for_manager(self) -> Any:
-        return _factories.web_launch_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+        return self._coordinator_graph().web_launch
 
-    def _hide_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().hide_session(*args, **kwargs)
+    def _hide_session(self, session_id: str) -> None:
+        return self._ui_state_coordinator_for_manager().hide_session(session_id)
 
-    def _unhide_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().unhide_session(*args, **kwargs)
+    def _unhide_session(self, session_id: str) -> None:
+        return self._ui_state_coordinator_for_manager().unhide_session(session_id)
 
-    def alias_set(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().alias_set(*args, **kwargs)
+    def alias_set(self, session_id: str, name: str) -> str:
+        return self._ui_state_coordinator_for_manager().alias_set(session_id, name)
 
-    def alias_get(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().alias_get(*args, **kwargs)
+    def alias_get(self, session_id: str) -> str:
+        return self._ui_state_coordinator_for_manager().alias_get(session_id)
 
-    def alias_clear(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().alias_clear(*args, **kwargs)
+    def alias_clear(self, session_id: str) -> None:
+        return self._ui_state_coordinator_for_manager().alias_clear(session_id)
 
-    def sidebar_meta_get(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().sidebar_meta_get(*args, **kwargs)
+    def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
+        return self._ui_state_coordinator_for_manager().sidebar_meta_get(session_id)
 
-    def sidebar_meta_set(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().sidebar_meta_set(*args, **kwargs)
+    def sidebar_meta_set(self, session_id: str, *, priority_offset: Any, snooze_until: Any, dependency_session_id: Any) -> dict[str, Any]:
+        return self._ui_state_coordinator_for_manager().sidebar_meta_set(session_id, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id)
 
-    def edit_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._ui_state_coordinator_for_manager().edit_session(*args, **kwargs)
+    def edit_session(self, session_id: str, *, name: str, priority_offset: Any, snooze_until: Any, dependency_session_id: Any) -> tuple[str, dict[str, Any]]:
+        return self._ui_state_coordinator_for_manager().edit_session(session_id, name=name, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id)
 
-    def _prune_stale_socket_without_metadata(self, *args: Any, **kwargs: Any) -> Any:
-        return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(*args, **kwargs)
+    def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
+        return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(session_id, sock)
 
-    def _clear_deleted_session_state(self, *args: Any, **kwargs: Any) -> Any:
-        return self._cleanup_coordinator_for_manager().clear_deleted_session_state(*args, **kwargs)
+    def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False, cwd: str = '') -> None:
+        return self._cleanup_coordinator_for_manager().clear_deleted_session_state(session_id, clear_recovery=clear_recovery, cwd=cwd)
 
-    def _set_pending_attachment(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().set_pending_attachment(*args, **kwargs)
+    def _set_pending_attachment(self, session_id: str, value: bool) -> None:
+        return self._pending_state_coordinator_for_manager().set_pending_attachment(session_id, value)
 
-    def list_staged_attachments(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().list_staged_attachments(*args, **kwargs)
+    def list_staged_attachments(self, session_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().list_staged_attachments(session_id)
 
-    def add_staged_attachment(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().add_staged_attachment(*args, **kwargs)
+    def add_staged_attachment(self, session_id: str, *, display_name: str, filename: str, path: Path, size: int, created_ts: float) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().add_staged_attachment(session_id, display_name=display_name, filename=filename, path=path, size=size, created_ts=created_ts)
 
-    def remove_staged_attachment(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().remove_staged_attachment(*args, **kwargs)
+    def remove_staged_attachment(self, session_id: str, attachment_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().remove_staged_attachment(session_id, attachment_id)
 
-    def clear_staged_attachments(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().clear_staged_attachments(*args, **kwargs)
+    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().clear_staged_attachments(session_id, delete_files=delete_files)
 
-    def clear_pending_attachment(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().clear_pending_attachment(*args, **kwargs)
+    def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().clear_pending_attachment(session_id)
 
-    def _clean_commit_unknown_send_record(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(*args, **kwargs)
+    def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
+        return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(raw)
 
-    def _set_commit_unknown_send(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().set_commit_unknown_send(*args, **kwargs)
+    def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
+        return self._pending_state_coordinator_for_manager().set_commit_unknown_send(session_id, record)
 
-    def clear_commit_unknown_send(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().clear_commit_unknown_send(*args, **kwargs)
+    def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().clear_commit_unknown_send(session_id)
 
-    def _prune_missing_commit_unknown_sends(self, *args: Any, **kwargs: Any) -> Any:
-        return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(*args, **kwargs)
+    def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float | None = None) -> bool:
+        return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(max_age_seconds=max_age_seconds)
 
-    def _remember_recent_cwd(self, *args: Any, **kwargs: Any) -> Any:
-        return self._recent_cwd_coordinator_for_manager().remember(*args, **kwargs)
+    def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
+        return self._recent_cwd_coordinator_for_manager().remember(cwd, ts=ts)
 
-    def _backfill_recent_cwds_from_logs(self, *args: Any, **kwargs: Any) -> Any:
-        return self._recent_cwd_coordinator_for_manager().backfill_from_logs(*args, **kwargs)
+    def _backfill_recent_cwds_from_logs(self) -> None:
+        return self._recent_cwd_coordinator_for_manager().backfill_from_logs()
 
-    def recent_cwds(self, *args: Any, **kwargs: Any) -> Any:
-        return self._recent_cwd_coordinator_for_manager().list_recent(*args, **kwargs)
+    def recent_cwds(self, *, limit: int | None = None) -> list[str]:
+        return self._recent_cwd_coordinator_for_manager().list_recent(limit=limit)
 
-    def _queue_len(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().queue_len(*args, **kwargs)
+    def _queue_len(self, session_id: str) -> int:
+        return self._queue_coordinator_for_manager().queue_len(session_id)
 
-    def _mark_queue_orphan_recovery_locked(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().mark_orphan_recovery_locked(*args, **kwargs)
+    def _mark_queue_orphan_recovery_locked(self, session_id: str) -> bool:
+        return self._queue_coordinator_for_manager().mark_orphan_recovery_locked(session_id)
 
-    def _queue_has_recovery_items_locked(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().has_recovery_items_locked(*args, **kwargs)
+    def _queue_has_recovery_items_locked(self, session_id: str) -> bool:
+        return self._queue_coordinator_for_manager().has_recovery_items_locked(session_id)
 
-    def _queue_list_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().list_local(*args, **kwargs)
 
-    def _queue_append_item_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().append_item_local(*args, **kwargs)
 
-    def _queue_enqueue_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().enqueue_local(*args, **kwargs)
 
-    def _queue_delete_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().delete_local(*args, **kwargs)
 
-    def _queue_update_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().update_local(*args, **kwargs)
 
-    def _queue_move_local(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().move_local(*args, **kwargs)
 
-    def _queue_session_state(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().session_state(*args, **kwargs)
 
-    def _promote_queue_head_if_sendable(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().promote_head_if_sendable(*args, **kwargs)
+    def _promote_queue_head_if_sendable(self, session_id: str, *, require_idle_grace: bool, now_ts: float | None = None, expected_item_id: str | None = None) -> dict[str, Any] | None:
+        return self._queue_coordinator_for_manager().promote_head_if_sendable(session_id, require_idle_grace=require_idle_grace, now_ts=now_ts, expected_item_id=expected_item_id)
 
-    def _runtime_status_from_state_and_log(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().runtime_status_from_state_and_log(*args, **kwargs)
+    def _runtime_status_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> RuntimeStatus:
+        return self._readiness_coordinator_for_manager().runtime_status_from_state_and_log(session_id, state, log_path)
 
-    def _remote_ready_from_state_and_log(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().remote_ready_from_state_and_log(*args, **kwargs)
+    def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
+        return self._readiness_coordinator_for_manager().remote_ready_from_state_and_log(session_id, state, log_path)
 
-    def _remote_state_after_metadata_probe(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().remote_state_after_metadata_probe(*args, **kwargs)
 
-    def _send_remote_ready(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().send_remote_ready(*args, **kwargs)
+    def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
+        return self._readiness_coordinator_for_manager().send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment)
 
-    def _queue_remote_ready(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().queue_remote_ready(*args, **kwargs)
+    def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
+        return self._readiness_coordinator_for_manager().queue_remote_ready(session_id, log_path=log_path)
 
-    def attachment_staging_ready(self, *args: Any, **kwargs: Any) -> Any:
-        return self._readiness_coordinator_for_manager().attachment_staging_ready(*args, **kwargs)
+    def attachment_staging_ready(self, session_id: str) -> bool:
+        return self._readiness_coordinator_for_manager().attachment_staging_ready(session_id)
 
-    def _files_key_for_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._files_coordinator_for_manager().files_key_for_session(*args, **kwargs)
 
-    def files_get(self, *args: Any, **kwargs: Any) -> Any:
-        return self._files_coordinator_for_manager().get(*args, **kwargs)
+    def files_get(self, session_id: str) -> list[str]:
+        return self._files_coordinator_for_manager().get(session_id)
 
-    def files_add(self, *args: Any, **kwargs: Any) -> Any:
-        return self._files_coordinator_for_manager().add(*args, **kwargs)
+    def files_add(self, session_id: str, path: str, api_path: str | None = None) -> list[str]:
+        return self._files_coordinator_for_manager().add(session_id, path, api_path)
 
-    def files_clear(self, *args: Any, **kwargs: Any) -> Any:
-        return self._files_coordinator_for_manager().clear(*args, **kwargs)
+    def files_clear(self, session_id: str) -> None:
+        return self._files_coordinator_for_manager().clear(session_id)
 
-    def unattended_get(self, *args: Any, **kwargs: Any) -> Any:
-        return self._unattended_config_coordinator_for_manager().get(*args, **kwargs)
+    def unattended_get(self, session_id: str) -> dict[str, Any]:
+        return self._unattended_config_coordinator_for_manager().get(session_id)
 
-    def unattended_set(self, *args: Any, **kwargs: Any) -> Any:
-        return self._unattended_config_coordinator_for_manager().set(*args, **kwargs)
+    def unattended_set(self, session_id: str, *, enabled: bool | None = None, request: str | None = None, cooldown_minutes: int | None = None, remaining_injections: int | None = None) -> dict[str, Any]:
+        return self._unattended_config_coordinator_for_manager().set(session_id, enabled=enabled, request=request, cooldown_minutes=cooldown_minutes, remaining_injections=remaining_injections)
 
-    def _session_display_name(self, *args: Any, **kwargs: Any) -> Any:
-        return self._voice_runtime_for_manager().session_display_name(*args, **kwargs)
 
-    def _observe_rollout_delta(self, *args: Any, **kwargs: Any) -> Any:
-        return self._voice_runtime_for_manager().observe_rollout_delta(*args, **kwargs)
 
-    def _voice_push_scan_sweep(self, *args: Any, **kwargs: Any) -> Any:
-        return self._voice_runtime_for_manager().scan_sweep(*args, **kwargs)
+    def _voice_push_scan_sweep(self) -> None:
+        return self._voice_runtime_for_manager().scan_sweep()
 
-    def _unattended_sweep(self, *args: Any, **kwargs: Any) -> Any:
-        return self._unattended_sweep_coordinator_for_manager().sweep(*args, **kwargs)
+    def _unattended_sweep(self) -> None:
+        return self._unattended_sweep_coordinator_for_manager().sweep()
 
-    def _queue_sweep(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_sweep_coordinator_for_manager().sweep(*args, **kwargs)
+    def _queue_sweep(self) -> None:
+        return self._queue_sweep_coordinator_for_manager().sweep()
 
-    def _apply_discovery_result(self, *args: Any, **kwargs: Any) -> Any:
-        return self._discovery_registry_for_manager().apply_result(*args, **kwargs)
+    def _apply_discovery_result(self, result: DiscoveryResult) -> None:
+        return self._discovery_registry_for_manager().apply_result(result)
 
-    def _upsert_discovery_registration(self, *args: Any, **kwargs: Any) -> Any:
-        return self._discovery_registry_for_manager().upsert_registration(*args, **kwargs)
 
-    def _refresh_session_state(self, *args: Any, **kwargs: Any) -> Any:
-        return self._prune_coordinator_for_manager().refresh_session_state(*args, **kwargs)
 
-    def _prune_dead_sessions(self, *args: Any, **kwargs: Any) -> Any:
-        return self._prune_coordinator_for_manager().prune_dead_sessions(*args, **kwargs)
+    def _prune_dead_sessions(self) -> None:
+        return self._prune_coordinator_for_manager().prune_dead_sessions()
 
-    def _update_meta_counters(self, *args: Any, **kwargs: Any) -> Any:
-        return self._log_runtime_for_manager().update_meta_counters(*args, **kwargs)
+    def _update_meta_counters(self) -> None:
+        return self._log_runtime_for_manager().update_meta_counters()
 
-    def list_sessions(self, *args: Any, **kwargs: Any) -> Any:
-        return self._list_coordinator_for_manager().list_sessions(*args, **kwargs)
+    def list_sessions(self) -> list[dict[str, Any]]:
+        return self._list_coordinator_for_manager().list_sessions()
 
-    def _attach_notification_texts(self, *args: Any, **kwargs: Any) -> Any:
-        return self._voice_runtime_for_manager().attach_notification_texts(*args, **kwargs)
+    def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return self._voice_runtime_for_manager().attach_notification_texts(events)
 
-    def commit_log_observation(self, *args: Any, **kwargs: Any) -> Any:
-        return self._log_runtime_for_manager().commit_log_observation(*args, **kwargs)
+    def commit_log_observation(self, session_id: str, observation: LogDerivedSessionObservation) -> bool:
+        return self._log_runtime_for_manager().commit_log_observation(session_id, observation)
 
-    def mark_log_delta(self, *args: Any, **kwargs: Any) -> Any:
-        return self._log_runtime_for_manager().mark_log_delta(*args, **kwargs)
+    def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int, start_off: int = 0, expected_log_path: Path | None = None, revision: tuple[int, int, int, int] | None = None) -> bool:
+        return self._log_runtime_for_manager().mark_log_delta(session_id, objs=objs, new_off=new_off, start_off=start_off, expected_log_path=expected_log_path, revision=revision)
 
-    def idle_from_log(self, *args: Any, **kwargs: Any) -> Any:
-        return self._log_runtime_for_manager().idle_from_log(*args, **kwargs)
+    def idle_from_log(self, session_id: str) -> bool:
+        return self._log_runtime_for_manager().idle_from_log(session_id)
 
-    def idle_from_log_path(self, *args: Any, **kwargs: Any) -> Any:
-        return self._log_runtime_for_manager().idle_from_log_path(*args, **kwargs)
+    def idle_from_log_path(self, session_id: str, log_path: Path) -> bool:
+        return self._log_runtime_for_manager().idle_from_log_path(session_id, log_path)
 
-    def _kill_session_via_pids(self, *args: Any, **kwargs: Any) -> Any:
-        return self._lifecycle_coordinator_for_manager().kill_session_via_pids(*args, **kwargs)
+    def _kill_session_via_pids(self, session: Session) -> bool:
+        return self._lifecycle_coordinator_for_manager().kill_session_via_pids(session)
 
-    def kill_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._lifecycle_coordinator_for_manager().kill_session(*args, **kwargs)
+    def kill_session(self, session_id: str) -> bool:
+        return self._lifecycle_coordinator_for_manager().kill_session(session_id)
 
-    def _live_session_for_resume_target(self, *args: Any, **kwargs: Any) -> Any:
-        return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(*args, **kwargs)
+    def _live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
+        return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(resume_id, resume_row)
 
-    def delete_session(self, *args: Any, **kwargs: Any) -> Any:
-        return self._lifecycle_coordinator_for_manager().delete_session(*args, **kwargs)
+    def delete_session(self, session_id: str) -> bool:
+        return self._lifecycle_coordinator_for_manager().delete_session(session_id)
 
-    def _record_prelog_user_message(self, *args: Any, **kwargs: Any) -> Any:
-        return self._prelog_user_message_recorder_for_manager().record(*args, **kwargs)
+    def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
+        return self._prelog_user_message_recorder_for_manager().record(session, text, source=source)
 
-    def enqueue(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().enqueue(*args, **kwargs)
+    def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        return self._queue_coordinator_for_manager().enqueue(session_id, text)
 
-    def queue_list(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().list_local(*args, **kwargs)
+    def queue_list(self, session_id: str) -> list[dict[str, Any]]:
+        return self._queue_coordinator_for_manager().list_local(session_id)
 
-    def queue_delete(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().delete_local(*args, **kwargs)
+    def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
+        return self._queue_coordinator_for_manager().delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
 
-    def queue_update(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().update_local(*args, **kwargs)
+    def queue_update(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
+        return self._queue_coordinator_for_manager().update_local(session_id, item_id, text)
 
-    def queue_move(self, *args: Any, **kwargs: Any) -> Any:
-        return self._queue_coordinator_for_manager().move_local(*args, **kwargs)
+    def queue_move(self, session_id: str, item_id: str, to_index: int) -> dict[str, Any]:
+        return self._queue_coordinator_for_manager().move_local(session_id, item_id, to_index)
 
-    def get_state(self, *args: Any, **kwargs: Any) -> Any:
-        return self._control_coordinator_for_manager().get_state(*args, **kwargs)
+    def get_state(self, session_id: str) -> dict[str, Any]:
+        return self._control_coordinator_for_manager().get_state(session_id)
 
-    def get_tail(self, *args: Any, **kwargs: Any) -> Any:
-        return self._control_coordinator_for_manager().get_tail(*args, **kwargs)
+    def get_tail(self, session_id: str) -> str:
+        return self._control_coordinator_for_manager().get_tail(session_id)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)

@@ -9,7 +9,6 @@ from .session_registry import session_registry_for_manager
 
 def seed_manager_in_memory_state(manager: Any) -> None:
     manager._session_store_for_manager().reset_in_memory_state()
-    manager._queue_sweep_cursor = 0
     session_registry_for_manager(manager).input_locks = {}
     manager._include_launch_attempts = True
     manager._unattended_last_injected = {}

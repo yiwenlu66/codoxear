@@ -1200,14 +1200,6 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
         mgr._queues[sid] = [dict(_queue_item("r", "recover"), orphan_recovery=True), _queue_item("n", "normal")]
-
-        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
-            SessionManager.queue_update(mgr, sid, "r", "changed")
-        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
-            SessionManager.queue_move(mgr, sid, "r", 1)
-        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
-            SessionManager.queue_move(mgr, sid, "n", 0)
-
         mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
         mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
         mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
@@ -1220,6 +1212,14 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_files = lambda: None
         mgr._save_sidebar_meta = lambda: None
         mgr._save_recent_cwds = lambda: None
+
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_update(mgr, sid, "r", "changed")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, sid, "r", 1)
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, sid, "n", 0)
+
         row = SessionManager.list_sessions(mgr)[0]
         self.assertFalse(row.get("orphan_recovery", False))
         self.assertTrue(row["queue_recovery"])

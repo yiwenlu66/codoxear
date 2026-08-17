@@ -7,7 +7,7 @@ from .session_model import Session
 from .queue_store import QueueStore
 
 
-@dataclass(frozen=True)
+@dataclass
 class QueueSweepCoordinator:
     lock: Any
     sessions: Callable[[], MutableMapping[str, Session]]
@@ -21,8 +21,7 @@ class QueueSweepCoordinator:
     maybe_drain_session_queue: Callable[[str], bool]
     max_drains_per_sweep: int = 1
     max_attempts_per_sweep: int | None = None
-    queue_sweep_cursor: Callable[[], int] | None = None
-    set_queue_sweep_cursor: Callable[[int], None] | None = None
+    cursor: int = 0
 
     def sweep(self) -> None:
         self.discover_existing_if_stale()
@@ -41,8 +40,7 @@ class QueueSweepCoordinator:
         if dropped or marked_recovery:
             self.save_queues()
         if not session_ids:
-            if self.set_queue_sweep_cursor is not None:
-                self.set_queue_sweep_cursor(0)
+            self.cursor = 0
             return
         max_drains = max(1, int(self.max_drains_per_sweep))
         session_count = len(session_ids)
@@ -50,9 +48,7 @@ class QueueSweepCoordinator:
             max_attempts = session_count
         else:
             max_attempts = max(1, min(session_count, int(self.max_attempts_per_sweep)))
-        cursor = 0
-        if self.queue_sweep_cursor is not None:
-            cursor = int(self.queue_sweep_cursor()) % session_count
+        cursor = int(self.cursor) % session_count
         drained = 0
         attempts = 0
         next_cursor = cursor
@@ -66,5 +62,5 @@ class QueueSweepCoordinator:
                 drained += 1
                 if drained >= max_drains:
                     break
-        if self.set_queue_sweep_cursor is not None and attempts:
-            self.set_queue_sweep_cursor(next_cursor)
+        if attempts:
+            self.cursor = next_cursor

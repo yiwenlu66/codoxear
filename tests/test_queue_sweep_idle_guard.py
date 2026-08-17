@@ -408,15 +408,7 @@ class TestQueueSweepOrchestration(unittest.TestCase):
         maybe_drain_session_queue,
         max_drains_per_sweep: int = QUEUE_SWEEP_MAX_DRAINS,
         max_attempts_per_sweep: int | None = QUEUE_SWEEP_MAX_ATTEMPTS,
-    ) -> tuple[QueueSweepCoordinator, list[int]]:
-        cursor_box: list[int] = [0]
-
-        def queue_sweep_cursor() -> int:
-            return cursor_box[0]
-
-        def set_queue_sweep_cursor(value: int) -> None:
-            cursor_box[0] = int(value)
-
+    ) -> QueueSweepCoordinator:
         coord = QueueSweepCoordinator(
             lock=harness._lock,
             sessions=lambda: harness.sessions,
@@ -430,10 +422,8 @@ class TestQueueSweepOrchestration(unittest.TestCase):
             maybe_drain_session_queue=maybe_drain_session_queue,
             max_drains_per_sweep=max_drains_per_sweep,
             max_attempts_per_sweep=max_attempts_per_sweep,
-            queue_sweep_cursor=queue_sweep_cursor,
-            set_queue_sweep_cursor=set_queue_sweep_cursor,
         )
-        return coord, cursor_box
+        return coord
 
     def test_queue_sweep_drains_multiple_ready_sessions_up_to_budget(self) -> None:
         # Formerly: three idle+ready sessions, QUEUE_SWEEP_MAX_DRAINS=2 -> only
@@ -472,7 +462,7 @@ class TestQueueSweepOrchestration(unittest.TestCase):
                     )
                 )
 
-            sweep_coord, cursor_box = self._sweep_coordinator(
+            sweep_coord = self._sweep_coordinator(
                 h,
                 maybe_drain_session_queue=maybe_drain,
                 max_drains_per_sweep=2,
@@ -483,7 +473,7 @@ class TestQueueSweepOrchestration(unittest.TestCase):
             self.assertEqual(sent, [("s1", "queued-1"), ("s2", "queued-2")])
             self.assertNotContains("s1", h.queues)
             self.assertNotContains("s2", h.queues)
-            self.assertEqual(cursor_box[0], 2)
+            self.assertEqual(sweep_coord.cursor, 2)
             self.assertEqual([item["text"] for item in h.queues["s3"]], ["queued-3"])
 
     def test_queue_sweep_attempt_budget_rotates_past_unready_prefix(self) -> None:
@@ -509,7 +499,7 @@ class TestQueueSweepOrchestration(unittest.TestCase):
                 attempts.append(session_id)
                 return session_id == "s3"
 
-            sweep_coord, cursor_box = self._sweep_coordinator(
+            sweep_coord = self._sweep_coordinator(
                 h,
                 maybe_drain_session_queue=maybe_drain,
                 max_drains_per_sweep=1,
@@ -518,12 +508,12 @@ class TestQueueSweepOrchestration(unittest.TestCase):
 
             sweep_coord.sweep()
             self.assertEqual(attempts, ["s1", "s2"])
-            self.assertEqual(cursor_box[0], 2)
+            self.assertEqual(sweep_coord.cursor, 2)
 
             attempts.clear()
             sweep_coord.sweep()
             self.assertEqual(attempts, ["s3"])
-            self.assertEqual(cursor_box[0], 3)
+            self.assertEqual(sweep_coord.cursor, 3)
 
 
 if __name__ == "__main__":
