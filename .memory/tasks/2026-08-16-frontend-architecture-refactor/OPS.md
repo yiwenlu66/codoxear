@@ -350,3 +350,24 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   + ui_flows PASS (912f58db), behavior judged "identical" across all
   phases by live Docker browser subagents, all adversarial reviews
   adjudicated to zero open objections.
+- FINAL ACCEPTANCE AUDIT (critic sol, 48e1f2f9): REJECTED the completion
+  declaration with 7 numbered objections. ADJUDICATION: accepted 6 —
+  ratchet not monotonic across commits (subset-vs-HEAD only guards
+  uncommitted changes; hardened to reason-required entries + pinned
+  counts + tripwire test + documented boundary), sidebar active class
+  and title initial-writer splits (unified into single writer functions
+  invoked at construction and on change), dead queue render relays
+  (removed with their export), dead selector key prefersReducedMotion
+  (full 83-selector overcoverage sweep found only that one),
+  isSidebarOpen undocumented input (made explicit), app.js impossible
+  load guard (removed — app.js itself was missed in Phase 1). REJECTED:
+  const-global retention (verified live fallbacks, recorded). Docs
+  promoted to canonical AGENTS.md/README/ARCHITECTURE.md (opus
+  executor) including the initial-render rule. Revision 6fae1114.
+  Docker PASS. Re-audit for final verdict dispatched (359a81bc).
+- FINAL ACCEPTANCE RE-AUDIT (359a81bc): ACCEPT — all seven criteria
+  pass (guards+ratchet, single owners/writers, topbar litmus, honest
+  wiring map, backend ordered projection, plan phases/invariants,
+  behavior parity). No blocking findings. Declared boundaries stand:
+  truncate-regrow, geometry #30/#31, VM projection, bounded backend
+  audit. TASK CLOSED at 6fae1114.
