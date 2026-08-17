@@ -202,3 +202,37 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   allowlisted with mandatory reason (0a284514).
 - PHASE 3 GATE: suite 1690 green, guard clean, docker_verify PASS
   (eb9fa9a8). Adversarial review + behavior-interaction subagent next.
+- Phase 3 adversarial review (critic sol, cceb6609): 7 objections.
+  ADJUDICATION — ACCEPT: (1) idle subagent row never materializes
+  (subscription split visibility from gauge); (2) guard lacks call-site
+  coverage — the attachments-crash class; (3) attachment button stale on
+  session switch mid-send (reads store, no subscription); (4) third
+  channels: imperative render calls duplicating subscriptions;
+  (5) sidebar active class still two DOM writers; (6) applyRuntime
+  notifies per field (2 renders/patch vs old 1). REJECT (too harsh for
+  this phase): (7) sessionState pass-through in ChatInteraction —
+  construction-tree pattern, Phase 5 scope.
+- INDEPENDENT behavior finding (executor, live Docker browser): typing
+  row stuck "working" 12s after interrupt while sidebar went idle —
+  pre-Phase-3 parity broken, invisible to deterministic gates.
+- Revision wave 1 (sol executor): Bug A root cause = selected-session
+  store write trapped behind transcript-identity reconciliation
+  (`if (!slotChange.resetPending) return`); session refresh now applies
+  selected-session runtime on EVERY fresh list response; Bug B fixed via
+  createTypingRowStoreProjection (subagent transitions drive visibility
+  per app_transcript.js semantics). Guard wave: select-callsite-coverage
+  check added. Main agent overruled an executor's allowlist entry for
+  stale selector key updateQueueBadge — deleted the key instead
+  (allowlist is not for contract drift). Commit 780debde.
+- Behavior re-verification (same executor, same flow): interrupt →
+  API busy:false → sidebar idle → typing row absent at +12s. PASS.
+- Revision wave 2: attachments subscribe sending/selected; redundant
+  imperative renders removed (message_history queue badge, message_flow
+  composer/attach syncs); queue mutations write sessionState.queueLen
+  (store is queueLen's single authority for the badge); sidebar owns
+  active class via selected subscription (imperative setActiveSession
+  dead); applyRuntime notifies each shared subscriber once per patch.
+  Commit d95da129.
+- PHASE 3 COMPLETE: suite 1697 green, guard clean (incl. callsite
+  coverage), docker_verify PASS + ui_flows OBSERVED (d95da129), live
+  behavior re-verified, adversarial review adjudicated to zero.

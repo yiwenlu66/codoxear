@@ -33,9 +33,28 @@ change single-module by construction.
 - A minimal per-field get/set/subscribe session-state store is justified over
   continued closure getter/setter plumbing: it makes state authority structural
   and eliminates cross-module renderer calls. Deliberately small — no events
-  bus, no middleware.
+  bus, no middleware. VALIDATED through Phase 3: 70 accessor incidences
+  eliminated, nine dual-channel surfaces reduced to store subscriptions (after
+  two revision waves caught by adversarial review + live behavior checks).
 - Guards with a shrink-only allowlist ratchet are the mechanism that keeps
-  garbage from regrowing; cleanup without the ratchet re-fills.
+  garbage from regrowing; cleanup without the ratchet re-fills. VALIDATED:
+  the ratchet caught zero regressions itself, but its expansions
+  (undercoverage, unbound-value, callsite-coverage) systematically surfaced
+  the latent defect classes the behavior gate kept finding.
+
+## Phase 3 lessons absorbed
+- The dominant defect class of explicit wiring is option-literal mismatch:
+  unbound values, case typos, missing call-site keys, stale selector keys.
+  Now guarded statically in all four variants.
+- Subscriptions must own BOTH the data and the visibility/materialization of
+  their widget — splitting them across subscriptions recreates dual-channel
+  bugs in subtler form (Bug B).
+- A store write gated behind an unrelated reconciliation condition silently
+  traps liveness (Bug A); runtime projection must be unconditional per fresh
+  snapshot.
+- The behavior gate (live Docker browser) is the only check that has caught
+  every integration-level regression class at least once; deterministic gates
+  each have blind spots the others cover.
 
 ## Ruled out
 - Replacing DI with imports/globals/framework (breaks the test injection seams).
