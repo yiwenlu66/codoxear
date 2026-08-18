@@ -59,6 +59,7 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(len(st.ignored_rollout_paths) >= 1)
         self.assertEqual(st.last_interrupt_request_ts, 0.0)
         self.assertEqual(st.last_interrupted_idle_ts, 0.0)
+        self.assertIsNone(st.send_latch_log_off)
 
     def test_codex_detach_trigger_matches_across_chunk_boundary(self) -> None:
         st = _state()
@@ -71,6 +72,85 @@ class TestBrokerBusyState(unittest.TestCase):
             agent_backend="codex",
         )
         self.assertTrue(ok)
+
+    def test_log_rebind_resets_send_latch_offset(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "new.jsonl"
+            log_path.write_text(json.dumps({"type": "session", "id": "new"}) + "\n", encoding="utf-8")
+            st = _state()
+            st.log_path = Path(td) / "old.jsonl"
+            st.last_rollout_path = st.log_path
+            st.send_latch_log_off = 17
+            seed = _seed_broker_log_state(log_path=log_path, agent_backend="pi")
+
+            _apply_broker_log_binding_to_state(
+                st,
+                binding=BrokerLogBinding(log_path=log_path, session_id="new"),
+                seed=seed,
+                now_ts=10.0,
+            )
+
+            self.assertIsNone(st.send_latch_log_off)
+
+    def _rebind_with_latch(self, td: str, *, new_rows: list[dict], log_grew: bool) -> State:
+        new_log = Path(td) / "new.jsonl"
+        new_log.write_text("".join(json.dumps(row) + "\n" for row in new_rows), encoding="utf-8")
+        st = _state()
+        st.log_path = Path(td) / "old.jsonl"
+        st.last_rollout_path = st.log_path
+        st.busy = True
+        st.turn_open = True
+        st.log_off = 42
+        st.send_latch_log_off = 42 if not log_grew else 41
+        seed = _seed_broker_log_state(log_path=new_log, agent_backend="pi")
+        result = _apply_broker_log_binding_to_state(
+            st,
+            binding=BrokerLogBinding(log_path=new_log, session_id="new"),
+            seed=seed,
+            now_ts=10.0,
+        )
+        self.assertIsNotNone(result)
+        return st
+
+    def test_rebind_closes_unfulfilled_send_latch_when_new_log_has_no_turn(self) -> None:
+        with TemporaryDirectory() as td:
+            st = self._rebind_with_latch(
+                td,
+                new_rows=[{"type": "session", "id": "new", "cwd": "/tmp", "timestamp": "2026-01-01T00:00:00.000Z"}],
+                log_grew=False,
+            )
+            self.assertFalse(st.busy)
+            self.assertFalse(st.turn_open)
+            self.assertIsNone(st.send_latch_log_off)
+
+    def test_rebind_preserves_latched_busy_when_new_log_shows_open_turn(self) -> None:
+        with TemporaryDirectory() as td:
+            st = self._rebind_with_latch(
+                td,
+                new_rows=[
+                    {"type": "session", "id": "new", "cwd": "/tmp", "timestamp": "2026-01-01T00:00:00.000Z"},
+                    {
+                        "type": "message",
+                        "id": "u1",
+                        "parentId": None,
+                        "timestamp": "2026-01-01T00:00:01.000Z",
+                        "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                    },
+                ],
+                log_grew=False,
+            )
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
+
+    def test_rebind_preserves_busy_when_log_grew_since_latch(self) -> None:
+        with TemporaryDirectory() as td:
+            st = self._rebind_with_latch(
+                td,
+                new_rows=[{"type": "session", "id": "new", "cwd": "/tmp", "timestamp": "2026-01-01T00:00:00.000Z"}],
+                log_grew=True,
+            )
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
 
     def test_pi_status_text_does_not_detach_rollout(self) -> None:
         st = _state()
@@ -182,6 +262,27 @@ class TestBrokerBusyState(unittest.TestCase):
             {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
             now_ts=10.0,
         )
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 60.0))
+
+    def test_send_latch_without_log_growth_clears_after_quiet_window(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.log_off = 42
+        st.send_latch_log_off = 42
+        st.last_turn_activity_ts = 10.0
+
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS - 0.01))
+        self.assertTrue(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS))
+
+    def test_send_latch_with_log_growth_keeps_no_candidate_turn_busy(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.log_off = 43
+        st.send_latch_log_off = 42
+        st.last_turn_activity_ts = 10.0
+
         self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 60.0))
 
     def test_explicit_interrupt_request_can_clear_no_candidate_turn_after_quiet(self) -> None:

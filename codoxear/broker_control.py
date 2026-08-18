@@ -67,10 +67,12 @@ def _handle_broker_control_connection(
             prev_last_pi_retry_hint_ts = st.last_pi_retry_hint_ts
             prev_pi_retry_status_active = st.pi_retry_status_active
             prev_last_turn_activity_ts = st.last_turn_activity_ts
+            prev_send_latch_log_off = st.send_latch_log_off
             _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
+            st.send_latch_log_off = st.log_off
             if not prev_busy and not prev_turn_open:
                 st.turn_has_completion_candidate = False
                 st.last_interrupt_hint_ts = 0.0
@@ -93,6 +95,7 @@ def _handle_broker_control_connection(
                     st.last_pi_retry_hint_ts = prev_last_pi_retry_hint_ts
                     st.pi_retry_status_active = prev_pi_retry_status_active
                     st.last_turn_activity_ts = prev_last_turn_activity_ts
+                    st.send_latch_log_off = prev_send_latch_log_off
 
         if sync_commit:
             if fd is None:

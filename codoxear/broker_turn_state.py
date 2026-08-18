@@ -146,8 +146,9 @@ def _should_clear_busy_state(
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
         if st.last_interrupt_request_ts <= 0.0:
-            return False
-        if (now_ts - st.last_interrupt_request_ts) < busy_interrupt_grace_seconds:
+            if st.send_latch_log_off is None or st.log_off != st.send_latch_log_off:
+                return False
+        elif (now_ts - st.last_interrupt_request_ts) < busy_interrupt_grace_seconds:
             return False
     if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < busy_interrupt_grace_seconds:
         return False
@@ -480,6 +481,7 @@ class State:
     shell_pre_exec_marker_tail: bytes = b""
     prelog_failure_recorded: bool = False
     log_off: int = 0
+    send_latch_log_off: int | None = None
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
     last_interrupt_hint_ts: float = 0.0

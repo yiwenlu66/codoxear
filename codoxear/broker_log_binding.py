@@ -189,6 +189,19 @@ def _apply_broker_log_binding_to_state(
     st.last_rollout_path = lp
     have_sock = st.sock_path is not None
     prev_lp = st.log_path
+    # A send latch that produced no log activity (no growth, no pending calls,
+    # no completion candidate) predicts a turn that never existed. The latch
+    # belongs to the previous log, so a binding switch must not carry it
+    # forward: when the new log's seed shows no open turn either, close the
+    # turn state instead of leaving a permanently latched busy.
+    latch_only = bool(
+        prev_lp is not None
+        and not _paths_match(prev_lp, lp)
+        and st.send_latch_log_off is not None
+        and st.log_off == st.send_latch_log_off
+        and not st.pending_calls
+        and not st.turn_has_completion_candidate
+    )
     if prev_lp is None or not _paths_match(prev_lp, lp):
         st.last_interrupt_request_ts = 0.0
         st.last_interrupted_idle_ts = 0.0
@@ -197,6 +210,7 @@ def _apply_broker_log_binding_to_state(
     st.log_path = lp
     st.known_rollout_paths.add(lp)
     st.log_off = seed.log_offset
+    st.send_latch_log_off = None
     st.pending_calls = set(seed.pending_calls)
     if seed.pending_calls or seed.idle is False:
         st.busy = True
@@ -204,7 +218,7 @@ def _apply_broker_log_binding_to_state(
         st.turn_has_completion_candidate = False
         if seed.pi_error_pending:
             st.last_pi_error_probe_ts = now_ts
-    elif seed.idle is True:
+    elif seed.idle is True or latch_only:
         _close_turn_state(st)
     return BrokerLogStateApplyResult(have_sock=have_sock, previous_log_path=prev_lp)
 
@@ -216,6 +230,7 @@ def _detach_current_session_binding(st: "State") -> None:
     st.log_path = None
     st.session_id = None
     st.log_off = 0
+    st.send_latch_log_off = None
     st.last_interrupt_request_ts = 0.0
     st.last_interrupted_idle_ts = 0.0
     _clear_pi_error_probe(st)
