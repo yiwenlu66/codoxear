@@ -28,6 +28,7 @@
     const getMessageRowDeps = requireFunction(options.getMessageRowDeps, "getMessageRowDeps");
     const getSelectedSessionId = requireFunction(options.getSelectedSessionId, "getSelectedSessionId");
     const policyRuntime = requireObject(options.policyRuntime, "policyRuntime");
+    const afterReplace = typeof options.afterReplace === "function" ? options.afterReplace : null;
     const domRuntime = requireObject(policyRuntime.domRuntime, "policyRuntime.domRuntime");
     const scrollRuntime = requireObject(policyRuntime.scrollRuntime, "policyRuntime.scrollRuntime");
     const setOlderState = requireFunction(policyRuntime.setOlderState, "policyRuntime.setOlderState");
@@ -154,6 +155,9 @@
         scrollRuntime.scheduleScrollToBottom({ double: true });
       }
       enter(detached ? VIEW_STATES.BROWSING : VIEW_STATES.LIVE);
+      // DOM replacement detaches store-projected rows (typing/subagent activity);
+      // their owner re-projects from the state authority after every rebuild.
+      if (typeof afterReplace === "function") afterReplace();
       return changed;
     }
 
@@ -168,6 +172,7 @@
       scrollRuntime.enableAutoScroll();
       scrollRuntime.markLiveTail();
       enter(VIEW_STATES.LIVE);
+      if (typeof afterReplace === "function") afterReplace();
     }
 
     function replaceWithLoading({ cursor = null, nextHasMore = false } = {}) {

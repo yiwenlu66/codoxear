@@ -13,6 +13,7 @@ APP_POLLING_JS = module_path("app_polling.js")
 APP_COMPOSER_JS = module_path("app_composer.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
 APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
+APP_TRANSCRIPT_VIEW_JS = module_path("app_transcript_view.js")
 APP_CHAT_SEARCH_JS = module_path("app_chat_search.js")
 APP_MESSAGE_HISTORY_RUNTIME_JS = module_path("app_message_history.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
@@ -425,6 +426,137 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "initial": {"children": 1, "activityRows": 0},
             "afterOne": {"children": 2, "activityRows": 1, "text": "▸1 subagent working"},
             "afterZero": {"children": 1, "activityRows": 0},
+        })
+
+    def test_transcript_replacement_reprojects_busy_typing_row_from_store(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
+        transcript_view_source = APP_TRANSCRIPT_VIEW_JS.read_text(encoding="utf-8")
+        session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_render_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_view_source)}, ctx);
+
+            function connectTree(node, connected) {{
+              node.isConnected = connected;
+              for (const child of node.children || []) connectTree(child, connected);
+            }}
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, parentNode: null }};
+              out.appendChild = (child) => {{
+                if (child.parentNode) child.parentNode.children = child.parentNode.children.filter((item) => item !== child);
+                out.children.push(child);
+                child.parentNode = out;
+                connectTree(child, out.isConnected);
+                return child;
+              }};
+              out.insertBefore = (child, before) => {{
+                if (child.fragment) {{
+                  for (const fragmentChild of [...child.children]) out.insertBefore(fragmentChild, before);
+                  return child;
+                }}
+                if (child.parentNode) child.parentNode.children = child.parentNode.children.filter((item) => item !== child);
+                const index = out.children.indexOf(before);
+                out.children.splice(index < 0 ? out.children.length : index, 0, child);
+                child.parentNode = out;
+                connectTree(child, out.isConnected);
+                return child;
+              }};
+              out.remove = () => {{
+                if (out.parentNode) out.parentNode.children = out.parentNode.children.filter((item) => item !== out);
+                out.parentNode = null;
+                connectTree(out, false);
+              }};
+              Object.defineProperty(out, "innerHTML", {{
+                get: () => "",
+                set: () => {{
+                  for (const child of out.children) {{ child.parentNode = null; connectTree(child, false); }}
+                  out.children = [];
+                }},
+              }});
+              Object.defineProperty(out, "nextSibling", {{
+                get: () => out.parentNode ? out.parentNode.children[out.parentNode.children.indexOf(out) + 1] || null : null,
+              }});
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+
+            const root = node();
+            root.isConnected = true;
+            const bottom = node();
+            root.appendChild(bottom);
+            const el = (_tag, attrs = {{}}, children = []) => {{
+              const out = node(attrs, children);
+              if (typeof attrs.text === "string") out.textContent = attrs.text;
+              return out;
+            }};
+            const typingRowRuntime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: bottom, el,
+              shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
+            }});
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            sessionState.set("selected", "sid");
+            const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
+            const scrollRuntime = {{
+              shouldStickToBottom: () => true, snapshot: () => ({{ autoScroll: true, renderedAtLiveTail: true }}),
+              syncJumpButton: () => {{}}, scheduleScrollToBottom: () => {{}}, markLiveTail: () => {{}},
+              disableAutoScroll: () => {{}}, setRenderedAtLiveTail: () => {{}}, setScrollTop: () => {{}},
+              enableAutoScroll: () => {{}},
+            }};
+            const domRuntime = {{ clear: () => {{ root.innerHTML = ""; root.appendChild(bottom); }}, rebuildDecorations: () => {{}}, trimRenderedRows: () => {{}} }};
+            const view = ctx.window.CodoxearTranscriptView.createTranscriptViewController({{
+              root, bottomSentinel: bottom, document: {{ createDocumentFragment: () => ({{ fragment: true, children: [], appendChild(child) {{ this.children.push(child); return child; }} }}) }}, el,
+              messageRows: {{ safeMakeRow: (event) => ({{ row: node({{ class: `msg-row ${{event.role}}`, dataset: {{ messageId: event.message_id || "" }} }}) }}), renderedMessageRows: () => [] }},
+              transcript: ctx.window.CodoxearTranscript, getSelectedSessionId: () => sessionState.get("selected"), getMessageRowDeps: () => ({{}}),
+              afterReplace: () => projection.sync(),
+              policyRuntime: {{ domRuntime, scrollRuntime, setOlderState: () => {{}}, getScrollTop: () => 0 }},
+              renderRuntime: {{
+                normalizeEvents: (events) => events, consumePendingUserIfMatches: () => false,
+                isDuplicateEvent: () => false, isAdjacentAssistantDuplicateEvent: () => false, markEventSeen: () => {{}}, markFirstPaint: () => {{}},
+                restorePendingRows: () => {{}}, resetRecentEvents: () => {{}}, setOlderState: () => {{}}, firstVisibleMessageRow: () => null,
+                getScrollTop: () => 0, getSelectedSessionId: () => sessionState.get("selected"), domRuntime, scrollRuntime, typingRowRuntime, historySlackRows: 10,
+              }},
+            }});
+            const rows = () => root.children.map((child) => String(child.class || ""));
+            sessionState.set("running", true);
+            const before = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            view.replaceWith([{{ role: "assistant", text: "saved response", message_id: "a1" }}]);
+            const afterEvents = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            view.replaceWithLoading();
+            const afterLoading = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            sessionState.set("running", false);
+            view.replaceWith([{{ role: "assistant", text: "idle response", message_id: "a2" }}]);
+            const afterIdleReplacement = {{ connected: typingRowRuntime.snapshot().connected, rows: rows() }};
+            projection.dispose();
+            process.stdout.write(JSON.stringify({{ before, afterEvents, afterLoading, afterIdleReplacement }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "before": {
+                "connected": True,
+                "rows": ["msg-row assistant typing-row", ""],
+                "text": "working",
+            },
+            "afterEvents": {
+                "connected": True,
+                "rows": ["msg-row assistant", "msg-row assistant typing-row", ""],
+                "text": "working",
+            },
+            "afterLoading": {
+                "connected": True,
+                "rows": ["msg-row assistant typing-row transcript-loading-row", "msg-row assistant typing-row", ""],
+                "text": "working",
+            },
+            "afterIdleReplacement": {
+                "connected": False,
+                "rows": ["msg-row assistant", ""],
+            },
         })
 
     def test_typing_token_mode_requires_authoritative_positive_tokens(self) -> None:

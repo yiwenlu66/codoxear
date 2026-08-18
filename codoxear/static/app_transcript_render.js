@@ -792,6 +792,7 @@ transcriptViewController = CodoxearTranscriptView.createTranscriptViewController
   messageRows: CodoxearMessageRows,
   transcript: CodoxearTranscript,
   getSelectedSessionId: () => sessionState.get("selected"),
+  afterReplace: () => syncTypingRowRuntime(),
   getMessageRowDeps: messageRowDeps,
   policyRuntime: {
     domRuntime: transcriptDomRuntime,
