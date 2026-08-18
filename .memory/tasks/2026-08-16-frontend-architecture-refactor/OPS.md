@@ -371,3 +371,17 @@ Append-only evidence trail. Cross-reference EPISTEMIC.md.
   behavior parity). No blocking findings. Declared boundaries stand:
   truncate-regrow, geometry #30/#31, VM projection, bounded backend
   audit. TASK CLOSED at 6fae1114.
+- POST-RELEASE REGRESSION (user report, 2026-08-18): busy bubble
+  missing when a session is already busy at load/reload. Mechanism:
+  subscriptions fire on value CHANGE, but transcript DOM replacement
+  detaches the typing row; an unchanged running value means no
+  notification re-inserts it. The one case neither phase gate covered:
+  gates always sent messages (idle→busy transitions), never loaded the
+  UI into an already-busy session. Fix: afterReplace hook in the
+  transcript view re-projects the typing projection after every DOM
+  rebuild (da720b89). Regression test counterfactual-verified; live
+  Docker browser repro of the exact scenario PASS (busy → reload →
+  bubble present; completion clears). Deployed da720b89.
+- LESSON: fire-on-change subscriptions need a re-projection trigger
+  whenever their host DOM is rebuilt. The initial-render rule now
+  covers construction AND host rebuild.
