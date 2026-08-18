@@ -70,20 +70,39 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                       getThinkingLevel() { return thinking; },
                       setThinkingLevel(level) { thinking = level; },
                     };
-                    const ctx = {
+                    const header = { type: "session", id: "session-id", cwd: "/tmp", timestamp: "2026-01-01T00:00:00.000Z" };
+                    const newSessionPath = process.env.NEW_SESSION_PATH;
+                    const makeCtx = (sessionFile, fileEntries = [header]) => ({
                       sessionManager: {
-                        getSessionFile() { return "/tmp/session.jsonl"; },
+                        getSessionFile() { return sessionFile; },
                         getSessionId() { return "session-id"; },
                         getCwd() { return "/tmp"; },
+                        fileEntries,
+                        flushed: false,
                       },
                       ui: { notify() {} },
-                    };
+                    });
+                    const ctx = makeCtx("/tmp/session.jsonl");
+                    const newCtx = makeCtx(newSessionPath);
+                    const resumePath = `${newSessionPath}.resume`;
+                    const resumeCtx = makeCtx(resumePath);
+                    const forkPath = `${newSessionPath}.fork`;
+                    const forkCtx = makeCtx(forkPath);
+                    const invalidPath = `${newSessionPath}.invalid`;
+                    const invalidCtx = makeCtx(invalidPath, [{ type: "message" }]);
                     const capsPath = `${process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE}.caps`;
                     const readCaps = () => JSON.parse(fs.readFileSync(capsPath, "utf8"));
 
                     bridge(pi);
                     const commandCallsAtLoad = commandCalls;
-                    handlers.get("session_start")({ type: "session_start" }, ctx);
+                    handlers.get("session_start")({ type: "session_start", reason: "startup" }, ctx);
+                    const initialMaterialized = fs.existsSync(newSessionPath);
+                    handlers.get("session_start")({ type: "session_start", reason: "new" }, newCtx);
+                    const newSessionRows = fs.readFileSync(newSessionPath, "utf8").trim().split("\\n").map(JSON.parse);
+                    handlers.get("session_start")({ type: "session_start", reason: "new" }, newCtx);
+                    handlers.get("session_start")({ type: "session_start", reason: "resume" }, resumeCtx);
+                    handlers.get("session_start")({ type: "session_start", reason: "fork" }, forkCtx);
+                    handlers.get("session_start")({ type: "session_start", reason: "new" }, invalidCtx);
                     handlers.get("turn_end")({ type: "turn_end", turnIndex: 1 });
                     const afterRegistration = readCaps();
                     thinking = "high";
@@ -96,6 +115,12 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                       afterRegistration,
                       afterSettingsChange,
                       mode,
+                      initialMaterialized,
+                      newSessionRows,
+                      newSessionFlushed: newCtx.sessionManager.flushed,
+                      resumeMaterialized: fs.existsSync(resumePath),
+                      forkMaterialized: fs.existsSync(forkPath),
+                      invalidMaterialized: fs.existsSync(invalidPath),
                     }));
                     """
                 ),
@@ -106,7 +131,10 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
-                env={"CODEX_WEB_PI_ACTIVE_SESSION_FILE": str(marker)},
+                env={
+                    "CODEX_WEB_PI_ACTIVE_SESSION_FILE": str(marker),
+                    "NEW_SESSION_PATH": str(temp_dir / "new-session.jsonl"),
+                },
             )
             if result.returncode:
                 raise AssertionError(result.stderr or result.stdout)
@@ -125,6 +153,15 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
         self.assertEqual(observed["afterSettingsChange"]["bridgeVersion"], 2)
         self.assertEqual(observed["afterSettingsChange"]["features"], ["effort", "thinking"])
         self.assertEqual(observed["mode"], 0o600)
+        self.assertFalse(observed["initialMaterialized"])
+        self.assertEqual(
+            observed["newSessionRows"],
+            [{"type": "session", "id": "session-id", "cwd": "/tmp", "timestamp": "2026-01-01T00:00:00.000Z"}],
+        )
+        self.assertTrue(observed["newSessionFlushed"])
+        self.assertFalse(observed["resumeMaterialized"])
+        self.assertFalse(observed["forkMaterialized"])
+        self.assertFalse(observed["invalidMaterialized"])
 
 
 if __name__ == "__main__":

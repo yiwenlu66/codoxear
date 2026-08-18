@@ -155,7 +155,7 @@ rows = payload.get("sessions") if isinstance(payload, dict) else []
 for row in rows if isinstance(rows, list) else []:
     if isinstance(row, dict) and row.get("agent_backend") == "pi":
         value = row.get(sys.argv[2])
-        print(value if isinstance(value, str) else "")
+        print(value if isinstance(value, (str, bool)) else "")
         break
 PY
 }
@@ -322,6 +322,34 @@ for _ in $(seq 1 15); do
 done
 [[ "$new_executed" == "1" ]] || fail "Pi never confirmed the new session; see $artifacts/pi-and-broker.log"
 
+# IMMEDIATE REBIND: the bridge materializes the new session log when Pi
+# executes /new, so the broker rebinds without waiting for a first message:
+# log_path flips, the optimistic send busy-latch clears (no log turn ever
+# existed for the command), and the rendered transcript is replaced with the
+# empty new tail — before any further input.
+immediate_ok=""
+for i in $(seq 1 15); do
+  curl -sS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions-live.json" 2>/dev/null || true
+  new_log_path="$(pi_session_field log_path)"
+  busy_now="$(pi_session_field busy)"
+  if browser eval "$transcript_probe" --json > "$artifacts/transcript-rebind.json" 2>&1; then
+    probe="$(python3 -c '
+import json, sys
+result = json.load(open(sys.argv[1]))["data"]["result"]
+print("1" if result["rows"] == 0 and not result["hasOldText"] else "0")
+' "$artifacts/transcript-rebind.json" 2>/dev/null || true)"
+    if [[ -n "$new_log_path" && "$new_log_path" != "$old_log_path" && "$busy_now" == "False" && "$probe" == "1" ]]; then
+      immediate_ok="1"
+      cp "$artifacts/sessions-live.json" "$artifacts/sessions-after-new.json"
+      printf '%s\n' "$new_log_path" > "$artifacts/new-log-path.txt"
+      printf 'rebind+clear+idle observed after %s poll(s)\n' "$i" > "$artifacts/rebind-timing.txt"
+      break
+    fi
+  fi
+  sleep 1
+done
+[[ "$immediate_ok" == "1" ]] || fail "no immediate rebind/idle/clear after /new; see $artifacts/transcript-rebind.json and $artifacts/sessions-live.json"
+
 first_message="new-session-first-message-$(date +%s)"
 printf '%s\n' "$first_message" > "$artifacts/first-message.txt"
 browser fill '#msg' "$first_message" > "$artifacts/first-fill.txt" 2>&1 || fail "composer was not available for the first message"
@@ -329,9 +357,9 @@ browser click '#sendBtn' > "$artifacts/first-send-click.txt" 2>&1 || fail "send 
 browser wait 800 > "$artifacts/first-send-wait.txt" 2>&1 || fail "browser wait after first send failed"
 browser eval '(() => { const choice = document.querySelector("#sendChoice"); return { composerValue: document.querySelector("#msg")?.value ?? null, toast: document.querySelector("#toast")?.textContent ?? null, sendChoiceOpen: Boolean(choice && getComputedStyle(choice).display === "flex") }; })()' --json > "$artifacts/first-send-state.json" 2>&1 || fail "could not observe post-send state"
 
-# REPLACE: the broker rebinds to the materialized session log (API evidence:
-# log_path changes, session_id stays) and the rendered transcript must be
-# replaced — old rows gone, the new session's first message rendered.
+# REPLACE: with the session already rebound, the first message in the new
+# session must append into the cleared transcript — old rows stay gone, the
+# new session's first message renders.
 transcript_probe="
 (() => {
   const inner = document.querySelector(\"#chatInner\");
@@ -342,17 +370,14 @@ transcript_probe="
 rebind_ok=""
 for i in $(seq 1 30); do
   curl -sS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions-live.json" 2>/dev/null || true
-  new_log_path="$(pi_session_field log_path)"
   if browser eval "$transcript_probe" --json > "$artifacts/transcript-after.json" 2>&1; then
     probe="$(python3 -c '
 import json, sys
 result = json.load(open(sys.argv[1]))["data"]["result"]
 print("1" if result["rows"] >= 1 and not result["hasOldText"] and result["hasNewText"] else "0")
 ' "$artifacts/transcript-after.json" 2>/dev/null || true)"
-    if [[ -n "$new_log_path" && "$new_log_path" != "$old_log_path" && "$probe" == "1" ]]; then
+    if [[ "$probe" == "1" ]]; then
       rebind_ok="1"
-      printf '%s\n' "$new_log_path" > "$artifacts/new-log-path.txt"
-      printf 'rebind-and-replace observed after %s poll(s)\n' "$i" > "$artifacts/rebind-timing.txt"
       break
     fi
   fi
@@ -401,10 +426,15 @@ page_errors = errors.get("data", {}).get("errors") if isinstance(errors, dict) e
 slash_after = read_json("sessions-after.json")
 row_after = next((r for r in slash_after.get("sessions", []) if r.get("agent_backend") == "pi"), {})
 menu_names = {str(c.get("name") or "") for c in row_after.get("slash_commands") or [] if isinstance(c, dict)}
+after_new = read_json("sessions-after-new.json")
+row_after_new = next((r for r in after_new.get("sessions", []) if r.get("agent_backend") == "pi"), {})
+rebind_probe = read_json("transcript-rebind.json")["data"]["result"]
 
 checks = {
     "session_id_stable": row.get("session_id") == session_id,
-    "log_path_changed": isinstance(row.get("log_path"), str) and row["log_path"] != old_log_path,
+    "rebind_before_first_message": isinstance(row_after_new.get("log_path"), str) and row_after_new["log_path"] != old_log_path,
+    "busy_cleared_after_new": row_after_new.get("busy") is False,
+    "transcript_cleared_at_rebind": rebind_probe["rows"] == 0 and not rebind_probe["hasOldText"],
     "slash_menu_advertises_new": any(str(t).startswith("/new") for t in slash["optionTexts"]),
     "slash_menu_keeps_builtins_after_rebind": {"model", "new", "compact", "effort"} <= menu_names,
     "transcript_rendered_before": before["rows"] >= 1 and before["hasOldText"],
@@ -416,7 +446,9 @@ report = {
     "url": f"http://127.0.0.1:{port}/",
     "session_id": session_id,
     "old_log_path": old_log_path,
-    "new_log_path": row.get("log_path"),
+    "new_log_path": row_after_new.get("log_path"),
+    "busy_after_new": row_after_new.get("busy"),
+    "transcript_at_rebind": rebind_probe,
     "slash_options": slash["optionTexts"],
     "slash_commands_after_rebind": sorted(menu_names),
     "transcript_before": before,

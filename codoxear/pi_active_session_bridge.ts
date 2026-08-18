@@ -5,6 +5,8 @@ type SessionManager = {
 	getSessionFile(): string | undefined;
 	getSessionId(): string;
 	getCwd(): string;
+	fileEntries?: Array<{ type?: unknown }>;
+	flushed?: boolean;
 };
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -20,11 +22,13 @@ type ExtensionContext = {
 
 type ExtensionCommandContext = ExtensionContext;
 
+type SessionStartReason = "startup" | "reload" | "new" | "resume" | "fork";
+
 type ExtensionAPI = {
-	on(event: "session_start", handler: (event: { type: "session_start" }, ctx: ExtensionContext) => void): void;
+	on(event: "session_start", handler: (event: { type: "session_start"; reason?: SessionStartReason }, ctx: ExtensionContext) => void): void;
 	on(
 		event: "session_switch",
-		handler: (event: { type: "session_switch"; reason: "new" | "resume" }, ctx: ExtensionContext) => void,
+		handler: (event: { type: "session_switch"; reason: "new" | "resume" | "fork" }, ctx: ExtensionContext) => void,
 	): void;
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
 	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
@@ -69,6 +73,19 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 		}
 	} catch {
 		// Do not let Codoxear bookkeeping affect Pi session operation.
+	}
+}
+
+function materializeNewSession(ctx: ExtensionContext): void {
+	try {
+		const mgr = ctx.sessionManager;
+		const sessionFile = mgr.getSessionFile();
+		const header = mgr.fileEntries?.[0];
+		if (!header || header.type !== "session" || typeof sessionFile !== "string" || fs.existsSync(sessionFile)) return;
+		fs.writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, { mode: 0o600, flag: "wx" });
+		mgr.flushed = true;
+	} catch {
+		// The bridge must not interfere with Pi if session internals change.
 	}
 }
 
@@ -193,12 +210,14 @@ export default function (pi: ExtensionAPI): void {
 	}
 	pi.on("session_start", (event, ctx) => {
 		registerEffortCommands();
-		writeActiveSession(ctx, "session_start");
+		writeActiveSession(ctx, event.reason || "session_start");
+		if (event.reason === "new") materializeNewSession(ctx);
 		refreshCaps();
 	});
 	pi.on("session_switch", (event, ctx) => {
 		registerEffortCommands();
 		writeActiveSession(ctx, event.reason);
+		if (event.reason === "new") materializeNewSession(ctx);
 		refreshCaps();
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
