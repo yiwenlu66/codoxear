@@ -20,6 +20,8 @@ class State:
     output_tail: str = ""
     output_tail_max: int = 64 * 1024
     log_off: int = 0
+    send_latch_log_off: int | None = None
+    send_latch_activity_ts: float | None = None
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)

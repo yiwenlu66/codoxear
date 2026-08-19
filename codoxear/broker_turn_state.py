@@ -146,7 +146,15 @@ def _should_clear_busy_state(
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
         if st.last_interrupt_request_ts <= 0.0:
-            if st.send_latch_log_off is None or st.log_off != st.send_latch_log_off:
+            if st.send_latch_activity_ts is not None:
+                # Turn-aware latch: only rows the reducer treats as turn
+                # activity (they bump last_turn_activity_ts) prove the
+                # predicted turn exists. Non-turn rows such as Pi
+                # model_change / thinking_level_change grow the log without
+                # opening a turn and must not hold the latch forever.
+                if st.last_turn_activity_ts > st.send_latch_activity_ts:
+                    return False
+            elif st.send_latch_log_off is None or st.log_off != st.send_latch_log_off:
                 return False
         elif (now_ts - st.last_interrupt_request_ts) < busy_interrupt_grace_seconds:
             return False
@@ -176,6 +184,12 @@ def _clear_pi_error_probe(st: "State") -> None:
 def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
     terminal_error_idle = st.turn_open and st.last_pi_error_probe_ts > 0.0 and not st.pi_retry_status_active
+    latch_settled_idle = (
+        st.turn_open
+        and not st.turn_has_completion_candidate
+        and st.send_latch_activity_ts is not None
+        and st.last_turn_activity_ts <= st.send_latch_activity_ts
+    )
     st.busy = False
     st.turn_open = False
     st.turn_has_completion_candidate = False
@@ -185,8 +199,12 @@ def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     _clear_pi_error_probe(st)
     # ``interrupted_idle`` is the control protocol's established override for
     # a non-final log tail whose live PTY has nevertheless settled. A terminal
-    # Pi error has the same projection need as an explicit interrupt.
-    st.last_interrupted_idle_ts = now_ts if interrupted_idle or terminal_error_idle else 0.0
+    # Pi error has the same projection need as an explicit interrupt. So does
+    # a send latch that settled with zero turn rows since the send (Pi /model,
+    # /effort, /reload): the backend processed the input without opening a
+    # turn, so the TUI sits at its editor while the log tail may still be
+    # non-final from an earlier errored turn.
+    st.last_interrupted_idle_ts = now_ts if interrupted_idle or terminal_error_idle or latch_settled_idle else 0.0
 
 
 def _reopen_turn_on_activity(st: "State") -> None:
@@ -482,6 +500,7 @@ class State:
     prelog_failure_recorded: bool = False
     log_off: int = 0
     send_latch_log_off: int | None = None
+    send_latch_activity_ts: float | None = None
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
     last_interrupt_hint_ts: float = 0.0

@@ -38,6 +38,7 @@ this session and their closure status. Maintained on disk so the next agent
 | 18 | Unattended prompt preservation | CLOSED | a6c35ed8, d6d3a1da, 6fe71113, 3dbc4856 | Server/in-flight/pending layering |
 | 19 | SSE battle-test | PARTIAL | 263a86e1, 2963af09 | Server-side automated only; phone test needs user device |
 | 20 | Watchdog for dead brokers | CLOSED | 414c5562 | 60s grace + lost tombstone |
+| 23 | False busy after webui model switch (Pi) | CLOSED | this session | Send latch bet was byte-growth-based: Pi `model_change`/`thinking_level_change` rows grew the log without a turn, wedging the latch forever; the send had also cleared the interrupted-idle projection, so a non-final (errored) log tail displayed busy permanently. Fix: turn-aware latch (`send_latch_activity_ts`) + settled-without-turn latch restores the idle projection. Closes #22's documented residual. Also fixed latent sessiond sweep AttributeError (State lacked send-latch fields). Regression tests in test_broker_busy_state.py + test_sessiond_state.py |
 | 21 | Offline banner / degraded connection | CLOSED | 51e4a30e, d1108c97 | navigator.onLine + transport errors |
 | 22 | God files "fully split" | PARTIAL | ba4831ac, c536e6e2, 85f8c5be, d3200bc6, 5e5c8fb1 | app.js 5910 → 5226; "fully" is dishonest — still 5K lines |
 | 23 | Composer safe-area / iOS | CLOSED | 39b80f4c, b096e460, 940ade12 | font-size 16px, viewport-fit=cover |

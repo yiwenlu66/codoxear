@@ -211,6 +211,7 @@ def _apply_broker_log_binding_to_state(
     st.known_rollout_paths.add(lp)
     st.log_off = seed.log_offset
     st.send_latch_log_off = None
+    st.send_latch_activity_ts = None
     st.pending_calls = set(seed.pending_calls)
     if seed.pending_calls or seed.idle is False:
         st.busy = True
@@ -231,6 +232,7 @@ def _detach_current_session_binding(st: "State") -> None:
     st.session_id = None
     st.log_off = 0
     st.send_latch_log_off = None
+    st.send_latch_activity_ts = None
     st.last_interrupt_request_ts = 0.0
     st.last_interrupted_idle_ts = 0.0
     _clear_pi_error_probe(st)

@@ -45,3 +45,34 @@ def test_sessiond_busy_reducer_handles_codex_pi_and_claude_rows_in_order() -> No
 def test_sessiond_busy_reducer_rejects_malformed_codex_event_payload() -> None:
     with pytest.raises(ValueError, match="invalid rollout event_msg payload"):
         _log_busy_signals({"type": "event_msg", "payload": "bad"})
+
+
+def test_sessiond_sweep_settles_send_latch_with_settings_only_growth(tmp_path: Path) -> None:
+    # Regression: the sessiond sweep shares _should_clear_busy_state but its
+    # State lacked the send-latch fields, so a confirmed send that opened no
+    # turn crashed the watcher with AttributeError. A Pi /model-style send
+    # (only non-turn log growth) must now settle after the quiet window.
+    from codoxear.broker import BUSY_QUIET_SECONDS
+    from codoxear.broker import _mark_busy_state_idle
+    from codoxear.broker import _should_clear_busy_state
+
+    state = State(
+        session_id=None,
+        codex_pid=123,
+        log_path=tmp_path / "missing.jsonl",
+        sock_path=tmp_path / "session.sock",
+        pty_master_fd=4,
+        start_ts=1.5,
+        busy=True,
+        turn_open=True,
+        last_turn_activity_ts=10.0,
+        send_latch_log_off=42,
+        send_latch_activity_ts=10.0,
+    )
+    state.log_off = 43
+
+    assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS - 0.01) is False
+    assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS + 0.01) is True
+    _mark_busy_state_idle(state, 10.0 + BUSY_QUIET_SECONDS + 0.01)
+    assert state.busy is False
+    assert state.last_interrupted_idle_ts > 0.0

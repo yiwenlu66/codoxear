@@ -68,6 +68,7 @@ def _handle_broker_control_connection(
             prev_pi_retry_status_active = st.pi_retry_status_active
             prev_last_turn_activity_ts = st.last_turn_activity_ts
             prev_send_latch_log_off = st.send_latch_log_off
+            prev_send_latch_activity_ts = st.send_latch_activity_ts
             _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
@@ -80,6 +81,7 @@ def _handle_broker_control_connection(
                 st.last_interrupted_idle_ts = 0.0
             if now_ts > st.last_turn_activity_ts:
                 st.last_turn_activity_ts = now_ts
+            st.send_latch_activity_ts = st.last_turn_activity_ts
             fd = st.pty_master_fd
 
         def restore_state_after_inject_failure() -> None:
@@ -96,6 +98,7 @@ def _handle_broker_control_connection(
                     st.pi_retry_status_active = prev_pi_retry_status_active
                     st.last_turn_activity_ts = prev_last_turn_activity_ts
                     st.send_latch_log_off = prev_send_latch_log_off
+                    st.send_latch_activity_ts = prev_send_latch_activity_ts
 
         if sync_commit:
             if fd is None:

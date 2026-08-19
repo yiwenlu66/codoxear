@@ -285,6 +285,125 @@ class TestBrokerBusyState(unittest.TestCase):
 
         self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 60.0))
 
+    def _latch_send(self, st: State, *, now_ts: float) -> None:
+        # Mirrors the broker/sessiond send handlers' latch fields for a
+        # confirmed send: the latch records the log offset and the post-send
+        # turn-activity baseline; only reducer-observed turn rows after the
+        # send move last_turn_activity_ts past it.
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = False
+        st.send_latch_log_off = st.log_off
+        st.last_turn_activity_ts = now_ts
+        st.send_latch_activity_ts = st.last_turn_activity_ts
+
+    def test_send_latch_with_settings_only_growth_clears_after_quiet_window(self) -> None:
+        st = _state()
+        st.log_off = 42
+        st.last_turn_activity_ts = 9.0
+        self._latch_send(st, now_ts=10.0)
+        # A Pi /model send grows the log with a non-turn settings row.
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "model_change", "provider": "occ", "modelId": "gpt-5.5"},
+            now_ts=10.5,
+        )
+        st.log_off = 43
+
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS - 0.01))
+        self.assertTrue(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 0.01))
+
+        _mark_busy_state_idle(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 0.01)
+        self.assertFalse(st.busy)
+        # The settled latch must re-establish the idle projection so a
+        # non-final log tail (e.g. an errored earlier turn) does not display
+        # busy forever.
+        self.assertGreater(st.last_interrupted_idle_ts, 0.0)
+
+    def test_send_latch_with_turn_row_growth_holds(self) -> None:
+        st = _state()
+        st.log_off = 42
+        st.last_turn_activity_ts = 9.0
+        self._latch_send(st, now_ts=10.0)
+        # A real prompt writes a Pi user row: genuine turn activity since the
+        # latch, so the latch keeps holding past the quiet window.
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}},
+            now_ts=10.5,
+        )
+        st.log_off = 43
+
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 60.0))
+
+    def test_send_latch_mid_turn_model_change_stays_held_by_turn_rows(self) -> None:
+        # /model accepted while a turn runs: the model_change row is neutral,
+        # but the surrounding turn rows hold the latch until the turn closes.
+        st = _state()
+        st.log_off = 42
+        self._latch_send(st, now_ts=10.0)
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "go"}]}},
+            now_ts=10.2,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "model_change", "provider": "occ", "modelId": "gpt-5.5"},
+            now_ts=10.4,
+        )
+        st.log_off = 44
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 60.0))
+
+    def test_settings_send_after_error_tail_restores_settled_projection(self) -> None:
+        # Full reported bug: an errored Pi turn settles via the error probe
+        # (interrupted-idle projection shows the session idle), then a webui
+        # model switch sends /model, which clears that projection, and Pi's
+        # model_change row grows the log without opening a turn.
+        st = _state()
+        st.log_off = 42
+        st.last_pi_error_probe_ts = 5.0
+        st.turn_open = True
+        st.busy = True
+        st.last_turn_activity_ts = 5.0
+        self.assertTrue(_should_clear_busy_state(st, now_ts=5.0 + BUSY_QUIET_SECONDS + 0.01))
+        _mark_busy_state_idle(st, now_ts=5.0 + BUSY_QUIET_SECONDS + 0.01)
+        self.assertGreater(st.last_interrupted_idle_ts, 0.0)
+
+        # The /model send clears the error probe and the projection, then
+        # latches; the model_change row must not wedge the latch.
+        st.last_interrupted_idle_ts = 0.0
+        self._latch_send(st, now_ts=20.0)
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "model_change", "provider": "occ", "modelId": "gpt-5.5"},
+            now_ts=20.5,
+        )
+        st.log_off = 43
+        settle_ts = 20.0 + BUSY_QUIET_SECONDS + 0.01
+        self.assertTrue(_should_clear_busy_state(st, now_ts=settle_ts))
+        _mark_busy_state_idle(st, now_ts=settle_ts)
+        self.assertFalse(st.busy)
+        self.assertEqual(st.last_interrupted_idle_ts, settle_ts)
+
+    def test_turn_settle_with_activity_since_latch_does_not_project_idle(self) -> None:
+        # A turn that produced real rows but no completion candidate must not
+        # gain the idle projection: its log tail is genuinely mid-turn.
+        st = _state()
+        st.log_off = 42
+        self._latch_send(st, now_ts=10.0)
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "go"}]}},
+            now_ts=10.5,
+        )
+        st.turn_has_completion_candidate = True
+        settle_ts = 10.5 + BUSY_QUIET_SECONDS + 0.01
+        self.assertTrue(_should_clear_busy_state(st, now_ts=settle_ts))
+        _mark_busy_state_idle(st, now_ts=settle_ts)
+        self.assertFalse(st.busy)
+        self.assertEqual(st.last_interrupted_idle_ts, 0.0)
+
     def test_explicit_interrupt_request_can_clear_no_candidate_turn_after_quiet(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

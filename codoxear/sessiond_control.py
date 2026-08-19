@@ -64,12 +64,14 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             prev_last_pi_retry_hint_ts = st.last_pi_retry_hint_ts
             prev_pi_retry_status_active = st.pi_retry_status_active
             prev_pending_calls = set(st.pending_calls)
+            prev_send_latch_activity_ts = st.send_latch_activity_ts
             _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
             st.turn_has_completion_candidate = False
             st.last_turn_activity_ts = deps.now()
+            st.send_latch_activity_ts = st.last_turn_activity_ts
             st.last_interrupt_hint_ts = 0.0
             st.last_interrupt_request_ts = 0.0
             st.last_interrupted_idle_ts = 0.0
@@ -88,6 +90,7 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                     st.last_pi_error_probe_ts = prev_last_pi_error_probe_ts
                     st.last_pi_retry_hint_ts = prev_last_pi_retry_hint_ts
                     st.pi_retry_status_active = prev_pi_retry_status_active
+                    st.send_latch_activity_ts = prev_send_latch_activity_ts
                     st.pending_calls.clear()
                     st.pending_calls.update(prev_pending_calls)
 
