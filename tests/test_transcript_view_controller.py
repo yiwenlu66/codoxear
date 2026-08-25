@@ -143,3 +143,82 @@ def test_transcript_view_serializes_append_prepend_and_replace() -> None:
     assert ["prepend", ["older"]] in result["calls"]
     assert ["append", "queued"] in result["calls"]
     assert ["replace", ["latest"]] in result["calls"]
+
+
+def _make_view_controller_script(body: str) -> str:
+    """Minimal harness: a transcript view pinned at the bottom with no
+    scrollable overflow (scrollHeight == clientHeight), so no scroll-driven
+    LIVE -> BROWSING transition can ever fire."""
+    return textwrap.dedent(
+        """
+        const vm = require("vm");
+        const source = __SOURCE__;
+        const calls = [];
+        const scroll = {
+          snapshot: () => ({ renderedAtLiveTail: true }),
+          shouldStickToBottom: () => true,
+          enableAutoScroll: () => {},
+          disableAutoScroll: () => {},
+          markLiveTail: () => {},
+          scheduleScrollToBottom: () => {},
+          handleScroll: () => {},
+        };
+        const root = { querySelectorAll: () => [], insertBefore: () => {} };
+        const ctx = { window: {}, console };
+        vm.createContext(ctx);
+        vm.runInContext(source, ctx);
+        const controller = ctx.window.CodoxearTranscriptView.createTranscriptViewController({
+          root,
+          bottomSentinel: {},
+          document: {},
+          el: () => ({ appendChild: () => {}, dataset: {} }),
+          messageRows: {
+            safeMakeRow: () => ({ row: {} }),
+            renderedMessageRows: () => [], loadedUserMessageRows: () => [], loadedCopyMessageRows: () => [],
+            rowSearchText: () => "", clearChatSearchMarks: () => {}, applyChatSearchMarks: () => {},
+            oldestRenderedHistoryCursor: () => null, firstVisibleMessageRow: () => null,
+          },
+          transcript: {
+            createTranscriptRenderRuntime: () => ({
+              appendEvent: () => true,
+              prependOlderEvents: (events) => { calls.push(["prepend", events.length]); return true; },
+              renderTranscript: () => true,
+              renderDetachedTranscriptWindow: () => true,
+            }),
+          },
+          getSelectedSessionId: () => "session",
+          getMessageRowDeps: () => ({}),
+          policyRuntime: { domRuntime: {}, scrollRuntime: scroll, setOlderState: () => {}, getScrollTop: () => 0 },
+          renderRuntime: { scrollRuntime: scroll, typingRowRuntime: { anchor: () => ({}) } },
+        });
+        __BODY__
+        """
+    ).replace("__SOURCE__", json.dumps(VIEW_JS.read_text(encoding="utf-8"))).replace("__BODY__", body)
+
+
+def test_begin_older_load_is_allowed_from_live_state() -> None:
+    """A transcript shorter than the viewport stays in LIVE forever (it can
+    never scroll into BROWSING). An explicit older-page request must still
+    begin, otherwise the 'Load older messages' button is permanently dead."""
+    script = _make_view_controller_script(
+        """
+        controller.setHistory({ cursor: "cursor-1", nextHasMore: true });
+        const initialState = controller.state().state;
+        const began = controller.beginOlderLoad();
+        const loadingState = controller.state().state;
+        const prepended = controller.prependEvents([{ text: "older" }], { cursor: "cursor-0", nextHasMore: true });
+        const finalState = controller.state().state;
+        controller.setHistory({ cursor: null, nextHasMore: false });
+        const beganWithoutMore = controller.beginOlderLoad();
+        process.stdout.write(JSON.stringify({ initialState, began, loadingState, prepended, finalState, beganWithoutMore, calls }));
+        """
+    )
+    result = run_node(script)
+
+    assert result["initialState"] == "LIVE"
+    assert result["began"] is True
+    assert result["loadingState"] == "LOADING_OLDER"
+    assert result["prepended"] is True
+    assert result["finalState"] == "BROWSING"
+    assert result["beganWithoutMore"] is False
+    assert ["prepend", 1] in result["calls"]

@@ -121,7 +121,14 @@
     }
 
     function beginOlderLoad() {
-      if (currentState !== VIEW_STATES.BROWSING || !hasMore) return false;
+      // An explicit older-page request must also be legal from LIVE: a
+      // transcript shorter than the viewport cannot scroll, so the
+      // scroll-driven LIVE -> BROWSING transition never fires and a
+      // BROWSING-only gate leaves the "Load older messages" button
+      // permanently dead. Scroll-edge auto-loads stay gated on BROWSING by
+      // maybeAutoLoadOlder, so widening this gate only affects explicit
+      // requests.
+      if ((currentState !== VIEW_STATES.BROWSING && currentState !== VIEW_STATES.LIVE) || !hasMore) return false;
       enter(VIEW_STATES.LOADING_OLDER);
       return true;
     }
