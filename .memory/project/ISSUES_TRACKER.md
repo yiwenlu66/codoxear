@@ -96,6 +96,7 @@ this session and their closure status. Maintained on disk so the next agent
 - app.js: 5226 lines (down from 5910)
 - 5 modules extracted: message-flow, session-edit, attachments, unread, unattended
 - ~2268 commits this session
+| 53 | Load-older dead on unscrollable transcript | CLOSED | 64b792ed | `beginOlderLoad` required BROWSING, but a transcript shorter than the viewport never scrolls into BROWSING (observed live on a Pi session whose 8MiB tail window held only 2 of 710 events). Explicit loads now legal from LIVE; scroll-edge auto-loads still BROWSING-only. Docker A/B: parent commit reproduces dead button, fixed commit loads 2->14 rows. Deployed. |
 
 ## Verifying this file
 
