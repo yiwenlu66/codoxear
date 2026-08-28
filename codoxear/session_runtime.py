@@ -312,17 +312,20 @@ def session_run_settings_from_meta(
         model = live_model
     if live_effort:
         reasoning_effort = live_effort
-    # A live broker maintains the sidecar's model/effort from the bridge caps on
-    # every turn, so for a running session the sidecar value is current — and it
-    # beats the log replay, which lags a terminal change (a native-selector change
-    # is logged at the next turn, not immediately). Only a dead/stale broker falls
-    # back to the log for settings the sidecar never recorded.
-    # The log's model_change events are authoritative for model/provider —
-    # they record what Pi actually switched to. The bridge reports effort
-    # live but does NOT report model, so a running session's sidecar model
-    # is the stale launch value. Override it with log evidence.
-    # Effort: bridge live value wins (it reports current thinking level).
-    broker_alive = _pid_alive(meta.get("broker_pid"))
+    # A live broker maintains the sidecar's live_run_settings from the bridge
+    # caps on every lifecycle event, so for a running session those values are
+    # current — and they beat the log replay, which lags a terminal change (a
+    # native-selector change is logged at the next turn, not immediately).
+    # The log's model_change events are the fallback authority for model and
+    # provider: they cover dead sessions and sessions whose bridge predates
+    # live model reporting. Effort: bridge live value wins (it reports the
+    # current thinking level).
+    # When the live bridge values cover provider, model, and effort, the log
+    # replay below would be discarded by every `not live_*` guard, so skip the
+    # read entirely: a live session's growing log would otherwise be replayed
+    # in full on every poll.
+    if live_provider and live_model and live_effort:
+        return model_provider, preferred_auth_method, model, reasoning_effort
     if log_path is not None and log_path.exists():
         log_provider, log_model, log_effort = read_run_settings_from_log(log_path, agent_backend=backend_name)
         if log_provider is not None and not live_provider:

@@ -388,17 +388,18 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
 
     # Only the LATEST model_change and thinking_level_change are authoritative;
     # everything older is overwritten. Scan the log backward from the end and
-    # stop once both are found, instead of replaying the entire file.
+    # stop once both are found, instead of parsing line by line.
     #
-    # Efficiency: for live sessions the bridge writes the current model to the
-    # .caps file via pi.getModel() on every turn_end. This log scan is only a
-    # fallback for dead sessions or sessions without the bridge. The backward
-    # scan stops as soon as both values are found, so sessions that switched
-    # recently stop early. For sessions that never changed, the header baseline
-    # (already loaded above) is the correct answer — bound the scan to avoid
-    # reading a full multi-GB log.
-    max_default_scan = 32 * 1024 * 1024  # 32 MiB backward scan
-    scan_floor = 0 if max_scan_bytes is not None else max(0, size - max_default_scan)
+    # Production callers replay the full log (scan_floor = 0). A tail bound is
+    # unsound here: the authoritative change may sit arbitrarily far from the
+    # end of a long-lived session's log, and the v3 session header carries no
+    # model/effort baseline to fall back on. The bridge caps file covers live
+    # sessions (read before this fallback in session_run_settings_from_meta),
+    # and the size-keyed cache above makes a full replay of an unchanged log
+    # free, so the full scan only costs on a growing log or first read. An
+    # explicit bound remains available only to diagnostic callers that accept
+    # an incomplete historical projection.
+    scan_floor = 0
     if max_scan_bytes is not None:
         scan_floor = max(0, size - max(0, int(max_scan_bytes)))
     last_model_change: dict | None = None
