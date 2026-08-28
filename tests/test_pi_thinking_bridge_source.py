@@ -66,12 +66,13 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                           ...Array.from(registered, ([name, options]) => ({ name, description: options.description })),
                         ];
                       },
-                      getModel() { return model; },
                       getThinkingLevel() { return thinking; },
                       setThinkingLevel(level) { thinking = level; },
                     };
                     const header = { type: "session", id: "session-id", cwd: "/tmp", timestamp: "2026-01-01T00:00:00.000Z" };
                     const newSessionPath = process.env.NEW_SESSION_PATH;
+                    // Mirror Pi's real extension API: getModel lives on ctx
+                    // (ExtensionContextActions), not on the pi object.
                     const makeCtx = (sessionFile, fileEntries = [header]) => ({
                       sessionManager: {
                         getSessionFile() { return sessionFile; },
@@ -81,6 +82,7 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                         flushed: false,
                       },
                       ui: { notify() {} },
+                      getModel() { return model; },
                     });
                     const ctx = makeCtx("/tmp/session.jsonl");
                     const newCtx = makeCtx(newSessionPath);
@@ -103,17 +105,21 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                     handlers.get("session_start")({ type: "session_start", reason: "resume" }, resumeCtx);
                     handlers.get("session_start")({ type: "session_start", reason: "fork" }, forkCtx);
                     handlers.get("session_start")({ type: "session_start", reason: "new" }, invalidCtx);
-                    handlers.get("turn_end")({ type: "turn_end", turnIndex: 1 });
+                    handlers.get("turn_end")({ type: "turn_end", turnIndex: 1 }, ctx);
                     const afterRegistration = readCaps();
                     thinking = "high";
-                    handlers.get("turn_end")({ type: "turn_end", turnIndex: 2 });
+                    handlers.get("turn_end")({ type: "turn_end", turnIndex: 2 }, ctx);
                     const afterSettingsChange = readCaps();
+                    model = { provider: "anthropic", id: "claude-opus-4-6" };
+                    handlers.get("model_select")({ type: "model_select" }, ctx);
+                    const afterModelSelect = readCaps();
                     const mode = fs.statSync(capsPath).mode & 0o777;
                     process.stdout.write(JSON.stringify({
                       commandCallsAtLoad,
                       registrationCalls,
                       afterRegistration,
                       afterSettingsChange,
+                      afterModelSelect,
                       mode,
                       initialMaterialized,
                       newSessionRows,
@@ -149,7 +155,13 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
             observed["afterSettingsChange"]["commands"],
             observed["afterRegistration"]["commands"],
         )
+        self.assertEqual(observed["afterRegistration"]["model"], "gpt-5")
+        self.assertEqual(observed["afterRegistration"]["model_provider"], "openai")
         self.assertEqual(observed["afterSettingsChange"]["reasoning_effort"], "high")
+        self.assertEqual(observed["afterSettingsChange"]["model"], "gpt-5")
+        self.assertEqual(observed["afterModelSelect"]["model"], "claude-opus-4-6")
+        self.assertEqual(observed["afterModelSelect"]["model_provider"], "anthropic")
+        self.assertEqual(observed["afterModelSelect"]["reasoning_effort"], "high")
         self.assertEqual(observed["afterSettingsChange"]["bridgeVersion"], 2)
         self.assertEqual(observed["afterSettingsChange"]["features"], ["effort", "thinking"])
         self.assertEqual(observed["mode"], 0o600)

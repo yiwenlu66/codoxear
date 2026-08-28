@@ -18,6 +18,9 @@ type ExtensionUI = {
 type ExtensionContext = {
 	sessionManager: SessionManager;
 	ui: ExtensionUI;
+	// ExtensionContextActions.getModel — the live model is only reachable via
+	// ctx in event handlers; ExtensionAPI (pi.*) has no getModel.
+	getModel?: () => { provider?: unknown; id?: unknown } | undefined;
 };
 
 type ExtensionCommandContext = ExtensionContext;
@@ -32,6 +35,7 @@ type ExtensionAPI = {
 	): void;
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
 	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
+	on(event: "model_select", handler: (event: { type: "model_select" }, ctx: ExtensionContext) => void): void;
 	registerCommand(
 		name: string,
 		options: {
@@ -91,12 +95,16 @@ function materializeNewSession(ctx: ExtensionContext): void {
 
 let activePi;
 
-function readLiveRunSettings(pi) {
-	if (!pi) return {};
+function readLiveRunSettings(pi, ctx?: ExtensionContext) {
 	const out = {};
 	try {
-		if (typeof pi.getModel === "function") {
-			const m = pi.getModel();
+		// ctx.getModel() is the current Pi extension API; pi.getModel() is kept
+		// as a fallback for older runtimes that exposed it on the API object.
+		const getModel = (ctx && typeof ctx.getModel === "function" && ctx.getModel.bind(ctx))
+			|| (pi && typeof pi.getModel === "function" && pi.getModel.bind(pi))
+			|| null;
+		if (getModel) {
+			const m = getModel();
 			if (m && typeof m === "object") {
 				if (typeof m.provider === "string" && m.provider) out.model_provider = m.provider;
 				if (typeof m.id === "string" && m.id) out.model = m.id;
@@ -104,7 +112,7 @@ function readLiveRunSettings(pi) {
 		}
 	} catch {}
 	try {
-		if (typeof pi.getThinkingLevel === "function") {
+		if (pi && typeof pi.getThinkingLevel === "function") {
 			const level = pi.getThinkingLevel();
 			if (typeof level === "string" && level) out.reasoning_effort = level;
 		}
@@ -137,13 +145,13 @@ function captureCommands() {
 	}
 }
 
-function refreshCaps() {
+function refreshCaps(ctx?: ExtensionContext) {
 	// Re-read Pi's current settings and registry from a live lifecycle event.
 	// Retaining an unchanged registry snapshot avoids rewriting caps when the
 	// browser-visible state has not changed.
 	const previousCommandsSnapshot = lastCommandsSnapshot;
 	const commands = captureCommands();
-	const live = readLiveRunSettings(activePi);
+	const live = readLiveRunSettings(activePi, ctx);
 	const model = typeof live.model === "string" ? live.model : undefined;
 	const provider = typeof live.model_provider === "string" ? live.model_provider : undefined;
 	const effort = typeof live.reasoning_effort === "string" ? live.reasoning_effort : undefined;
@@ -189,7 +197,7 @@ export default function (pi: ExtensionAPI): void {
 	activePi = pi;
 	writeThinkingCapabilities();
 	let commandsRegistered = false;
-	function registerEffortCommands() {
+	function registerEffortCommands(ctx?: ExtensionContext) {
 		if (commandsRegistered) return;
 		try {
 			pi.registerCommand("effort", {
@@ -202,28 +210,34 @@ export default function (pi: ExtensionAPI): void {
 				handler: effortHandler,
 			});
 			commandsRegistered = true;
-			writeThinkingCapabilities(captureCommands(), readLiveRunSettings(pi));
+			// Read settings with the same ctx as refreshCaps: a write missing the
+			// live model would clobber a richer caps file that refreshCaps then
+			// wrongly considers current via its in-memory dedupe.
+			writeThinkingCapabilities(captureCommands(), readLiveRunSettings(pi, ctx));
 		} catch {
 			// Runtime not yet bound (extension loading) or already registered;
 			// retried on subsequent lifecycle events until it succeeds.
 		}
 	}
 	pi.on("session_start", (event, ctx) => {
-		registerEffortCommands();
+		registerEffortCommands(ctx);
 		writeActiveSession(ctx, event.reason || "session_start");
 		if (event.reason === "new") materializeNewSession(ctx);
-		refreshCaps();
+		refreshCaps(ctx);
 	});
 	pi.on("session_switch", (event, ctx) => {
-		registerEffortCommands();
+		registerEffortCommands(ctx);
 		writeActiveSession(ctx, event.reason);
 		if (event.reason === "new") materializeNewSession(ctx);
-		refreshCaps();
+		refreshCaps(ctx);
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
-	pi.on("turn_end", () => {
-		registerEffortCommands();
-		refreshCaps();
+	// A native /model switch is only recorded in the session log; model_select
+	// lets the caps file track it immediately instead of at the next turn_end.
+	pi.on("model_select", (_event, ctx) => refreshCaps(ctx));
+	pi.on("turn_end", (_event, ctx) => {
+		registerEffortCommands(ctx);
+		refreshCaps(ctx);
 	});
 	const effortHandler = (args, ctx) => {
 		const requested = args.trim().toLowerCase();
