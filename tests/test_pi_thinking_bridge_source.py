@@ -71,8 +71,9 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                     };
                     const header = { type: "session", id: "session-id", cwd: "/tmp", timestamp: "2026-01-01T00:00:00.000Z" };
                     const newSessionPath = process.env.NEW_SESSION_PATH;
-                    // Mirror Pi's real extension API: getModel lives on ctx
-                    // (ExtensionContextActions), not on the pi object.
+                    // Mirror Pi's real runtime (verified against 0.82.1): the
+                    // event ctx exposes the live model as a `model` property;
+                    // neither pi nor ctx has a getModel function.
                     const makeCtx = (sessionFile, fileEntries = [header]) => ({
                       sessionManager: {
                         getSessionFile() { return sessionFile; },
@@ -82,7 +83,7 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
                         flushed: false,
                       },
                       ui: { notify() {} },
-                      getModel() { return model; },
+                      get model() { return model; },
                     });
                     const ctx = makeCtx("/tmp/session.jsonl");
                     const newCtx = makeCtx(newSessionPath);

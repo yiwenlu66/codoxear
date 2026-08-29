@@ -18,8 +18,11 @@ type ExtensionUI = {
 type ExtensionContext = {
 	sessionManager: SessionManager;
 	ui: ExtensionUI;
-	// ExtensionContextActions.getModel — the live model is only reachable via
-	// ctx in event handlers; ExtensionAPI (pi.*) has no getModel.
+	// Verified against the real Pi 0.82.1 runtime: the event ctx exposes the
+	// live model as a `model` property. The d.ts ExtensionContextActions
+	// getModel() signature does not match what handlers actually receive, so
+	// the property is primary and the function forms are fallbacks.
+	model?: { provider?: unknown; id?: unknown } | null;
 	getModel?: () => { provider?: unknown; id?: unknown } | undefined;
 };
 
@@ -98,17 +101,16 @@ let activePi;
 function readLiveRunSettings(pi, ctx?: ExtensionContext) {
 	const out = {};
 	try {
-		// ctx.getModel() is the current Pi extension API; pi.getModel() is kept
-		// as a fallback for older runtimes that exposed it on the API object.
-		const getModel = (ctx && typeof ctx.getModel === "function" && ctx.getModel.bind(ctx))
-			|| (pi && typeof pi.getModel === "function" && pi.getModel.bind(pi))
+		// Real Pi 0.82.1 event ctx carries the live model as a property;
+		// ctx.getModel()/pi.getModel() are kept for runtimes that expose the
+		// function forms instead.
+		const m = (ctx && ctx.model && typeof ctx.model === "object" && ctx.model)
+			|| (ctx && typeof ctx.getModel === "function" && ctx.getModel())
+			|| (pi && typeof pi.getModel === "function" && pi.getModel())
 			|| null;
-		if (getModel) {
-			const m = getModel();
-			if (m && typeof m === "object") {
-				if (typeof m.provider === "string" && m.provider) out.model_provider = m.provider;
-				if (typeof m.id === "string" && m.id) out.model = m.id;
-			}
+		if (m) {
+			if (typeof m.provider === "string" && m.provider) out.model_provider = m.provider;
+			if (typeof m.id === "string" && m.id) out.model = m.id;
 		}
 	} catch {}
 	try {
