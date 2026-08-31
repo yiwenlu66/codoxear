@@ -911,10 +911,15 @@
       }
       button.primary,
       .composer .icon-btn.primary {
-        min-height: var(--ctl) !important;
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
+      }
+      /* Text primaries keep the 44px touch height as their visible size.
+         Composer primaries are compact icon squares: the ::after hit area
+         carries the touch target, so no min-height may leak in here. */
+      button.primary {
+        min-height: var(--ctl);
       }
       button.primary:hover,
       .composer .icon-btn.primary:hover {
@@ -1743,8 +1748,8 @@
       .composer {
         --composerCtl: 32px;
         --composer-picker-inset: 8px;
-        /* The composer exposes one quiet hairline; its input has no second box. */
-        border-top: 1px solid var(--hairline);
+        /* App chrome separators are uniform 1px ink rules (sidebar, header,
+           composer); the composer input itself has no second box. */
         padding: var(--space-2) var(--space-5) calc(var(--space-2) + env(safe-area-inset-bottom));
         background: var(--panel);
         border-top: 1px solid var(--border);
@@ -2808,10 +2813,11 @@ select {
         align-items: center;
         gap: var(--space-2);
       }
+      /* The selected-backend name is a caption of the tab group, not a
+         fourth header item: muted ink, regular weight. */
       .agentBackendTabName {
         font-size: var(--font-md);
-        font-weight: 600;
-        color: var(--text);
+        color: var(--muted);
         white-space: nowrap;
       }
       .agentBackendTab {
@@ -2832,15 +2838,6 @@ select {
         background: var(--paper);
         color: var(--ink);
         font-weight: 600;
-      }
-      .agentBackendTab.active::before {
-        content: "";
-        position: absolute;
-        right: var(--space-2);
-        bottom: var(--space-2);
-        left: var(--space-2);
-        height: 2px;
-        background: var(--ink);
       }
       .agentBackendTabLogo {
         width: 20px;
@@ -2969,8 +2966,15 @@ select {
         min-height: var(--dialog-control-h);
         white-space: nowrap;
       }
+      /* Compact 32px dialog chrome reaches a 44px touch target through the
+         hit-area, never through visible geometry (hit area is not visual size). */
       .formViewer .icon-btn::after,
-      .formViewer .agentBackendTab::after,
+      .formViewer .agentBackendTab::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+      }
+      /* Chips keep the 2px outset their scroller's padding absorbs. */
       .formViewer .choiceChip::after {
         content: "";
         position: absolute;
@@ -2978,9 +2982,7 @@ select {
       }
       #newSessionViewer input[type="text"],
       #newSessionViewer .dialogPickerBtn,
-      #newSessionViewer .formActions > button,
-      #newSessionViewer .agentBackendTab,
-      #newSessionViewer .icon-btn {
+      #newSessionViewer .formActions > button {
         height: var(--ctl);
         min-height: var(--ctl);
       }

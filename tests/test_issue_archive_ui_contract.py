@@ -49,7 +49,9 @@ def test_archive_visual_contracts_preserve_focusable_layout_and_data_typography(
     composer = _computed(".composer")
     chrome_buttons = _computed(".topActions .icon-btn")
     tab = _computed(".agentBackendTab.active")
-    underline = _computed(".agentBackendTab.active::before")
+    tab_base = _computed(".formViewer .agentBackendTab")
+    tab_hit_area = _computed(".formViewer .agentBackendTab::after")
+    composer_primary = _computed(".composer .icon-btn.primary")
 
     # Header content stays within its shell rather than making the page scroll;
     # each user-visible utility control retains an ink border.
@@ -60,19 +62,15 @@ def test_archive_visual_contracts_preserve_focusable_layout_and_data_typography(
     # input band, rather than an extra boxed textarea.
     assert time_chip["background"] == "transparent"
     assert composer["border-top"] == "1px solid var(--border)"
-    # Backend selection is an ink outline plus a geometric underline, not a
-    # filled black tab.
+    # Backend selection is a single 2px ink outline: not a filled black tab,
+    # and not a doubled outline-plus-underline signal.
     assert tab["border"] == "2px solid var(--ink)"
     assert tab["background"] == "var(--paper)"
-    assert underline == {
-        "content": '""',
-        "position": "absolute",
-        "right": "var(--space-2)",
-        "bottom": "var(--space-2)",
-        "left": "var(--space-2)",
-        "height": "2px",
-        "background": "var(--ink)",
-    }
+    # Compact 32px chrome stays 32px: the 44px touch target lives in the
+    # ::after hit area, never in visible geometry (hit area is not visual size).
+    assert tab_base["height"] == "var(--dialog-control-h)"
+    assert tab_hit_area["inset"] == "-6px"
+    assert "min-height" not in composer_primary
     # State, cwd, and branch are ordinary compact prose; only the model and
     # effort unit carries monospace data typography.
     assert _computed(".sessionMetaLine")["font-family"] == "sans-serif"
