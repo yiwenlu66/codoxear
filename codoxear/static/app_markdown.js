@@ -497,12 +497,6 @@ import * as CodoxearUrls from "./app_application.js";
       store.push({ latex: String(latex).trim(), display: !!display });
       return mathToken(id);
     };
-    // Heuristic: a $...$ span is math only if its content looks like LaTeX.
-    // Reject currency like "$72 to $102" by requiring at least one LaTeX-ish
-    // character inside: backslash, brace, ^, _, or a recognized math function.
-    function looksLikeLatex(body) {
-      return /[\\{}^_]|\\(?:frac|sqrt|sum|prod|int|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|Delta|Sigma|Omega|nabla|partial|infty|times|div|pm|mp|le|ge|ne|approx|equiv|propto|cdot|text|mathrm|mathbf|mathbb|left|right|begin|end)\b/.test(body);
-    }
     return String(text)
       .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true))
       .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
@@ -542,12 +536,11 @@ import * as CodoxearUrls from "./app_application.js";
       store.push({ latex: String(latex).trim(), display: !!display });
       return mathToken(id);
     };
-    function looksLikeLatex(body) {
-      return /[\\{}^_]|\\(?:frac|sqrt|sum|prod|int|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|Delta|Sigma|Omega|nabla|partial|infty|times|div|pm|mp|le|ge|ne|approx|equiv|propto|cdot|text|mathrm|mathbf|mathbb|left|right|begin|end)\b/.test(body);
-    }
     return String(text)
       .replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true))
-      .replace(/\$(?!\$|\s)([^$\n]*?\S)\$(?!\$)/g, (_m, body) => looksLikeLatex(body) ? push(body, false) : _m);
+      // Pandoc tex_math_dollars: delimiters flank non-space, and a closing
+      // dollar cannot be followed by a digit so ordinary dollar amounts remain literal.
+      .replace(/\$(?!\$|\s)([^$\n]*?\S)\$(?!\$|\d)/g, (_m, body) => push(body, false));
   }
 
   function substituteMath(html, store) {

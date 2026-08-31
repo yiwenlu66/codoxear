@@ -37,13 +37,33 @@ def run_renderer_with_marked_stub(markdown: str) -> tuple[str, str]:
 
 class TestMarkdownRendererSource(unittest.TestCase):
     def test_math_is_extracted_before_marked_including_single_dollars(self) -> None:
-        parsed, html = run_renderer_with_marked_stub("Inline $x^2$; display $$y$$; and \\(z\\).")
-        self.assertNotIn("$x^2$", parsed)
+        parsed, html = run_renderer_with_marked_stub("Inline $x$; display $$y$$; and \\(z\\).")
+        self.assertNotIn("$x$", parsed)
         self.assertNotIn("$$y$$", parsed)
         self.assertNotIn("\\(z\\)", parsed)
         self.assertIn("@@MATH0@@", parsed)
         self.assertIn("md-math-fallback md-math-inline", html)
         self.assertIn("md-math-fallback md-math-display", html)
+
+    def test_inline_dollar_math_accepts_plain_tex_expressions(self) -> None:
+        for expression in ("x", "p(x)", "O(n)", "n+1", "E = mc^2"):
+            with self.subTest(expression=expression):
+                markdown = f"Formula: ${expression}$."
+                parsed, html = run_renderer_with_marked_stub(markdown)
+                self.assertNotIn(f"${expression}$", parsed)
+                self.assertIn("@@MATH0@@", parsed)
+                self.assertIn(
+                    f'<span class="md-math-fallback md-math-inline">\\({expression}\\)</span>',
+                    html,
+                )
+
+    def test_currency_dollar_amounts_stay_literal(self) -> None:
+        for markdown in ("$72 to $102", "$5 and $10", "$5-$10", "$99.99"):
+            with self.subTest(markdown=markdown):
+                parsed, html = run_renderer_with_marked_stub(markdown)
+                self.assertEqual(markdown, parsed)
+                self.assertIn(markdown, html)
+                self.assertNotIn("md-math-fallback", html)
 
     def test_math_does_not_rewrite_code_spans_or_fenced_code(self) -> None:
         parsed, _html = run_renderer_with_marked_stub("`$code$`\n\n```text\n$also_code$\n```")
