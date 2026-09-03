@@ -177,10 +177,6 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       return Boolean(suppressDraftQuery && rawQuery === suppressDraftQuery);
     }
 
-    function ambiguousChoiceActive(query) {
-      return Boolean(searchActive && draftSuppressed(query));
-    }
-
     function visibleQuery(query) {
       return searchActive ? String(query || "").trim() : "";
     }
@@ -230,7 +226,6 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     }
 
     return Object.freeze({
-      ambiguousChoiceActive,
       clampFocus,
       close,
       draftSuppressed,
@@ -655,7 +650,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     const takePreservedSearchOnFocus = requireFunction(menuState, "takePreservedSearchOnFocus");
     const setOpen = requireFunction(menuState, "setOpen");
     const handleInputState = requireFunction(menuState, "handleInput");
-    const ambiguousChoiceActive = requireFunction(menuState, "ambiguousChoiceActive");
+    const isSearchActive = requireFunction(menuState, "isSearchActive");
     const moveFocus = requireFunction(menuState, "moveFocus");
     const isOpen = requireFunction(menuState, "isOpen");
     const enterIndex = requireFunction(menuState, "enterIndex");
@@ -669,7 +664,12 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
 
     async function focus() {
       if (!(await ensureCurrentSession())) return false;
-      if (takePreservedSearchOnFocus()) {
+      // An active search (typed query, pasted text, or a programmatic
+      // file-ref search) survives focus; only the settled committed-path
+      // state resets to a fresh search. takePreservedSearchOnFocus keeps the
+      // one-shot marker consumed for the programmatic-search flow.
+      if (isSearchActive()) {
+        takePreservedSearchOnFocus();
         openRenderedMenu();
         return true;
       }
@@ -681,7 +681,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     async function click(event) {
       if (event && typeof event.stopPropagation === "function") event.stopPropagation();
       if (!(await ensureCurrentSession())) return false;
-      if (ambiguousChoiceActive(input.value)) {
+      if (isSearchActive()) {
         openRenderedMenu();
         return true;
       }

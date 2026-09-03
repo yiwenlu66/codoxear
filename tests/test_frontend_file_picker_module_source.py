@@ -531,6 +531,82 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_picker_input_preserve_probe() -> dict[str, object]:
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const picker = ctx.window.CodoxearFilePicker;
+    const events = [];
+    let entries = [];
+    const input = {{
+      value: "",
+      attrs: {{}},
+      setAttribute(name, value) {{ this.attrs[name] = String(value); }},
+      removeAttribute(name) {{ delete this.attrs[name]; }},
+    }};
+    const menuState = picker.createMenuState({{ normalizeLineNumber: (value) => Number(value) || null }});
+    const runtime = picker.createInputRuntime({{
+      input,
+      menuState,
+      ensureCurrentSession: async () => true,
+      renderMenu: () => entries,
+      applyMenuState: () => events.push(["apply"]),
+      resetInput: () => {{ events.push(["resetInput"]); input.value = "active.py"; }},
+      closeMenu: (options) => events.push(["close", options]),
+      currentSessionId: () => "sid-current",
+      sessionState: {{ get: () => "sid-selected" }},
+      resetSearchState: () => events.push(["resetSearch"]),
+      setSearchSessionId: (sessionId) => events.push(["setSearchSession", sessionId]),
+      scheduleSearch: (query) => events.push(["schedule", query]),
+      selectionLine: () => menuState.selectionLine(input.value),
+      openDraftFilePathWithGuard: (path) => events.push(["openDraft", path]),
+      openFilePathWithResolvedMode: (path, options) => {{ events.push(["openFile", path, options]); return Promise.resolve(true); }},
+      setStatus: (status) => events.push(["status", status]),
+      optionElementById: () => null,
+      isFocusInsideField: () => false,
+      requestAnimationFrame: (callback) => callback(),
+    }});
+    async function run() {{
+      // (a) An in-progress typed query survives click and focus untouched.
+      input.value = "src/qu";
+      menuState.handleInput("src/qu");
+      const clickWhileTyping = await runtime.click({{ stopPropagation() {{}} }});
+      const clickValue = input.value;
+      const focusWhileTyping = await runtime.focus();
+      const focusValue = input.value;
+      const resetsWhileSearchActive = events.filter((event) => event[0] === "resetInput").length;
+      // (b) Settled committed-path state still resets to a fresh search.
+      menuState.resetInputState();
+      input.value = "active.py";
+      const clickCommitted = await runtime.click({{ stopPropagation() {{}} }});
+      const committedValue = input.value;
+      const committedResets = events.filter((event) => event[0] === "resetInput").length;
+      // A programmatic file-ref search (openSearchQuery) also survives click.
+      runtime.openSearchQuery("src/app.py:12", {{ line: 12 }});
+      const fileRefClick = await runtime.click({{ stopPropagation() {{}} }});
+      const fileRefValue = input.value;
+      const fileRefResets = events.filter((event) => event[0] === "resetInput").length;
+      // The one-shot preserve-on-focus marker is consumed by focus, not leaked.
+      menuState.setPreserveSearchOnFocus(true);
+      await runtime.focus();
+      const preserveAfterFocus = menuState.takePreservedSearchOnFocus();
+      return {{ clickWhileTyping, clickValue, focusWhileTyping, focusValue, resetsWhileSearchActive, clickCommitted, committedValue, committedResets, fileRefClick, fileRefValue, fileRefResets, preserveAfterFocus }};
+    }}
+    run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+    """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
     def test_file_picker_module_exports_and_fails_closed(self) -> None:
         result = run_picker_module_probe()
@@ -647,6 +723,25 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["blurScheduledEvents"], [["raf"]])
         self.assertEqual(result["blurEvents"], [["close", {"restoreInput": True}]])
         self.assertContains("Codoxear file picker host missing ensureCurrentSession", result["missingError"])
+
+    def test_file_picker_click_and_focus_preserve_active_search_text(self) -> None:
+        result = run_picker_input_preserve_probe()
+        # (a) A query the user is still typing must survive click and focus.
+        self.assertTrue(result["clickWhileTyping"])
+        self.assertEqual(result["clickValue"], "src/qu")
+        self.assertTrue(result["focusWhileTyping"])
+        self.assertEqual(result["focusValue"], "src/qu")
+        self.assertEqual(result["resetsWhileSearchActive"], 0)
+        # (b) Settled committed-path state still resets to a fresh search.
+        self.assertTrue(result["clickCommitted"])
+        self.assertEqual(result["committedValue"], "active.py")
+        self.assertEqual(result["committedResets"], 1)
+        # Programmatic file-ref searches (openSearchQuery) survive click too.
+        self.assertTrue(result["fileRefClick"])
+        self.assertEqual(result["fileRefValue"], "src/app.py:12")
+        self.assertEqual(result["fileRefResets"], 1)
+        # The one-shot preserve-on-focus marker is consumed by focus itself.
+        self.assertFalse(result["preserveAfterFocus"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
