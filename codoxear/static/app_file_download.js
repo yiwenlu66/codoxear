@@ -154,6 +154,7 @@
       if (!path) return false;
       const link = documentRef.createElement("a");
       link.href = resolveAppUrl(path);
+      link.download = "";
       link.rel = "noopener";
       link.style.display = "none";
       documentRef.body.appendChild(link);

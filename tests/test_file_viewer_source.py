@@ -43,7 +43,8 @@ surface.setSurface('diff'); const diff = { ...surfaces.diff.style, image: image.
 surface.setSurface('image'); const imageState = { ...image.style, diff: surfaces.diff.style.display, video: video.style.display };
 surface.setSurface('video'); const videoState = { ...video.style, diff: surfaces.diff.style.display, image: image.style.display };
 let download = [];
-const document = { createElement() { return { style: {}, set href(v) { this._href = v; }, get href() { return this._href; }, click() { download.push(this._href); }, remove() {} }; }, body: { appendChild() {} } };
+let downloadAttribute = null;
+const document = { createElement() { return { style: {}, download: null, set href(v) { this._href = v; }, get href() { return this._href; }, click() { download.push(this._href); downloadAttribute = this.download; }, remove() {} }; }, body: { appendChild() {} } };
 const downloadRuntime = viewer.createFileDownloadRuntime({ document, resolveAppUrl: (path) => path });
 const host = { innerHTML: 'old', scrollTop: 22, appendChild(node) { this.node = node; } };
 const el = (tag, attrs = {}, children = []) => ({ tag, ...attrs, children });
@@ -52,7 +53,7 @@ const plain = fallback.applyPlainText('notes.txt', 'hello', 3);
 fallback.applyBlocked('blob.bin', 'binary', 0, 3);
 const blocked = host.node.children[1].text;
 downloadRuntime.download('app:/download');
-process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff, imageState, videoState, download, plain, blocked }));
+process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff, imageState, videoState, download, downloadAttribute, plain, blocked }));
 '''
         )
         self.assertContains("createFileViewerController", result["exports"])
@@ -60,6 +61,7 @@ process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff,
         self.assertEqual(result["imageState"], {"display": "block", "diff": "none", "video": "none"})
         self.assertEqual(result["videoState"], {"display": "block", "diff": "none", "image": "none"})
         self.assertEqual(result["download"], ["app:/download"])
+        self.assertEqual(result["downloadAttribute"], "")
         self.assertEqual(result["plain"], {"targetLine": 3})
         self.assertContains("not renderable", result["blocked"])
 
