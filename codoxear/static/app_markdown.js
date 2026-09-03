@@ -610,9 +610,38 @@ import * as CodoxearUrls from "./app_application.js";
     });
   }
 
+  // Display projection for the server-generated attachment prefix block
+  // (file_upload.attachment_inject_text): a run of leading lines with the
+  // exact shape "Attachment N: /abs/path". The committed text stays
+  // backend-truthful plain text (agent prompt, terminal echo, copy, export);
+  // only chat rendering rewrites it. Image attachments render inline via
+  // markdown image syntax; anything else keeps its plain line, whose path the
+  // candidate-ref upgrade turns into a file link. The matching rule mirrors
+  // session_listing._redact_generated_attachment_prefix_paths.
+  const ATTACHMENT_PREFIX_LINE_RE = /^Attachment \d+: (\/.+)$/;
+  const INLINE_IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"]);
+
+  function attachmentDisplayMarkdown(src) {
+    const text = String(src ?? "");
+    if (!text.startsWith("Attachment ")) return text;
+    const lines = text.split("\n");
+    let end = 0;
+    while (end < lines.length && ATTACHMENT_PREFIX_LINE_RE.test(lines[end])) end += 1;
+    if (end === 0) return text;
+    const rewritten = lines.slice(0, end).map((line) => {
+      const path = ATTACHMENT_PREFIX_LINE_RE.exec(line)[1];
+      if (!INLINE_IMAGE_EXTENSIONS.has(filePathExtension(path))) return line;
+      // Markdown image destinations cannot carry whitespace or parentheses;
+      // leave such lines as plain file-ref text rather than emit broken syntax.
+      if (/[\s()]/.test(path)) return line;
+      return `![${path.split("/").pop()}](${path})`;
+    });
+    return [...rewritten, ...lines.slice(end)].join("\n");
+  }
+
   function chatMarkdownHtmlCached(src, sessionId) {
     const sid = String(sessionId || "").trim();
-    return mdToHtmlCached(src, {
+    return mdToHtmlCached(attachmentDisplayMarkdown(src), {
       cacheKey: sid ? `chat:${sid}` : "chat",
       resolveImageSrc(rawRef, localRef) {
         return previewImageUrlForRef(rawRef, localRef, { sessionId: sid });
@@ -623,4 +652,4 @@ import * as CodoxearUrls from "./app_application.js";
     });
   }
 
-export { escapeHtml, mdToHtml, mdToHtmlCached, normalizeLineNumber, parseLocalFileRef, isMarkdownPreviewable, markdownPreviewHtml, chatMarkdownHtmlCached, prepareImageForDisplay, rememberImageDimensions, hydrateMarkedImages };
+export { escapeHtml, mdToHtml, mdToHtmlCached, normalizeLineNumber, parseLocalFileRef, isMarkdownPreviewable, markdownPreviewHtml, chatMarkdownHtmlCached, attachmentDisplayMarkdown, prepareImageForDisplay, rememberImageDimensions, hydrateMarkedImages };

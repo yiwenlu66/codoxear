@@ -124,3 +124,81 @@ def test_nested_tilde_fences_in_lists_and_aligned_tables_preserve_their_distinct
     assert '<th align="right">Formula</th>' in html
     assert '<td align="center"><code>a|b</code></td>' in html
     assert '<td align="right"><span class="md-math-fallback md-math-inline">\\(x_1\\)</span></td>' in html
+
+
+def run_markdown_expr(expr: str) -> str:
+    """Evaluate an expression against the markdown module namespace in the VM."""
+    app_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    marked_source = MARKED_JS.read_text(encoding="utf-8")
+    program = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const context = {{
+          URL,
+          location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          window: {{ CodoxearUrls: {{ resolveAppUrl: (path) => path }} }},
+        }};
+        vm.createContext(context);
+        vm.runInContext({json.dumps(marked_source)}, context);
+        context.window.marked = context.marked;
+        vm.runInContext({json.dumps(app_source)}, context);
+        process.stdout.write(JSON.stringify({expr}));
+        """
+    )
+    return subprocess.run(
+        ["node", "-e", program],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ).stdout
+
+
+def test_attachment_prefix_projection_rules() -> None:
+    ns = "context.window.CodoxearMarkdown.attachmentDisplayMarkdown"
+    out = json.loads(
+        run_markdown_expr(
+            f"""
+            [{ns}("Attachment 1: /up/shot.png\\nAttachment 2: /up/notes.txt\\nplease review"),
+             {ns}("Attachment 1: /up/shot.PNG\\nbody"),
+             {ns}("see this\\nAttachment 1: /up/shot.png"),
+             {ns}("Attachment 1: /up/my file.png\\nbody"),
+             {ns}("Attachment 1: /up/a)b.png\\nbody"),
+             {ns}("Attachment one: /up/shot.png\\nbody"),
+             {ns}("plain message")]
+            """
+        )
+    )
+    # Image lines become markdown image syntax keyed on the basename.
+    assert out[0] == "![shot.png](/up/shot.png)\nAttachment 2: /up/notes.txt\nplease review"
+    # Extension matching is case-insensitive.
+    assert out[1] == "![shot.PNG](/up/shot.PNG)\nbody"
+    # Only the leading generated block is projected; later lookalikes are text.
+    assert out[2] == "see this\nAttachment 1: /up/shot.png"
+    # Whitespace/parentheses in the path would break markdown destinations:
+    # those lines stay plain file-ref text.
+    assert out[3] == "Attachment 1: /up/my file.png\nbody"
+    assert out[4] == "Attachment 1: /up/a)b.png\nbody"
+    # Non-numeric labels and non-attachment text pass through untouched.
+    assert out[5] == "Attachment one: /up/shot.png\nbody"
+    assert out[6] == "plain message"
+
+
+def test_chat_markdown_renders_image_attachments_inline() -> None:
+    html = json.loads(
+        run_markdown_expr(
+            'context.window.CodoxearMarkdown.chatMarkdownHtmlCached('
+            '"Attachment 1: /home/u/.local/share/codoxear/uploads/broker-1/1_shot.png\\n'
+            'Attachment 2: /home/u/.local/share/codoxear/uploads/broker-1/2_notes.txt\\n'
+            'what do you see?", "sid-1")'
+        )
+    )
+    assert '<img src="/home/u/.local/share/codoxear/uploads/broker-1/1_shot.png" alt="1_shot.png">' in html
+    # Non-image attachments keep their plain line; the path stays visible text.
+    assert "Attachment 2: /home/u/.local/share/codoxear/uploads/broker-1/2_notes.txt" in html
+    assert "what do you see?" in html
+
+
+def test_chat_markdown_leaves_messages_without_prefix_untouched() -> None:
+    html = json.loads(run_markdown_expr('context.window.CodoxearMarkdown.chatMarkdownHtmlCached("hello world", "sid-1")'))
+    assert "<p>hello world</p>" in html
