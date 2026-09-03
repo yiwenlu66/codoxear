@@ -57,6 +57,33 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     return [pendingSessionPathEntry(draftPath), ...entries];
   }
 
+  function prependAbsoluteFilePickerEntry(entries, query) {
+    // Absolute queries get a first-class "open this path" row (the server
+    // resolves absolute paths on session file routes). Mirrors the leading
+    // backslash-to-slash normalization normalizeDraftFilePath applies before
+    // it rejects leading-slash queries, so `/a\b` and `/a/b` open the same row.
+    const trimmed = String(query || "").trim().replace(/\\/g, "/");
+    if (!trimmed.startsWith("/")) return entries;
+    if (entries.some((entry) => entry.path === trimmed)) return entries;
+    return [
+      {
+        path: trimmed,
+        gitPath: false,
+        additions: null,
+        deletions: null,
+        changed: false,
+        added: false,
+        score: 0,
+        createNew: false,
+      },
+      ...entries,
+    ];
+  }
+
+  function prependQueryFilePickerEntries(entries, query, context) {
+    return prependAbsoluteFilePickerEntry(prependDraftFileEntry(prependPendingSessionPathEntry(entries, query), query, context), query);
+  }
+
   function localFilePickerSearchEntries(context, query) {
     const out = [];
     const seen = new Set();
@@ -583,15 +610,15 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       return entries;
     }
     if (searchState.pendingQuery === query) {
-      const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query), query, context);
+      const localEntries = prependQueryFilePickerEntries(localFilePickerSearchEntries(context, query), query, context);
       return localEntries.length ? localEntries : null;
     }
     if (searchState.errorQuery === query) {
-      const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query), query, context);
+      const localEntries = prependQueryFilePickerEntries(localFilePickerSearchEntries(context, query), query, context);
       return localEntries.length ? localEntries : [];
     }
     if (searchState.loadedQuery !== query) {
-      const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query), query, context);
+      const localEntries = prependQueryFilePickerEntries(localFilePickerSearchEntries(context, query), query, context);
       return localEntries.length ? localEntries : null;
     }
     const out = [];
@@ -622,7 +649,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     }
     normalizeSamePathFilePickerScores(out).sort(CodoxearFileHelpers.compareFilePickerEntries);
     const limited = out.slice(0, 120);
-    return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query, context);
+    return prependQueryFilePickerEntries(limited, query, context);
   }
 
   function createInputRuntime(options = {}) {

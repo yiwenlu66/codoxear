@@ -607,6 +607,114 @@ def run_picker_input_preserve_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_picker_absolute_entry_probe() -> dict[str, object]:
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const picker = ctx.window.CodoxearFilePicker;
+    const menuState = picker.createMenuState({{ normalizeLineNumber: () => null }});
+    let inputValue = "";
+    let searchSnapshot = {{}};
+    const candidates = new Map([
+      ["readme", {{ path: "README.md", gitPath: false, changed: false, apiPath: "" }}],
+      ["app", {{ path: "src/app.py", gitPath: true, changed: true, apiPath: "" }}],
+    ]);
+    const entryRuntime = picker.createEntryRuntime({{
+      menuState,
+      inputValue: () => inputValue,
+      candidateKeys: () => Array.from(candidates.keys()),
+      entryForKey: (key) => candidates.get(key) || null,
+      pickerEntryForKey: (key, options) => {{
+        const entry = candidates.get(key);
+        if (!entry) return null;
+        return Object.assign({{}}, entry, {{ score: (options && options.score) || 0, source: "recent" }});
+      }},
+      pickerEntryForPath: (path, options) => ({{
+        path,
+        gitPath: Boolean(options && options.gitPath),
+        changed: false,
+        apiPath: (options && options.apiPath) || "",
+        score: (options && options.score) || 0,
+        fromSearch: true,
+      }}),
+      keyForPath: (path, gitPath, apiPath) => `${{path}}|${{gitPath ? 1 : 0}}|${{apiPath || ""}}`,
+      activeFileDraft: () => false,
+      activeFilePath: () => "active.py",
+      searchSnapshot: () => searchSnapshot,
+      normalizeFileApiPath: (value) => (typeof value === "string" && value !== "" ? value : ""),
+    }});
+    function visibleFor(newInput, snapshot) {{
+      inputValue = newInput;
+      searchSnapshot = snapshot || {{}};
+      menuState.handleInput(newInput);
+      return entryRuntime.visibleEntries();
+    }}
+    const events = [];
+    let entries = [];
+    const input = {{
+      value: "",
+      attrs: {{}},
+      setAttribute(name, value) {{ this.attrs[name] = String(value); }},
+      removeAttribute(name) {{ delete this.attrs[name]; }},
+    }};
+    const inputRuntime = picker.createInputRuntime({{
+      input,
+      menuState,
+      ensureCurrentSession: async () => true,
+      renderMenu: () => entries,
+      applyMenuState: () => events.push(["apply"]),
+      resetInput: () => {{ events.push(["resetInput"]); input.value = "active.py"; }},
+      closeMenu: (options) => events.push(["close", options]),
+      currentSessionId: () => "sid-current",
+      sessionState: {{ get: () => "sid-selected" }},
+      resetSearchState: () => events.push(["resetSearch"]),
+      setSearchSessionId: (sessionId) => events.push(["setSearchSession", sessionId]),
+      scheduleSearch: (query) => events.push(["schedule", query]),
+      selectionLine: () => menuState.selectionLine(input.value),
+      openDraftFilePathWithGuard: (path) => events.push(["openDraft", path]),
+      openFilePathWithResolvedMode: (path, options) => {{ events.push(["openFile", path, options]); return Promise.resolve(true); }},
+      setStatus: (status) => events.push(["status", status]),
+      optionElementById: () => null,
+      isFocusInsideField: () => false,
+      requestAnimationFrame: (callback) => callback(),
+    }});
+    async function run() {{
+      const pendingAbsolute = visibleFor("/etc/hosts", {{ pendingQuery: "/etc/hosts" }});
+      const loadedAbsolute = visibleFor("/etc/hosts", {{ loadedQuery: "/etc/hosts", results: [{{ path: "docs/hosts.txt", score: 3 }}] }});
+      const loadedExactAbsolute = visibleFor("/etc/hosts", {{ loadedQuery: "/etc/hosts", results: [{{ path: "/etc/hosts", score: 5 }}] }});
+      const backslashAbsolute = visibleFor("/etc\\\\hosts", {{ pendingQuery: "/etc\\\\hosts" }});
+      const relativeDraft = visibleFor("src/app", {{ loadedQuery: "src/app", results: [{{ path: "src/app.py", score: 10 }}] }});
+      // Enter on the open-absolute row goes through the resolved-mode open path.
+      entries = pendingAbsolute;
+      input.value = "/etc/hosts";
+      menuState.handleInput("/etc/hosts");
+      menuState.setOpen(true);
+      const enterResult = await inputRuntime.keydown({{ key: "Enter", preventDefault() {{}} }});
+      return {{
+        pendingAbsolute,
+        loadedAbsolute,
+        loadedExactAbsolute,
+        backslashAbsolute,
+        relativeDraft,
+        enterResult,
+        enterEvents: events.slice(),
+      }};
+    }}
+    run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+    """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
     def test_file_picker_module_exports_and_fails_closed(self) -> None:
         result = run_picker_module_probe()
@@ -742,6 +850,41 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["fileRefResets"], 1)
         # The one-shot preserve-on-focus marker is consumed by focus itself.
         self.assertFalse(result["preserveAfterFocus"])
+
+    def test_file_picker_absolute_query_gets_open_entry(self) -> None:
+        result = run_picker_absolute_entry_probe()
+        absolute_entry = {
+            "path": "/etc/hosts",
+            "gitPath": False,
+            "additions": None,
+            "deletions": None,
+            "changed": False,
+            "added": False,
+            "score": 0,
+            "createNew": False,
+        }
+        # Pending and loaded search states both surface the open-absolute row
+        # first, ahead of any fuzzy search matches, and never a create-new row.
+        self.assertEqual(result["pendingAbsolute"], [absolute_entry])
+        self.assertEqual(result["loadedAbsolute"][0], absolute_entry)
+        self.assertEqual([entry["path"] for entry in result["loadedAbsolute"]], ["/etc/hosts", "docs/hosts.txt"])
+        self.assertFalse(any(entry.get("createNew") for entry in result["loadedAbsolute"]))
+        # An exact absolute search result is not duplicated by the synthetic row.
+        self.assertEqual(len(result["loadedExactAbsolute"]), 1)
+        self.assertEqual(result["loadedExactAbsolute"][0]["path"], "/etc/hosts")
+        self.assertTrue(result["loadedExactAbsolute"][0]["fromSearch"])
+        # Backslash queries normalize to the same absolute row.
+        self.assertEqual(result["backslashAbsolute"], [absolute_entry])
+        # Relative queries keep the legacy draft (create-new) prepend and gain
+        # no absolute row.
+        self.assertEqual(result["relativeDraft"][0], {"path": "src/app", "additions": None, "deletions": None, "changed": False, "added": False, "score": 0, "createNew": True})
+        self.assertEqual(result["relativeDraft"][1]["path"], "src/app.py")
+        self.assertFalse(any(entry["path"].startswith("/") for entry in result["relativeDraft"]))
+        # Enter opens the absolute row through the resolved-mode open path.
+        self.assertTrue(result["enterResult"])
+        open_calls = [event for event in result["enterEvents"] if event[0] == "openFile"]
+        self.assertEqual(open_calls, [["openFile", "/etc/hosts", {"line": None, "changed": False, "gitPath": False}]])
+        self.assertFalse(any(event[0] == "openDraft" for event in result["enterEvents"]))
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
