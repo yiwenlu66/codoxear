@@ -41,6 +41,7 @@
     const time24 = requirePendingUserFunction(options.time24, "time24");
     const rebuildDecorations = requirePendingUserFunction(options.rebuildDecorations, "rebuildDecorations");
     const markEventSeen = requirePendingUserFunction(options.markEventSeen, "markEventSeen");
+    const upgradeCandidateFileRefs = requirePendingUserFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
 
     function consumePendingUserIfMatches(event, sessionId = sessionState.get("selected")) {
       const match = takePendingUserMatch(event, sessionId);
@@ -54,9 +55,16 @@
       pendingElement.removeAttribute("data-pending");
 
       const markdownElement = pendingElement.querySelector(".md");
-      if (markdownElement && typeof event.text === "string") markdownElement.innerHTML = markdownHtml(event.text, sessionId);
+      if (markdownElement && typeof event.text === "string") {
+        markdownElement.innerHTML = markdownHtml(event.text, sessionId);
+        // The swapped content is fresh markdown: re-run the same candidate
+        // file-ref upgrade makeRow applies at construction, or freshly
+        // revealed paths (server-injected attachment lines) stay inert spans.
+        void upgradeCandidateFileRefs(markdownElement);
+      }
 
       const row = pendingElement.closest(".msg-row");
+      if (row && typeof event.text === "string") row.copyText = event.text;
       if (row && typeof event.ts === "number" && Number.isFinite(event.ts)) row.dataset.ts = String(event.ts);
       const timestamp = pendingElement.querySelector(".ts");
       if (timestamp && typeof event.ts === "number" && Number.isFinite(event.ts)) timestamp.textContent = time24(new Date(event.ts * 1000));

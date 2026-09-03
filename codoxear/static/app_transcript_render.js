@@ -782,6 +782,7 @@ markdownHtml: chatMarkdownHtmlCached,
 time24,
 rebuildDecorations,
 markEventSeen,
+upgradeCandidateFileRefs,
       }));
 
 transcriptViewController = CodoxearTranscriptView.createTranscriptViewController(wiring.createTranscriptViewOptions({

@@ -40,6 +40,13 @@
     void upgradeCandidateFileRefs(md);
     if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
 
+    // The row owns the copyable text. Construction seeds it from the event;
+    // the pending-commit path (consumePendingUserIfMatches) rewrites this same
+    // slot when the backend-committed event lands, because the committed text
+    // may differ from the echoed composer text (server-injected attachment
+    // prefix lines). The click handler reads the row at click time, never a
+    // construction-time closure.
+    row.copyText = typeof ev.text === "string" ? ev.text : "";
     let copyBtn = null;
     if (typeof ev.text === "string" && ev.text.length) {
       copyBtn = el("button", {
@@ -54,7 +61,7 @@
         e.preventDefault();
         e.stopPropagation();
         try {
-          await copyToClipboard(ev.text);
+          await copyToClipboard(row.copyText);
           copyBtn.classList.add("copied");
           setTimeoutFn(() => copyBtn.classList.remove("copied"), 1200);
           setToast("Copied markdown");
