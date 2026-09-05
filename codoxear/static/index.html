@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="theme-color" content="#ffffff" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
     <title>Codoxear</title>
     <script>
@@ -150,6 +150,35 @@
     <link rel="icon" type="image/png" href="favicon.png?v=__CODOXEAR_ASSET_VERSION__" />
     <link rel="manifest" href="manifest.webmanifest?v=__CODOXEAR_ASSET_VERSION__" />
 			    <link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />
+    <script>
+      // Theme boot: project the persisted appearance before first paint. The
+      // theme link must follow app.css in the cascade and precede the custom
+      // style, so both are parser-inserted here (render-blocking, no flash).
+      // From module load on, app_theme.js is the sole writer of these nodes.
+      (function () {
+        var read = function (key) {
+          try {
+            return window.localStorage.getItem(key);
+          } catch (e) {
+            return null;
+          }
+        };
+        var family = String(read("codoxear.ui.theme.family") || "").toLowerCase();
+        if (family !== "clay" && family !== "slate") family = "paper";
+        var mode = String(read("codoxear.ui.theme.mode") || "").toLowerCase();
+        if (mode !== "light" && mode !== "dark") {
+          var dark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+          mode = dark && dark.matches ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", family);
+        document.documentElement.setAttribute("data-mode", mode);
+        var customCss = String(read("codoxear.ui.customCss") || "").replace(/<\//g, "<\\/");
+        document.write(
+          '<link rel="stylesheet" id="codoxearThemeLink" href="themes/' + family + '.css?v=__CODOXEAR_ASSET_VERSION__" />' +
+          '<style id="codoxearCustomCss">' + customCss + "</style>"
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

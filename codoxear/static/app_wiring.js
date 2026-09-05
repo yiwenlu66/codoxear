@@ -20,6 +20,7 @@
       createApplicationModalDOMOptions(deps) { return select(deps, ['root', 'el', 'iconSvg', 'windowTarget', 'codoxearVoice', 'voiceHost']); },
       createModalPolicyOptions(deps) { return select(deps, ['app', 'modalTargets', 'closeUnattended', 'isUnattendedOpen', 'closeSearch', 'isSearchOpen', 'isSidebarOpen', 'closeSidebar', 'closeFilePicker', 'closeNewSessionMenus', 'closeSessionDependencyMenu', 'el', 'iconSvg']); },
       createConfirmationOptions(deps) { return select(deps, ['backdrop', 'viewer', 'title', 'message', 'confirmButton', 'cancelButton', 'documentTarget', 'ElementCtor', 'requestFrame', 'prepareModalOpen', 'afterModalVisibilityChanged', 'addEvent']); },
+      createThemeOptions(deps) { return select(deps, ['documentTarget', 'storageGetItem', 'storageSetItem', 'storageRemoveItem', 'matchMedia', 'versionedAssetPath']); },
       createHelpOptions(deps) { return select(deps, ['backdrop', 'viewer', 'closeButton', 'openButton', 'documentTarget', 'ElementCtor', 'prepareModalOpen', 'afterModalVisibilityChanged', 'addEvent', 'focusModalCloseButton', 'isModalTargetOpen', 'restoreModalFocus']); },
       createDialogMenuOptions(deps) { return select(deps, ['windowTarget']); },
       createNewSessionDialogOptions(deps) { return select(deps, ['sessionState', 'sessionCatalog', 'root', 'el', 'iconSvg', 'document', 'window', 'addEvent', 'isMobile', 'prepareModalOpen', 'afterModalVisibilityChanged', 'isModalTargetOpen', 'applyDialogMenus', 'positionDialogMenu', 'setPickerButtonContent', 'fetchResumeCandidates', 'spawnSession']); },

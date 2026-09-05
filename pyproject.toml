@@ -27,4 +27,4 @@ packages = ["codoxear", "codoxear.agent_backend"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-codoxear = ["static/*", "static/logos/*", "static/monaco/*", "static/monaco/vs/**", "static/vendor/fonts/*", "pi_active_session_bridge.ts"]
+codoxear = ["static/*", "static/logos/*", "static/themes/*", "static/monaco/*", "static/monaco/vs/**", "static/vendor/fonts/*", "pi_active_session_bridge.ts"]

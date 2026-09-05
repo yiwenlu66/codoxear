@@ -25,9 +25,11 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 import * as CodoxearSessions from "./app_sessions.js";
 import * as CodoxearShell from "./app_shell.js";
 import * as CodoxearStorage from "./app_storage.js";
+import * as CodoxearTheme from "./app_theme.js";
 import * as CodoxearTopbar from "./app_topbar.js";
 import * as CodoxearViewport from "./app_viewport.js";
 import * as CodoxearVoice from "./app_voice.js";
+import * as CodoxearWiring from "./app_wiring.js";
 
 const global = window;
 
@@ -156,6 +158,17 @@ const global = window;
       function storageRemoveItem(key) {
         return CodoxearStorage.removeItem(key);
       }
+
+      // The theme controller outlives login/app renders: appearance is a
+      // property of the viewing device, not of an authenticated session.
+      const themeController = CodoxearTheme.createThemeController(CodoxearWiring.createWiring().createThemeOptions({
+        documentTarget: document,
+        storageGetItem,
+        storageSetItem,
+        storageRemoveItem,
+        matchMedia: (query) => (typeof window.matchMedia === "function" ? window.matchMedia(query) : null),
+        versionedAssetPath: versionedShellAssetPath,
+      }));
 
       function lastProviderKey(backend) {
         return CodoxearLaunch.lastProviderKey(backend);
@@ -580,7 +593,8 @@ const global = window;
         window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
         requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
         isTextEntryElement, updateAppHeightVar,
-        codoxearViewport: CodoxearViewport, codoxearDisplay: CodoxearDisplay, codoxearVoice: CodoxearVoice, el, codoxearShell: CodoxearShell, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments, codoxearTopbar: CodoxearTopbar,
+        codoxearViewport: CodoxearViewport, codoxearDisplay: CodoxearDisplay, codoxearVoice: CodoxearVoice, el, codoxearShell: CodoxearShell,
+        themeController, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments, codoxearTopbar: CodoxearTopbar,
         codoxearMessageFlow: CodoxearMessageFlow, codoxearInterrupt: CodoxearInterrupt, codoxearDialogMenus: CodoxearDialogMenus,
         codoxearFileEditMode: CodoxearFileEditMode, codoxearPendingUser: CodoxearPendingUser, codoxearNavigationPulse: CodoxearNavigationPulse,
         codoxearFileTouch: CodoxearFileTouch, pushPerfSample,

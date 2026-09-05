@@ -1,0 +1,235 @@
+/* Slate theme.
+   ChatGPT language. Borderless sidebar rows with fill selection, ghost
+   chrome, flat assistant messages, big radius, monochrome primary.
+   Light: white/soft-gray. Dark: #212121/#171717.
+
+   Geometry, type, focus, and elevation are token assignments; the component
+   rules below are the structural differences a token cannot express (ghost
+   buttons, borderless rows, flat assistant messages, the composer pill). See
+   themes/paper.css for the theme file contract. */
+:root[data-theme="slate"] {
+  --ink: #0d0d0d;
+  --paper: #ffffff;
+  --bg: #ffffff;
+  --wash: #f1f1f1;
+  --hairline: #e8e8e8;
+  --panel: #f9f9f9;
+  --border: #e0e0e0;
+  --text: #0d0d0d;
+  --muted: #6e6e6e;
+  --accent: #0d0d0d;
+  --accent-weak: #ececec;
+  --danger: #d92d20;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-bubble: 18px;
+  --radius-pill: 999px;
+  --radius-dot: 50%;
+  --focus-ring: var(--ink);
+  --shadow-pop: 0 4px 16px rgb(0 0 0 / 0.08);
+
+  --bubble-user: #f1f1f1;
+  --bubble-assistant: transparent;
+  --session-active: #ececec;
+  --surface-subtle: #f7f7f7;
+  --surface-muted: #f4f4f4;
+  --surface-error: #fef3f2;
+  --surface-danger: #fef3f2;
+  --surface-warning: #fffaeb;
+  --surface-info: #f7f7f7;
+  --surface-code: #f7f7f7;
+  --surface-pdf: #f7f7f7;
+  --border-subtle: #e8e8e8;
+  --border-faint: #ececec;
+  --border-error: #fecdca;
+  --border-danger: #fecdca;
+  --border-warning: #fedf89;
+  --text-subtle: #8a8a8a;
+  --text-soft: #707070;
+  --text-error: #b42318;
+  --text-warning: #b54708;
+  --state-pending: #d97706;
+  --state-amber-border: #fedf89;
+  --focus-danger: #d92d20;
+  --ink-hover: #000000;
+  --ink-disabled: #c4c4c4;
+  --border-count: #dadada;
+  --text-effort-xhigh: #9f5f5f;
+  --text-effort-high: #9f7754;
+  --text-effort-medium: #8f7e58;
+  --text-effort-low: #668466;
+  --text-effort-max: #a9536c;
+  --text-effort-minimal: #6f8374;
+  --text-effort-off: #777777;
+  --text-danger-bright: #d92d20;
+  --border-amber: #f8c060;
+  --surface-amber: #fffaeb;
+  --border-amber-dark: #bf6d2e;
+  --text-danger-dark: #b42318;
+  --border-danger-dark: #fecdca;
+  --surface-amber-light: #fffcf5;
+  --border-audio-error: #f3b8b2;
+  --surface-audio-error: #fef3f2;
+  --border-audio-active: #d92d20;
+  --surface-audio-active: #fee4e2;
+  --text-muted-blue: #888c93;
+  --text-timestamp: #8a8a8a;
+  --border-rule: #e8e8e8;
+  --border-quote: #d4d4d4;
+  --text-recovery: #b54708;
+  --border-recovery: #fedf89;
+  --text-placeholder: #acacac;
+  --text-picker-icon: #8d8d8d;
+  --surface-picker-section: #f1f1f1;
+  --surface-highlight: #fdea9d;
+  --text-added: #15803d;
+  --border-pdf: #e8e8e8;
+  --surface-queue: #f7f7f7;
+  --border-queue: #e5e5e5;
+  --queue-hover: #f1f1f1;
+  --queue-border-hover: #c9c9c9;
+  --text-queue-danger: #d92d20;
+  --border-queue-danger: #fecdca;
+  --queue-danger-hover: #fee4e2;
+}
+
+:root[data-theme="slate"][data-mode="dark"] {
+  color-scheme: dark;
+  --ink: #ececec;
+  --paper: #2f2f2f;
+  --bg: #212121;
+  --wash: #2a2a2a;
+  --hairline: #383838;
+  --panel: #171717;
+  --border: #424242;
+  --text: #e9e9e9;
+  --muted: #a0a0a0;
+  --accent: #ececec;
+  --accent-weak: #3a3a3a;
+  --danger: #e5684e;
+  --focus-ring: #ececec;
+  --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
+  --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
+
+  --bubble-user: #2f2f2f;
+  --bubble-assistant: transparent;
+  --session-active: #2f2f2f;
+  --surface-subtle: #262626;
+  --surface-muted: #2b2b2b;
+  --surface-error: #3a2420;
+  --surface-danger: #3a2420;
+  --surface-warning: #342a15;
+  --surface-info: #262626;
+  --surface-code: #181818;
+  --surface-pdf: #262626;
+  --border-subtle: #333333;
+  --border-faint: #303030;
+  --border-error: #6b3a32;
+  --border-danger: #6b3a32;
+  --border-warning: #66501f;
+  --text-subtle: #8f8f8f;
+  --text-soft: #a3a3a3;
+  --text-error: #f0a496;
+  --text-warning: #d9a856;
+  --state-pending: #d9a856;
+  --state-amber-border: #66501f;
+  --focus-danger: #e5684e;
+  --ink-hover: #ffffff;
+  --ink-disabled: #4d4d4d;
+  --border-count: #3d3d3d;
+  --text-effort-xhigh: #d98c8c;
+  --text-effort-high: #d9a877;
+  --text-effort-medium: #c9b478;
+  --text-effort-low: #8fb08f;
+  --text-effort-max: #e08ea3;
+  --text-effort-minimal: #93ab98;
+  --text-effort-off: #7d7d7d;
+  --text-danger-bright: #f0755a;
+  --border-amber: #66501f;
+  --surface-amber: #342a15;
+  --border-amber-dark: #a8813c;
+  --text-danger-dark: #f0a496;
+  --border-danger-dark: #6b3a32;
+  --surface-amber-light: #342a15;
+  --border-audio-error: #7a453e;
+  --surface-audio-error: #3a2420;
+  --border-audio-active: #e5684e;
+  --surface-audio-active: #4a2c26;
+  --text-muted-blue: #8a8f98;
+  --text-timestamp: #7d7d7d;
+  --border-rule: #3a3a3a;
+  --border-quote: #4a4a4a;
+  --text-recovery: #d9a07a;
+  --border-recovery: #5c4630;
+  --text-placeholder: #6e6e6e;
+  --text-picker-icon: #8a8a8a;
+  --surface-picker-section: #262626;
+  --surface-highlight: #6b5a1e;
+  --text-added: #4ade80;
+  --border-pdf: #333333;
+  --surface-queue: #262626;
+  --border-queue: #333333;
+  --queue-hover: #2b2b2b;
+  --queue-border-hover: #4a4a4a;
+  --text-queue-danger: #f0755a;
+  --border-queue-danger: #6b3a32;
+  --queue-danger-hover: #3a2420;
+}
+
+/* Slate component rules (mode-independent, token-driven).
+   Selectors are wrapped as :where(:root[data-theme="slate"]) <base selector>
+   so each rule has exactly the specificity of the base rule it replaces and
+   wins only by source order (themes load after app.css). Base variants that
+   are more specific than the replaced rule keep winning unless the theme
+   mirrors them explicitly. */
+:where(:root[data-theme="slate"]) .sidebar { border-right-color: var(--hairline); }
+:where(:root[data-theme="slate"]) .sidebar header { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="slate"]) .topbar { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="slate"]) .composer { border-top: 0; background: var(--bg); }
+
+/* Ghost chrome: icon buttons show their bounds only through hover fill. The
+   active mirror comes last so an active button keeps its ink fill on hover. */
+:where(:root[data-theme="slate"]) .icon-btn { background: transparent; border-color: transparent; }
+:where(:root[data-theme="slate"]) .topActions .icon-btn,
+:where(:root[data-theme="slate"]) .pill > .icon-btn,
+:where(:root[data-theme="slate"]) .sidebar header .icon-btn,
+:where(:root[data-theme="slate"]) .chatNavRail .icon-btn { border-color: transparent; }
+:where(:root[data-theme="slate"]) .icon-btn:hover { background: var(--wash); }
+:where(:root[data-theme="slate"]) .icon-btn.active { background: var(--ink); color: var(--paper); border-color: transparent; }
+
+/* Borderless rows with fill selection. */
+:where(:root[data-theme="slate"]) .session { border-color: transparent; background: transparent; }
+:where(:root[data-theme="slate"]) .sessionContent { background: var(--panel); }
+:where(:root[data-theme="slate"]) .session:hover .sessionContent { background: var(--wash); }
+:where(:root[data-theme="slate"]) .session.active { border-color: transparent; border-left-width: 0; background: var(--session-active); }
+:where(:root[data-theme="slate"]) .session.active .sessionContent { background: var(--session-active); }
+:where(:root[data-theme="slate"]) .session.active .badge { background: transparent; border-color: var(--border); }
+:where(:root[data-theme="slate"]) .sessionGroupCount { background: transparent; color: var(--muted); }
+
+/* Flat assistant messages; user turns keep a filled bubble. Error, warning,
+   and recovery variants are more specific than .msg and keep their borders. */
+:where(:root[data-theme="slate"]) .msg { border-color: transparent; line-height: 1.6; }
+:where(:root[data-theme="slate"]) .msg.assistant { padding-left: var(--space-1); padding-right: var(--space-1); }
+
+:where(:root[data-theme="slate"]) button.primary,
+:where(:root[data-theme="slate"]) .composer .icon-btn.primary { border-color: transparent; }
+
+/* Composer pill: rounder than the bubble radius. */
+:where(:root[data-theme="slate"]) .composer form {
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 24px;
+  box-shadow: var(--shadow-pop);
+  padding: var(--space-2) var(--space-4);
+}
+
+:where(:root[data-theme="slate"]) .md code { border-color: transparent; }
+:where(:root[data-theme="slate"]) .md pre { background: var(--surface-code); }
+:where(:root[data-theme="slate"]) .md table { border-color: var(--border-subtle); }
+:where(:root[data-theme="slate"]) .code-copy-btn { border-color: var(--border); }
+
+:where(:root[data-theme="slate"]) .helpViewer,
+:where(:root[data-theme="slate"]) .diagViewer,
+:where(:root[data-theme="slate"]) .formViewer,
+:where(:root[data-theme="slate"]) .toast { border-color: var(--hairline); }

@@ -1,0 +1,88 @@
+/* Paper theme.
+   Paper light is the base stylesheet (app.css) itself, so this file carries
+   only the dark palette: the e-ink language inverted. Warm near-black paper,
+   light ink rules, still square, still no elevation, still 1px perimeters.
+
+   Theme file contract: light tokens on :root[data-theme="<family>"], dark
+   tokens on :root[data-theme="<family>"][data-mode="dark"]. Every semantic
+   color token declared in app.css :root must be overridden in each dark
+   block (tests/test_theme_token_coverage.py enforces this). */
+:root[data-theme="paper"][data-mode="dark"] {
+  color-scheme: dark;
+  --ink: #e6e1d7;
+  --paper: #211e19;
+  --bg: #181613;
+  --wash: #26231d;
+  --hairline: #3a362d;
+  --panel: #1c1a16;
+  --border: #e6e1d7;
+  --text: var(--ink);
+  --muted: #9d978a;
+  --accent: var(--ink);
+  --accent-weak: #26231d;
+  --danger: #e0685a;
+  --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
+  --bubble-user: #262219;
+  --bubble-assistant: var(--paper);
+  --session-active: #2a261e;
+  --surface-subtle: #232019;
+  --surface-muted: #26231d;
+  --surface-error: #3a2320;
+  --surface-danger: #3a2320;
+  --surface-warning: #352a16;
+  --surface-info: #232019;
+  --surface-code: #201d17;
+  --surface-pdf: #232019;
+  --border-subtle: #36322a;
+  --border-faint: #2e2b24;
+  --border-error: #6b3a32;
+  --border-danger: #6b3a32;
+  --border-warning: #66501f;
+  --text-subtle: #8f8a7e;
+  --text-soft: #a3a09a;
+  --text-error: #eba79b;
+  --text-warning: #d9a856;
+  --state-pending: #d9a856;
+  --state-amber-border: #66501f;
+  --focus-danger: #e0685a;
+  --ink-hover: #ffffff;
+  --ink-disabled: #4d4a43;
+  --border-count: #3d3a31;
+  --text-effort-xhigh: #d98c8c;
+  --text-effort-high: #d9a877;
+  --text-effort-medium: #c9b478;
+  --text-effort-low: #8fb08f;
+  --text-effort-max: #e08ea3;
+  --text-effort-minimal: #93ab98;
+  --text-effort-off: #7d7a72;
+  --text-danger-bright: #f0755a;
+  --border-amber: #66501f;
+  --surface-amber: #352a16;
+  --border-amber-dark: #a8813c;
+  --text-danger-dark: #eba79b;
+  --border-danger-dark: #6b3a32;
+  --surface-amber-light: #352a16;
+  --border-audio-error: #7a453e;
+  --surface-audio-error: #3a2320;
+  --border-audio-active: #e0685a;
+  --surface-audio-active: #4a2c26;
+  --text-muted-blue: #8a8f98;
+  --text-timestamp: #7d786c;
+  --border-rule: #3a362d;
+  --border-quote: #4a463c;
+  --text-recovery: #d9a07a;
+  --border-recovery: #5c4630;
+  --text-placeholder: #6e6a60;
+  --text-picker-icon: #8a867c;
+  --surface-picker-section: #26231d;
+  --surface-highlight: #6b5a1e;
+  --text-added: #4ade80;
+  --border-pdf: #36322a;
+  --surface-queue: #232019;
+  --border-queue: #333027;
+  --queue-hover: #2b2820;
+  --queue-border-hover: #4a463c;
+  --text-queue-danger: #f0755a;
+  --border-queue-danger: #6b3a32;
+  --queue-danger-hover: #3a2320;
+}

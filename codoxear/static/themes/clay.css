@@ -1,0 +1,228 @@
+/* Clay theme.
+   Warm editorial language. Light: cream paper, terracotta accent, serif
+   headings, generous radius. Dark: warm umber night, accent lifted.
+
+   Geometry, type, focus, and elevation are token assignments; the component
+   rules below are only the structural differences a token cannot express
+   (hairline chrome, accent primaries, the composer pill, serif heading
+   weight). See themes/paper.css for the theme file contract. */
+:root[data-theme="clay"] {
+  --ink: #35302a;
+  --paper: #fffdf9;
+  --bg: #f4f0e8;
+  --wash: #ece5d8;
+  --hairline: #e2dac9;
+  --panel: #faf7f0;
+  --border: #d9d0be;
+  --text: #322d27;
+  --muted: #8a7f6f;
+  --accent: #c96442;
+  --accent-weak: #f3e3da;
+  --on-accent: #fffdf9;
+  --danger: #b3402e;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-prose: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --radius-control: 6px;
+  --radius-card: 12px;
+  --radius-bubble: 18px;
+  --radius-pill: 999px;
+  --radius-dot: 50%;
+  --focus-ring: var(--accent);
+  --shadow-pop: 0 1px 3px rgb(53 48 42 / 0.07), 0 4px 14px rgb(53 48 42 / 0.06);
+
+  --bubble-user: #f1e9db;
+  --bubble-assistant: var(--paper);
+  --session-active: #f0e8d8;
+  --surface-subtle: #f7f3ea;
+  --surface-muted: #f1ece1;
+  --surface-error: #f8e9e4;
+  --surface-danger: #f6e7e1;
+  --surface-warning: #f9efdb;
+  --surface-info: #f2eee4;
+  --surface-code: #f2ede2;
+  --surface-pdf: #f1ede4;
+  --border-subtle: #e6dfd1;
+  --border-faint: #ece6d8;
+  --border-error: #dfb1a4;
+  --border-danger: #e0b7aa;
+  --border-warning: #e6cfa1;
+  --text-subtle: #8d8375;
+  --text-soft: #7d7365;
+  --text-error: #93331f;
+  --text-warning: #8a5a10;
+  --state-pending: #d97614;
+  --state-amber-border: #e5b877;
+  --focus-danger: #c05c4c;
+  --ink-hover: #b35739;
+  --ink-disabled: #c4bcae;
+  --border-count: #ddd5c5;
+  --text-effort-xhigh: #b35656;
+  --text-effort-high: #b07a45;
+  --text-effort-medium: #9d8a4a;
+  --text-effort-low: #5f8f5f;
+  --text-effort-max: #c04a68;
+  --text-effort-minimal: #6b8f78;
+  --text-effort-off: #7a7a72;
+  --text-danger-bright: #bf3a24;
+  --border-amber: #e3b16a;
+  --surface-amber: #f9efdc;
+  --border-amber-dark: #b97c34;
+  --text-danger-dark: #93311c;
+  --border-danger-dark: #d3968a;
+  --surface-amber-light: #faf1e1;
+  --border-audio-error: #d3857a;
+  --surface-audio-error: #f5e2de;
+  --border-audio-active: #bd5648;
+  --surface-audio-active: #f0d5cf;
+  --text-muted-blue: #93897b;
+  --text-timestamp: #978c7d;
+  --border-rule: #e0d8c8;
+  --border-quote: #cfc4ae;
+  --text-recovery: #7a5312;
+  --border-recovery: #e6cfa1;
+  --text-placeholder: #b3a898;
+  --text-picker-icon: #9a8f7f;
+  --surface-picker-section: #efe9dc;
+  --surface-highlight: #f5dfa0;
+  --text-added: #3d7a45;
+  --border-pdf: #e3dccd;
+  --surface-queue: #f7f3ea;
+  --border-queue: #e2dbcb;
+  --queue-hover: #f1ece0;
+  --queue-border-hover: #c9bfa9;
+  --text-queue-danger: #bf3a24;
+  --border-queue-danger: #e0b7aa;
+  --queue-danger-hover: #f8e9e4;
+}
+
+:root[data-theme="clay"][data-mode="dark"] {
+  color-scheme: dark;
+  --ink: #ece4d5;
+  --paper: #26211b;
+  --bg: #1b1815;
+  --wash: #2c2620;
+  --hairline: #3f382e;
+  --panel: #161310;
+  --border: #4a4236;
+  --text: #e9e1d2;
+  --muted: #a29785;
+  --accent: #d97757;
+  --accent-weak: #3c2c24;
+  --on-accent: #fffdf9;
+  --danger: #e0685a;
+  --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
+  --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
+
+  --bubble-user: #2d271f;
+  --bubble-assistant: var(--paper);
+  --session-active: #2e2820;
+  --surface-subtle: #232019;
+  --surface-muted: #2b2620;
+  --surface-error: #3c231d;
+  --surface-danger: #3c231d;
+  --surface-warning: #362a12;
+  --surface-info: #262119;
+  --surface-code: #1f1b16;
+  --surface-pdf: #262119;
+  --border-subtle: #38332a;
+  --border-faint: #322d25;
+  --border-error: #6b3a32;
+  --border-danger: #6b3a32;
+  --border-warning: #66501f;
+  --text-subtle: #8f8678;
+  --text-soft: #a39a8b;
+  --text-error: #f0a08c;
+  --text-warning: #dba75c;
+  --state-pending: #dba75c;
+  --state-amber-border: #66501f;
+  --focus-danger: #e0685a;
+  --ink-hover: #e88a68;
+  --ink-disabled: #4d463c;
+  --border-count: #3d382e;
+  --text-effort-xhigh: #d98c8c;
+  --text-effort-high: #d9a877;
+  --text-effort-medium: #c9b478;
+  --text-effort-low: #8fb08f;
+  --text-effort-max: #e08ea3;
+  --text-effort-minimal: #93ab98;
+  --text-effort-off: #7d7a72;
+  --text-danger-bright: #f0755a;
+  --border-amber: #66501f;
+  --surface-amber: #362a12;
+  --border-amber-dark: #a8813c;
+  --text-danger-dark: #f0a08c;
+  --border-danger-dark: #6b3a32;
+  --surface-amber-light: #362a12;
+  --border-audio-error: #7a453e;
+  --surface-audio-error: #3c231d;
+  --border-audio-active: #e0685a;
+  --surface-audio-active: #4a2c26;
+  --text-muted-blue: #8a8f98;
+  --text-timestamp: #7d786c;
+  --border-rule: #3f382e;
+  --border-quote: #4d463a;
+  --text-recovery: #dba75c;
+  --border-recovery: #5c4630;
+  --text-placeholder: #6e675b;
+  --text-picker-icon: #8a8275;
+  --surface-picker-section: #26221c;
+  --surface-highlight: #6b5a1e;
+  --text-added: #4ade80;
+  --border-pdf: #38332a;
+  --surface-queue: #232019;
+  --border-queue: #333027;
+  --queue-hover: #2b2820;
+  --queue-border-hover: #4d463a;
+  --text-queue-danger: #f0755a;
+  --border-queue-danger: #6b3a32;
+  --queue-danger-hover: #3c231d;
+}
+
+/* Clay component rules (mode-independent, token-driven).
+   Selectors are wrapped as :where(:root[data-theme="clay"]) <base selector>
+   so each rule has exactly the specificity of the base rule it replaces and
+   wins only by source order (themes load after app.css). Base variants that
+   are more specific than the replaced rule keep winning unless the theme
+   mirrors them explicitly. */
+:where(:root[data-theme="clay"]) .sidebar { border-right-color: var(--hairline); }
+:where(:root[data-theme="clay"]) .sidebar header { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="clay"]) .topbar { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="clay"]) .composer { border-top: 0; background: var(--bg); }
+
+:where(:root[data-theme="clay"]) .session { border-color: var(--hairline); }
+:where(:root[data-theme="clay"]) .session.active { border-color: var(--accent); }
+:where(:root[data-theme="clay"]) .msg { border-color: var(--hairline); line-height: 1.55; }
+/* The owner dot sits beside a circular state dot; a slight rounding keeps it
+   distinguishable instead of reading as a second state dot. */
+:where(:root[data-theme="clay"]) .ownDot { border-radius: 2px; }
+
+:where(:root[data-theme="clay"]) button.primary,
+:where(:root[data-theme="clay"]) .composer .icon-btn.primary,
+:where(:root[data-theme="clay"]) .icon-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+:where(:root[data-theme="clay"]) button.primary:hover,
+:where(:root[data-theme="clay"]) .composer .icon-btn.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); color: var(--on-accent); }
+:where(:root[data-theme="clay"]) button.primary:disabled,
+:where(:root[data-theme="clay"]) button.primary:disabled:hover,
+:where(:root[data-theme="clay"]) .composer .icon-btn.primary:disabled,
+:where(:root[data-theme="clay"]) .composer .icon-btn.primary:disabled:hover { background: var(--ink-disabled); border-color: var(--ink-disabled); color: var(--on-accent); }
+
+:where(:root[data-theme="clay"]) .composer form {
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-bubble);
+  box-shadow: var(--shadow-pop);
+  padding: var(--space-2) var(--space-4);
+}
+
+:where(:root[data-theme="clay"]) .md h1,
+:where(:root[data-theme="clay"]) .md h2,
+:where(:root[data-theme="clay"]) .md h3 { font-weight: 600; letter-spacing: 0.01em; }
+:where(:root[data-theme="clay"]) .md pre { background: var(--surface-code); }
+:where(:root[data-theme="clay"]) .md table { border-color: var(--border-subtle); }
+:where(:root[data-theme="clay"]) .code-copy-btn { border-color: var(--border); }
+:where(:root[data-theme="clay"]) .code-copy-btn.copied { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+:where(:root[data-theme="clay"]) .helpViewer,
+:where(:root[data-theme="clay"]) .diagViewer,
+:where(:root[data-theme="clay"]) .formViewer,
+:where(:root[data-theme="clay"]) .toast { border-color: var(--hairline); }

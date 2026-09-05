@@ -16,6 +16,9 @@ STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
 FRONTEND_ASSET_FILES = (
     "dist/app.bundle.js",
     "app.css",
+    "themes/paper.css",
+    "themes/clay.css",
+    "themes/slate.css",
 )
 SHELL_ASSET_FILES = (
     "favicon.png",

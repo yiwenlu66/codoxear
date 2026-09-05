@@ -69,6 +69,7 @@ MODULE_NAMESPACES = {
     "app_polling.js": ["CodoxearPolling"],
     "app_queue.js": ["CodoxearQueue"],
     "app_send_lifecycle.js": ["CodoxearSendLifecycle"],
+    "app_theme.js": ["CodoxearTheme"],
     "app_topbar.js": ["CodoxearTopbar"],
     "app_session_edit.js": ["CodoxearSessionEdit"],
     "app_session_helpers.js": ["CodoxearSessionHelpers"],
