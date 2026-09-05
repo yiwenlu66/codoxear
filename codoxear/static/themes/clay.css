@@ -17,6 +17,10 @@
   --text: #322d27;
   --muted: #8a7f6f;
   --accent: #c96442;
+  /* Text-bearing primaries need a deeper terracotta: #fffdf9 on #c96442 is
+     3.84:1 (fine for icons, short of 4.5:1 for 13px button text). Decorative
+     accent uses (card edge, focus ring, copied state) keep --accent. */
+  --accent-strong: #b35739;
   --accent-weak: #f3e3da;
   --on-accent: #fffdf9;
   --danger: #b3402e;
@@ -53,7 +57,7 @@
   --state-pending: #d97614;
   --state-amber-border: #e5b877;
   --focus-danger: #c05c4c;
-  --ink-hover: #b35739;
+  --ink-hover: #a04c31;
   --ink-disabled: #c4bcae;
   --border-count: #ddd5c5;
   --text-effort-xhigh: #b35656;
@@ -108,7 +112,10 @@
   --muted: #a29785;
   --accent: #d97757;
   --accent-weak: #3c2c24;
-  --on-accent: #fffdf9;
+  /* Dark-mode primary keeps the lighter terracotta fill and flips to dark
+     text: #2b2118 on #d97757 is ~4.5:1, where cream text would be ~3:1. */
+  --on-accent: #2b2118;
+  --accent-strong: var(--accent);
   --danger: #e0685a;
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
   --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
@@ -204,7 +211,7 @@
 :where(:root[data-theme="clay"]) .ownDot { border-radius: 2px; }
 
 :where(:root[data-theme="clay"]) button.primary,
-:where(:root[data-theme="clay"]) .composer .icon-btn.primary,
+:where(:root[data-theme="clay"]) .composer .icon-btn.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
 :where(:root[data-theme="clay"]) .icon-btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 :where(:root[data-theme="clay"]) button.primary:hover,
 :where(:root[data-theme="clay"]) .composer .icon-btn.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); color: var(--on-accent); }
