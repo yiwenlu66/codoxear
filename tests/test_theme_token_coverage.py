@@ -58,9 +58,28 @@ def test_light_block_overrides_every_semantic_color(family: str) -> None:
     assert not missing, f"{family} light block leaves paper-light colors for: {sorted(missing)}"
 
 
-def test_paper_file_holds_only_the_dark_block() -> None:
+PAPER_DARK_BLOCK = ':root[data-theme="paper"][data-mode="dark"]'
+# Component rules may add a mode condition inside the :where() scope. The
+# :where() wrapper is what keeps the rule at base specificity; a mode
+# condition inside it changes only WHEN the rule applies, never how strongly.
+COMPONENT_PREFIX = re.compile(
+    r'^:where\(:root\[data-theme="(?P<family>\w+)"\]'
+    r'(?:\[data-mode="(?:light|dark)"\]|:not\(\[data-mode="(?:light|dark)"\]\))?\) '
+)
+
+
+def test_paper_file_holds_only_dark_overrides() -> None:
+    # Paper light is the base stylesheet, so paper.css may only carry dark
+    # overrides: the dark token block, plus dark-scoped component rules in
+    # :where() form. Nothing in the file may touch light mode.
     rules = parse_stylesheet(THEMES_DIR / "paper.css")
-    assert [selector_text(rule) for rule in all_rules(rules)] == [':root[data-theme="paper"][data-mode="dark"]']
+    for rule in all_rules(rules):
+        for part in selector_text(rule).split(","):
+            part = part.strip()
+            if part == PAPER_DARK_BLOCK:
+                continue
+            match = COMPONENT_PREFIX.match(part)
+            assert match and match.group("family") == "paper" and "dark" in part, part
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -100,7 +119,8 @@ def test_family_component_rules_keep_base_specificity() -> None:
                 assert set(declarations(rule)) <= {"color-scheme"} | {name for name in declarations(rule) if name.startswith("--")}, selector
                 continue
             for part in selector.split(","):
-                assert part.strip().startswith(f':where(:root[data-theme="{family}"]) '), f"{family}: {part.strip()}"
+                match = COMPONENT_PREFIX.match(part.strip())
+                assert match and match.group("family") == family, f"{family}: {part.strip()}"
 
 
 def test_family_stylesheets_retune_geometry_through_tokens_only() -> None:
