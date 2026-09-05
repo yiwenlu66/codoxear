@@ -119,12 +119,12 @@ The UI ships three theme families — **paper** (default), **clay**, and **slate
 
 - `codoxear/static/themes/<family>.css` holds the light palette on `:root[data-theme="<family>"]` and the dark palette on `:root[data-theme="<family>"][data-mode="dark"]`; `paper.css` holds only the dark block because paper light is `app.css` itself. Dark blocks also set `color-scheme: dark` and an inverted `--icon-muted-filter`.
 - **Token coverage is tested.** `tests/test_theme_token_coverage.py` requires every color-literal token in `app.css` `:root` (except declared theme invariants such as `--video-bg`) to be overridden in each family's light and dark block. Adding a color token obliges every family file; adding a family obliges a full palette.
-- **Component rules mirror base specificity.** Family structural rules are written as `:where(:root[data-theme="<family>"]) <base selector>` so they outrank only the exact base rule they replace (by source order — the theme link follows `app.css`), and more specific base variants (error/warning bubbles, active badges, disabled primaries) keep winning unless the family mirrors them explicitly. A bare `:root[data-theme]` prefix on a component rule is a specificity leak.
+- **Component rules mirror base specificity.** Family structural rules are written as `:where(:root[data-theme="<family>"]) <base selector>` so they outrank only the exact base rule they replace (by source order — the theme link follows `app.css`), and more specific base variants (error/warning bubbles, active badges, disabled primaries) keep winning unless the family mirrors them explicitly. A bare `:root[data-theme]` prefix on a component rule is a specificity leak. A rule may add a mode condition inside the `:where()` scope (`[data-mode="dark"]`, `[data-mode="light"]`, `:not([data-mode="dark"])`) — that changes when the rule applies, never its specificity.
 - **Cascade order:** `app.css` → `themes/<family>.css` → custom-CSS `<style>` (user CSS, localStorage only, no server endpoint). Theme files are versioned, gzip-compressed, immutable-cached like `app.css`.
 
 ### Paper theme
 
-The default e-ink language. Paper light is the base stylesheet; paper dark inverts it (warm near-black paper, light ink rules) with zero component rules.
+The default e-ink language. Paper light is the base stylesheet; paper dark inverts it (warm near-black paper, light ink rules) as a token block. Paper dark's one mode adaptation: chrome controls and seams drop from full ink to hairline strength, because light-ink perimeters on every button read as glare at night; content containers (cards, bubbles, dialogs, tables) keep the 1px ink signature.
 
 - **Square, warm-charcoal palette.** Geometry stays square (all radius tokens `0`); `--ink` and `--border` are warm charcoal `#2f2b26`, with paper white, `#f6f5f1` background, and `#efeee9` wash.
 - **Ink-on-paper primaries.** Primary actions invert warm charcoal and paper. No accent-blue primary.
