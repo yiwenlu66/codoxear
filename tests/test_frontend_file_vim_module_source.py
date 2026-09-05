@@ -423,5 +423,66 @@ process.stdout.write(JSON.stringify({ cases, triggers: env.editor.triggers.lengt
         self.assertEqual(result["triggers"], 0)
 
 
+class TestFileVimScrollFallback(unittest.TestCase):
+    def test_scroll_surface_receives_j_k_halfpage_and_edges(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editorKind = "none";   // markdown preview / PDF / fallback surface
+const j = env.press("j");
+const k = env.press("k");
+const afterScroll = env.markdownPreview.scrollTop;
+const ctrlD = env.press("d", { ctrl: true });
+const ctrlU = env.press("u", { ctrl: true });
+const afterPages = env.markdownPreview.scrollTop;
+const G = env.press("G", { shift: true });
+const topAfterG = env.markdownPreview.scrollTop;
+const g1 = env.press("g");
+const g2 = env.press("g");
+const topAfterGg = env.markdownPreview.scrollTop;
+const w = env.press("w");
+const zero = env.press("0");
+process.stdout.write(JSON.stringify({
+  j: { consumed: j.defaultPrevented, afterScroll },
+  k: { consumed: k.defaultPrevented },
+  ctrlD: ctrlD.defaultPrevented,
+  ctrlU: ctrlU.defaultPrevented,
+  afterPages,
+  G: { consumed: G.defaultPrevented, top: topAfterG },
+  gg: { consumed: g2.defaultPrevented, top: topAfterGg },
+  wordKeys: { w: w.defaultPrevented, zero: zero.defaultPrevented },
+  hostScrollTop: env.fileDiff.scrollTop,
+}));
+''')
+        # j/k scroll the markdown preview by 24px each: 24 - 0 after j, back to 0 after k.
+        self.assertTrue(result["j"]["consumed"])
+        self.assertEqual(result["j"]["afterScroll"], 0)
+        self.assertTrue(result["k"]["consumed"])
+        # Ctrl-d then Ctrl-u: +200 then -200 (clientHeight 400 / 2).
+        self.assertTrue(result["ctrlD"])
+        self.assertTrue(result["ctrlU"])
+        self.assertEqual(result["afterPages"], 0)
+        # G jumps to the bottom (scrollHeight), gg back to the top.
+        self.assertTrue(result["G"]["consumed"])
+        self.assertEqual(result["G"]["top"], 2400)
+        self.assertTrue(result["gg"]["consumed"])
+        self.assertEqual(result["gg"]["top"], 0)
+        # Word and line-edge motions are consumed no-ops on scroll surfaces.
+        self.assertTrue(result["wordKeys"]["w"])
+        self.assertTrue(result["wordKeys"]["zero"])
+        self.assertEqual(result["hostScrollTop"], 0)
+
+    def test_plain_host_is_the_scroll_surface_without_markdown_preview(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editorKind = "none";
+env.fileDiff.querySelector = () => null;   // no preview element: host scrolls
+const j = env.press("j");
+const G = env.press("G", { shift: true });
+process.stdout.write(JSON.stringify({ consumedJ: j.defaultPrevented, hostTop: env.fileDiff.scrollTop }));
+''')
+        self.assertTrue(result["consumedJ"])
+        self.assertEqual(result["hostTop"], 1200)
+
+
 if __name__ == "__main__":
     unittest.main()

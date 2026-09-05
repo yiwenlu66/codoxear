@@ -44,6 +44,7 @@
     const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
     const documentTarget = requireNode(options.document, "document");
     const fileVimModeChip = requireNode(options.fileVimModeChip, "fileVimModeChip");
+    const fileDiff = requireNode(options.fileDiff, "fileDiff");
     const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
     const hasBlockingFileEditorModal = requireFunction(options.hasBlockingFileEditorModal, "hasBlockingFileEditorModal");
     const hintModeActive = requireFunction(options.hintModeActive, "hintModeActive");
@@ -123,9 +124,47 @@
       return true;
     }
 
+    // Scroll fallback for cursor-less surfaces (markdown preview, PDF,
+    // plain-text fallback): j/k/d/u/gg/G scroll the active scroll element;
+    // word and line-edge motions have no meaning there and stay no-ops.
+
+    function scrollSurface() {
+      if (typeof fileDiff.querySelector !== "function") return fileDiff;
+      const preview = fileDiff.querySelector(".fileMarkdownPreview");
+      return preview || fileDiff;
+    }
+
+    function scrollByHalfPage(surface, direction) {
+      const viewport = Math.max(1, Number(surface.clientHeight) || 0);
+      const delta = direction === "down" ? viewport / 2 : -viewport / 2;
+      surface.scrollTop = Math.max(0, (Number(surface.scrollTop) || 0) + delta);
+      return true;
+    }
+
+    function scrollLines(surface, direction) {
+      surface.scrollTop = Math.max(0, (Number(surface.scrollTop) || 0) + (direction === "down" ? 24 : -24));
+      return true;
+    }
+
+    function scrollToEdge(surface, position) {
+      if (position === "first") surface.scrollTop = 0;
+      else surface.scrollTop = Number(surface.scrollHeight) || 0;
+      return true;
+    }
+
     function dispatchMotionKey(event, key) {
       const editor = monacoSurface();
-      if (!editor) return false;
+      if (!editor) {
+        // No cursor exists on this surface: scroll it instead.
+        const surface = scrollSurface();
+        if (key === "d" && (event.ctrlKey || event.metaKey)) return scrollByHalfPage(surface, "down");
+        if (key === "u" && (event.ctrlKey || event.metaKey)) return scrollByHalfPage(surface, "up");
+        if (event.ctrlKey || event.metaKey || event.altKey) return false;
+        if (key === "j") return scrollLines(surface, "down");
+        if (key === "k") return scrollLines(surface, "up");
+        if (key === "G") return scrollToEdge(surface, "last");
+        return false;
+      }
       if (key === "d" && (event.ctrlKey || event.metaKey)) return runHalfPage(editor, "down");
       if (key === "u" && (event.ctrlKey || event.metaKey)) return runHalfPage(editor, "up");
       if (event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -263,6 +302,8 @@
           if (editor) {
             focusActiveFileEditor();
             goToLine(editor, "first");
+          } else {
+            scrollToEdge(scrollSurface(), "first");
           }
         }
         return true;
@@ -306,6 +347,8 @@
           if (editor) {
             focusActiveFileEditor();
             goToLine(editor, "first");
+          } else {
+            scrollToEdge(scrollSurface(), "first");
           }
         }
         return true;

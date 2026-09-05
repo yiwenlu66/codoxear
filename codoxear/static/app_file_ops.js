@@ -929,6 +929,7 @@ const fileVimController = codoxearFileVim.createFileVimController(wiring.createF
   addAppEvent: addAppEvent,
   document: document,
   fileVimModeChip: fileVimModeChip,
+  fileDiff: fileDiff,
   isFileViewerOpen: () => isFileViewerOpen(),
   hasBlockingFileEditorModal: () => hasBlockingFileEditorModal(),
   hintModeActive: () => Boolean(hintModeController && hintModeController.isActive()),
