@@ -28,6 +28,18 @@
     return value;
   }
 
+  const MOTION_COMMANDS = Object.freeze({
+    h: "cursorLeft",
+    l: "cursorRight",
+    j: "cursorDown",
+    k: "cursorUp",
+    w: "cursorWordStartRight",
+    b: "cursorWordStartLeft",
+    e: "cursorWordEndRight",
+    0: "cursorHome",
+    $: "cursorEnd",
+  });
+
   function createFileVimController(options = {}) {
     const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
     const documentTarget = requireNode(options.document, "document");
@@ -81,10 +93,44 @@
       return editor && typeof editor.getModel === "function" ? editor.getModel() : null;
     }
 
+    function goToLine(editor, position) {
+      const model = editorModel(editor);
+      if (!model || typeof model.getLineCount !== "function") return false;
+      const lineCount = Math.max(1, Number(model.getLineCount()) || 1);
+      const target = { lineNumber: position === "first" ? 1 : lineCount, column: 1 };
+      if (typeof editor.setPosition === "function") editor.setPosition(target);
+      if (typeof editor.revealPositionInCenter === "function") editor.revealPositionInCenter(target);
+      return true;
+    }
+
     function runCursorCommand(editor, command) {
       if (!editor || typeof editor.trigger !== "function") return false;
       editor.trigger("file-vim", command, null);
       return true;
+    }
+
+    function runMotion(editor, key) {
+      focusActiveFileEditor();
+      if (key === "G") return goToLine(editor, "last");
+      const command = MOTION_COMMANDS[key];
+      return command ? runCursorCommand(editor, command) : false;
+    }
+
+    function runHalfPage(editor, direction) {
+      focusActiveFileEditor();
+      if (!editor || typeof editor.trigger !== "function") return false;
+      editor.trigger("file-vim", "cursorMove", { to: direction, by: "halfPage", value: 1, select: false });
+      return true;
+    }
+
+    function dispatchMotionKey(event, key) {
+      const editor = monacoSurface();
+      if (!editor) return false;
+      if (key === "d" && (event.ctrlKey || event.metaKey)) return runHalfPage(editor, "down");
+      if (key === "u" && (event.ctrlKey || event.metaKey)) return runHalfPage(editor, "up");
+      if (event.ctrlKey || event.metaKey || event.altKey) return false;
+      if (key in MOTION_COMMANDS || key === "G") return runMotion(editor, key);
+      return false;
     }
 
     // --- edit sub-mode transitions. readOnly stays derived: the vim normal
@@ -210,6 +256,17 @@
 
     function dispatchNormalKey(event, key) {
       if (key === "i" && !event.ctrlKey && !event.metaKey && !event.altKey) return enterInsert();
+      if (pendingPrefix === "g") {
+        pendingPrefix = "";
+        if (key === "g") {
+          const editor = monacoSurface();
+          if (editor) {
+            focusActiveFileEditor();
+            goToLine(editor, "first");
+          }
+        }
+        return true;
+      }
       if (pendingPrefix === "d") {
         pendingPrefix = "";
         if (key === "d") deleteLine();
@@ -217,6 +274,10 @@
       }
       if (key === "d" && !event.ctrlKey && !event.metaKey && !event.altKey) {
         pendingPrefix = "d";
+        return true;
+      }
+      if (key === "g" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        pendingPrefix = "g";
         return true;
       }
       if (key === "x") return deleteChar();
@@ -234,7 +295,26 @@
       }
       if (key === "o" && !event.ctrlKey && !event.metaKey && !event.altKey) return openLine(true);
       if (key === "O" && !event.ctrlKey && !event.metaKey && !event.altKey) return openLine(false);
-      return false;
+      return dispatchMotionKey(event, key);
+    }
+
+    function dispatchViewKey(event, key) {
+      if (pendingPrefix === "g") {
+        pendingPrefix = "";
+        if (key === "g") {
+          const editor = monacoSurface();
+          if (editor) {
+            focusActiveFileEditor();
+            goToLine(editor, "first");
+          }
+        }
+        return true;
+      }
+      if (key === "g" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        pendingPrefix = "g";
+        return true;
+      }
+      return dispatchMotionKey(event, key);
     }
 
     function handleKeydown(event) {
@@ -266,6 +346,13 @@
         if (isPlainPrintable(e, key)) consume(e);
         return;
       }
+      if (dispatchViewKey(e, key)) {
+        consume(e);
+        return;
+      }
+      // View mode replaces direct letter activation of viewer buttons with
+      // f-hints, so unconsumed printable keys are swallowed here.
+      if (isPlainPrintable(e, key)) consume(e);
     }
 
     addAppEvent(documentTarget, "keydown", handleKeydown, true);

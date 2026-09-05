@@ -96,7 +96,7 @@ function makeEnv(overrides = {}) {
     hasBlockingFileEditorModal: () => state.blockingModal,
     hintModeActive: () => state.hints,
     touchSelectActive: () => state.touchSelect,
-    fileEditorShortcutBlocked: (target) => state.shortcutBlocked,
+    fileEditorShortcutBlocked: (target) => Boolean(state.shortcutBlocked || (target && target.isTextEntry)),
     currentFileEditMode: () => state.editMode,
     setFileEditMode: (mode) => { calls.setFileEditMode.push(mode); state.editMode = Boolean(mode); if (!mode) { chip.hidden = true; chip.textContent = ""; } },
     currentFileDirty: () => state.dirty,
@@ -303,6 +303,124 @@ process.stdout.write(JSON.stringify({ z: { consumed: z.defaultPrevented, stopped
         self.assertTrue(result["q"])
         self.assertEqual(result["triggers"], 0)
         self.assertEqual(result["edits"], 0)
+
+
+class TestFileVimMotions(unittest.TestCase):
+    def test_view_mode_motions_dispatch_monaco_cursor_commands(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+const pressed = {};
+for (const key of ["h", "l", "j", "k", "w", "b", "e", "0", "$"]) {
+  const before = env.editor.triggers.length;
+  const event = env.press(key);
+  pressed[key] = { consumed: event.defaultPrevented, command: env.editor.triggers.slice(before) };
+}
+const capitalG = env.press("G", { shift: true });
+const ctrlD = env.press("d", { ctrl: true });
+const ctrlU = env.press("u", { ctrl: true });
+process.stdout.write(JSON.stringify({
+  pressed,
+  capitalG: { consumed: capitalG.defaultPrevented, position: env.editor.positions, reveal: env.editor.reveals, focused: env.editor.focused > 0 },
+  ctrlD: env.editor.triggers.slice(-2),
+}));
+''')
+        expected_commands = {
+            "h": "cursorLeft", "l": "cursorRight", "j": "cursorDown", "k": "cursorUp",
+            "w": "cursorWordStartRight", "b": "cursorWordStartLeft", "e": "cursorWordEndRight",
+            "0": "cursorHome", "$": "cursorEnd",
+        }
+        for key, command in expected_commands.items():
+            self.assertTrue(result["pressed"][key]["consumed"], key)
+            self.assertEqual(result["pressed"][key]["command"], [[command, None]], key)
+        # G goes to the last line (model has 10 lines) and reveals it.
+        self.assertTrue(result["capitalG"]["consumed"])
+        self.assertEqual(result["capitalG"]["position"], [{"lineNumber": 10, "column": 1}])
+        self.assertEqual(result["capitalG"]["reveal"], [{"lineNumber": 10, "column": 1}])
+        self.assertTrue(result["capitalG"]["focused"])
+        # Ctrl-d then Ctrl-u each move half a page with the cursor.
+        self.assertEqual(result["ctrlD"], [["cursorMove", {"to": "down", "by": "halfPage", "value": 1, "select": False}], ["cursorMove", {"to": "up", "by": "halfPage", "value": 1, "select": False}]])
+
+    def test_gg_sequence_and_prefix_reset(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+const g1 = env.press("g");
+const jAfterG = env.press("j");
+const triggersAfterReset = env.editor.triggers.length;
+const g2 = env.press("g");
+const g3 = env.press("g");
+const positions = env.editor.positions.slice();
+process.stdout.write(JSON.stringify({
+  g1: g1.defaultPrevented,
+  jAfterG: { consumed: jAfterG.defaultPrevented, moved: triggersAfterReset },
+  gg: { consumed: g3.defaultPrevented, positions },
+}));
+''')
+        self.assertTrue(result["g1"])
+        # g then j: the pending prefix is cleared and the j is dropped, not run.
+        self.assertTrue(result["jAfterG"]["consumed"])
+        self.assertEqual(result["jAfterG"]["moved"], 0)
+        # A fresh gg moves to line 1.
+        self.assertTrue(result["gg"]["consumed"])
+        self.assertEqual(result["gg"]["positions"], [{"lineNumber": 1, "column": 1}])
+
+    def test_motions_work_in_edit_normal_mode_and_letters_are_swallowed_in_view_mode(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");
+const before = env.editor.triggers.length;
+const j = env.press("j");
+const normalJ = env.editor.triggers.slice(before);
+env.state.editMode = false;
+env.controller.syncEditMode();
+const afterNormal = env.editor.triggers.length;
+const q = env.press("q");
+const triggersAfterQ = env.editor.triggers.length - afterNormal;
+const e2 = env.press("e");
+process.stdout.write(JSON.stringify({
+  normalJ,
+  viewQ: { consumed: q.defaultPrevented, triggers: triggersAfterQ },
+  viewE: e2.defaultPrevented,
+}));
+''')
+        self.assertEqual(result["normalJ"], [["cursorDown", None]])
+        self.assertTrue(result["viewQ"]["consumed"])
+        self.assertEqual(result["viewQ"]["triggers"], 0)
+        self.assertTrue(result["viewE"])
+
+    def test_guards_defer_to_other_key_owners(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+const cases = [];
+// Nested blocking dialog open.
+env.state.blockingModal = true;
+cases.push(["blocking", env.press("j").defaultPrevented]);
+env.state.blockingModal = false;
+// Hint mode active (its bubble listener owns the keys).
+env.state.hints = true;
+cases.push(["hints", env.press("j").defaultPrevented]);
+env.state.hints = false;
+// Touch-selection mode active.
+env.state.touchSelect = true;
+cases.push(["touch", env.press("j").defaultPrevented]);
+env.state.touchSelect = false;
+// Text-entry target (picker input) -> pass through untouched.
+const input = { isTextEntry: true, closest: (selector) => (selector === "#fileViewer" ? {} : null) };
+cases.push(["textEntryPassThrough", env.press("j", { target: input }).defaultPrevented]);
+// Shortcut blocked (viewer closed).
+env.state.shortcutBlocked = true;
+cases.push(["blocked", env.press("j").defaultPrevented]);
+env.state.shortcutBlocked = false;
+// Viewer closed entirely.
+env.state.viewerOpen = false;
+cases.push(["closed", env.press("j").defaultPrevented]);
+process.stdout.write(JSON.stringify({ cases, triggers: env.editor.triggers.length }));
+''')
+        guards = dict(result["cases"])
+        for case, consumed in guards.items():
+            self.assertFalse(consumed, case)
+        self.assertEqual(result["triggers"], 0)
 
 
 if __name__ == "__main__":
