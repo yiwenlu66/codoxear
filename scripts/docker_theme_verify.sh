@@ -6,8 +6,9 @@
 # fresh offline Pi session, and is driven through the host's agent-browser on a
 # loopback port that is never the live 8743. This script exercises the real
 # Settings dialog: family/mode switches, persistence across reload, custom CSS,
-# reset, follow-system resolution, Escape/hint-mode policy, and captures a
-# screenshot of every family x mode variant for design review.
+# reset, follow-system resolution, Escape/hint-mode policy, the Monaco file
+# editor following a live scheme switch, and captures a screenshot of every
+# family x mode variant for design review.
 set -euo pipefail
 
 usage() {
@@ -319,9 +320,37 @@ probe 13-after-reset
 shot 13-settings-after-reset
 close_settings
 
+# Monaco follows the theme store live: open a real file under paper/system,
+# then flip the emulated OS scheme with the editor already created. The
+# rendered editor background must move with the resolved mode.
+browser click '#fileBtn' > /dev/null 2>&1 || fail "could not open file viewer"
+browser click '#filePickerInput' > /dev/null 2>&1 || fail "could not focus file picker"
+browser fill '#filePickerInput' 'pyproject.toml' > /dev/null 2>&1 || fail "could not search for pyproject.toml"
+browser wait 1000 > /dev/null 2>&1
+browser eval '(() => {
+  const target = [...document.querySelectorAll("#filePickerMenu [role=option]")].find((el) => /pyproject\.toml/i.test(el.innerText || ""));
+  if (!target) return false;
+  target.click();
+  return true;
+})()' --json > "$artifacts/16-file-selection.json" 2>&1 || fail "file picker selection failed"
+browser wait 2500 > /dev/null 2>&1
+monaco_probe() {
+  browser eval '(() => {
+    const editor = document.querySelector("#fileDiff .monaco-editor");
+    if (!editor) return { present: false };
+    return { present: true, theme: [...editor.classList].find((c) => /^vs(-dark)?$/.test(c)) || null, background: getComputedStyle(editor.querySelector(".monaco-editor-background") || editor).backgroundColor };
+  })()' --json > "$artifacts/$1.json" 2>&1 || fail "monaco probe $1 failed"
+}
+monaco_probe 16-monaco-paper-light
+shot 16-fileviewer-paper-light
+
 # Follow-system: emulate a dark OS scheme and expect live re-resolution.
 browser set media dark > /dev/null 2>&1 || fail "media emulation unavailable"
 browser wait 900 > /dev/null 2>&1
+monaco_probe 17-monaco-paper-dark
+shot 17-fileviewer-paper-dark
+browser click '#fileCloseBtn' > /dev/null 2>&1 || fail "could not close file viewer"
+browser wait 300 > /dev/null 2>&1
 probe 14-system-dark
 shot 14-paper-system-dark-app
 browser set media light > /dev/null 2>&1 || true
@@ -351,6 +380,9 @@ p = {name: load(name) for name in [
     "06-slate-dark-app", "07-after-reload", "08-custom-css", "08b-custom-css-cleared", "13-after-reset", "14-system-dark", "15-system-light",
 ]}
 outline = load("08-custom-css-outline")
+file_selected = load("16-file-selection")
+monaco_light = load("16-monaco-paper-light")
+monaco_dark = load("17-monaco-paper-dark")
 
 def link_follows_app_css(order):
     # The theme stylesheet must be the very next stylesheet after app.css so
@@ -379,10 +411,12 @@ checks = {
     "reset_restores_defaults": p["13-after-reset"]["theme"] == "paper" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
     "system_mode_follows_dark_scheme": p["14-system-dark"]["mode"] == "dark" and p["14-system-dark"]["theme"] == "paper" and p["14-system-dark"]["bodyBg"] == "rgb(24, 22, 19)",
     "system_mode_returns_to_light": p["15-system-light"]["mode"] == "light",
+    "monaco_opens_paper_light": file_selected is True and monaco_light.get("present") is True and monaco_light.get("theme") == "vs" and monaco_light.get("background") == "rgb(255, 255, 255)",
+    "monaco_follows_live_dark_switch": monaco_dark.get("present") is True and monaco_dark.get("theme") == "vs-dark" and monaco_dark.get("background") == "rgb(32, 29, 23)",
 }
 errors = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8")).get("data", {}).get("errors", [])
 checks["no_page_errors"] = errors == []
-summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "pageErrors": errors}
+summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "monaco": {"light": monaco_light, "dark": monaco_dark}, "pageErrors": errors}
 (artifacts / "report.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps({"pass": summary["pass"], "checks": checks}, indent=2))
 if not summary["pass"]:
