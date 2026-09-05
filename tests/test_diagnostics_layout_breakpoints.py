@@ -15,6 +15,8 @@ import pytest
 import tinycss2
 from tinycss2.ast import AtRule, Declaration, QualifiedRule
 
+from css_tokens import base_tokens, resolve
+
 
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 TWO_COLUMN = "110px minmax(0, 1fr)"
@@ -48,6 +50,7 @@ def _rules_at_width(rules: Iterable[object], width: int, active: bool = True) ->
 def _computed_style(width: int, selector: str) -> dict[str, str]:
     stylesheet = tinycss2.parse_stylesheet(APP_CSS.read_text(encoding="utf-8"), skip_comments=True, skip_whitespace=True)
     computed: dict[str, str] = {}
+    tokens = base_tokens()
 
     for rule in _rules_at_width(stylesheet, width):
         selectors = [part.strip() for part in tinycss2.serialize(rule.prelude).split(",")]
@@ -56,7 +59,7 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
         declarations = tinycss2.parse_declaration_list(rule.content, skip_comments=True, skip_whitespace=True)
         for declaration in declarations:
             if isinstance(declaration, Declaration):
-                computed[declaration.lower_name] = tinycss2.serialize(declaration.value).strip()
+                computed[declaration.lower_name] = resolve(tinycss2.serialize(declaration.value).strip(), tokens)
 
     if not computed:
         raise AssertionError(f"missing CSS rule for {selector}")

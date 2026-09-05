@@ -6,6 +6,8 @@ from pathlib import Path
 
 from tinycss2 import parse_declaration_list, parse_rule_list, parse_stylesheet, serialize
 
+from css_tokens import base_tokens, resolve
+
 
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
@@ -73,12 +75,15 @@ def test_archive_visual_contracts_preserve_focusable_layout_and_data_typography(
     assert "min-height" not in composer_primary
     # State, cwd, and branch are ordinary compact prose; only the model and
     # effort unit carries monospace data typography.
-    assert _computed(".sessionMetaLine")["font-family"] == "sans-serif"
+    # The meta line follows the UI font token, which resolves to the generic
+    # sans-serif stack in the base (paper) theme.
+    tokens = base_tokens()
+    assert resolve(_computed(".sessionMetaLine")["font-family"], tokens) == "sans-serif"
     # sidebarMetaData carries model/effort; user explicitly requested proportional
     # (not monospace) for the entire sidebar secondary line.
     assert _computed(".sidebarMetaData").get("font-family", "sans-serif") != "var(--font-mono)"
-    assert _computed(".sidebarMetaLabel")["font-family"] == "sans-serif"
-    assert _computed(".sidebarMetaSeparator")["font-family"] == "sans-serif"
+    assert resolve(_computed(".sidebarMetaLabel")["font-family"], tokens) == "sans-serif"
+    assert resolve(_computed(".sidebarMetaSeparator")["font-family"], tokens) == "sans-serif"
 
 
 def test_archive_reduced_motion_contract_disables_attention_animations() -> None:

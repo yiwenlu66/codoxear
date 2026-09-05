@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 import tinycss2
+
+from css_tokens import base_tokens, resolve
 from tinycss2.ast import AtRule, Declaration, QualifiedRule
 
 
@@ -60,6 +62,7 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
         skip_whitespace=True,
     )
     computed: dict[str, str] = {}
+    tokens = base_tokens()
 
     for rule in _active_rules(stylesheet, width):
         selectors = [part.strip() for part in tinycss2.serialize(rule.prelude).split(",")]
@@ -68,7 +71,7 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
         declarations = tinycss2.parse_declaration_list(rule.content, skip_comments=True, skip_whitespace=True)
         for declaration in declarations:
             if isinstance(declaration, Declaration):
-                computed[declaration.lower_name] = tinycss2.serialize(declaration.value).strip()
+                computed[declaration.lower_name] = resolve(tinycss2.serialize(declaration.value).strip(), tokens)
 
     if not computed:
         raise AssertionError(f"missing CSS rule for {selector}")
