@@ -222,13 +222,32 @@
       badgeContainer.className = "codoxear-hint-mode";
       badgeContainer.setAttribute("aria-hidden", "true");
       badgeContainer.style.pointerEvents = "none";
+      // Native showModal() dialogs (settings, voice, edit, file viewer) live in
+      // the top layer, which paints above any z-index in the document. The
+      // badge layer joins the top layer as a manual popover so dialog hints
+      // stay visible; popover positioning is not transformed, so the badges'
+      // fixed viewport coordinates stay correct. Without popover support the
+      // layer falls back to the document (and stays under open modals).
+      if (typeof badgeContainer.showPopover === "function") {
+        badgeContainer.setAttribute("popover", "manual");
+        Object.assign(badgeContainer.style, {
+          inset: "auto", margin: "0", padding: "0", border: "0",
+          background: "transparent", overflow: "visible", pointerEvents: "none",
+        });
+      }
       documentTarget.body.appendChild(badgeContainer);
+      if (typeof badgeContainer.showPopover === "function") {
+        try { badgeContainer.showPopover(); } catch (_) { /* already showing */ }
+      }
       for (const [label, target] of hintedTargets) addBadge(target, label);
       return true;
     }
 
     function exit() {
       if (badgeContainer) {
+        if (typeof badgeContainer.hidePopover === "function") {
+          try { badgeContainer.hidePopover(); } catch (_) { /* not showing */ }
+        }
         if (typeof badgeContainer.remove === "function") badgeContainer.remove();
         else if (badgeContainer.parentNode && typeof badgeContainer.parentNode.removeChild === "function") badgeContainer.parentNode.removeChild(badgeContainer);
       }

@@ -176,6 +176,91 @@ def eval_hint_mode() -> dict:
     return run_node_json(js)
 
 
+def eval_hint_mode_popover() -> dict:
+    source = APP_HINT_MODE_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const source = {json.dumps(source)};
+        const events = {{}};
+        const popoverCalls = {{ show: 0, hide: 0 }};
+        const popoverAttrs = [];
+
+        function makeNode(name) {{
+          return {{
+            name,
+            disabled: false,
+            offsetParent: {{}},
+            style: {{ display: "block", visibility: "visible" }},
+            parentNode: null,
+            click() {{}},
+            contains(target) {{ return target === this; }},
+            getBoundingClientRect() {{ return {{ left: 12, top: 24 }}; }},
+          }};
+        }}
+        const body = {{
+          children: [],
+          appendChild(node) {{ node.parentNode = this; this.children.push(node); return node; }},
+          removeChild(node) {{ this.children = this.children.filter((entry) => entry !== node); node.parentNode = null; }},
+        }};
+        const sidebar = makeNode("sidebar");
+        const documentTarget = {{
+          body,
+          activeElement: null,
+          defaultView: {{ innerHeight: 800, innerWidth: 800, getComputedStyle: (node) => node.style }},
+          elementFromPoint() {{ return null; }},
+          querySelectorAll(selector) {{
+            if (selector === "#sessions .session[data-session-id]") return [];
+            if (selector === ".chat a[data-file-path], .chat a[data-file-picker-query]") return [];
+            throw new Error(`unexpected selector: ${{selector}}`);
+          }},
+          createElement() {{
+            return {{
+              style: {{}},
+              parentNode: null,
+              className: "",
+              textContent: "",
+              setAttribute(name, value) {{ if (name === "popover") popoverAttrs.push(value); }},
+              appendChild(child) {{ child.parentNode = this; }},
+              showPopover() {{ popoverCalls.show += 1; }},
+              hidePopover() {{ popoverCalls.hide += 1; }},
+              remove() {{ if (this.parentNode) this.parentNode.removeChild(this); }},
+            }};
+          }},
+        }};
+        const ctx = {{ window: {{}}, document: documentTarget }};
+        vm.createContext(ctx);
+        vm.runInContext(source, ctx);
+        const controller = ctx.window.CodoxearHintMode.createHintModeController({{
+          documentTarget,
+          isTextEntryElement: () => false,
+          isMobile: () => false,
+          modalIsolationTargets: [],
+          isModalTargetOpen: () => false,
+          addAppEvent: (_target, type, handler) => {{ events[type] = handler; }},
+          shellHints: [{{ label: "s", element: sidebar }}],
+        }});
+        const press = (key) => events.keydown({{
+          key, target: null, defaultPrevented: false,
+          altKey: false, ctrlKey: false, metaKey: false, shiftKey: false,
+          preventDefault() {{ this.defaultPrevented = true; }},
+        }});
+        press("f");
+        const shownAfterEnter = popoverCalls.show;
+        const containersAfterEnter = body.children.length;
+        press("Escape");
+        process.stdout.write(JSON.stringify({{
+          popoverAttrs,
+          shownAfterEnter,
+          containersAfterEnter,
+          calls: popoverCalls,
+          containersAfterExit: body.children.length,
+        }}));
+        """
+    )
+    return run_node_json(js)
+
+
 class TestFrontendHintModeModuleSource(unittest.TestCase):
     def test_hint_mode_activation_filters_targets_and_activates_hints(self) -> None:
         result = eval_hint_mode()
@@ -206,6 +291,16 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         self.assertFalse(result["active"])
         self.assertEqual(result["badgeContainers"], 0)
         self.assertNotIn("reserved", result["clicks"])
+
+    def test_hint_badges_join_the_top_layer_as_manual_popover(self) -> None:
+        # showModal() dialogs paint above any document z-index, so the badge
+        # layer enters the top layer as a manual popover and leaves it on exit.
+        result = eval_hint_mode_popover()
+        self.assertEqual(result["popoverAttrs"], ["manual"])
+        self.assertEqual(result["shownAfterEnter"], 1)
+        self.assertEqual(result["containersAfterEnter"], 1)
+        self.assertEqual(result["calls"], {"show": 1, "hide": 1})
+        self.assertEqual(result["containersAfterExit"], 0)
 
 
 if __name__ == "__main__":
