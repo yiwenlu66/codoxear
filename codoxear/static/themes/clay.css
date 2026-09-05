@@ -113,7 +113,7 @@
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
   --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
 
-  --bubble-user: #2d271f;
+  --bubble-user: #322b23;
   --bubble-assistant: var(--paper);
   --session-active: #2e2820;
   --surface-subtle: #232019;
@@ -121,7 +121,7 @@
   --surface-error: #3c231d;
   --surface-danger: #3c231d;
   --surface-warning: #362a12;
-  --surface-info: #262119;
+  --surface-info: #2c2620;
   --surface-code: #1f1b16;
   --surface-pdf: #262119;
   --border-subtle: #38332a;
@@ -190,7 +190,9 @@
 :where(:root[data-theme="clay"]) .composer { border-top: 0; background: var(--bg); }
 
 :where(:root[data-theme="clay"]) .session { border-color: var(--hairline); }
-:where(:root[data-theme="clay"]) .session.active { border-color: var(--accent); }
+/* Active card: warm fill + single accent leading edge. A full accent
+   perimeter reads louder than its siblings, especially in dark mode. */
+:where(:root[data-theme="clay"]) .session.active { border-color: var(--hairline); border-left-color: var(--accent); }
 :where(:root[data-theme="clay"]) .msg { border-color: var(--hairline); line-height: 1.55; }
 /* The owner dot sits beside a circular state dot; a slight rounding keeps it
    distinguishable instead of reading as a second state dot. */
