@@ -14,30 +14,88 @@
     return value;
   }
 
-  const MONACO_THEME_NAME = "codoxear-github-light";
+  // One Monaco theme per UI theme family x resolved mode, named
+  // codoxear-<family>-<mode>. paper-light is the original GitHub-light code
+  // surface and is a regression surface: do not restyle it. The other five
+  // follow their family's palette in themes/<family>.css. Dark diff tints are
+  // translucent so they read on every dark paper.
+  const DARK_DIFF_TINTS = Object.freeze({
+    insertedText: "#4ade8030", insertedLine: "#4ade8014",
+    removedText: "#f0755a30", removedLine: "#f0755a14",
+  });
+  const MONACO_THEMES = Object.freeze({
+    "codoxear-paper-light": Object.freeze({
+      base: "vs", background: "#ffffff", lineHighlight: "#f6f8fa",
+      lineNumber: "#8c959f", activeLineNumber: "#57606a",
+      insertedText: "#dafbe1", insertedLine: "#f0fff4",
+      removedText: "#ffebe9", removedLine: "#fff5f5",
+    }),
+    "codoxear-paper-dark": Object.freeze({
+      base: "vs-dark", background: "#201d17", lineHighlight: "#26231d",
+      lineNumber: "#6e6a60", activeLineNumber: "#9d978a",
+      ...DARK_DIFF_TINTS,
+    }),
+    "codoxear-clay-light": Object.freeze({
+      base: "vs", background: "#f2ede2", lineHighlight: "#ece5d8",
+      lineNumber: "#9a8f7f", activeLineNumber: "#7d7365",
+      insertedText: "#15803d22", insertedLine: "#15803d12",
+      removedText: "#bf3a2422", removedLine: "#bf3a2412",
+    }),
+    "codoxear-clay-dark": Object.freeze({
+      base: "vs-dark", background: "#1f1b16", lineHighlight: "#2c2620",
+      lineNumber: "#6e675b", activeLineNumber: "#a29785",
+      ...DARK_DIFF_TINTS,
+    }),
+    "codoxear-slate-light": Object.freeze({
+      base: "vs", background: "#f7f7f7", lineHighlight: "#f1f1f1",
+      lineNumber: "#8a8a8a", activeLineNumber: "#5c5c5c",
+      insertedText: "#15803d22", insertedLine: "#15803d12",
+      removedText: "#d92d2022", removedLine: "#d92d2012",
+    }),
+    "codoxear-slate-dark": Object.freeze({
+      base: "vs-dark", background: "#181818", lineHighlight: "#262626",
+      lineNumber: "#6e6e6e", activeLineNumber: "#a0a0a0",
+      ...DARK_DIFF_TINTS,
+    }),
+  });
 
-  function defineCodoxearMonacoTheme(monaco) {
-    if (!monaco || !monaco.editor || typeof monaco.editor.defineTheme !== "function") throw new Error("monaco failed to initialize");
-    monaco.editor.defineTheme(MONACO_THEME_NAME, {
-      base: "vs",
+  function monacoThemeName(family, mode) {
+    const name = `codoxear-${String(family || "")}-${String(mode || "")}`;
+    if (!MONACO_THEMES[name]) throw new Error(`unknown monaco theme: ${family}/${mode}`);
+    return name;
+  }
+
+  const MONACO_DEFAULT_THEME_NAME = monacoThemeName("paper", "light");
+
+  function monacoThemeData(palette) {
+    return {
+      base: palette.base,
       inherit: true,
       rules: [],
       colors: {
-        "editor.background": "#ffffff",
-        "editor.lineHighlightBackground": "#f6f8fa",
-        "editorGutter.background": "#ffffff",
-        "editorLineNumber.foreground": "#8c959f",
-        "editorLineNumber.activeForeground": "#57606a",
-        "diffEditor.insertedTextBackground": "#dafbe1",
-        "diffEditor.removedTextBackground": "#ffebe9",
-        "diffEditor.insertedLineBackground": "#f0fff4",
-        "diffEditor.removedLineBackground": "#fff5f5",
+        "editor.background": palette.background,
+        "editor.lineHighlightBackground": palette.lineHighlight,
+        "editorGutter.background": palette.background,
+        "editorLineNumber.foreground": palette.lineNumber,
+        "editorLineNumber.activeForeground": palette.activeLineNumber,
+        "diffEditor.insertedTextBackground": palette.insertedText,
+        "diffEditor.removedTextBackground": palette.removedText,
+        "diffEditor.insertedLineBackground": palette.insertedLine,
+        "diffEditor.removedLineBackground": palette.removedLine,
       },
-    });
+    };
+  }
+
+  function defineCodoxearMonacoThemes(monaco) {
+    if (!monaco || !monaco.editor || typeof monaco.editor.defineTheme !== "function" || typeof monaco.editor.setTheme !== "function") {
+      throw new Error("monaco failed to initialize");
+    }
+    for (const [name, palette] of Object.entries(MONACO_THEMES)) monaco.editor.defineTheme(name, monacoThemeData(palette));
   }
 
   function createMonacoLoader(options = {}) {
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const subscribeTheme = requireFunction(options.subscribeTheme, "subscribeTheme");
     const globalObject = options.globalObject || window;
     const timeoutMs = Math.max(1, Number(options.timeoutMs || 4000));
     const pollMs = Math.max(1, Number(options.pollMs || 25));
@@ -45,10 +103,23 @@
     let readyPromise = null;
     let monacoNs = null;
     let themeReady = false;
+    // The UI theme store is the sole writer of this name. Snapshots that
+    // arrive before Monaco loads are remembered and applied at init;
+    // afterwards each snapshot switches the global Monaco theme directly.
+    let themeName = MONACO_DEFAULT_THEME_NAME;
 
     function currentMonaco() {
       return monacoNs;
     }
+
+    function currentThemeName() {
+      return themeName;
+    }
+
+    subscribeTheme((snapshot) => {
+      themeName = monacoThemeName(snapshot && snapshot.family, snapshot && snapshot.resolvedMode);
+      if (themeReady) monacoNs.editor.setTheme(themeName);
+    });
 
     function selectionCtor() {
       return monacoNs && monacoNs.Selection ? monacoNs.Selection : null;
@@ -95,9 +166,10 @@
               return;
             }
             if (!themeReady) {
-              defineCodoxearMonacoTheme(monacoNs);
+              defineCodoxearMonacoThemes(monacoNs);
               themeReady = true;
             }
+            monacoNs.editor.setTheme(themeName);
             succeed(monacoNs);
           }, fail);
         };
@@ -132,6 +204,7 @@
 
     return Object.freeze({
       currentMonaco,
+      currentThemeName,
       editSupportAvailable,
       ensure,
       selectionCtor,
@@ -158,12 +231,17 @@
     return "";
   }
 
-  function fileEditorCreateOptions({ language = "", value = "", readOnly = false } = {}) {
+  function requireThemeName(value) {
+    if (!MONACO_THEMES[value]) throw new TypeError("file editor dependency missing: theme");
+    return value;
+  }
+
+  function fileEditorCreateOptions({ language = "", value = "", readOnly = false, theme } = {}) {
     return {
       language: language || "plaintext",
       value: String(value || ""),
       readOnly: Boolean(readOnly),
-      theme: MONACO_THEME_NAME,
+      theme: requireThemeName(theme),
       lineNumbers: "on",
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
@@ -186,10 +264,10 @@
     };
   }
 
-  function diffEditorCreateOptions() {
+  function diffEditorCreateOptions(theme) {
     return {
       readOnly: true,
-      theme: MONACO_THEME_NAME,
+      theme: requireThemeName(theme),
       renderSideBySide: false,
       useInlineViewWhenSpaceIsLimited: true,
       lineNumbers: "on",
@@ -285,6 +363,7 @@
         language,
         value: options.text,
         readOnly: Boolean(options.readOnly),
+        theme: options.theme,
       }));
       setEditor(nextEditor);
       setModels([typeof nextEditor.getModel === "function" ? nextEditor.getModel() : null].filter(Boolean));
@@ -339,7 +418,7 @@
       const language = editorLanguageForPath(options.path) || "plaintext";
       const originalModel = editorApi.createModel(String(options.originalText || ""), language);
       const modifiedModel = editorApi.createModel(String(options.modifiedText || ""), language);
-      const diffEditor = editorApi.createDiffEditor(host, diffEditorCreateOptions());
+      const diffEditor = editorApi.createDiffEditor(host, diffEditorCreateOptions(options.theme));
       if (!diffEditor || typeof diffEditor.setModel !== "function") throw new Error("monaco diff editor unavailable");
       diffEditor.setModel({ original: originalModel, modified: modifiedModel });
       setEditor(diffEditor);
@@ -563,6 +642,7 @@
   function createFileEditorRenderer(options = {}) {
     const runtime = requireObject(options.runtime, "runtime");
     const ensureMonaco = requireMethod(options.monacoLoader, "ensure", "monacoLoader");
+    const currentThemeName = requireMethod(options.monacoLoader, "currentThemeName", "monacoLoader");
     const host = options.host;
     if (!host) throw new TypeError("file editor dependency missing: host");
     const normalizeLineNumber = requireFunction(options.normalizeLineNumber, "normalizeLineNumber");
@@ -646,6 +726,7 @@
           text,
           languageOverride: langOverride,
           readOnly: activeFileReadOnly(),
+          theme: currentThemeName(),
           onDidChangeModelContent: handleFileEditorContentChange,
         });
         setEditorKind("file");
@@ -676,7 +757,7 @@
       }
       if (!requestIsCurrent(request)) return false;
       disposeFileEditor();
-      createDiffEditor(monaco, host, { path: rel, originalText, modifiedText });
+      createDiffEditor(monaco, host, { path: rel, originalText, modifiedText, theme: currentThemeName() });
       setEditorKind("diff");
       schedulePositionFocus("diff", lineNumber, request);
       updateTouchToolbar();
@@ -690,4 +771,4 @@
     });
   }
 
-export { createFileEditorRenderer, createFileEditorRuntime, createMonacoLoader };
+export { MONACO_DEFAULT_THEME_NAME, createFileEditorRenderer, createFileEditorRuntime, createMonacoLoader, monacoThemeName };

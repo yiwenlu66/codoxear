@@ -373,7 +373,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const {
       wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
-      $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
+      $, el, iconSvg, resolveAppUrl, subscribeTheme, api, setToast, confirmApp, addAppEvent,
       normalizeLineNumber, markdownPreviewHtml,
       blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
       codoxearFilePicker, codoxearFilePickerOps, codoxearFileViewer, codoxearFileEditor, codoxearFileEditorOps, codoxearFileEditMode,
@@ -461,6 +461,7 @@ const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
       wiring: wiring,
       codoxearFileEditor: codoxearFileEditor,
       resolveAppUrl: resolveAppUrl,
+      subscribeTheme: subscribeTheme,
       fileDiff: fileDiff,
       normalizeLineNumber: normalizeLineNumber,
       requestAnimationFrame: (callback) => requestAnimationFrame(callback),

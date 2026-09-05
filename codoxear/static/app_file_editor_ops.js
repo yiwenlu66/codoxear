@@ -6,7 +6,7 @@
   }
   function createFileEditorOpsController(options = {}) {
     const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
-    const { wiring, codoxearFileEditor, resolveAppUrl, fileDiff, normalizeLineNumber, requestAnimationFrame,
+    const { wiring, codoxearFileEditor, resolveAppUrl, subscribeTheme, fileDiff, normalizeLineNumber, requestAnimationFrame,
       setTimeout, isCurrentFileOpenRequest, renderPlainTextFallback, disposeFileEditor, currentEditorKind,
       setEditorKind, currentFileEditMode, currentActiveFileEditable, isUnavailable, isProgrammaticChange,
       currentTouchSelectMode, resetTouchSelectionState, currentActiveFileText, setDirty, runProgrammaticChange,
@@ -15,7 +15,7 @@
       throw new TypeError("file editor dependency missing: codoxearFileEditor");
     const runtime = codoxearFileEditor.createFileEditorRuntime();
     const monacoLoader = codoxearFileEditor.createMonacoLoader(wiring.createMonacoLoaderOptions({
-      resolveAppUrl, timeoutMs: 4000,
+      resolveAppUrl, timeoutMs: 4000, subscribeTheme,
     }));
     const renderer = codoxearFileEditor.createFileEditorRenderer(wiring.createFileEditorRendererOptions({
       runtime, monacoLoader, host: fileDiff, normalizeLineNumber, requestAnimationFrame, setTimeout,

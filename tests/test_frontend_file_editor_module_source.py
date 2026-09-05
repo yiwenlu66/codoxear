@@ -171,8 +171,11 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           path: "src/main.py",
           text: "print(1)",
           readOnly: true,
+          theme: "codoxear-clay-dark",
           onDidChangeModelContent: () => creationEvents.push(["changed"]),
         }}).tag;
+        let missingThemeError = "";
+        try {{ fileRuntime.createFileEditor(monacoCreate, {{ name: "fileHost" }}, {{ path: "x.py", text: "", onDidChangeModelContent: () => null }}); }} catch (err) {{ missingThemeError = err && err.message ? err.message : String(err); }}
         const filePositionState = fileRuntime.positionCurrentEditorAtLine("file", "3", (value) => Number(value) || null);
         const updateFileTextResult = fileRuntime.updateFileEditorText(monacoCreate, {{
           path: "README.md",
@@ -209,7 +212,7 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
             createDiffEditor: (host, options) => {{ creationEvents.push(["createDiff", host.name, options]); return createdDiffEditor; }},
           }},
         }};
-        const diffCreateResult = diffRuntime.createDiffEditor(monacoDiff, {{ name: "diffHost" }}, {{ path: "src/app.ts", originalText: "old", modifiedText: "new" }}).diffEditor.tag;
+        const diffCreateResult = diffRuntime.createDiffEditor(monacoDiff, {{ name: "diffHost" }}, {{ path: "src/app.ts", originalText: "old", modifiedText: "new", theme: "codoxear-slate-light" }}).diffEditor.tag;
         const diffPositionState = diffRuntime.positionCurrentEditorAtLine("diff", null, (value) => Number(value) || null);
         const creation = {{
           createFileEditorResult,
@@ -219,6 +222,7 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           restoreWrongKind,
           diffCreateResult,
           diffPositionState,
+          missingThemeError,
           fileModelCount: fileRuntime.currentModels().length,
           diffModelCount: diffRuntime.currentModels().length,
           creationEvents,
@@ -292,7 +296,7 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
         const host = {{ name: "fileHost" }};
         const runtime = {{
           createFileEditor(monaco, editorHost, options) {{
-            events.push(["createFile", monaco.name, editorHost.name, options.path, options.text, options.languageOverride, options.readOnly]);
+            events.push(["createFile", monaco.name, editorHost.name, options.path, options.text, options.languageOverride, options.readOnly, options.theme]);
             changeCallback = options.onDidChangeModelContent;
             return {{ tag: "createdFile" }};
           }},
@@ -302,7 +306,7 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
             return true;
           }},
           createDiffEditor(monaco, editorHost, options) {{
-            events.push(["createDiff", monaco.name, editorHost.name, options.path, options.originalText, options.modifiedText]);
+            events.push(["createDiff", monaco.name, editorHost.name, options.path, options.originalText, options.modifiedText, options.theme]);
             return {{ diffEditor: {{ tag: "createdDiff" }} }};
           }},
           positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber) {{
@@ -321,12 +325,14 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
             return currentText;
           }},
         }};
+        let themeName = "codoxear-paper-light";
         const loader = {{
           ensure: async () => {{
             events.push(["ensure", ensureMode]);
             if (ensureMode === "fail") throw new Error("loader boom");
             return {{ name: "monaco" }};
           }},
+          currentThemeName: () => themeName,
         }};
         const renderer = mod.createFileEditorRenderer({{
           runtime,
@@ -372,6 +378,7 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
           const diffFallback = await renderer.renderDiff("src/fallback.diff", "old", "new", 5, {{ id: "req" }});
           ensureMode = "success";
           currentKind = "plain-fallback";
+          themeName = "codoxear-slate-dark";
           const diffRendered = await renderer.renderDiff("src/a.js", "old", "new", 2, {{ id: "req" }});
           const ensured = await renderer.ensureMonaco();
           let missingHostError = "";
@@ -434,6 +441,7 @@ def run_diff_fallback_probe() -> dict[str, object]:
         let current = true;
         const loader = {{
           ensure() {{ events.push(["ensure"]); return Promise.reject(new Error("loader unavailable")); }},
+          currentThemeName: () => "codoxear-paper-light",
         }};
         const runtime = {{
           createFileEditor: () => ({{}}),
@@ -497,10 +505,12 @@ def run_monaco_loader_probe() -> dict[str, object]:
             this.endColumn = endColumn;
           }}
         }}
+        const definedThemes = {{}};
         const monaco = {{
           Selection,
           editor: {{
-            defineTheme: (name, theme) => events.push(["defineTheme", name, theme.colors["editor.background"]]),
+            defineTheme: (name, theme) => {{ definedThemes[name] = theme; events.push(["defineTheme", name]); }},
+            setTheme: (name) => events.push(["setTheme", name]),
           }},
         }};
         const fakeGlobal = {{
@@ -512,22 +522,48 @@ def run_monaco_loader_probe() -> dict[str, object]:
           success();
         }};
         fakeGlobal.require.config = (options) => events.push(["config", options]);
+        // Theme store stand-in: subscribe() replays the current snapshot at
+        // once (as app_theme.js does) and notify() pushes a new one later.
+        let snapshot = {{ family: "clay", mode: "system", resolvedMode: "dark", customCss: "" }};
+        const subscribers = [];
+        const subscribeTheme = (fn) => {{ subscribers.push(fn); fn(snapshot); return () => null; }};
+        const notify = (next) => {{ snapshot = next; for (const fn of subscribers) fn(snapshot); }};
         const loader = mod.createMonacoLoader({{
           resolveAppUrl: (path) => `app:${{path}}`,
           globalObject: fakeGlobal,
           timeoutMs: 10,
           pollMs: 1,
+          subscribeTheme,
         }});
         (async () => {{
           const beforeSupport = loader.editSupportAvailable();
+          const themeBeforeLoad = loader.currentThemeName();
           const first = await loader.ensure();
           const afterSupport = loader.editSupportAvailable();
+          const themeAfterLoad = loader.currentThemeName();
           const second = await loader.ensure();
+          notify({{ family: "slate", mode: "light", resolvedMode: "light", customCss: "" }});
+          const themeAfterNotify = loader.currentThemeName();
           const selection = new (loader.selectionCtor())(1, 2, 3, 4);
           const monacoEnvironment = fakeGlobal.MonacoEnvironment || {{}};
           const hasWorkerOverride = typeof monacoEnvironment.getWorker === "function" || typeof monacoEnvironment.getWorkerUrl === "function";
           let missingResolveError = "";
-          try {{ mod.createMonacoLoader({{}}); }} catch (err) {{ missingResolveError = err && err.message ? err.message : String(err); }}
+          try {{ mod.createMonacoLoader({{ subscribeTheme }}); }} catch (err) {{ missingResolveError = err && err.message ? err.message : String(err); }}
+          let missingSubscribeError = "";
+          try {{ mod.createMonacoLoader({{ resolveAppUrl: () => "" }}); }} catch (err) {{ missingSubscribeError = err && err.message ? err.message : String(err); }}
+          const definedThemeSummary = Object.fromEntries(Object.entries(definedThemes).map(([name, theme]) => [name, {{
+            base: theme.base,
+            inherit: theme.inherit,
+            background: theme.colors["editor.background"],
+            gutter: theme.colors["editorGutter.background"],
+            lineHighlight: theme.colors["editor.lineHighlightBackground"],
+            lineNumber: theme.colors["editorLineNumber.foreground"],
+            activeLineNumber: theme.colors["editorLineNumber.activeForeground"],
+            insertedText: theme.colors["diffEditor.insertedTextBackground"],
+            insertedLine: theme.colors["diffEditor.insertedLineBackground"],
+            removedText: theme.colors["diffEditor.removedTextBackground"],
+            removedLine: theme.colors["diffEditor.removedLineBackground"],
+          }}]));
           process.stdout.write(JSON.stringify({{
             beforeSupport,
             afterSupport,
@@ -536,10 +572,40 @@ def run_monaco_loader_probe() -> dict[str, object]:
             selection,
             hasWorkerOverride,
             monacoEnvironmentKeys: Object.keys(monacoEnvironment).sort(),
+            themeBeforeLoad,
+            themeAfterLoad,
+            themeAfterNotify,
+            definedThemeSummary,
             events,
             missingResolveError,
+            missingSubscribeError,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def run_monaco_theme_name_probe() -> dict[str, object]:
+    editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(editor_source)}, ctx);
+        const mod = ctx.window.CodoxearFileEditor;
+        const names = {{}};
+        for (const family of ["paper", "clay", "slate"]) {{
+          for (const mode of ["light", "dark"]) names[`${{family}}/${{mode}}`] = mod.monacoThemeName(family, mode);
+        }}
+        const errors = {{}};
+        for (const [family, mode] of [["paper", "system"], ["github", "light"], ["", "dark"], [null, null]]) {{
+          try {{ mod.monacoThemeName(family, mode); errors[`${{family}}/${{mode}}`] = ""; }}
+          catch (err) {{ errors[`${{family}}/${{mode}}`] = err && err.message ? err.message : String(err); }}
+        }}
+        process.stdout.write(JSON.stringify({{ names, errors, defaultName: mod.MONACO_DEFAULT_THEME_NAME }}));
         """
     )
     proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -551,7 +617,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         result = run_file_editor_runtime_probe()
         self.assertTrue(result["frozen"])
         self.assertTrue(result["runtimeFrozen"])
-        self.assertEqual(result["exports"], ["createFileEditorRenderer", "createFileEditorRuntime", "createMonacoLoader"])
+        self.assertEqual(result["exports"], ["MONACO_DEFAULT_THEME_NAME", "createFileEditorRenderer", "createFileEditorRuntime", "createMonacoLoader", "monacoThemeName"])
         self.assertIsNone(result["emptyActive"])
         self.assertTrue(result["activeFile"])
         self.assertIsNone(result["noDiffEditor"])
@@ -615,7 +681,8 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         self.assertEqual(creation_events[0][2]["language"], "python")
         self.assertEqual(creation_events[0][2]["value"], "print(1)")
         self.assertTrue(creation_events[0][2]["readOnly"])
-        self.assertEqual(creation_events[0][2]["theme"], "codoxear-github-light")
+        self.assertEqual(creation_events[0][2]["theme"], "codoxear-clay-dark")
+        self.assertContains("file editor dependency missing: theme", creation["missingThemeError"])
         self.assertContains(["bindChange"], creation_events)
         self.assertContains(["filePosition", {"lineNumber": 3, "column": 1}], creation_events)
         self.assertContains(["setLanguage", True, "markdown"], creation_events)
@@ -624,6 +691,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         diff_create = next(event for event in creation_events if event[0] == "createDiff")
         self.assertEqual(diff_create[1], "diffHost")
         self.assertTrue(diff_create[2]["readOnly"])
+        self.assertEqual(diff_create[2]["theme"], "codoxear-slate-light")
         self.assertEqual(diff_create[2]["hideUnchangedRegions"], {"enabled": True, "contextLineCount": 4, "minimumLineCount": 1, "revealLineCount": 2})
         self.assertContains(["originalOptions", {"wordWrap": "on", "lineNumbers": "off", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 0}], creation_events)
         self.assertContains(["modifiedOptions", {"wordWrap": "on", "lineNumbers": "on", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 3}], creation_events)
@@ -678,7 +746,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
             [
                 ["ensure", "success"],
                 ["dispose"],
-                ["createFile", "monaco", "fileHost", "src/a.js", "old text", "javascript", False],
+                ["createFile", "monaco", "fileHost", "src/a.js", "old text", "javascript", False, "codoxear-paper-light"],
                 ["setKind", "file"],
                 ["syncReadOnly"],
                 ["position", "file", 3],
@@ -708,7 +776,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
                 ["updateTouchToolbar"],
                 ["ensure", "success"],
                 ["dispose"],
-                ["createDiff", "monaco", "fileHost", "src/a.js", "old", "new"],
+                ["createDiff", "monaco", "fileHost", "src/a.js", "old", "new", "codoxear-slate-dark"],
                 ["setKind", "diff"],
                 ["position", "diff", 2],
                 ["schedule", "diff", 2, True],
@@ -744,15 +812,74 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         self.assertEqual(result["selection"], {"startLineNumber": 1, "startColumn": 2, "endLineNumber": 3, "endColumn": 4})
         self.assertFalse(result["hasWorkerOverride"])
         self.assertEqual(result["monacoEnvironmentKeys"], [])
+        # The store snapshot replayed at subscribe time (before Monaco loads)
+        # is remembered and applied once at init; a later notification
+        # switches the live Monaco theme directly.
+        self.assertEqual(result["themeBeforeLoad"], "codoxear-clay-dark")
+        self.assertEqual(result["themeAfterLoad"], "codoxear-clay-dark")
+        self.assertEqual(result["themeAfterNotify"], "codoxear-slate-light")
+        six = [f"codoxear-{family}-{mode}" for family in ("paper", "clay", "slate") for mode in ("light", "dark")]
         self.assertEqual(
             result["events"],
             [
                 ["config", {"paths": {"vs": "app:monaco/vs"}}],
                 ["require", ["vs/editor/editor.main"]],
-                ["defineTheme", "codoxear-github-light", "#ffffff"],
+                *[["defineTheme", name] for name in six],
+                ["setTheme", "codoxear-clay-dark"],
+                ["setTheme", "codoxear-slate-light"],
             ],
         )
+        themes = result["definedThemeSummary"]
+        self.assertEqual(sorted(themes), sorted(six))
+        for name, theme in themes.items():
+            self.assertTrue(theme["inherit"], name)
+            self.assertEqual(theme["base"], "vs-dark" if name.endswith("-dark") else "vs", name)
+            self.assertEqual(theme["gutter"], theme["background"], name)
+        # paper-light is the original GitHub-light surface (regression surface).
+        self.assertEqual(themes["codoxear-paper-light"], {
+            "base": "vs", "inherit": True, "background": "#ffffff", "gutter": "#ffffff", "lineHighlight": "#f6f8fa",
+            "lineNumber": "#8c959f", "activeLineNumber": "#57606a",
+            "insertedText": "#dafbe1", "insertedLine": "#f0fff4", "removedText": "#ffebe9", "removedLine": "#fff5f5",
+        })
+        dark_diff = {"insertedText": "#4ade8030", "insertedLine": "#4ade8014", "removedText": "#f0755a30", "removedLine": "#f0755a14"}
+        self.assertEqual(themes["codoxear-paper-dark"], {
+            "base": "vs-dark", "inherit": True, "background": "#201d17", "gutter": "#201d17", "lineHighlight": "#26231d",
+            "lineNumber": "#6e6a60", "activeLineNumber": "#9d978a", **dark_diff,
+        })
+        self.assertEqual(themes["codoxear-clay-light"], {
+            "base": "vs", "inherit": True, "background": "#f2ede2", "gutter": "#f2ede2", "lineHighlight": "#ece5d8",
+            "lineNumber": "#9a8f7f", "activeLineNumber": "#7d7365",
+            "insertedText": "#15803d22", "insertedLine": "#15803d12", "removedText": "#bf3a2422", "removedLine": "#bf3a2412",
+        })
+        self.assertEqual(themes["codoxear-clay-dark"], {
+            "base": "vs-dark", "inherit": True, "background": "#1f1b16", "gutter": "#1f1b16", "lineHighlight": "#2c2620",
+            "lineNumber": "#6e675b", "activeLineNumber": "#a29785", **dark_diff,
+        })
+        self.assertEqual(themes["codoxear-slate-light"], {
+            "base": "vs", "inherit": True, "background": "#f7f7f7", "gutter": "#f7f7f7", "lineHighlight": "#f1f1f1",
+            "lineNumber": "#8a8a8a", "activeLineNumber": "#5c5c5c",
+            "insertedText": "#15803d22", "insertedLine": "#15803d12", "removedText": "#d92d2022", "removedLine": "#d92d2012",
+        })
+        self.assertEqual(themes["codoxear-slate-dark"], {
+            "base": "vs-dark", "inherit": True, "background": "#181818", "gutter": "#181818", "lineHighlight": "#262626",
+            "lineNumber": "#6e6e6e", "activeLineNumber": "#a0a0a0", **dark_diff,
+        })
         self.assertContains("file editor dependency missing: resolveAppUrl", result["missingResolveError"])
+        self.assertContains("file editor dependency missing: subscribeTheme", result["missingSubscribeError"])
+
+    def test_monaco_theme_name_mapping(self) -> None:
+        result = run_monaco_theme_name_probe()
+        self.assertEqual(result["names"], {
+            "paper/light": "codoxear-paper-light",
+            "paper/dark": "codoxear-paper-dark",
+            "clay/light": "codoxear-clay-light",
+            "clay/dark": "codoxear-clay-dark",
+            "slate/light": "codoxear-slate-light",
+            "slate/dark": "codoxear-slate-dark",
+        })
+        self.assertEqual(result["defaultName"], "codoxear-paper-light")
+        for key, message in result["errors"].items():
+            self.assertContains("unknown monaco theme", message, msg=key)
 
 if __name__ == "__main__":
     unittest.main()

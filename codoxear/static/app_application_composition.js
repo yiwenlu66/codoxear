@@ -769,6 +769,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         fileOpsController = CodoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
           wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
           $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
+          subscribeTheme: (subscriber) => themeController.subscribe(subscriber),
           sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
           blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
           codoxearFilePicker, codoxearFilePickerOps: CodoxearFilePickerOps,
