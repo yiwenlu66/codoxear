@@ -234,11 +234,27 @@
         const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
         const lineNumber = Math.max(1, Math.min(lineCount, Number(position.lineNumber) || 1));
         const isLast = lineNumber >= lineCount;
-        const endLine = isLast ? lineNumber : lineNumber + 1;
-        const endColumn = isLast ? Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1) : 1;
+        // dd removes the line together with its line break. On a middle line
+        // that means (line,1)-(line+1,1). On the last line the break lives
+        // before the line, so deleting only the line's content would leave a
+        // trailing blank line: delete the preceding break instead. A
+        // single-line document collapses to empty.
+        const range = isLast && lineNumber > 1
+          ? {
+              startLineNumber: lineNumber - 1,
+              startColumn: Math.max(1, Number(model.getLineMaxColumn(lineNumber - 1)) || 1),
+              endLineNumber: lineNumber,
+              endColumn: Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1),
+            }
+          : {
+              startLineNumber: lineNumber,
+              startColumn: 1,
+              endLineNumber: isLast ? lineNumber : lineNumber + 1,
+              endColumn: isLast ? Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1) : 1,
+            };
         if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
         editor.executeEdits("file-vim", [{
-          range: { startLineNumber: lineNumber, startColumn: 1, endLineNumber: endLine, endColumn },
+          range,
           text: "",
           forceMoveMarkers: true,
         }]);
@@ -298,8 +314,15 @@
       if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
     }
 
-    function isPlainPrintable(event, key) {
-      return key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    function hasKeyModifiers(event) {
+      return Boolean(event && (event.ctrlKey || event.metaKey || event.altKey));
+    }
+
+    function isSwallowedPrintable(event, key) {
+      // Space is deliberately excluded: the viewer opens with focus on the
+      // Close button, and native Space activation of the focused button must
+      // keep working in view and normal mode.
+      return key.length === 1 && key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey;
     }
 
     function dispatchNormalKey(event, key) {
@@ -311,7 +334,9 @@
       }
       if (pendingPrefix === "g") {
         pendingPrefix = "";
-        if (key === "g") {
+        // A modified key never completes a prefix; it is rejected and the
+        // key consumed, so g Ctrl-g jumps nowhere.
+        if (key === "g" && !hasKeyModifiers(event)) {
           const editor = monacoSurface();
           if (editor) {
             focusActiveFileEditor();
@@ -324,7 +349,8 @@
       }
       if (pendingPrefix === "d") {
         pendingPrefix = "";
-        if (key === "d") deleteLine();
+        // Same modifier rejection as g: d Ctrl-d deletes nothing.
+        if (key === "d" && !hasKeyModifiers(event)) deleteLine();
         return true;
       }
       if (key === "d" && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -335,7 +361,7 @@
         pendingPrefix = "g";
         return true;
       }
-      if (key === "x") return deleteChar();
+      if (key === "x" && !hasKeyModifiers(event)) return deleteChar();
       if (key === "u" && !event.ctrlKey && !event.metaKey && !event.altKey) return editHistory("undo");
       if (key === "r" && (event.ctrlKey || event.metaKey)) return editHistory("redo");
       if (key === "a" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
@@ -361,7 +387,8 @@
       }
       if (pendingPrefix === "g") {
         pendingPrefix = "";
-        if (key === "g") {
+        // A modified key never completes the prefix (same rule as normal mode).
+        if (key === "g" && !hasKeyModifiers(event)) {
           const editor = monacoSurface();
           if (editor) {
             focusActiveFileEditor();
@@ -394,6 +421,9 @@
       if (fileEditorShortcutBlocked(target)) return;
       const key = String(e.key || "");
       if (key === "Escape") {
+        // Escape always abandons a pending prefix, including the view-mode
+        // case where handleEscape() returns false and the key passes on.
+        pendingPrefix = "";
         if (handleEscape()) consume(e);
         return;
       }
@@ -405,7 +435,7 @@
         }
         // Swallow remaining printable keys: in normal mode keystrokes never
         // reach the editor.
-        if (isPlainPrintable(e, key)) consume(e);
+        if (isSwallowedPrintable(e, key)) consume(e);
         return;
       }
       if (dispatchViewKey(e, key)) {
@@ -414,7 +444,7 @@
       }
       // View mode replaces direct letter activation of viewer buttons with
       // f-hints, so unconsumed printable keys are swallowed here.
-      if (isPlainPrintable(e, key)) consume(e);
+      if (isSwallowedPrintable(e, key)) consume(e);
     }
 
     addAppEvent(documentTarget, "keydown", handleKeydown, true);

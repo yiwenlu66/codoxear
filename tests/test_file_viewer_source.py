@@ -84,6 +84,46 @@ process.stdout.write(JSON.stringify({ display: { backdrop: backdrop.style.displa
         self.assertEqual(result["events"], ["remember", "prepare", "sync", "picker-focus", "sync", "restore"])
         self.assertEqual(result["presses"], 2)
 
+    def test_lifecycle_hide_funnel_invokes_finish_hide(self) -> None:
+        # The vim layer clears its pending prefix from the finishHide hook in
+        # app_file_ops.js; hide() must funnel every viewer close through it.
+        result = run_viewer(
+            r'''
+const viewer = ctx.window.CodoxearFileViewer;
+const calls = [];
+const rec = (name) => () => { calls.push(name); return true; };
+const controller = {
+  invalidateFileViewerSessionSync: rec('invalidate'),
+  cancelPendingFileOpen: rec('cancel-open'),
+  rememberActiveFileSelection: rec('remember'),
+  clearFileViewerSessionId: rec('clear-session'),
+  clearFileViewerUnavailableSession: rec('clear-unavailable'),
+  clearActiveFileIdentity: rec('clear-identity'),
+};
+const runtime = viewer.createFileViewerLifecycleRuntime({
+  controller,
+  beginHide: rec('begin-hide'),
+  hideDisplay: rec('hide-display'),
+  finishHide: (state) => { calls.push(['finish-hide', state]); return true; },
+  hideFileUnsavedDialog: rec('hide-unsaved'),
+  hideFilePasteDialog: rec('hide-paste'),
+  resetFileViewerPanel: rec('reset-panel'),
+  closeFilePickerMenu: rec('close-picker'),
+  resetFileSearchState: rec('reset-search'),
+  setFileSearchSessionId: rec('set-search-session'),
+  updateFileTouchToolbar: rec('touch-toolbar'),
+});
+const hidden = runtime.hide();
+const finishHideCalls = calls.filter((call) => Array.isArray(call));
+const order = calls.map((call) => (Array.isArray(call) ? call[0] : call));
+process.stdout.write(JSON.stringify({ hidden, finishHideCalls, order, finishHideLast: order[order.length - 1] }));
+'''
+        )
+        self.assertTrue(result["hidden"])
+        self.assertEqual(result["finishHideCalls"], [["finish-hide", True]])
+        self.assertEqual(result["order"].count("finish-hide"), 1)
+        self.assertEqual(result["finishHideLast"], "finish-hide")
+
 
 if __name__ == "__main__":
     unittest.main()

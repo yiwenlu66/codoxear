@@ -543,6 +543,212 @@ process.stdout.write(JSON.stringify({
         self.assertTrue(result["gAfterConsumed"])
         self.assertEqual(result["movedAfterG"], 0)
 
+    def test_x_requires_an_unmodified_key(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");           // -> normal
+const ctrl = env.press("x", { ctrl: true });
+const alt = env.press("x", { alt: true });
+const meta = env.press("x", { meta: true });
+const triggersAfterModified = env.editor.triggers.length;
+const plain = env.press("x");
+process.stdout.write(JSON.stringify({
+  ctrl: { consumed: ctrl.defaultPrevented, alt: alt.defaultPrevented, meta: meta.defaultPrevented, triggers: triggersAfterModified },
+  plain: { consumed: plain.defaultPrevented, command: env.editor.triggers.slice(-1) },
+}));
+''')
+        # Modified x falls through untouched (no deleteRight, not consumed);
+        # plain x deletes one character.
+        self.assertFalse(result["ctrl"]["consumed"])
+        self.assertFalse(result["ctrl"]["alt"])
+        self.assertFalse(result["ctrl"]["meta"])
+        self.assertEqual(result["ctrl"]["triggers"], 0)
+        self.assertTrue(result["plain"]["consumed"])
+        self.assertEqual(result["plain"]["command"], [["deleteRight", None]])
+
+    def test_pending_prefix_rejects_modified_keys(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+// View mode: g then Ctrl-g must not complete gg.
+env.press("g");
+const ctrlG = env.press("g", { ctrl: true });
+const positionsAfterReject = env.editor.positions.length;
+const g1 = env.press("g");
+const g2 = env.press("g");
+const positionsAfterGg = env.editor.positions.slice();
+// Normal mode: d then Ctrl-d must not delete a line.
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");
+const d1 = env.press("d");
+const ctrlD = env.press("d", { ctrl: true });
+const editsAfterReject = env.editor.edits.length;
+const d2 = env.press("d");
+const d3 = env.press("d");
+const editsAfterDd = env.editor.edits.slice(editsAfterReject);
+// Normal mode: g then Meta-g must not complete gg either.
+env.press("g");
+const metaG = env.press("g", { meta: true });
+const metaGPositions = env.editor.positions.length;
+process.stdout.write(JSON.stringify({
+  viewReject: { consumed: ctrlG.defaultPrevented, positionsAfterReject, gg: { consumed: g2.defaultPrevented, positions: positionsAfterGg } },
+  normalReject: { dConsumed: d1.defaultPrevented, ctrlDConsumed: ctrlD.defaultPrevented, editsAfterReject, ddEdits: editsAfterDd, metaGConsumed: metaG.defaultPrevented, metaGPositions },
+}));
+''')
+        # View mode: g Ctrl-g is consumed as a rejected prefix and jumps
+        # nowhere; a fresh unmodified gg still goes to line 1.
+        self.assertTrue(result["viewReject"]["consumed"])
+        self.assertEqual(result["viewReject"]["positionsAfterReject"], 0)
+        self.assertTrue(result["viewReject"]["gg"]["consumed"])
+        self.assertEqual(result["viewReject"]["gg"]["positions"], [{"lineNumber": 1, "column": 1}])
+        # Normal mode: d Ctrl-d deletes nothing; d d still deletes the line.
+        self.assertTrue(result["normalReject"]["dConsumed"])
+        self.assertTrue(result["normalReject"]["ctrlDConsumed"])
+        self.assertEqual(result["normalReject"]["editsAfterReject"], 0)
+        self.assertEqual(result["normalReject"]["ddEdits"], [["file-vim", [{
+            "range": {"startLineNumber": 2, "startColumn": 1, "endLineNumber": 3, "endColumn": 1},
+            "text": "",
+            "forceMoveMarkers": True,
+        }]]])
+        self.assertTrue(result["normalReject"]["metaGConsumed"])
+        self.assertEqual(result["normalReject"]["metaGPositions"], 1)  # only the earlier view-mode gg
+
+    def test_ctrl_s_falls_through_in_normal_mode(self) -> None:
+        # The vim capture listener runs before the save shortcut listener; it
+        # must let Ctrl-S pass so saving works from vim normal mode.
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");           // -> normal
+const ctrlS = env.press("s", { ctrl: true });
+const metaS = env.press("s", { meta: true });
+process.stdout.write(JSON.stringify({ ctrlConsumed: ctrlS.defaultPrevented, metaConsumed: metaS.defaultPrevented, triggers: env.editor.triggers.length, edits: env.editor.edits.length }));
+''')
+        self.assertFalse(result["ctrlConsumed"])
+        self.assertFalse(result["metaConsumed"])
+        self.assertEqual(result["triggers"], 0)
+        self.assertEqual(result["edits"], 0)
+
+    def test_space_passes_through_unconsumed(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+const viewSpace = env.press(" ");
+const viewQ = env.press("q");
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");           // -> normal
+const normalSpace = env.press(" ");
+const normalQ = env.press("q");
+env.controller.syncEditMode();   // -> insert
+const insertSpace = env.press(" ");
+process.stdout.write(JSON.stringify({
+  view: { space: viewSpace.defaultPrevented, q: viewQ.defaultPrevented },
+  normal: { space: normalSpace.defaultPrevented, q: normalQ.defaultPrevented },
+  insert: { space: insertSpace.defaultPrevented },
+  triggers: env.editor.triggers.length,
+}));
+''')
+        # Space reaches the browser (native activation of the focused Close
+        # button) in view and normal mode; other printable keys stay swallowed.
+        self.assertFalse(result["view"]["space"])
+        self.assertTrue(result["view"]["q"])
+        self.assertFalse(result["normal"]["space"])
+        self.assertTrue(result["normal"]["q"])
+        self.assertFalse(result["insert"]["space"])
+        self.assertEqual(result["triggers"], 0)
+
+    def test_dd_on_last_line_removes_the_line_break(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");           // -> normal
+function ddWithModel(model, position) {
+  env.editor.getModel = () => model;
+  env.editor.getPosition = () => position;
+  const before = env.editor.edits.length;
+  env.press("d");
+  env.press("d");
+  return env.editor.edits.slice(before);
+}
+const twoLineLast = ddWithModel(
+  { getLineCount: () => 2, getLineMaxColumn: (line) => (line === 2 ? 5 : 7) },
+  { lineNumber: 2, column: 1 },
+);
+const singleLine = ddWithModel(
+  { getLineCount: () => 1, getLineMaxColumn: () => 4 },
+  { lineNumber: 1, column: 2 },
+);
+process.stdout.write(JSON.stringify({ twoLineLast, singleLine }));
+''')
+        # Last line of a multi-line document: delete the preceding line break
+        # plus the line's content (no blank line left behind).
+        self.assertEqual(result["twoLineLast"], [["file-vim", [{
+            "range": {"startLineNumber": 1, "startColumn": 7, "endLineNumber": 2, "endColumn": 5},
+            "text": "",
+            "forceMoveMarkers": True,
+        }]]])
+        # Single-line document: the result is empty.
+        self.assertEqual(result["singleLine"], [["file-vim", [{
+            "range": {"startLineNumber": 1, "startColumn": 1, "endLineNumber": 1, "endColumn": 4},
+            "text": "",
+            "forceMoveMarkers": True,
+        }]]])
+
+    def test_escape_clears_pending_prefix_even_when_unconsumed(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+// View mode: Esc is not consumed, but must still drop the pending g.
+env.press("g");
+const esc = env.press("Escape");
+const jAfterEsc = env.press("j");
+const movedAfterEsc = env.editor.triggers.filter(([command]) => command === "cursorDown").length;
+// Normal mode with a dirty buffer: Esc is consumed as a no-op toast and
+// must drop the pending d.
+env.state.editMode = true;
+env.controller.syncEditMode();
+env.press("Escape");
+env.state.dirty = true;
+env.press("d");
+const dirtyEsc = env.press("Escape");
+const dAfterEsc = env.press("d");
+const editsAfterReject = env.editor.edits.length;
+const dAgain = env.press("d");
+const editsAfterDd = env.editor.edits.length;
+process.stdout.write(JSON.stringify({
+  view: { escConsumed: esc.defaultPrevented, jConsumed: jAfterEsc.defaultPrevented, movedAfterEsc },
+  dirtyNormal: { escConsumed: dirtyEsc.defaultPrevented, toasts: env.calls.toasts, editsAfterReject, editsAfterDd },
+}));
+''')
+        # View mode: after Esc the next j moves (a leaked pending g would
+        # swallow it instead).
+        self.assertFalse(result["view"]["escConsumed"])
+        self.assertTrue(result["view"]["jConsumed"])
+        self.assertEqual(result["view"]["movedAfterEsc"], 1)
+        # Dirty normal mode: after the Esc toast, the next d starts a fresh
+        # pending prefix (no delete yet) and only the second d deletes.
+        self.assertTrue(result["dirtyNormal"]["escConsumed"])
+        self.assertEqual(result["dirtyNormal"]["toasts"], ["unsaved changes"])
+        self.assertEqual(result["dirtyNormal"]["editsAfterReject"], 0)
+        self.assertEqual(result["dirtyNormal"]["editsAfterDd"], 1)
+
+    def test_sync_edit_mode_clears_pending_prefix(self) -> None:
+        # The viewer-close hook calls syncEditMode(); a pending prefix must
+        # not survive it into the next viewer session.
+        result = run_vim(r'''
+const env = makeEnv();
+env.press("g");
+env.controller.syncEditMode();
+const j = env.press("j");
+const moved = env.editor.triggers.filter(([command]) => command === "cursorDown").length;
+process.stdout.write(JSON.stringify({ jConsumed: j.defaultPrevented, moved }));
+''')
+        self.assertTrue(result["jConsumed"])
+        self.assertEqual(result["moved"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

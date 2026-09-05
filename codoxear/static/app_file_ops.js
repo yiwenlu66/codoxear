@@ -1001,7 +1001,12 @@ const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleR
   controller: fileViewerController,
   beginHide: () => fileViewerModalRuntime.beginHide(),
   hideDisplay: () => fileViewerModalRuntime.hideDisplay(),
-  finishHide: (state) => fileViewerModalRuntime.finishHide(state),
+  finishHide: (state) => {
+    fileViewerModalRuntime.finishHide(state);
+    // Closing the viewer abandons any pending vim prefix (g/d) and sub-mode
+    // so it cannot leak into the next viewer session.
+    if (fileVimRef.controller) fileVimRef.controller.syncEditMode();
+  },
   hideFileUnsavedDialog: () => fileUnsavedController.hideFileUnsavedDialog(),
   hideFilePasteDialog: () => hideFilePasteDialog(),
   resetFileViewerPanel: () => resetFileViewerPanel(),
