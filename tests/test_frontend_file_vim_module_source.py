@@ -262,9 +262,9 @@ process.stdout.write(JSON.stringify({
             "forceMoveMarkers": True,
         }]]])
         self.assertEqual(result["o"]["chip"], "INSERT")
-        # O: newline above (insertLine = lineNumber - 1)
+        # O: newline above (splits at the current line's first column)
         self.assertEqual(result["capitalO"]["edits"], [["file-vim", [{
-            "range": {"startLineNumber": 1, "startColumn": 1, "endLineNumber": 1, "endColumn": 1},
+            "range": {"startLineNumber": 2, "startColumn": 1, "endLineNumber": 2, "endColumn": 1},
             "text": "\n",
             "forceMoveMarkers": True,
         }]]])

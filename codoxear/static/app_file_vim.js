@@ -248,18 +248,19 @@
     }
 
     function openLine(below) {
-      let opened = false;
-      opened = withWritableEditor((editor) => {
+      const opened = withWritableEditor((editor) => {
         const model = editorModel(editor);
         if (!model || typeof model.getLineMaxColumn !== "function" || typeof editor.getPosition !== "function") return false;
         const position = editor.getPosition() || { lineNumber: 1, column: 1 };
         const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
         const lineNumber = Math.max(1, Math.min(lineCount, Number(position.lineNumber) || 1));
-        const insertLine = below ? lineNumber : lineNumber - 1;
+        // `o` appends after the current line's end; `O` inserts before its
+        // first character, which splits at the line start and leaves the
+        // current line number holding the new empty line.
         const column = below ? Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1) : 1;
         if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
         editor.executeEdits("file-vim", [{
-          range: { startLineNumber: insertLine, startColumn: column, endLineNumber: insertLine, endColumn: column },
+          range: { startLineNumber: lineNumber, startColumn: column, endLineNumber: lineNumber, endColumn: column },
           text: "\n",
           forceMoveMarkers: true,
         }]);
