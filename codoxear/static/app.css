@@ -3356,6 +3356,12 @@ select {
         border-radius: var(--sw-radius);
         background: var(--sw-accent);
       }
+      /* Three fixed chips never overflow; wrapping keeps the row a plain
+         flex container instead of a scroll container. */
+      #settingsModeChips {
+        flex-wrap: wrap;
+        overflow: visible;
+      }
       .customCssInput {
         min-height: 96px;
         max-height: min(40vh, 320px);
