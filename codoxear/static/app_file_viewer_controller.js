@@ -529,6 +529,13 @@ function requireFunction(value, name) {
       // decide whether a temporary readOnly lift may mutate the buffer.
       return fileEditorCapabilities(currentFileEditorState(), { ignoreVimNormal: true }).writable;
     }
+    function activeFileEditorInsertIdleTextWritable() {
+      // Idle text writability with the vim normal gate suspended. Ctrl-S
+      // saves from vim normal mode, so the save shortcut gates on this
+      // variant; every other gate (edit mode, editable, file view, session
+      // available, text kind, no save pending) still applies.
+      return fileEditorCapabilities(currentFileEditorState(), { ignoreVimNormal: true }).idleTextWritable;
+    }
     function activeFileEditorIdleWritable() {
       return activeFileEditorCapabilities().idleWritable;
     }
@@ -610,7 +617,7 @@ function requireFunction(value, name) {
       currentFileCandidateGitStateFresh: currentFileCandidateGitStateFresh,
       activeFileCanEnterEditMode: activeFileCanEnterEditMode,
       activeFileEditorWritable: activeFileEditorWritable,
-      activeFileEditorIdleTextWritable: activeFileEditorIdleTextWritable,
+      activeFileEditorInsertIdleTextWritable: activeFileEditorInsertIdleTextWritable,
       currentFileEditorState: currentFileEditorState,
       isUnavailable: isUnavailable,
       blockUnavailableFileAction: blockUnavailableFileAction,
@@ -742,6 +749,7 @@ function requireFunction(value, name) {
       activeFileCanEnterEditMode,
       activeFileEditorWritable,
       activeFileEditorInsertWritable,
+      activeFileEditorInsertIdleTextWritable,
       activeFileEditorIdleWritable,
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,

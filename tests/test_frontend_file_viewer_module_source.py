@@ -261,6 +261,76 @@ process.stdout.write(JSON.stringify({ controls: { diffDisabled: diff.disabled, p
         self.assertEqual(result["controls"], {"diffDisabled": False, "previewDisabled": True, "video": "", "title": "Convert preview"})
         self.assertEqual(result["touch"], {"toolbar": "flex", "dpad": "grid", "copy": "", "active": True})
 
+    def test_ctrl_s_saves_from_vim_normal_mode(self) -> None:
+        # Full chain through the real viewer controller with the vim normal
+        # gate active: capabilities must expose the gate-ignoring idle-text
+        # writable variant, and Ctrl-S must save while the vim-gated variant
+        # stays false (the vim layer does not consume Ctrl-S).
+        result = run_vm(
+            r'''
+const module = ctx.window.CodoxearFileViewer;
+const noop = () => {};
+const apiCalls = [];
+const toasts = [];
+const overrides = {
+  fileStatus: { textContent: "", replaceChildren() {} },
+  fileEditButton: { disabled: false, innerHTML: "", title: "", classList: { toggle() {} }, setAttribute() {}, removeAttribute() {} },
+  iconSvg: () => "",
+  currentSessionId: () => "s1",
+  isFileViewerOpen: () => true,
+  hasBlockingFileEditorModal: () => false,
+  isTextFileKind: (kind) => kind === "text",
+  isTextEntryTarget: () => false,
+  isActiveFileEditorInput: () => false,
+  eventTargetElement: (value) => value,
+  initialFileViewMode: "file",
+  getFileEditorText: () => "edited",
+  api: async (url, options) => { apiCalls.push([url, { method: options.method, body: options.body }]); return { version: "v2", editable: true, size: 6 }; },
+  applyFileMode: noop,
+  fmtBytes: (value) => `${value} B`,
+  rememberOpenedFile: noop,
+  renderFilePickerMenu: noop,
+  updateFileTouchToolbar: noop,
+  focusEditor: () => null,
+  setToast: (message) => toasts.push(message),
+  vimNormalActive: () => true,
+  wiring: { createFileViewerOperationsOptions: (options) => options },
+};
+const required = new Proxy(overrides, { get: (target, key) => (key in target ? target[key] : noop) });
+const controller = module.createFileViewerController(required);
+controller.setActiveFileIdentity("notes.txt", {});
+controller.applyActiveFileTextState({ kind: "text", text: "edited", editable: true, version: "v1" });
+controller.setFileEditMode(true);
+controller.setFileDirty(true);
+const gates = {
+  idleTextWritable: controller.activeFileEditorIdleTextWritable(),
+  insertIdleTextWritable: controller.activeFileEditorInsertIdleTextWritable(),
+  editMode: controller.currentFileEditMode(),
+};
+const ctrlS = { key: "s", ctrlKey: true, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+const accepted = controller.handleFileEditorSaveShortcut(ctrlS);
+const saveShortcutResult = { accepted, consumed: ctrlS.defaultPrevented };
+const nonSave = { key: "x", ctrlKey: true, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+const nonSaveAccepted = controller.handleFileEditorSaveShortcut(nonSave);
+(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  process.stdout.write(JSON.stringify({ gates, saveShortcutResult, nonSaveAccepted, apiCalls, toasts }));
+})();
+'''
+        )
+        # With vim normal mode owning the keys the gated variant is false,
+        # the gate-ignoring variant is true, and the save runs anyway.
+        self.assertFalse(result["gates"]["idleTextWritable"])
+        self.assertTrue(result["gates"]["insertIdleTextWritable"])
+        self.assertTrue(result["gates"]["editMode"])
+        self.assertTrue(result["saveShortcutResult"]["accepted"])
+        self.assertTrue(result["saveShortcutResult"]["consumed"])
+        self.assertFalse(result["nonSaveAccepted"])
+        self.assertEqual(result["apiCalls"], [
+            ["/api/sessions/s1/file/write", {"method": "POST", "body": {"path": "notes.txt", "text": "edited", "version": "v1", "git_path": False}}],
+        ])
+        self.assertEqual(result["toasts"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
