@@ -1,3 +1,4 @@
+import * as CodoxearAppearancePreview from "./app_appearance_preview.js";
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearNotifications from "./app_notifications.js";
 import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
@@ -39,6 +40,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const root = options.root;
     const el = requireFunction(options.el, "el");
     const iconSvg = requireFunction(options.iconSvg, "iconSvg");
+    const chatMarkdownHtmlCached = requireFunction(options.chatMarkdownHtmlCached, "chatMarkdownHtmlCached");
     const voiceHost = requireNode(options.voiceHost, "voiceHost");
     if (!root || typeof root.appendChild !== "function") throw new TypeError("voice DOM dependency missing: root");
 
@@ -70,6 +72,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
     const voiceSettingsCancelBtn = el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" });
     const voiceSettingsSaveBtn = el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" });
+    const appearancePreview = CodoxearAppearancePreview.createAppearancePreview({ el, iconSvg, chatMarkdownHtmlCached });
     const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
       el("div", { class: "queueHeader" }, [
         el("div", { class: "title", text: "Settings" }),
@@ -77,6 +80,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       ]),
       voiceSettingsStatus,
       el("div", { class: "formBody" }, [
+        appearancePreview.element,
         el("label", { class: "field" }, [
           el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
           voiceBaseUrlInput,
@@ -117,6 +121,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       narrationSettingToggle,
       unattendedPromptInput,
       unattendedPromptResetBtn,
+      appearancePreview,
       voiceSettingsViewer,
       voiceSettingsCancelBtn,
       voiceSettingsSaveBtn,
@@ -138,6 +143,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const narrationSettingToggle = requireNode(options.narrationSettingToggle, "narrationSettingToggle");
     const unattendedPromptInput = options.unattendedPromptInput ? requireNode(options.unattendedPromptInput, "unattendedPromptInput") : null;
     const unattendedPromptResetBtn = options.unattendedPromptResetBtn ? requireNode(options.unattendedPromptResetBtn, "unattendedPromptResetBtn") : null;
+    const appearancePreview = options.appearancePreview && typeof options.appearancePreview.dispose === "function" ? options.appearancePreview : null;
     const voiceSettingsViewer = requireNode(options.voiceSettingsViewer, "voiceSettingsViewer");
     const voiceSettingsCancelBtn = requireNode(options.voiceSettingsCancelBtn, "voiceSettingsCancelBtn");
     const voiceSettingsSaveBtn = requireNode(options.voiceSettingsSaveBtn, "voiceSettingsSaveBtn");
@@ -793,6 +799,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       stopLiveAudioWatchdog();
       resetLiveAudioState();
       notificationRuntime.dispose();
+      if (appearancePreview) appearancePreview.dispose();
       settingsOpen = false;
       voiceSettingsReturnFocusEl = null;
       announceBtn.onclick = null;

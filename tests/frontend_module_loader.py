@@ -18,6 +18,7 @@ MODULE_NAMESPACES = {
     # generated from the pre-ESM global assignments; a module with several
     # namespaces intentionally projects the same namespace object to each,
     # preserving every public export used by old harness fixtures.
+    "app_appearance_preview.js": ["CodoxearAppearancePreview"],
     "app_api.js": ["CodoxearApi", "CodoxearPerf"],
     "app_application.js": ["CodoxearApplication", "CodoxearDom", "CodoxearUrls"],
     "app_application_composition.js": ["CodoxearApplicationComposition", "CodoxearEventBindings", "CodoxearToast"],

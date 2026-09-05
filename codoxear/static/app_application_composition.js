@@ -346,7 +346,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         }));
 
         const applicationModalDOM = codoxearShell.createApplicationModalDOM(wiring.createApplicationModalDOMOptions({
-          root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost: shellDOM.elements.voiceHost,
+          root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost: shellDOM.elements.voiceHost, chatMarkdownHtmlCached,
         }));
         const {
           fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
@@ -365,7 +365,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
-      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+      unattendedPromptResetBtn, appearancePreview, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
         } = applicationModalDOM;
 
         const dialogMenuController = CodoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
@@ -710,6 +710,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             narrationSettingToggle,
             unattendedPromptInput,
             unattendedPromptResetBtn,
+            appearancePreview,
             voiceSettingsViewer,
             voiceSettingsCancelBtn,
             voiceSettingsSaveBtn,
