@@ -225,6 +225,9 @@
 }
 
 :where(:root[data-theme="slate"]) .md code { border-color: transparent; }
+/* Light mode: the base code surface (#f7f7f7) barely separates from white
+   bubbles; inline code steps down to the wash fill. */
+:where(:root[data-theme="slate"]:not([data-mode="dark"])) .md code { background: var(--wash); }
 :where(:root[data-theme="slate"]) .md pre { background: var(--surface-code); }
 :where(:root[data-theme="slate"]) .md table { border-color: var(--border-subtle); }
 :where(:root[data-theme="slate"]) .code-copy-btn { border-color: var(--border); }
