@@ -485,10 +485,9 @@
     };
     chatSearchInput.oninput = scheduleRefresh;
     chatSearchInput.onkeydown = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-      } else if (event.key === "Enter") {
+      // Escape never dismisses UI surfaces (global policy); the search bar
+      // closes via its close button or the search toggle.
+      if (event.key === "Enter") {
         event.preventDefault();
         void step(event.shiftKey ? -1 : 1);
       }

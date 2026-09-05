@@ -34,11 +34,11 @@
     });
   }
   function bindFileEditorInteractions(options = {}) {
+    // Escape never dismisses a modal dialog anywhere in the app (global
+    // policy): every dialog closes through its own buttons, backdrop, or
+    // keyboard hints. Only the #appConfirm Tab focus trap remains here.
     const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
-    const { document, appConfirm, appConfirmFocusableControls, resolveAppConfirm, filePasteDialogRuntime,
-      hideFilePasteDialog, fileUnsavedDialog, fileUnsavedController, isFileViewerOpen, requestHideFileViewer,
-      sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer, hideHelpViewer, diagViewer,
-      hideDiagViewer, voiceController, hideVoiceSettingsDialog, sessionEditController, newSessionDialogController,
+    const { document, appConfirm, appConfirmFocusableControls,
       handleFileEditorSaveShortcut, handleFileEditorDeleteKeydown, suppressFileEditorNativeDelete,
       fileTouchController } = options;
     addAppEvent(document, "keydown", (event) => fileTouchController.handleFileTouchSelectionKeydown(event), true);
@@ -54,18 +54,6 @@
         const nextIndex = currentIndex < 0 ? (e.shiftKey ? focusable.length - 1 : 0) : (currentIndex + offset + focusable.length) % focusable.length;
         try { focusable[nextIndex].focus({ preventScroll: true }); } catch {} return;
       }
-      if (e.key !== "Escape") return;
-      if (appConfirm.style.display === "flex") { e.preventDefault(); e.stopPropagation(); resolveAppConfirm(false); return; }
-      if (filePasteDialogRuntime.isOpen()) { hideFilePasteDialog({ restoreFocus: true }); return; }
-      if (fileUnsavedDialog.style.display === "flex") { fileUnsavedController.hideFileUnsavedDialog("cancel"); return; }
-      if (isFileViewerOpen()) { e.preventDefault(); void requestHideFileViewer(); return; }
-      if (sendChoice.style.display === "flex") { e.preventDefault(); e.stopPropagation(); closeSendChoiceDialog({ restoreFocus: true }); return; }
-      if (queueViewer.style.display === "flex") hideQueueViewer();
-      if (helpViewer.style.display === "flex") hideHelpViewer();
-      if (diagViewer.style.display === "flex") hideDiagViewer();
-      if (voiceController.isSettingsOpen()) hideVoiceSettingsDialog();
-      if (sessionEditController.viewer.style.display === "flex" || sessionEditController.viewer.open) sessionEditController.hideEditSession();
-      if (newSessionDialogController.isOpen()) newSessionDialogController.close();
     });
   }
 

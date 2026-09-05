@@ -1031,7 +1031,6 @@ function requireFunction(value, name) {
     reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; modelMenuOpen = false; modelMenuFocus = -1; resumeMenuOpen = false; applyDialogMenus(); };
     startBtn.onclick = start;
     addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
-    addEvent(doc, "keydown", (event) => { if (event.key !== "Escape" || !isModalTargetOpen(viewer)) return; event.preventDefault(); event.stopPropagation(); close(); });
 
     function refreshDefaults() {
       if (!isModalTargetOpen(viewer)) return;

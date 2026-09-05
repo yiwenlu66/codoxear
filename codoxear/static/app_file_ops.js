@@ -1188,10 +1188,7 @@ filePickerOpsBinding.bindFilePickerInteractions(wiring.createFilePickerInteracti
   closeFilePickerMenu: closeFilePickerMenu,
 }));
 fileEditorOpsController.bindInteractions({
-  addAppEvent, document, appConfirm, appConfirmFocusableControls, resolveAppConfirm, filePasteDialogRuntime,
-  hideFilePasteDialog, fileUnsavedDialog, fileUnsavedController, isFileViewerOpen, requestHideFileViewer,
-  sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer, hideHelpViewer, diagViewer,
-  hideDiagViewer, voiceController, hideVoiceSettingsDialog, sessionEditController, newSessionDialogController,
+  addAppEvent, document, appConfirm, appConfirmFocusableControls,
   handleFileEditorSaveShortcut, handleFileEditorDeleteKeydown, suppressFileEditorNativeDelete, fileTouchController,
 });
 

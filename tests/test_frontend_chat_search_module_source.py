@@ -77,15 +77,21 @@ process.stdout.write(JSON.stringify({ frozen: Object.isFrozen(ctx.window.Codoxea
 ''')
         self.assertRegex(result["status"], r"^[1-5] of 5$")
 
-    def test_escape_closes_and_clears_marks(self) -> None:
+    def test_escape_leaves_search_open(self) -> None:
+        # Reverse-pinned: Esc never dismisses UI surfaces (global policy). The
+        # search bar closes through its close button or the search toggle.
         result = run_chat(HARNESS + r'''
 nodes.chatSearchInput.value = 'needle'; controller.open();
-nodes.chatSearchInput.onkeydown({ key: 'Escape', preventDefault() {} });
-process.stdout.write(JSON.stringify({ open: controller.isOpen(), display: nodes.chatSearchBar.style.display, cleared: events.filter(x => x === 'clear').length }));
+const clearedBefore = events.filter(x => x === 'clear').length;
+let escapePrevented = false;
+nodes.chatSearchInput.onkeydown({ key: 'Escape', preventDefault() { escapePrevented = true; } });
+const clearedAfter = events.filter(x => x === 'clear').length;
+process.stdout.write(JSON.stringify({ open: controller.isOpen(), display: nodes.chatSearchBar.style.display, escapePrevented, newClears: clearedAfter - clearedBefore }));
 ''')
-        self.assertFalse(result["open"])
-        self.assertEqual(result["display"], "none")
-        self.assertGreaterEqual(result["cleared"], 1)
+        self.assertTrue(result["open"])
+        self.assertNotEqual(result["display"], "none")
+        self.assertFalse(result["escapePrevented"])
+        self.assertEqual(result["newClears"], 0)
 
 
 if __name__ == "__main__":
