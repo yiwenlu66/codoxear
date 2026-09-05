@@ -190,9 +190,14 @@
 :where(:root[data-theme="clay"]) .composer { border-top: 0; background: var(--bg); }
 
 :where(:root[data-theme="clay"]) .session { border-color: var(--hairline); }
-/* Active card: warm fill + single accent leading edge. A full accent
-   perimeter reads louder than its siblings, especially in dark mode. */
-:where(:root[data-theme="clay"]) .session.active { border-color: var(--hairline); border-left-color: var(--accent); }
+/* Active card: warm fill + a single accent leading edge. The base theme's
+   3px border-left cannot follow a rounded corner (a straight border sticks
+   out past the curve), so clay resets it to 1px and draws the edge as an
+   inset shadow on the content surface, which border-radius clips correctly.
+   (State indication, not decoration — the one sanctioned shadow use.)
+   A full accent perimeter reads louder than its siblings, especially dark. */
+:where(:root[data-theme="clay"]) .session.active { border-color: var(--hairline); border-left-width: 1px; }
+:where(:root[data-theme="clay"]) .session.active .sessionContent { box-shadow: inset 3px 0 0 var(--accent); }
 :where(:root[data-theme="clay"]) .msg { border-color: var(--hairline); line-height: 1.55; }
 /* The owner dot sits beside a circular state dot; a slight rounding keeps it
    distinguishable instead of reading as a second state dot. */
