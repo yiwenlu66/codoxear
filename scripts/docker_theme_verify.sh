@@ -285,7 +285,11 @@ browser wait 700 > /dev/null 2>&1
 browser eval '(() => getComputedStyle(document.querySelector(".topbar")).outlineColor)()' --json > "$artifacts/08-custom-css-outline.json" 2>&1 || fail "custom css probe failed"
 probe 08-custom-css
 shot 08-settings-custom-css
+# Clear the probe CSS so the variant screenshots below are design-review clean.
+browser fill '#settingsCustomCss' '' > /dev/null 2>&1 || fail "custom css clear failed"
+browser wait 500 > /dev/null 2>&1
 close_settings
+probe 08b-custom-css-cleared
 
 # Remaining variants for design review: clay light/dark, paper dark, slate light.
 open_settings
@@ -344,13 +348,20 @@ def load(name):
 
 p = {name: load(name) for name in [
     "01-initial", "02-settings-open", "03-after-escape", "04-hint-mode", "05-slate-dark-selected",
-    "06-slate-dark-app", "07-after-reload", "08-custom-css", "13-after-reset", "14-system-dark", "15-system-light",
+    "06-slate-dark-app", "07-after-reload", "08-custom-css", "08b-custom-css-cleared", "13-after-reset", "14-system-dark", "15-system-light",
 ]}
 outline = load("08-custom-css-outline")
+
+def link_follows_app_css(order):
+    # The theme stylesheet must be the very next stylesheet after app.css so
+    # equal-specificity family rules win by source order.
+    app_index = next((i for i, h in enumerate(order) if h.startswith("app.css")), None)
+    return app_index is not None and app_index + 1 < len(order) and order[app_index + 1].startswith("themes/")
+
 version = re.search(r"\?v=([0-9a-f]+)$", str(p["01-initial"]["href"] or "")) 
 checks = {
     "boot_renders_paper_light": p["01-initial"]["theme"] == "paper" and p["01-initial"]["mode"] == "light",
-    "theme_link_is_versioned_and_after_app_css": bool(version) and p["01-initial"]["linkOrder"][-1].startswith("themes/paper.css") and any(h.startswith("app.css") for h in p["01-initial"]["linkOrder"][:-1]),
+    "theme_link_is_versioned_and_after_app_css": bool(version) and link_follows_app_css(p["01-initial"]["linkOrder"]),
     "meta_theme_color_paper_light": p["01-initial"]["metaColor"] == "#ffffff",
     "paper_light_is_square": p["01-initial"]["sessionRadius"] == "0px",
     "settings_opens_as_native_modal": p["02-settings-open"]["dialogOpen"] is True and p["02-settings-open"]["activeFamily"] == "paper" and p["02-settings-open"]["activeMode"] == "system",
@@ -364,6 +375,7 @@ checks = {
     "reload_boots_into_slate_dark": p["07-after-reload"]["theme"] == "slate" and p["07-after-reload"]["mode"] == "dark" and p["07-after-reload"]["bodyBg"] == "rgb(33, 33, 33)" and p["07-after-reload"]["href"].startswith("themes/slate.css"),
     "reload_keeps_single_theme_link": sum(h.startswith("themes/") for h in p["07-after-reload"]["linkOrder"]) == 1,
     "custom_css_applies_live": outline == "rgb(255, 0, 128)" and p["08-custom-css"]["storage"]["customCss"] is not None,
+    "custom_css_clears_live": p["08b-custom-css-cleared"]["customCss"] == "" and p["08b-custom-css-cleared"]["storage"]["customCss"] is None,
     "reset_restores_defaults": p["13-after-reset"]["theme"] == "paper" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
     "system_mode_follows_dark_scheme": p["14-system-dark"]["mode"] == "dark" and p["14-system-dark"]["theme"] == "paper" and p["14-system-dark"]["bodyBg"] == "rgb(24, 22, 19)",
     "system_mode_returns_to_light": p["15-system-light"]["mode"] == "light",
