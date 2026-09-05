@@ -75,6 +75,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
       isTextEntryElement, updateAppHeightVar,
       codoxearViewport, codoxearDisplay, codoxearVoice, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
+      codoxearSettings, themeController,
       codoxearMessageFlow, codoxearInterrupt, codoxearDialogMenus,
       codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
       codoxearFileTouch, pushPerfSample,
@@ -230,6 +231,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             newSessionDialogController.dispose();
           }
           if (voiceController) voiceController.dispose();
+          if (settingsDialogController) settingsDialogController.dispose();
           if (unattendedController) unattendedController.dispose();
           if (fileOpsController) fileOpsController.dispose();
           filePickerSearchState.dispose();
@@ -372,6 +374,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         const dialogMenuController = CodoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
 
         let newSessionDialogController = null;
+        let settingsDialogController = null;
         let modalIsolationTargets = null;
         modalPolicyController = CodoxearModal.createModalPolicyController(wiring.createModalPolicyOptions({
           app,
@@ -419,7 +422,29 @@ import * as CodoxearWiring from "./app_wiring.js";
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
 
+        // Settings owns the appearance controls; "Voice & notifications" hands
+        // off to the voice controller's dialog, which stays untouched.
+        settingsDialogController = codoxearSettings.createSettingsDialogController(wiring.createSettingsDialogOptions({
+          root,
+          el,
+          iconSvg,
+          themeController,
+          openButton: $("#settingsBtnSide"),
+          openVoiceSettings: () => showVoiceSettingsDialog(),
+          documentTarget: document,
+          ElementCtor: HTMLElement,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          addEvent: addAppEvent,
+          setTimeout,
+          clearTimeout,
+          focusModalCloseButton,
+          isModalTargetOpen,
+          restoreModalFocus,
+        }));
+
         modalIsolationTargets = [
+          settingsDialogController.viewer,
           fileUnsavedDialog,
           filePasteDialog,
           fileViewer,
@@ -997,11 +1022,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           maybeSelectPendingHashSession,
         }));
 
-        eventBindings.on($("#settingsBtnSide"), 'click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          showVoiceSettingsDialog();
-        });
         eventBindings.on(diagBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();

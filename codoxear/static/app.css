@@ -3225,6 +3225,173 @@ select {
       .subtleBtn {
         color: var(--muted);
       }
+      /* Settings: appearance controls. Swatches are pure-CSS miniatures of
+         each family; their palettes (--sw-*) mirror themes/<family>.css and
+         are the only place a family's colors appear outside its own file. */
+      .themeSwatches {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+      .themeSwatch {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-2);
+        height: auto;
+        min-height: var(--ctl);
+        padding: var(--space-2);
+        background: var(--paper);
+        text-align: left;
+      }
+      .themeSwatch.active {
+        border-color: var(--ink);
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 1px;
+      }
+      .themeSwatchName {
+        font-size: var(--font-md);
+        font-weight: 600;
+        padding: 0 var(--space-1);
+      }
+      .themeSwatchPreview {
+        --sw-bg: #f6f5f1;
+        --sw-panel: #ffffff;
+        --sw-ink: #2f2b26;
+        --sw-border: #2f2b26;
+        --sw-accent: #2f2b26;
+        --sw-bubble: #faf9f6;
+        --sw-radius: 0;
+        display: grid;
+        grid-template-columns: 30% 1fr;
+        height: 56px;
+        border: 1px solid var(--sw-border);
+        border-radius: var(--sw-radius);
+        background: var(--sw-bg);
+        overflow: hidden;
+      }
+      .themeSwatchPreview[data-swatch-family="clay"] {
+        --sw-bg: #f4f0e8;
+        --sw-panel: #faf7f0;
+        --sw-ink: #35302a;
+        --sw-border: #d9d0be;
+        --sw-accent: #c96442;
+        --sw-bubble: #f1e9db;
+        --sw-radius: 6px;
+      }
+      .themeSwatchPreview[data-swatch-family="slate"] {
+        --sw-bg: #ffffff;
+        --sw-panel: #f9f9f9;
+        --sw-ink: #0d0d0d;
+        --sw-border: #e0e0e0;
+        --sw-accent: #0d0d0d;
+        --sw-bubble: #f1f1f1;
+        --sw-radius: 8px;
+      }
+      [data-swatch-mode="dark"] .themeSwatchPreview[data-swatch-family="paper"] {
+        --sw-bg: #181613;
+        --sw-panel: #1c1a16;
+        --sw-ink: #e6e1d7;
+        --sw-border: #e6e1d7;
+        --sw-accent: #e6e1d7;
+        --sw-bubble: #262219;
+      }
+      [data-swatch-mode="dark"] .themeSwatchPreview[data-swatch-family="clay"] {
+        --sw-bg: #1b1815;
+        --sw-panel: #161310;
+        --sw-ink: #ece4d5;
+        --sw-border: #4a4236;
+        --sw-accent: #d97757;
+        --sw-bubble: #2d271f;
+      }
+      [data-swatch-mode="dark"] .themeSwatchPreview[data-swatch-family="slate"] {
+        --sw-bg: #212121;
+        --sw-panel: #171717;
+        --sw-ink: #ececec;
+        --sw-border: #424242;
+        --sw-accent: #ececec;
+        --sw-bubble: #2f2f2f;
+      }
+      .themeSwatchSidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 5px 4px;
+        background: var(--sw-panel);
+        border-right: 1px solid var(--sw-border);
+      }
+      .themeSwatchRow {
+        height: 6px;
+        border: 1px solid var(--sw-border);
+        border-radius: var(--sw-radius);
+        background: var(--sw-bg);
+      }
+      .themeSwatchChat {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 5px 6px;
+      }
+      .themeSwatchBubble {
+        height: 9px;
+        border: 1px solid var(--sw-border);
+        border-radius: var(--sw-radius);
+        background: var(--sw-bubble);
+      }
+      .themeSwatchBubble.user {
+        width: 55%;
+        align-self: flex-end;
+      }
+      .themeSwatchBubble.assistant {
+        width: 80%;
+        background: var(--sw-panel);
+      }
+      .themeSwatchPrimary {
+        position: absolute;
+        right: 6px;
+        bottom: 5px;
+        width: 14px;
+        height: 8px;
+        border-radius: var(--sw-radius);
+        background: var(--sw-accent);
+      }
+      .customCssInput {
+        min-height: 96px;
+        max-height: min(40vh, 320px);
+        resize: vertical;
+        font-family: var(--font-mono);
+        font-size: var(--font-sm);
+        line-height: 1.45;
+        white-space: pre;
+        overflow: auto;
+      }
+      .settingsResetRow {
+        align-items: flex-start;
+      }
+      .settingsResetRow .text-btn {
+        height: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
+        padding: 0 var(--space-4);
+        font-size: var(--font-md);
+      }
+      .settingsLinkRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+        width: 100%;
+        min-height: var(--ctl);
+        padding: var(--space-3) var(--space-4);
+        font-size: var(--font-md);
+        font-weight: 600;
+        text-align: left;
+      }
+      .settingsLinkRow .icon {
+        flex: 0 0 auto;
+        color: var(--muted);
+      }
+
       .customSnoozeRow {
         display: none;
         grid-template-columns: minmax(0, 1fr) 140px;
