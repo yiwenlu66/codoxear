@@ -12,32 +12,6 @@ function requireFunction(value, name) {
     return value;
   }
 
-  function createComposerDOM(options = {}) {
-    if (!options || typeof options !== "object") throw new TypeError("shell composer dependency missing: options");
-    const el = requireFunction(options.el, "el");
-    const iconSvg = requireFunction(options.iconSvg, "iconSvg");
-    const idPrefix = typeof options.idPrefix === "string" ? options.idPrefix : "";
-    const id = (name) => `${idPrefix}${name}`;
-    const composer = el("div", { class: "composer" });
-    const stagedTray = el("div", { class: "stagedAttachments", id: id("stagedAttachments"), "aria-live": "polite" });
-    const textarea = el("textarea", { id: id("msg"), placeholder: "", "aria-label": "Message", "data-hint": "i" });
-    const msgPh = el("div", { class: "ph", id: id("msgPh"), text: "Message" });
-    const modelPicker = el("div", { class: "modelPicker", id: id("modelPicker"), role: "listbox", "aria-label": "Available Pi models" });
-    modelPicker.style.display = "none";
-    const imgInput = el("input", { id: id("imgInput"), type: "file", multiple: "multiple", "data-hint-excluded": "hidden-file-input", style: "display:none" });
-    const attachBtn = el("button", { class: "icon-btn", id: id("attachBtn"), type: "button", title: "Attach file", "aria-label": "Attach file", "data-hint": "a", html: iconSvg("paperclip") });
-    const queueBtn = el("button", { class: "icon-btn", id: id("queueBtn"), type: "button", title: "Queued messages", "aria-label": "Queued messages", "data-hint": "q", html: iconSvg("queue") });
-    const sendBtn = el("button", { class: "icon-btn primary", id: id("sendBtn"), type: "submit", title: "Send", "aria-label": "Send", "data-hint": "e", html: iconSvg("send") });
-    const form = el("form", {}, [
-      stagedTray,
-      el("div", { class: "composerInputRow" }, [attachBtn, el("div", { class: "inputWrap" }, [textarea, msgPh]), queueBtn, sendBtn]),
-      modelPicker,
-      imgInput,
-    ]);
-    composer.appendChild(form);
-    return Object.freeze({ composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
-  }
-
   function createShellDOM(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("shell dependency missing: options");
     const root = requireNode(options.root, "root");
@@ -114,8 +88,23 @@ function requireFunction(value, name) {
     chatWrap.append(chatHeader, chat, chatEmptyState, jumpBtn, chatSearchBar);
     const topActions = el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn]);
     const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), topActions]);
-    const composerDOM = createComposerDOM({ el, iconSvg });
-    const { composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray } = composerDOM;
+    const composer = el("div", { class: "composer" });
+    const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
+    const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message", "data-hint": "i" });
+    const msgPh = el("div", { class: "ph", id: "msgPh", text: "Message" });
+    const modelPicker = el("div", { class: "modelPicker", id: "modelPicker", role: "listbox", "aria-label": "Available Pi models" });
+    modelPicker.style.display = "none";
+    const imgInput = el("input", { id: "imgInput", type: "file", multiple: "multiple", "data-hint-excluded": "hidden-file-input", style: "display:none" });
+    const attachBtn = el("button", { class: "icon-btn", id: "attachBtn", type: "button", title: "Attach file", "aria-label": "Attach file", "data-hint": "a", html: iconSvg("paperclip") });
+    const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", "data-hint": "q", html: iconSvg("queue") });
+    const sendBtn = el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", "data-hint": "e", html: iconSvg("send") });
+    const form = el("form", {}, [
+      stagedTray,
+      el("div", { class: "composerInputRow" }, [attachBtn, el("div", { class: "inputWrap" }, [textarea, msgPh]), queueBtn, sendBtn]),
+      modelPicker,
+      imgInput,
+    ]);
+    composer.appendChild(form);
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
     main.append(topbar, networkBanner, toast, chatWrap, composer);
@@ -127,7 +116,7 @@ function requireFunction(value, name) {
   }
 
   function createApplicationModalDOM(options = {}) {
-    const { root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost, chatMarkdownHtmlCached } = options;
+    const { root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost } = options;
     if (!root || typeof root.appendChild !== "function") throw new TypeError("shell dependency missing: root");
     if (typeof el !== "function" || typeof iconSvg !== "function") throw new TypeError("shell dependency missing: DOM helpers");
     if (!window || !codoxearVoice || typeof codoxearVoice.createVoiceDom !== "function") throw new TypeError("shell dependency missing: modal runtime");
@@ -571,7 +560,7 @@ function requireFunction(value, name) {
     ]);
     root.appendChild(editViewer);
     editViewer.appendChild(editDependencyMenu);
-    const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost, chatMarkdownHtmlCached });
+    const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost });
     const {
       announceBtn,
       liveAudio,
@@ -584,7 +573,6 @@ function requireFunction(value, name) {
       narrationSettingToggle,
       unattendedPromptInput,
       unattendedPromptResetBtn,
-      appearancePreview,
       voiceSettingsViewer,
       voiceSettingsCancelBtn,
       voiceSettingsSaveBtn,
@@ -607,8 +595,8 @@ function requireFunction(value, name) {
       editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
       voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
-      unattendedPromptResetBtn, appearancePreview, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
     });
   }
 
-export { createComposerDOM, createShellDOM, createApplicationModalDOM };
+export { createShellDOM, createApplicationModalDOM };
