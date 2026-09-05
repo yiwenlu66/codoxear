@@ -409,6 +409,7 @@ function requireFunction(value, name) {
 <div class="muted">Files</div>
 <ul class="md">
   <li><b>View file</b> opens recent or changed files from the selected session, with diff, file, and preview modes where available.</li>
+  <li>In the file viewer, vim keys move the cursor: <b>h</b>/<b>j</b>/<b>k</b>/<b>l</b>, word motions <b>w</b>/<b>b</b>/<b>e</b>, line edges <b>0</b> and <b>$</b>, <b>gg</b>/<b>G</b> top/bottom, and <b>Ctrl-d</b>/<b>Ctrl-u</b> half a page. On surfaces without a cursor (preview, PDF, fallback) these keys scroll instead. Editing starts in insert mode; <b>Esc</b> switches to normal mode (the <b>NORMAL</b> chip), where <b>i</b>/<b>a</b>/<b>A</b>/<b>o</b>/<b>O</b> return to insert and <b>x</b>, <b>dd</b>, <b>u</b>, <b>Ctrl-r</b> edit. A second <b>Esc</b> leaves edit mode when the buffer is clean. <b>f</b> shows hints over the viewer's buttons.</li>
   <li>File paths mentioned in assistant messages become clickable when the server can resolve them.</li>
   <li><b>Attach file</b> adds local files or images to the current prompt.</li>
 </ul>
