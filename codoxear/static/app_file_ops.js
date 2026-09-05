@@ -947,6 +947,7 @@ const fileVimController = codoxearFileVim.createFileVimController(wiring.createF
   currentActiveFileText: () => currentActiveFileText(),
   setFileDirty: (dirty) => setFileDirty(dirty),
   setToast: (message) => setToast(message),
+  enterHintMode: () => Boolean(hintModeController && hintModeController.enter()),
 }));
 fileVimRef.controller = fileVimController;
 const sessionEditController = CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({

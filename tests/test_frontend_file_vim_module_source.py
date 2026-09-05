@@ -484,5 +484,65 @@ process.stdout.write(JSON.stringify({ consumedJ: j.defaultPrevented, hostTop: en
         self.assertEqual(result["hostTop"], 1200)
 
 
+class TestFileVimHintEntry(unittest.TestCase):
+    def test_f_enters_hint_mode_in_view_and_normal_but_not_insert(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+const fView = env.press("f");
+const entersAfterView = env.calls.hintEnters;
+const triggersAfterView = env.editor.triggers.length;
+env.state.editMode = true;
+env.controller.syncEditMode();
+const fInsert = env.press("f");
+const entersAfterInsert = env.calls.hintEnters;
+env.press("Escape");   // -> normal
+const fNormal = env.press("f");
+const entersAfterNormal = env.calls.hintEnters;
+// While hint mode is active this layer defers entirely.
+env.state.hints = true;
+const fDuringHints = env.press("f");
+const entersAfterDefer = env.calls.hintEnters;
+process.stdout.write(JSON.stringify({
+  fView: { consumed: fView.defaultPrevented, enters: entersAfterView, triggers: triggersAfterView },
+  fInsert: { consumed: fInsert.defaultPrevented, enters: entersAfterInsert },
+  fNormal: { consumed: fNormal.defaultPrevented, enters: entersAfterNormal },
+  defer: fDuringHints.defaultPrevented,
+  entersAfterDefer,
+}));
+''')
+        self.assertTrue(result["fView"]["consumed"])
+        self.assertEqual(result["fView"]["enters"], 1)
+        self.assertEqual(result["fView"]["triggers"], 0)
+        # In insert mode f is a plain character: falls through untouched.
+        self.assertFalse(result["fInsert"]["consumed"])
+        self.assertEqual(result["fInsert"]["enters"], 1)
+        self.assertTrue(result["fNormal"]["consumed"])
+        self.assertEqual(result["fNormal"]["enters"], 2)
+        # Hint mode active: no re-entry, no consumption.
+        self.assertFalse(result["defer"])
+        self.assertEqual(result["entersAfterDefer"], 2)
+
+    def test_f_clears_pending_prefix(self) -> None:
+        result = run_vim(r'''
+const env = makeEnv();
+env.press("g");           // pending prefix
+const f = env.press("f");
+const gAfter = env.press("g");
+const jAfter = env.press("j");
+process.stdout.write(JSON.stringify({
+  fConsumed: f.defaultPrevented,
+  enters: env.calls.hintEnters,
+  gAfterConsumed: gAfter.defaultPrevented,
+  movedAfterG: env.editor.triggers.filter(([command]) => command === "cursorDown").length,
+}));
+''')
+        self.assertTrue(result["fConsumed"])
+        self.assertEqual(result["enters"], 1)
+        # The prefix was cleared: a fresh g starts a new pending prefix whose
+        # following j is dropped, so no cursorDown ever runs.
+        self.assertTrue(result["gAfterConsumed"])
+        self.assertEqual(result["movedAfterG"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

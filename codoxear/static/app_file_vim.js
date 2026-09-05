@@ -1,4 +1,4 @@
-/* File viewer vim keybindings: motion, sub-mode state, and hint entry.
+/* File viewer vim keybindings: motions, edit sub-modes, verbs, hints, chip.
 
    State model (one owner per axis):
    - viewerMode "view" | "edit" is owned by the file viewer controller
@@ -16,6 +16,13 @@
    nested blocking dialog, hint mode active, touch-selection active, target
    is a text-entry element other than the active Monaco input area. Consumed
    keys call preventDefault() + stopImmediatePropagation().
+
+   `f` belongs to hint mode everywhere outside insert mode: it calls the
+   hint controller's enter() directly, bypassing the text-entry activation
+   guard that would otherwise swallow `f` while Monaco's hidden textarea is
+   focused, so vim char-find stays permanently displaced. While hint mode is
+   active this layer defers entirely (guard 3), so hint labels are never
+   consumed here.
 */
 
   function requireFunction(value, name) {
@@ -62,6 +69,7 @@
     const currentActiveFileText = requireFunction(options.currentActiveFileText, "currentActiveFileText");
     const setFileDirty = requireFunction(options.setFileDirty, "setFileDirty");
     const setToast = requireFunction(options.setToast, "setToast");
+    const enterHintMode = requireFunction(options.enterHintMode, "enterHintMode");
 
     let vimSubMode = "insert";
     let pendingPrefix = "";
@@ -295,6 +303,11 @@
 
     function dispatchNormalKey(event, key) {
       if (key === "i" && !event.ctrlKey && !event.metaKey && !event.altKey) return enterInsert();
+      if (key === "f" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        pendingPrefix = "";
+        enterHintMode();
+        return true;
+      }
       if (pendingPrefix === "g") {
         pendingPrefix = "";
         if (key === "g") {
@@ -340,6 +353,11 @@
     }
 
     function dispatchViewKey(event, key) {
+      if (key === "f" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        pendingPrefix = "";
+        enterHintMode();
+        return true;
+      }
       if (pendingPrefix === "g") {
         pendingPrefix = "";
         if (key === "g") {
