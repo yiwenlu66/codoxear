@@ -861,7 +861,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
             "insertedText": "#15803d22", "insertedLine": "#15803d12", "removedText": "#d92d2022", "removedLine": "#d92d2012",
         })
         self.assertEqual(themes["codoxear-slate-dark"], {
-            "base": "vs-dark", "inherit": True, "background": "#181818", "gutter": "#181818", "lineHighlight": "#262626",
+            "base": "vs-dark", "inherit": True, "background": "#161616", "gutter": "#161616", "lineHighlight": "#262626",
             "lineNumber": "#6e6e6e", "activeLineNumber": "#a0a0a0", **dark_diff,
         })
         self.assertContains("file editor dependency missing: resolveAppUrl", result["missingResolveError"])

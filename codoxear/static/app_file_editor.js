@@ -53,7 +53,7 @@
       removedText: "#d92d2022", removedLine: "#d92d2012",
     }),
     "codoxear-slate-dark": Object.freeze({
-      base: "vs-dark", background: "#181818", lineHighlight: "#262626",
+      base: "vs-dark", background: "#161616", lineHighlight: "#262626",
       lineNumber: "#6e6e6e", activeLineNumber: "#a0a0a0",
       ...DARK_DIFF_TINTS,
     }),
