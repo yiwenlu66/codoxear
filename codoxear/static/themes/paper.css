@@ -86,3 +86,26 @@
   --border-queue-danger: #6b3a32;
   --queue-danger-hover: #3a2320;
 }
+
+/* Dark-mode chrome adaptation: at night, a full-strength light-ink perimeter
+   on every button and seam reads as glare at app density. Content containers
+   (session cards, message bubbles, dialogs, tables) keep the 1px ink
+   signature; chrome controls and seams drop to hairline strength. */
+:where(:root[data-theme="paper"][data-mode="dark"]) .sidebar { border-right-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .sidebar header { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .sidebar footer { border-top-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .topbar { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .composer { border-top-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .chatSearchBar { border-bottom-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) button { border-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .icon-btn { border-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .badge { border-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .ownerBadge { border-color: var(--hairline); }
+:where(:root[data-theme="paper"][data-mode="dark"]) .toast { border-color: var(--hairline); }
+/* The chrome icon-button compound in app.css (.topActions/.pill/sidebar
+   header/chatNavRail) outranks the plain .icon-btn rule above, so it is
+   mirrored explicitly with the same compound shape. */
+:where(:root[data-theme="paper"][data-mode="dark"]) .topActions .icon-btn,
+:where(:root[data-theme="paper"][data-mode="dark"]) .pill > .icon-btn,
+:where(:root[data-theme="paper"][data-mode="dark"]) .sidebar header .icon-btn,
+:where(:root[data-theme="paper"][data-mode="dark"]) .chatNavRail .icon-btn { border-color: var(--hairline); }
