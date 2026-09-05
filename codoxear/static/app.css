@@ -2266,6 +2266,21 @@ select {
         flex-wrap: wrap;
         justify-content: flex-end;
       }
+      .fileVimMode {
+        display: inline-block;
+        border: 1px solid var(--border);
+        background: var(--ink);
+        color: var(--paper);
+        font-family: var(--font-mono);
+        font-size: var(--font-2xs);
+        line-height: 1.2;
+        letter-spacing: 0.04em;
+        padding: var(--space-1) var(--space-2);
+        text-transform: uppercase;
+      }
+      .fileVimMode[hidden] {
+        display: none;
+      }
       #fileEditBtn {
         min-width: var(--ctl-chrome);
       }

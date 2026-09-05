@@ -58,6 +58,14 @@ function requireFunction(value, name) {
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
+    // Vim sub-mode integration. Both are optional so standalone controller
+    // harnesses keep working; the wiring select contract always supplies them
+    // in production. `vimNormalActive` feeds the readOnly derivation so the
+    // editor is never writable while vim normal mode owns the keys;
+    // `onFileEditModeChanged` lets the vim layer reset its sub-mode (edit
+    // entry always starts in insert) whenever the edit-mode owner flips it.
+    const vimNormalActive = typeof (deps && deps.vimNormalActive) === "function" ? deps.vimNormalActive : () => false;
+    const onFileEditModeChanged = typeof (deps && deps.onFileEditModeChanged) === "function" ? deps.onFileEditModeChanged : null;
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
     const historyFileSelectionForSession = requireFunction(deps && deps.historyFileSelectionForSession, "historyFileSelectionForSession");
@@ -303,7 +311,9 @@ function requireFunction(value, name) {
       return fileEditorKind;
     }
     function setFileEditMode(nextMode) {
+      const previous = fileEditMode;
       fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();
+      if (fileEditMode !== previous && onFileEditModeChanged) onFileEditModeChanged(fileEditMode);
       syncFileEditorReadOnly();
       updateFileEditButton();
     }
@@ -323,12 +333,14 @@ function requireFunction(value, name) {
       return activeFileDraft;
     }
     function resetActiveFileBufferState() {
+      const previousEditMode = fileEditMode;
       activeFileKind = "";
       activeFileText = "";
       activeFileEditable = false;
       activeFileVersion = "";
       activeFileDraft = false;
       fileEditMode = false;
+      if (previousEditMode && onFileEditModeChanged) onFileEditModeChanged(false);
       clearActiveFileSaveState();
       fileDirty = false;
       updateFileEditButton();
@@ -484,7 +496,7 @@ function requireFunction(value, name) {
         unavailable: isUnavailable(),
       });
     }
-    function fileEditorCapabilities(state) {
+    function fileEditorCapabilities(state, { ignoreVimNormal = false } = {}) {
       if (!state || typeof state !== "object") throw new Error("file editor state required");
       const kind = String(state.kind || "");
       const textKind = isTextFileKind(kind);
@@ -496,7 +508,7 @@ function requireFunction(value, name) {
       const savePending = Boolean(state.savePending);
       const editorSupportsWrite = editorKind !== "plain-fallback";
       const canEnterEditMode = Boolean(!unavailable && viewMode === "file" && String(state.path || "") && !savePending && (!kind || textKind) && editorSupportsWrite && editable);
-      const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable && editorSupportsWrite);
+      const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable && editorSupportsWrite && (ignoreVimNormal || !vimNormalActive()));
       const idleWritable = Boolean(writable && !savePending);
       const idleTextWritable = Boolean(idleWritable && textKind);
       const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable && editorSupportsWrite);
@@ -510,6 +522,12 @@ function requireFunction(value, name) {
     }
     function activeFileEditorWritable() {
       return activeFileEditorCapabilities().writable;
+    }
+    function activeFileEditorInsertWritable() {
+      // Writability with the vim normal gate suspended: what the editor
+      // would allow if the sub-mode were insert. The vim verbs use this to
+      // decide whether a temporary readOnly lift may mutate the buffer.
+      return fileEditorCapabilities(currentFileEditorState(), { ignoreVimNormal: true }).writable;
     }
     function activeFileEditorIdleWritable() {
       return activeFileEditorCapabilities().idleWritable;
@@ -723,6 +741,7 @@ function requireFunction(value, name) {
       activeFileEditorCapabilities,
       activeFileCanEnterEditMode,
       activeFileEditorWritable,
+      activeFileEditorInsertWritable,
       activeFileEditorIdleWritable,
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,

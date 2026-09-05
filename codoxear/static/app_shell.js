@@ -263,12 +263,13 @@ function requireFunction(value, name) {
       fileTouchActions,
     ]);
     const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
+    const fileVimModeChip = el("span", { id: "fileVimMode", class: "fileVimMode", text: "", "aria-hidden": "true" });
     const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
     const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
     const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
       el("div", { class: "fileViewerHeader" }, [
         el("div", { class: "title", text: "View file" }),
-        el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
+        el("div", { class: "actions" }, [fileVimModeChip, fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
       ]),
       el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
       fileStatus,
@@ -584,7 +585,7 @@ function requireFunction(value, name) {
       fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
       fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
-      filePasteBackdrop, filePasteInput, filePasteDialog, sendChoiceBackdrop, sendChoice,
+      filePasteBackdrop, filePasteInput, filePasteDialog, fileVimModeChip, sendChoiceBackdrop, sendChoice,
       appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
       appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,
       queueViewer, helpBackdrop, helpCloseBtn, helpViewer, diagBackdrop, diagCopyConversationBtn,

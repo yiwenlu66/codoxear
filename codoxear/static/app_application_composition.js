@@ -7,6 +7,7 @@ import * as CodoxearDialogMenu from "./app_dialog_menu.js";
 import * as CodoxearFileEditorOps from "./app_file_editor_ops.js";
 import * as CodoxearFileOps from "./app_file_ops.js";
 import * as CodoxearFilePickerOps from "./app_file_picker_ops.js";
+import * as CodoxearFileVim from "./app_file_vim.js";
 import * as CodoxearHelp from "./app_help.js";
 import * as CodoxearIOSViewport from "./app_ios_viewport.js";
 import * as CodoxearMessageHistory from "./app_message_history.js";
@@ -354,7 +355,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
       fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
-      filePasteBackdrop, filePasteInput, filePasteDialog, sendChoiceBackdrop, sendChoice,
+      filePasteBackdrop, filePasteInput, filePasteDialog, fileVimModeChip, sendChoiceBackdrop, sendChoice,
       appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
       appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,
       queueViewer, helpBackdrop, helpCloseBtn, helpViewer, diagBackdrop, diagCopyConversationBtn,
@@ -748,6 +749,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           codoxearFilePicker, codoxearFilePickerOps: CodoxearFilePickerOps,
           codoxearFileViewer, codoxearFileEditor, codoxearFileEditorOps: CodoxearFileEditorOps,
           codoxearFileEditMode,
+          codoxearFileVim: CodoxearFileVim,
+          hintModeController,
           codoxearFileTouch, codoxearDialogMenus,
           prepareModalOpen, afterModalVisibilityChanged, focusModalCloseButton, restoreModalFocus,
           isModalTargetOpen, newSessionDialogController, eventBindings,
@@ -767,7 +770,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
           fileTouchDownBtn, fileTouchRightBtn, fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn,
           fileBackdrop, fileViewer, fileCloseBtn, fileUnsavedBackdrop, fileUnsavedDialog,
-          filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, chatInner,
+          filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, fileVimModeChip, chatInner,
           codeBlockCopyRuntime, appConfirm, appConfirmFocusableControls, resolveAppConfirm,
           sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
           hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog,

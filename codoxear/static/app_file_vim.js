@@ -1,0 +1,290 @@
+/* File viewer vim keybindings: motion, sub-mode state, and hint entry.
+
+   State model (one owner per axis):
+   - viewerMode "view" | "edit" is owned by the file viewer controller
+     (`currentFileEditMode`); entering edit mode always starts the vim layer
+     in the "insert" sub-mode, and exiting edit mode forgets the sub-mode.
+   - vimSubMode "insert" | "normal" is owned here and is only meaningful
+     while the viewer is in edit mode. In normal mode the editor is not
+     writable (`activeFileEditorWritable()` is false through the vim gate),
+     so no native path can mutate the buffer; verbs temporarily lift
+     readOnly, mutate, and restore it.
+
+   The controller registers one document capture-phase keydown listener
+   before `bindFileEditorInteractions()` so it sees keys before every other
+   document listener. Guard chain (first match returns): viewer not open,
+   nested blocking dialog, hint mode active, touch-selection active, target
+   is a text-entry element other than the active Monaco input area. Consumed
+   keys call preventDefault() + stopImmediatePropagation().
+*/
+
+  function requireFunction(value, name) {
+    if (typeof value !== "function") throw new TypeError(`file vim dependency missing: ${name}`);
+    return value;
+  }
+
+  function requireNode(value, name) {
+    if (!value || typeof value !== "object") throw new TypeError(`file vim dependency missing: ${name}`);
+    return value;
+  }
+
+  function createFileVimController(options = {}) {
+    const addAppEvent = requireFunction(options.addAppEvent, "addAppEvent");
+    const documentTarget = requireNode(options.document, "document");
+    const fileVimModeChip = requireNode(options.fileVimModeChip, "fileVimModeChip");
+    const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
+    const hasBlockingFileEditorModal = requireFunction(options.hasBlockingFileEditorModal, "hasBlockingFileEditorModal");
+    const hintModeActive = requireFunction(options.hintModeActive, "hintModeActive");
+    const touchSelectActive = requireFunction(options.touchSelectActive, "touchSelectActive");
+    const fileEditorShortcutBlocked = requireFunction(options.fileEditorShortcutBlocked, "fileEditorShortcutBlocked");
+    const currentFileEditMode = requireFunction(options.currentFileEditMode, "currentFileEditMode");
+    const setFileEditMode = requireFunction(options.setFileEditMode, "setFileEditMode");
+    const currentFileDirty = requireFunction(options.currentFileDirty, "currentFileDirty");
+    const currentFileEditorKind = requireFunction(options.currentFileEditorKind, "currentFileEditorKind");
+    const activeFileEditor = requireFunction(options.activeFileEditor, "activeFileEditor");
+    const focusActiveFileEditor = requireFunction(options.focusActiveFileEditor, "focusActiveFileEditor");
+    const activeFileEditorInsertWritable = requireFunction(options.activeFileEditorInsertWritable, "activeFileEditorInsertWritable");
+    const syncFileEditorReadOnly = requireFunction(options.syncFileEditorReadOnly, "syncFileEditorReadOnly");
+    const getFileEditorText = requireFunction(options.getFileEditorText, "getFileEditorText");
+    const currentActiveFileText = requireFunction(options.currentActiveFileText, "currentActiveFileText");
+    const setFileDirty = requireFunction(options.setFileDirty, "setFileDirty");
+    const setToast = requireFunction(options.setToast, "setToast");
+
+    let vimSubMode = "insert";
+    let pendingPrefix = "";
+
+    // --- mode chip: one writer, invoked at construction and on every change.
+
+    function renderModeChip() {
+      const inEdit = Boolean(currentFileEditMode());
+      fileVimModeChip.hidden = !inEdit;
+      fileVimModeChip.textContent = inEdit && vimSubMode === "normal" ? "NORMAL" : "INSERT";
+    }
+
+    function syncEditMode() {
+      // Entering edit mode always starts in insert; exiting forgets the
+      // sub-mode entirely.
+      vimSubMode = "insert";
+      pendingPrefix = "";
+      renderModeChip();
+    }
+
+    // --- editor access helpers.
+
+    function monacoSurface() {
+      const kind = currentFileEditorKind();
+      if (kind !== "file" && kind !== "diff") return null;
+      return activeFileEditor();
+    }
+
+    function editorModel(editor) {
+      return editor && typeof editor.getModel === "function" ? editor.getModel() : null;
+    }
+
+    function runCursorCommand(editor, command) {
+      if (!editor || typeof editor.trigger !== "function") return false;
+      editor.trigger("file-vim", command, null);
+      return true;
+    }
+
+    // --- edit sub-mode transitions. readOnly stays derived: the vim normal
+    // --- gate makes activeFileEditorWritable() false, so syncFileEditorReadOnly
+    // --- applies the right option on every transition.
+
+    function enterInsert() {
+      vimSubMode = "insert";
+      pendingPrefix = "";
+      renderModeChip();
+      syncFileEditorReadOnly();
+      focusActiveFileEditor();
+      return true;
+    }
+
+    function exitToNormal() {
+      vimSubMode = "normal";
+      pendingPrefix = "";
+      renderModeChip();
+      syncFileEditorReadOnly();
+      return true;
+    }
+
+    function syncDirtyAfterEdit() {
+      setFileDirty(String(getFileEditorText() || "") !== String(currentActiveFileText() || ""));
+    }
+
+    // Verbs temporarily lift readOnly (Monaco rejects edits while readOnly),
+    // mutate, then restore. The finally clause re-derives readOnly from the
+    // sub-mode, which is still "normal" here.
+    function withWritableEditor(run) {
+      const editor = monacoSurface();
+      if (!editor || typeof editor.updateOptions !== "function") return false;
+      if (!activeFileEditorInsertWritable()) return false;
+      editor.updateOptions({ readOnly: false });
+      try {
+        return run(editor) !== false;
+      } finally {
+        editor.updateOptions({ readOnly: true });
+        syncDirtyAfterEdit();
+        syncFileEditorReadOnly();
+      }
+    }
+
+    function deleteChar() {
+      return withWritableEditor((editor) => runCursorCommand(editor, "deleteRight"));
+    }
+
+    function deleteLine() {
+      return withWritableEditor((editor) => {
+        const model = editorModel(editor);
+        if (!model || typeof model.getLineMaxColumn !== "function" || typeof editor.getPosition !== "function") return false;
+        const position = editor.getPosition() || { lineNumber: 1, column: 1 };
+        const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
+        const lineNumber = Math.max(1, Math.min(lineCount, Number(position.lineNumber) || 1));
+        const isLast = lineNumber >= lineCount;
+        const endLine = isLast ? lineNumber : lineNumber + 1;
+        const endColumn = isLast ? Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1) : 1;
+        if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+        editor.executeEdits("file-vim", [{
+          range: { startLineNumber: lineNumber, startColumn: 1, endLineNumber: endLine, endColumn },
+          text: "",
+          forceMoveMarkers: true,
+        }]);
+        if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+        return true;
+      });
+    }
+
+    function openLine(below) {
+      let opened = false;
+      opened = withWritableEditor((editor) => {
+        const model = editorModel(editor);
+        if (!model || typeof model.getLineMaxColumn !== "function" || typeof editor.getPosition !== "function") return false;
+        const position = editor.getPosition() || { lineNumber: 1, column: 1 };
+        const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
+        const lineNumber = Math.max(1, Math.min(lineCount, Number(position.lineNumber) || 1));
+        const insertLine = below ? lineNumber : lineNumber - 1;
+        const column = below ? Math.max(1, Number(model.getLineMaxColumn(lineNumber)) || 1) : 1;
+        if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+        editor.executeEdits("file-vim", [{
+          range: { startLineNumber: insertLine, startColumn: column, endLineNumber: insertLine, endColumn: column },
+          text: "\n",
+          forceMoveMarkers: true,
+        }]);
+        if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+        const cursorLine = below ? lineNumber + 1 : lineNumber;
+        const clamped = Math.max(1, Math.min(lineCount + 1, cursorLine));
+        if (typeof editor.setPosition === "function") editor.setPosition({ lineNumber: clamped, column: 1 });
+        return true;
+      });
+      if (opened) enterInsert();
+      return opened;
+    }
+
+    function editHistory(direction) {
+      return withWritableEditor((editor) => runCursorCommand(editor, direction === "redo" ? "redo" : "undo"));
+    }
+
+    // --- escape chain: insert -> normal -> (clean buffer only) view mode.
+
+    function handleEscape() {
+      if (!currentFileEditMode()) return false;
+      if (vimSubMode === "insert") return exitToNormal();
+      if (currentFileDirty()) {
+        setToast("unsaved changes");
+        return true;
+      }
+      setFileEditMode(false);
+      return true;
+    }
+
+    // --- key dispatch.
+
+    function consume(event) {
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    }
+
+    function isPlainPrintable(event, key) {
+      return key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    }
+
+    function dispatchNormalKey(event, key) {
+      if (key === "i" && !event.ctrlKey && !event.metaKey && !event.altKey) return enterInsert();
+      if (pendingPrefix === "d") {
+        pendingPrefix = "";
+        if (key === "d") deleteLine();
+        return true;
+      }
+      if (key === "d" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        pendingPrefix = "d";
+        return true;
+      }
+      if (key === "x") return deleteChar();
+      if (key === "u" && !event.ctrlKey && !event.metaKey && !event.altKey) return editHistory("undo");
+      if (key === "r" && (event.ctrlKey || event.metaKey)) return editHistory("redo");
+      if (key === "a" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        const editor = monacoSurface();
+        if (editor) runCursorCommand(editor, "cursorRight");
+        return enterInsert();
+      }
+      if (key === "A" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const editor = monacoSurface();
+        if (editor) runCursorCommand(editor, "cursorEnd");
+        return enterInsert();
+      }
+      if (key === "o" && !event.ctrlKey && !event.metaKey && !event.altKey) return openLine(true);
+      if (key === "O" && !event.ctrlKey && !event.metaKey && !event.altKey) return openLine(false);
+      return false;
+    }
+
+    function handleKeydown(event) {
+      const e = event || {};
+      if (e.defaultPrevented) return;
+      if (!isFileViewerOpen()) return;
+      // Opening a nested dialog or entering another key mode abandons any
+      // pending prefix.
+      if (hasBlockingFileEditorModal() || hintModeActive() || touchSelectActive()) {
+        pendingPrefix = "";
+        return;
+      }
+      if (e.isComposing) return;
+      const target = e.target && typeof e.target.closest === "function" ? e.target : null;
+      if (fileEditorShortcutBlocked(target)) return;
+      const key = String(e.key || "");
+      if (key === "Escape") {
+        if (handleEscape()) consume(e);
+        return;
+      }
+      if (currentFileEditMode()) {
+        if (vimSubMode === "insert") return;
+        if (dispatchNormalKey(e, key)) {
+          consume(e);
+          return;
+        }
+        // Swallow remaining printable keys: in normal mode keystrokes never
+        // reach the editor.
+        if (isPlainPrintable(e, key)) consume(e);
+        return;
+      }
+    }
+
+    addAppEvent(documentTarget, "keydown", handleKeydown, true);
+
+    renderModeChip();
+
+    return Object.freeze({
+      handleKeydown,
+      handleEscape,
+      syncEditMode,
+      isNormalMode: () => Boolean(currentFileEditMode()) && vimSubMode === "normal",
+      currentSubMode: () => vimSubMode,
+      renderModeChip,
+      dispose() {
+        pendingPrefix = "";
+        vimSubMode = "insert";
+        renderModeChip();
+      },
+    });
+  }
+
+export { createFileVimController };

@@ -47,6 +47,7 @@ MODULE_NAMESPACES = {
     "app_file_unsaved.js": ["CodoxearFileUnsaved"],
     "app_file_unsaved_dialog.js": ["CodoxearFileUnsavedDialog"],
     "app_file_video.js": ["CodoxearFileVideo"],
+    "app_file_vim.js": ["CodoxearFileVim"],
     "app_file_viewer.js": ["CodoxearFileViewer"],
     "app_file_viewer_controller.js": ["CodoxearFileViewerController"],
     "app_file_viewer_integration.js": ["CodoxearFileViewerIntegration"],

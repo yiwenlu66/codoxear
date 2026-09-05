@@ -1,4 +1,5 @@
 import * as CodoxearFileEditorOps from "./app_file_editor_ops.js";
+import * as CodoxearFileVim from "./app_file_vim.js";
 import * as CodoxearFilePickerOps from "./app_file_picker_ops.js";
 import * as CodoxearFileUnsaved from "./app_file_unsaved.js";
 import * as CodoxearSessionEdit from "./app_session_edit.js";
@@ -376,7 +377,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
       normalizeLineNumber, markdownPreviewHtml,
       blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
       codoxearFilePicker, codoxearFilePickerOps, codoxearFileViewer, codoxearFileEditor, codoxearFileEditorOps, codoxearFileEditMode,
-      codoxearFileTouch, codoxearDialogMenus,
+      codoxearFileVim, codoxearFileTouch, codoxearDialogMenus, hintModeController,
       prepareModalOpen, afterModalVisibilityChanged, focusModalCloseButton, restoreModalFocus,
       isModalTargetOpen, newSessionDialogController, eventBindings,
       codoxearFileHelpers, copyToClipboard, dialogMenuController, duplicateFilePickerPaths,
@@ -394,7 +395,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
       fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn,
       fileBackdrop, fileViewer, fileCloseBtn, fileUnsavedBackdrop, fileUnsavedDialog,
-      filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, chatInner,
+      filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, fileVimModeChip, chatInner,
       codeBlockCopyRuntime, appConfirm, appConfirmFocusableControls, resolveAppConfirm,
       sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
       hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog
@@ -675,6 +676,10 @@ function isFileViewerOpen() {
   return fileViewerModalRuntime.isOpen();
 }
 
+function hasBlockingFileEditorModal() {
+  return modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node));
+}
+
 function syncFileEditorReadOnly() {
   return fileViewerController.syncFileEditorReadOnly();
 }
@@ -859,7 +864,7 @@ const fileViewerController = codoxearFileViewer.createFileViewerController(wirin
   isMarkdownPreviewable,
   resetActiveFileBufferState: () => resetActiveFileBufferState(),
   updateFileTouchToolbar: () => updateFileTouchToolbar(),
-  hasBlockingFileEditorModal: () => modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node)),
+  hasBlockingFileEditorModal: () => hasBlockingFileEditorModal(),
   isTextEntryTarget: (target) => isTextEntryElement(target),
   eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
   isActiveFileEditorInput: (target) => fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement),
@@ -874,6 +879,10 @@ const fileViewerController = codoxearFileViewer.createFileViewerController(wirin
   rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
   historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
   renderFilePickerMenu: () => renderFilePickerMenu(),
+  vimNormalActive: () => Boolean(fileVimRef.controller && fileVimRef.controller.isNormalMode()),
+  onFileEditModeChanged: () => {
+    if (fileVimRef.controller) fileVimRef.controller.syncEditMode();
+  },
 }));
 const fileTouchController = codoxearFileTouch.createFileTouchController(wiring.createFileTouchOptions({
   isFileViewerOpen: () => isFileViewerOpen(),
@@ -912,6 +921,33 @@ const fileTouchController = codoxearFileTouch.createFileTouchController(wiring.c
   syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
   setFileDirty: (dirty) => setFileDirty(dirty),
 }));
+// The vim controller's capture keydown listener is registered here, before
+// fileEditorOpsController.bindInteractions() runs, so it sees keys ahead of
+// every other document capture listener.
+const fileVimRef = { controller: null };
+const fileVimController = codoxearFileVim.createFileVimController(wiring.createFileVimOptions({
+  addAppEvent: addAppEvent,
+  document: document,
+  fileVimModeChip: fileVimModeChip,
+  isFileViewerOpen: () => isFileViewerOpen(),
+  hasBlockingFileEditorModal: () => hasBlockingFileEditorModal(),
+  hintModeActive: () => Boolean(hintModeController && hintModeController.isActive()),
+  touchSelectActive: () => currentFileTouchSelectMode(),
+  fileEditorShortcutBlocked: (target) => fileViewerController.fileEditorShortcutBlocked(target),
+  currentFileEditMode: () => currentFileEditMode(),
+  setFileEditMode: (mode) => fileEditModeController.setFileEditMode(mode),
+  currentFileDirty: () => currentFileDirty(),
+  currentFileEditorKind: () => currentFileEditorKind(),
+  activeFileEditor: () => fileEditorRuntime.activeCodeEditor(currentFileEditorKind()),
+  focusActiveFileEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+  activeFileEditorInsertWritable: () => fileViewerController.activeFileEditorInsertWritable(),
+  syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
+  getFileEditorText: () => getFileEditorText(),
+  currentActiveFileText: () => currentActiveFileText(),
+  setFileDirty: (dirty) => setFileDirty(dirty),
+  setToast: (message) => setToast(message),
+}));
+fileVimRef.controller = fileVimController;
 const sessionEditController = CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
   documentTarget: document,
   ElementCtor: HTMLElement,
