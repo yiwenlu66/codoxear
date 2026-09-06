@@ -3403,9 +3403,6 @@ select {
         white-space: pre;
         overflow: auto;
       }
-      .settingsResetRow {
-        align-items: flex-start;
-      }
       /* Section-scoped resets are quiet secondary actions, never stretched
          full-width boxes: a .field is flex-column and stretch is the default,
          so every reset text-btn in a settings section snaps to content width. */

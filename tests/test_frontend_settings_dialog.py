@@ -3,7 +3,7 @@
 Executes app_settings.js against the real app_theme.js controller in Node's
 vm with a small DOM double, and asserts the dialog renders controller state
 (swatch/mode selection, custom CSS), forwards intent to the controller (family,
-mode, debounced custom CSS, reset), never closes on Escape, mounts the voice
+mode, debounced custom CSS), never closes on Escape, mounts the voice
 section it is handed below Appearance, and reports its visibility to that
 section's owner (activate after show, deactivate before hide).
 """
@@ -168,7 +168,9 @@ def test_dialog_is_a_form_viewer_with_appearance_then_voice_sections() -> None:
     assert data["className"] == "formViewer formDialog"
     assert data["label"] == "Settings"
     assert data["title"] == "Settings"
-    assert data["buttons"] == ["settingsCloseBtn", "paper", "clay", "slate", "system", "light", "dark", "settingsResetAppearanceBtn"]
+    # Appearance is reversible through the swatches, mode chips, and clearing
+    # the CSS field; there is no dedicated reset control.
+    assert data["buttons"] == ["settingsCloseBtn", "paper", "clay", "slate", "system", "light", "dark"]
     assert data["sections"] == [["SECTION", "appearanceSettingsSection", "Appearance"], ["SECTION", "voiceSettingsSection", None]]
     assert data["voiceMountedInBody"] is True
     assert data["mounted"] == ["settingsBackdrop", "settingsViewer"]
@@ -243,7 +245,7 @@ def test_custom_css_is_debounced_then_applied_and_flushed_on_close() -> None:
     assert data["flushed"] == {"css": "body { margin: 0; }", "timers": 0, "stored": "body { margin: 0; }"}
 
 
-def test_reset_restores_paper_system_and_clears_the_textarea() -> None:
+def test_appearance_returns_to_defaults_through_the_same_controls() -> None:
     data = run("""
     controller.show();
     family("clay").emit("click");
@@ -251,7 +253,11 @@ def test_reset_restores_paper_system_and_clears_the_textarea() -> None:
     textarea.value = "a {}";
     textarea.emit("input");
     runTimers();
-    viewer.find((n) => n.attrs.id === "settingsResetAppearanceBtn").emit("click");
+    family("paper").emit("click");
+    mode("system").emit("click");
+    textarea.value = "";
+    textarea.emit("input");
+    runTimers();
     return { selection: selection(), textarea: textarea.value, attrs: { ...html.attrs }, storage: { ...storage }, state: themeController.get() };
     """)
     assert data["selection"] == {"family": ["paper"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}

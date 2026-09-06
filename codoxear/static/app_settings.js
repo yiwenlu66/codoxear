@@ -110,7 +110,6 @@ function createSettingsDialogController(options = {}) {
     placeholder: ":root { --accent: #c96442; }",
     "aria-describedby": "settingsCustomCssHint",
   });
-  const resetButton = el("button", { id: "settingsResetAppearanceBtn", class: "text-btn", type: "button", text: "Reset appearance" });
 
   const viewer = el("dialog", { class: "formViewer formDialog", id: "settingsViewer", "aria-label": "Settings" }, [
     el("div", { class: "queueHeader" }, [
@@ -134,7 +133,6 @@ function createSettingsDialogController(options = {}) {
           customCssInput,
           el("span", { class: "fieldHint", id: "settingsCustomCssHint", text: "Applied live on this device after the theme stylesheet. Stored in this browser only." }),
         ]),
-        el("div", { class: "field settingsResetRow" }, [resetButton]),
       ]),
       voiceSection,
     ]),
@@ -161,8 +159,8 @@ function createSettingsDialogController(options = {}) {
       ? `Follows the system setting (currently ${theme.resolvedMode}).`
       : `Always ${theme.mode}.`;
     // The textarea is the user's live draft while a debounce is pending; only
-    // controller state that did not originate here (reset, initial render)
-    // replaces its value.
+    // controller state that did not originate here (initial render) replaces
+    // its value.
     if (customCssTimer === null && customCssInput.value !== theme.customCss) customCssInput.value = theme.customCss;
   }
 
@@ -236,11 +234,6 @@ function createSettingsDialogController(options = {}) {
   }
   addEvent(customCssInput, "input", scheduleCustomCss);
   addEvent(customCssInput, "change", flushCustomCss);
-  addEvent(resetButton, "click", () => {
-    if (customCssTimer !== null) clearTimeoutFn(customCssTimer);
-    customCssTimer = null;
-    themeController.reset();
-  });
 
   function dispose() {
     if (customCssTimer !== null) clearTimeoutFn(customCssTimer);

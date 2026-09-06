@@ -178,11 +178,6 @@ function createThemeController(options = {}) {
     return snapshot();
   }
 
-  function reset() {
-    state.customCss = "";
-    return applyTheme({ family: DEFAULT_FAMILY, mode: DEFAULT_MODE });
-  }
-
   function subscribe(subscriber) {
     requireFunction(subscriber, "subscriber");
     subscribers.add(subscriber);
@@ -214,7 +209,6 @@ function createThemeController(options = {}) {
     applyTheme,
     dispose,
     get: snapshot,
-    reset,
     setCustomCss,
     subscribe,
     families: FAMILIES,

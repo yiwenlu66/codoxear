@@ -6,9 +6,10 @@
 # fresh offline Pi session, and is driven through the host's agent-browser on a
 # loopback port that is never the live 8743. This script exercises the real
 # Settings dialog: family/mode switches, persistence across reload, custom CSS,
-# reset, follow-system resolution, Escape/hint-mode policy, the Monaco file
-# editor following a live scheme switch, and captures a screenshot of every
-# family x mode variant for design review.
+# defaults after clearing stored preferences, follow-system resolution,
+# Escape/hint-mode policy, the Monaco file editor following a live scheme
+# switch, and captures a screenshot of every family x mode variant for design
+# review.
 set -euo pipefail
 
 usage() {
@@ -208,6 +209,7 @@ THEME_PROBE='(() => {
     modeHint: (() => { const h = document.getElementById("settingsModeHint"); return h ? h.textContent : null; })(),
     textarea: (() => { const t = document.getElementById("settingsCustomCss"); return t ? t.value : null; })(),
     hintBadges: document.querySelectorAll(".codoxear-hint-badge").length,
+    resetControl: document.getElementById("settingsResetAppearanceBtn") !== null,
     storage: { family: localStorage.getItem("codoxear.ui.theme.family"), mode: localStorage.getItem("codoxear.ui.theme.mode"), customCss: localStorage.getItem("codoxear.ui.customCss") },
   };
 })()'
@@ -312,10 +314,14 @@ choose mode light
 close_settings
 shot 12-slate-light-app
 
-# Reset returns to paper + system and clears custom CSS.
+# Appearance has no dedicated reset control: clearing the stored preferences
+# boots the next load into paper + system with no custom CSS.
+browser eval '(() => { for (const key of ["codoxear.ui.theme.family", "codoxear.ui.theme.mode", "codoxear.ui.customCss"]) localStorage.removeItem(key); return true; })()' --json > /dev/null 2>&1 || fail "could not clear stored theme preferences"
+browser reload > /dev/null 2>&1 || fail "reload after clearing preferences failed"
+browser wait 3500 > /dev/null 2>&1
+browser click '#sessions .session' > /dev/null 2>&1 || true
+browser wait 800 > /dev/null 2>&1
 open_settings
-browser click '#settingsResetAppearanceBtn' > /dev/null 2>&1 || fail "reset click failed"
-browser wait 900 > /dev/null 2>&1
 probe 13-after-reset
 shot 13-settings-after-reset
 close_settings
@@ -484,7 +490,8 @@ checks = {
     "reload_keeps_single_theme_link": sum(h.startswith("themes/") for h in p["07-after-reload"]["linkOrder"]) == 1,
     "custom_css_applies_live": outline == "rgb(255, 0, 128)" and p["08-custom-css"]["storage"]["customCss"] is not None,
     "custom_css_clears_live": p["08b-custom-css-cleared"]["customCss"] == "" and p["08b-custom-css-cleared"]["storage"]["customCss"] is None,
-    "reset_restores_defaults": p["13-after-reset"]["theme"] == "paper" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
+    "cleared_preferences_boot_defaults": p["13-after-reset"]["theme"] == "paper" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
+    "no_reset_appearance_control": p["02-settings-open"]["resetControl"] is False and p["13-after-reset"]["resetControl"] is False,
     "system_mode_follows_dark_scheme": p["14-system-dark"]["mode"] == "dark" and p["14-system-dark"]["theme"] == "paper" and p["14-system-dark"]["bodyBg"] == "rgb(24, 22, 19)",
     "system_mode_returns_to_light": p["15-system-light"]["mode"] == "light",
     "monaco_opens_paper_light": file_selected is True and monaco_light.get("present") is True and monaco_light.get("theme") == "vs" and monaco_light.get("background") == "rgb(255, 255, 255)",

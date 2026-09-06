@@ -217,16 +217,6 @@ def test_invalid_persisted_values_fall_back_to_paper_and_system() -> None:
     assert data["storage"] == {"codoxear.ui.theme.mode": "dark"}
 
 
-def test_reset_restores_defaults_and_clears_storage() -> None:
-    data = run(make_controller_snippet('{ "codoxear.ui.theme.family": "slate", "codoxear.ui.theme.mode": "dark", "codoxear.ui.customCss": "body{}" }') + """
-    controller.reset();
-    return { state: controller.get(), storage: storage.data, attrs: html.attrs };
-    """)
-    assert data["state"] == {"family": "paper", "mode": "system", "resolvedMode": "light", "customCss": ""}
-    assert data["storage"] == {}
-    assert data["attrs"] == {"data-theme": "paper", "data-mode": "light"}
-
-
 def test_controller_adopts_boot_rendered_nodes_without_refetching() -> None:
     # index.html renders the link/style before the module loads; the
     # controller must adopt those nodes rather than duplicate them.
