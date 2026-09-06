@@ -365,9 +365,12 @@ probe 15-system-light
 
 # Phone-width Settings geometry (iPhone 15 Pro 393x852 and iPhone 12/13/14
 # 390x844): the dialog fits the viewport, the selected swatch's selection ring
-# is not clipped by the scroll-bounded body, the flattened dialog carries the
-# voice section inline, and every text entry computes to the 16px iOS
-# no-zoom floor (the (max-width: 880px) branch of the coarse-pointer rule).
+# and the focused custom-CSS field's ring stay inside the scroll body's
+# gutter, the flattened dialog carries the voice section inline, the
+# unattended prompt is a real multi-line field, every text entry computes to
+# the 16px iOS no-zoom floor (the (max-width: 880px) branch of the
+# coarse-pointer rule), and the form-dialog type planes retune under that
+# floor (title = entry > label > hint).
 MOBILE_SETTINGS_PROBE='(() => {
   const dialog = document.getElementById("settingsViewer");
   const body = dialog ? dialog.querySelector(".formBody") : null;
@@ -387,6 +390,18 @@ MOBILE_SETTINGS_PROBE='(() => {
     voiceRowIsGone: document.getElementById("settingsVoiceBtn") === null && document.getElementById("voiceSettingsViewer") === null,
     sectionOrder: body ? [...body.children].map((n) => n.id) : null,
     fontSizes: Object.fromEntries(entries.map((id) => { const n = document.getElementById(id); return [id, n ? parseFloat(getComputedStyle(n).fontSize) : null]; })),
+    prompt: (() => { const n = document.getElementById("unattendedPromptInput"); if (!n) return null; const cs = getComputedStyle(n); return { height: n.getBoundingClientRect().height, rows: n.rows, resize: cs.resize, overflowY: cs.overflowY }; })(),
+    planes: (() => { const size = (sel) => { const n = document.querySelector(sel); return n ? parseFloat(getComputedStyle(n).fontSize) : null; }; return { title: size("#appearanceSettingsHeading"), label: size("#settingsViewer .fieldLabel"), hint: size("#settingsCustomCssHint"), entry: size("#voiceBaseUrlInput") }; })(),
+    customCssFocus: (() => {
+      const t = document.getElementById("settingsCustomCss");
+      if (!t || !body) return null;
+      t.focus();
+      const cs = getComputedStyle(t);
+      const outset = cs.outlineStyle === "none" ? 0 : parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset);
+      const r = t.getBoundingClientRect();
+      const b = body.getBoundingClientRect();
+      return { focused: document.activeElement === t, outset, leftClear: r.left - outset - b.left, rightClear: b.right - (r.right + outset) };
+    })(),
   };
 })()'
 
@@ -466,6 +481,18 @@ def mobile_settings_ok(m):
     floor = all(size is not None and size >= 16 for size in m["fontSizes"].values())
     return fits and ring_inside and no_h_overflow and floor and m["voiceInline"] and m["voiceRowIsGone"]
 
+def mobile_form_system_ok(m):
+    prompt, planes, focus = m["prompt"], m["planes"], m["customCssFocus"]
+    if not (prompt and planes and focus):
+        return False
+    # rows=6 must render as a multi-line field, not the 44px single-line control.
+    multiline = prompt["rows"] == 6 and prompt["height"] >= 3 * 16 * 1.45 and prompt["resize"] == "vertical" and prompt["overflowY"] == "auto"
+    # The focused field's ring paints outset px outside its box and must stay
+    # inside the scroll body's gutter on both sides.
+    ring_clear = focus["focused"] and focus["outset"] >= 3 and focus["leftClear"] >= 0 and focus["rightClear"] >= 0
+    hierarchy = planes["title"] == planes["entry"] == 16 and planes["label"] == 14 and planes["hint"] == 13
+    return multiline and ring_clear and hierarchy
+
 def link_follows_app_css(order):
     # The theme stylesheet must be the very next stylesheet after app.css so
     # equal-specificity family rules win by source order.
@@ -499,6 +526,8 @@ checks = {
     "mobile_settings_fits_ring_unclipped_voice_inline_393x852": mobile_settings_ok(mobile["393x852"]),
     "mobile_settings_fits_ring_unclipped_voice_inline_390x844": mobile_settings_ok(mobile["390x844"]),
     "settings_sections_are_appearance_then_voice": mobile["393x852"]["sectionOrder"] == ["appearanceSettingsSection", "voiceSettingsSection"],
+    "mobile_form_system_prompt_ring_and_planes_393x852": mobile_form_system_ok(mobile["393x852"]),
+    "mobile_form_system_prompt_ring_and_planes_390x844": mobile_form_system_ok(mobile["390x844"]),
     "voice_save_persists_and_closes_settings": voice_saved == {"dialogOpen": False, "status": ""} and voice_reopened == {"dialogOpen": True, "baseUrl": "https://voice.example/v1"},
 }
 errors = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8")).get("data", {}).get("errors", [])
