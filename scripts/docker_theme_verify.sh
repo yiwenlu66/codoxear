@@ -357,6 +357,49 @@ browser set media light > /dev/null 2>&1 || true
 browser wait 900 > /dev/null 2>&1
 probe 15-system-light
 
+# Phone-width Settings geometry (iPhone 15 Pro 393x852 and iPhone 12/13/14
+# 390x844): the dialog fits the viewport, the selected swatch's selection ring
+# is not clipped by the scroll-bounded body, the flattened dialog carries the
+# voice section inline, and every text entry computes to the 16px iOS
+# no-zoom floor (the (max-width: 880px) branch of the coarse-pointer rule).
+MOBILE_SETTINGS_PROBE='(() => {
+  const dialog = document.getElementById("settingsViewer");
+  const body = dialog ? dialog.querySelector(".formBody") : null;
+  const rect = (n) => { const r = n.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+  const active = dialog ? dialog.querySelector(".themeSwatch.active") : null;
+  const activeStyle = active ? getComputedStyle(active) : null;
+  const ringOutset = activeStyle ? parseFloat(activeStyle.outlineWidth) + parseFloat(activeStyle.outlineOffset) : null;
+  const voice = document.getElementById("voiceSettingsSection");
+  const entries = ["settingsCustomCss", "voiceBaseUrlInput", "voiceApiKeyInput", "unattendedPromptInput"];
+  return {
+    innerWidth, innerHeight,
+    dialogOpen: Boolean(dialog && dialog.open),
+    dialog: dialog ? rect(dialog) : null,
+    body: body ? { ...rect(body), scrollWidth: body.scrollWidth, clientWidth: body.clientWidth, overflowX: getComputedStyle(body).overflowX } : null,
+    activeSwatch: active ? { ...rect(active), ringOutset } : null,
+    voiceInline: Boolean(voice && body && body.contains(voice) && voice.getBoundingClientRect().height > 0),
+    voiceRowIsGone: document.getElementById("settingsVoiceBtn") === null && document.getElementById("voiceSettingsViewer") === null,
+    sectionOrder: body ? [...body.children].map((n) => n.id) : null,
+    fontSizes: Object.fromEntries(entries.map((id) => { const n = document.getElementById(id); return [id, n ? parseFloat(getComputedStyle(n).fontSize) : null]; })),
+  };
+})()'
+
+mobile_settings() {
+  # $1 label, $2 width, $3 height
+  browser set viewport "$2" "$3" > /dev/null 2>&1 || fail "could not set $1 viewport"
+  browser wait 400 > /dev/null 2>&1
+  browser click '#toggleSidebarBtn' > /dev/null 2>&1 || fail "could not open the mobile sidebar ($1)"
+  browser wait 200 > /dev/null 2>&1
+  open_settings
+  browser eval "$MOBILE_SETTINGS_PROBE" --json > "$artifacts/18-mobile-settings-$1.json" 2>&1 || fail "mobile settings probe failed ($1)"
+  shot "18-mobile-settings-$1"
+  close_settings
+}
+mobile_settings 393x852 393 852
+mobile_settings 390x844 390 844
+browser set viewport 1280 860 > /dev/null 2>&1 || true
+browser wait 300 > /dev/null 2>&1
+
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
 browser console --json > "$artifacts/browser-console.json" 2>&1 || true
 capture_container_diagnostics
@@ -383,6 +426,19 @@ outline = load("08-custom-css-outline")
 file_selected = load("16-file-selection")
 monaco_light = load("16-monaco-paper-light")
 monaco_dark = load("17-monaco-paper-dark")
+mobile = {name: load(f"18-mobile-settings-{name}") for name in ("393x852", "390x844")}
+
+def mobile_settings_ok(m):
+    d, b, s = m["dialog"], m["body"], m["activeSwatch"]
+    if not (m["dialogOpen"] and d and b and s):
+        return False
+    fits = d["left"] >= 0 and d["right"] <= m["innerWidth"] and d["width"] < m["innerWidth"]
+    # The ring paints ringOutset outside the swatch box; the scroll body clips
+    # at its padding box, so the ring must stay inside the body horizontally.
+    ring_inside = s["left"] - s["ringOutset"] >= b["left"] and s["right"] + s["ringOutset"] <= b["right"]
+    no_h_overflow = b["scrollWidth"] <= b["clientWidth"]
+    floor = all(size is not None and size >= 16 for size in m["fontSizes"].values())
+    return fits and ring_inside and no_h_overflow and floor and m["voiceInline"] and m["voiceRowIsGone"]
 
 def link_follows_app_css(order):
     # The theme stylesheet must be the very next stylesheet after app.css so
@@ -413,10 +469,13 @@ checks = {
     "system_mode_returns_to_light": p["15-system-light"]["mode"] == "light",
     "monaco_opens_paper_light": file_selected is True and monaco_light.get("present") is True and monaco_light.get("theme") == "vs" and monaco_light.get("background") == "rgb(255, 255, 255)",
     "monaco_follows_live_dark_switch": monaco_dark.get("present") is True and monaco_dark.get("theme") == "vs-dark" and monaco_dark.get("background") == "rgb(32, 29, 23)",
+    "mobile_settings_fits_ring_unclipped_voice_inline_393x852": mobile_settings_ok(mobile["393x852"]),
+    "mobile_settings_fits_ring_unclipped_voice_inline_390x844": mobile_settings_ok(mobile["390x844"]),
+    "settings_sections_are_appearance_then_voice": mobile["393x852"]["sectionOrder"] == ["appearanceSettingsSection", "voiceSettingsSection"],
 }
 errors = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8")).get("data", {}).get("errors", [])
 checks["no_page_errors"] = errors == []
-summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "monaco": {"light": monaco_light, "dark": monaco_dark}, "pageErrors": errors}
+summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "monaco": {"light": monaco_light, "dark": monaco_dark}, "mobileSettings": mobile, "pageErrors": errors}
 (artifacts / "report.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps({"pass": summary["pass"], "checks": checks}, indent=2))
 if not summary["pass"]:
