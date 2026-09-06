@@ -156,6 +156,16 @@
       // style, so both are parser-inserted here (render-blocking, no flash).
       // From module load on, app_theme.js is the sole writer of these nodes.
       (function () {
+        // Browser-chrome color per family x resolved mode. This is the
+        // THEME_COLORS table from app_theme.js: the boot script is inline and
+        // cannot import, so the six values are repeated here and a test pins
+        // the two tables equal. iOS Safari applies theme-color on navigation,
+        // so the stored theme must be projected here, not only by the module.
+        var themeColors = {
+          paper: { light: "#ffffff", dark: "#1c1a16" },
+          clay: { light: "#faf7f0", dark: "#161310" },
+          slate: { light: "#f9f9f9", dark: "#171717" },
+        };
         var read = function (key) {
           try {
             return window.localStorage.getItem(key);
@@ -172,6 +182,8 @@
         }
         document.documentElement.setAttribute("data-theme", family);
         document.documentElement.setAttribute("data-mode", mode);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", themeColors[family][mode]);
         var customCss = String(read("codoxear.ui.customCss") || "").replace(/<\//g, "<\\/");
         document.write(
           '<link rel="stylesheet" id="codoxearThemeLink" href="themes/' + family + '.css?v=__CODOXEAR_ASSET_VERSION__" />' +
