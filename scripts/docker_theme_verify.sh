@@ -414,6 +414,11 @@ mobile_settings() {
   open_settings
   browser eval "$MOBILE_SETTINGS_PROBE" --json > "$artifacts/18-mobile-settings-$1.json" 2>&1 || fail "mobile settings probe failed ($1)"
   shot "18-mobile-settings-$1"
+  # The unattended prompt sits at the end of the body; a second capture at
+  # the bottom of the scroll shows the multi-line field for design review.
+  browser eval '(() => { const b = document.querySelector("#settingsViewer .formBody"); b.scrollTop = b.scrollHeight; return true; })()' --json > /dev/null 2>&1 || fail "could not scroll the settings body ($1)"
+  browser wait 200 > /dev/null 2>&1
+  shot "18-mobile-settings-$1-prompt"
   close_settings
 }
 mobile_settings 393x852 393 852
