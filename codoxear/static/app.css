@@ -3232,6 +3232,12 @@ select {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: var(--space-3);
+        /* The active swatch's selection ring (2px outline + 1px offset) paints
+           3px outside the button box. The grid spans the full width of the
+           scroll-bounded .formBody, whose overflow-x: hidden clips at its
+           padding box, so the outermost edge of the first/last ring was cut
+           off. The 3px geometry padding keeps the ring inside the clip. */
+        padding: 3px;
       }
       .themeSwatch {
         display: flex;
@@ -3693,9 +3699,18 @@ select {
         position: absolute;
         inset: -7px;
       }
+      /* iOS Safari zooms the page when a text entry under 16px gains focus
+         and keeps that zoom after the keyboard closes. Every text-entry kind
+         computes to the 16px floor on coarse pointers; an input without a
+         type attribute is a text input and is listed explicitly because
+         attribute selectors never match a missing attribute. */
       @media (max-width: 880px), (pointer: coarse) {
+        input:not([type]),
         input[type="text"],
         input[type="password"],
+        input[type="email"],
+        input[type="url"],
+        input[type="tel"],
         input[type="date"],
         input[type="time"],
         input[type="datetime-local"],
