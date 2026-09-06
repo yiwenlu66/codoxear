@@ -397,6 +397,24 @@ mobile_settings() {
 }
 mobile_settings 393x852 393 852
 mobile_settings 390x844 390 844
+
+# The inline voice Save flow: editing the base URL and pressing Save must POST
+# the voice settings and close the whole Settings dialog; reopening shows the
+# persisted value seeded back into the form.
+browser click '#toggleSidebarBtn' > /dev/null 2>&1 || fail "could not open the mobile sidebar (save flow)"
+browser wait 200 > /dev/null 2>&1
+open_settings
+browser fill '#voiceBaseUrlInput' 'https://voice.example/v1' > /dev/null 2>&1 || fail "could not edit the voice base URL"
+browser eval '(() => { document.getElementById("voiceSettingsSaveBtn").click(); return true; })()' --json > /dev/null 2>&1 || fail "could not press voice Save"
+browser wait 1200 > /dev/null 2>&1
+browser eval '(() => ({ dialogOpen: Boolean(document.getElementById("settingsViewer").open), status: document.getElementById("voiceSettingsStatus").textContent }))()' --json > "$artifacts/19-voice-save-closed.json" 2>&1 || fail "voice save probe failed"
+browser click '#toggleSidebarBtn' > /dev/null 2>&1 || true
+browser wait 200 > /dev/null 2>&1
+open_settings
+browser wait 600 > /dev/null 2>&1
+browser eval '(() => ({ dialogOpen: Boolean(document.getElementById("settingsViewer").open), baseUrl: document.getElementById("voiceBaseUrlInput").value }))()' --json > "$artifacts/19-voice-save-reopened.json" 2>&1 || fail "voice reopen probe failed"
+shot 19-voice-save-reopened
+close_settings
 browser set viewport 1280 860 > /dev/null 2>&1 || true
 browser wait 300 > /dev/null 2>&1
 
@@ -427,6 +445,8 @@ file_selected = load("16-file-selection")
 monaco_light = load("16-monaco-paper-light")
 monaco_dark = load("17-monaco-paper-dark")
 mobile = {name: load(f"18-mobile-settings-{name}") for name in ("393x852", "390x844")}
+voice_saved = load("19-voice-save-closed")
+voice_reopened = load("19-voice-save-reopened")
 
 def mobile_settings_ok(m):
     d, b, s = m["dialog"], m["body"], m["activeSwatch"]
@@ -472,10 +492,11 @@ checks = {
     "mobile_settings_fits_ring_unclipped_voice_inline_393x852": mobile_settings_ok(mobile["393x852"]),
     "mobile_settings_fits_ring_unclipped_voice_inline_390x844": mobile_settings_ok(mobile["390x844"]),
     "settings_sections_are_appearance_then_voice": mobile["393x852"]["sectionOrder"] == ["appearanceSettingsSection", "voiceSettingsSection"],
+    "voice_save_persists_and_closes_settings": voice_saved == {"dialogOpen": False, "status": ""} and voice_reopened == {"dialogOpen": True, "baseUrl": "https://voice.example/v1"},
 }
 errors = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8")).get("data", {}).get("errors", [])
 checks["no_page_errors"] = errors == []
-summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "monaco": {"light": monaco_light, "dark": monaco_dark}, "mobileSettings": mobile, "pageErrors": errors}
+summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "customCssOutline": outline, "monaco": {"light": monaco_light, "dark": monaco_dark}, "mobileSettings": mobile, "voiceSave": {"closed": voice_saved, "reopened": voice_reopened}, "pageErrors": errors}
 (artifacts / "report.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps({"pass": summary["pass"], "checks": checks}, indent=2))
 if not summary["pass"]:
