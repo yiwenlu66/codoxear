@@ -114,6 +114,7 @@ The UI ships three theme families — **paper** (default), **clay**, and **slate
 - **Transparent, undimmed backdrops** and **bounded overlays**: opening an overlay never dims the app; pickers and dialogs have deliberate max dimensions and scroll only their content area. Diagnostics rows may stack at narrow widths without changing treatment.
 - **Single writer per displayed value.** `app_theme.js` is the only writer of `<html data-theme>`, `<html data-mode>`, the theme `<link>`, the custom-CSS `<style>`, and `<meta name="theme-color">`; the inline boot script in `index.html` renders the same persisted state (including the theme-color) once before first paint. Settings only renders controller state and forwards intent.
 - **Hover-reveal groups must not use `:focus-within`.** Reveal on `:hover`, keep keyboard access with `:has(<group> :focus-visible)`, and give hover-revealed controls over text an opaque `background: var(--paper)` fill.
+- **Layered components self-round; never rely on an ancestor clip for fill corners.** A composited child (`translate3d`/`will-change`) is clipped badly by an ancestor's `border-radius` + `overflow: hidden` on iOS Safari — the fill's square corners poke past the rounded border. Fill layers inside a bordered, rounded container carry their own concentric radius (`max(0px, calc(var(--radius-card) - 1px))`, one border-width tighter).
 - **Media-query branching rule** (below) applies to every family.
 
 ### Theme file contract
