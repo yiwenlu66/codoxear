@@ -1938,13 +1938,11 @@ select {
         font-size: var(--font-lg);
         outline: none;
       }
-      textarea {
-        height: var(--ctl);
-        resize: none;
-        min-height: var(--ctl);
-        max-height: 180px;
-        overflow-y: hidden;
-      }
+      /* The composer is the one single-line-by-default textarea: it starts
+         at control height and its auto-grow code raises the inline height
+         and overflow as lines accumulate. That behavior belongs here, not on
+         the textarea element: every other textarea in the app is a real
+         multi-line field and gets its own treatment. */
       .composer textarea {
         flex: 1 1 auto;
         min-width: 0;
@@ -1956,6 +1954,8 @@ select {
         height: var(--composerCtl);
         min-height: var(--composerCtl);
         max-height: 140px;
+        resize: none;
+        overflow-y: hidden;
         font-size: var(--font-xl);
       }
       .composer form.multiline textarea {
@@ -2696,6 +2696,7 @@ select {
       .filePasteInput {
         min-height: 120px;
         max-height: min(42vh, 320px);
+        overflow-y: auto;
         resize: vertical;
         font: var(--font-md)/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
@@ -2945,6 +2946,16 @@ select {
       .formViewer .formActions > button {
         height: var(--ctl);
         min-height: var(--ctl);
+      }
+      /* Dialog textareas are multi-line fields: the rows attribute sets the
+         starting height, the user may drag them taller, and content past the
+         cap scrolls inside the field. */
+      .formViewer textarea {
+        min-height: 96px;
+        max-height: min(40vh, 320px);
+        line-height: 1.45;
+        overflow-y: auto;
+        resize: vertical;
       }
       .fieldLabel {
         font-size: var(--font-md);
@@ -3384,13 +3395,11 @@ select {
         flex-wrap: wrap;
         overflow: visible;
       }
+      /* Code entry on top of the shared dialog textarea: mono, meta-sized,
+         unwrapped so long declarations scroll sideways instead of folding. */
       .customCssInput {
-        min-height: 96px;
-        max-height: min(40vh, 320px);
-        resize: vertical;
         font-family: var(--font-mono);
         font-size: var(--font-sm);
-        line-height: 1.45;
         white-space: pre;
         overflow: auto;
       }
