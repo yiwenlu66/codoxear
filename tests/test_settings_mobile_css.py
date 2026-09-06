@@ -1,15 +1,17 @@
-"""Settings dialog geometry contracts behind two iPhone reports.
+"""Form-dialog type contracts on coarse pointers and small viewports.
 
-1. The selected theme swatch's selection ring paints outside the button box
-   (``outline`` + ``outline-offset``). The swatch grid sits full-width inside
-   the scroll-bounded ``.formBody`` whose ``overflow-x: hidden`` clips at its
-   padding box, so the grid must reserve at least the ring's outset as
-   padding or the first/last card's outer edge is cut off.
-
-2. iOS Safari zooms the page when a focused text entry computes under 16px
+1. iOS Safari zooms the page when a focused text entry computes under 16px
    and keeps that zoom after the keyboard closes. Every text-entry kind the
    app can render must resolve to the 16px floor on coarse pointers — the
    rule is matched against element descriptors, not against selector text.
+
+2. That floor would invert a form dialog's hierarchy (entry 16 > title 14 >
+   label 13), so form-dialog type planes retune as a unit under the same
+   media condition: the title plane meets the floor, labels sit one step
+   below, hints one step below that. Desktop planes stay untouched.
+
+(The selected swatch's ring clipping is covered by the dialog scroll-body
+gutter in test_dialog_scroll_gutter_css.py.)
 
 Per project policy this parses the stylesheet and resolves tokens the way a
 browser would instead of asserting on raw source.
@@ -73,15 +75,22 @@ def selector_matches(selector: str, tag: str, type_attr: str | None) -> bool:
     return True
 
 
-def coarse_pointer_font_rules() -> list[tuple[list[str], str, bool]]:
-    """(selectors, font-size value, important) inside every coarse-pointer media block."""
-    rules = []
+def coarse_pointer_blocks() -> list[AtRule]:
+    blocks = []
     for node in parse_stylesheet(APP_CSS):
         if not isinstance(node, AtRule) or node.lower_at_keyword != "media":
             continue
         prelude = re.sub(r"\s+", " ", "".join(token.serialize() for token in node.prelude)).strip()
-        if "(pointer: coarse)" not in prelude:
-            continue
+        if "(pointer: coarse)" in prelude:
+            blocks.append(node)
+    assert blocks, "no coarse-pointer media block"
+    return blocks
+
+
+def coarse_pointer_font_rules() -> list[tuple[list[str], str, bool]]:
+    """(selectors, font-size value, important) inside every coarse-pointer media block."""
+    rules = []
+    for node in coarse_pointer_blocks():
         for rule in all_rules([node]):
             for decl in tinycss2.parse_declaration_list(rule.content, skip_comments=True, skip_whitespace=True):
                 if isinstance(decl, Declaration) and decl.lower_name == "font-size":
@@ -103,3 +112,29 @@ def test_every_text_entry_kind_resolves_to_the_ios_no_zoom_floor(tag: str, type_
     for value, important in sizes:
         assert important, "the floor must beat component font-size rules"
         assert px(resolve(value, tokens)) >= 16
+
+
+def coarse_pointer_form_dialog_tokens() -> dict[str, str]:
+    """Custom properties the form-dialog scope retunes on coarse pointers."""
+    tokens: dict[str, str] = {}
+    for node in coarse_pointer_blocks():
+        for rule in all_rules([node]):
+            if selector_text(rule) == ".formViewer":
+                tokens.update({name: value for name, value in declarations(rule).items() if name.startswith("--")})
+    assert tokens, "form dialogs do not retune their type planes on coarse pointers"
+    return tokens
+
+
+def test_form_dialog_type_planes_retune_as_a_unit_under_the_entry_floor() -> None:
+    desktop = base_tokens()
+    mobile = {**desktop, **coarse_pointer_form_dialog_tokens()}
+    floor = px(resolve("var(--font-xl)", mobile))
+    title = px(resolve("var(--font-lg)", mobile))
+    label = px(resolve("var(--font-md)", mobile))
+    hint = px(resolve("var(--font-sm)", mobile))
+    assert floor >= 16
+    assert title == floor, "the section-title plane must meet the entry floor, never sit below it"
+    assert floor > label > hint, "labels and hints step down from the title plane"
+    # Desktop planes are untouched: the retune lives only in the coarse-pointer scope.
+    assert [px(resolve(f"var(--font-{name})", desktop)) for name in ("sm", "md", "lg", "xl")] == [12, 13, 14, 16]
+    assert set(coarse_pointer_form_dialog_tokens()) == {"--font-sm", "--font-md", "--font-lg"}

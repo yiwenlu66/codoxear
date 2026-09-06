@@ -3753,7 +3753,16 @@ select {
         textarea {
           font-size: var(--font-xl) !important;
         }
-
+        /* The 16px entry floor above would otherwise invert a form dialog's
+           hierarchy (entry 16 > section title 14 > label 13). The dialog's
+           type planes retune as a unit so titles meet the floor (hierarchy
+           between title and entry comes from weight), labels sit one step
+           below, and hints one step below that. Desktop planes are untouched. */
+        .formViewer {
+          --font-sm: 13px;
+          --font-md: 14px;
+          --font-lg: 16px;
+        }
       }
 
       @media (max-width: 880px) {
