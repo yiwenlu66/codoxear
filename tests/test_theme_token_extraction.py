@@ -24,7 +24,7 @@ PAPER_ICON_FILTER = "grayscale(1) brightness(0) opacity(0.62)"
 # its border-radius through that token so a family retunes it as one unit.
 RADIUS_ROLE_SELECTORS = {
     "--radius-control": ["button", ".icon-btn", ".choiceChip", ".md code", ".code-copy-btn", ".filePickerBtn", ".jumpBtn"],
-    "--radius-card": [".session", ".toast", ".fileViewer", ".queueViewer", ".md pre", ".md table", ".login", ".sendChoice"],
+    "--radius-card": [".session", ".sessionContent", ".toast", ".fileViewer", ".queueViewer", ".md pre", ".md table", ".login", ".sendChoice"],
     "--radius-bubble": [".msg"],
     "--radius-pill": [".badge", ".day-sep", ".attachBadge", ".stagedAttachmentChip", ".sessionGroupCount"],
     "--radius-dot": [".stateDot", ".ownDot", ".typingDot", ".subagentActivitySquare"],
@@ -51,6 +51,19 @@ def test_paper_light_tokens_carry_the_pre_extraction_literals() -> None:
     assert resolve(tokens["--shadow-pop"], tokens) == "none"
 
 
+# The nested-fill rule (.sessionContent) expresses its concentric radius as
+# max(0px, calc(<card> - 1px)); evaluate the arithmetic before comparing.
+CONCENTRIC_RADIUS = re.compile(r"max\(0px, calc\((\d+(?:\.\d+)?)(?:px)? - 1px\)\)")
+
+
+def resolve_radius_square(value: str, tokens: dict[str, str]) -> str:
+    resolved = resolve(value, tokens)
+    match = CONCENTRIC_RADIUS.fullmatch(resolved)
+    if match:
+        return str(max(0.0, float(match.group(1)) - 1)).removesuffix(".0")
+    return resolved
+
+
 def test_every_border_radius_in_base_resolves_to_square() -> None:
     tokens = base_tokens()
     seen = 0
@@ -63,7 +76,7 @@ def test_every_border_radius_in_base_resolves_to_square() -> None:
             if name != "border-radius":
                 continue
             seen += 1
-            resolved = resolve(value, tokens)
+            resolved = resolve_radius_square(value, tokens)
             assert set(resolved.split()) == {"0"}, f"{selector_text(rule)} resolves border-radius to {resolved!r}"
     assert seen >= 81
 

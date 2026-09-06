@@ -310,6 +310,12 @@
         position: relative;
         z-index: 2;
         background: var(--paper);
+        /* Nested-radius rule: the content fill rounds itself, one border-width
+           tighter than the card, instead of depending on .sessionSwipe's
+           overflow clip. iOS Safari clips composited children (this element is
+           translate3d/will-change) badly, letting square fill corners poke
+           past the card's rounded border. */
+        border-radius: max(0px, calc(var(--radius-card) - 1px));
         transform: translate3d(0px, 0, 0);
         transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
         will-change: transform;
