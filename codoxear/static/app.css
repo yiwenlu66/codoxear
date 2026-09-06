@@ -2902,6 +2902,22 @@ select {
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
       }
+      /* Dialog scroll bodies share one gutter. A scroll container clips ink
+         overflow at its padding box, and focus outlines (2px + 1px offset)
+         and chip hit areas paint outside their control's border box, so an
+         edge-to-edge control inside a bare scroll body loses the outer 3px of
+         its ring; 3px of padding on every side keeps the ring inside the clip.
+         The right side is a lane for overlay scrollbars (iOS, macOS), which
+         paint over content, and scrollbar-gutter keeps classic scrollbars
+         from reflowing the content when a body starts to scroll. Bordered
+         tables (.detailsGrid) and document surfaces in the file viewer carry
+         their own row/content inset and are not bare scroll bodies. */
+      .formBody,
+      .helpBody,
+      .queueList {
+        padding: 3px var(--space-3) 3px 3px;
+        scrollbar-gutter: stable;
+      }
       .formGrid {
         display: grid;
         gap: var(--dialog-group-gap, var(--space-4));
@@ -3238,12 +3254,6 @@ select {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: var(--space-3);
-        /* The active swatch's selection ring (2px outline + 1px offset) paints
-           3px outside the button box. The grid spans the full width of the
-           scroll-bounded .formBody, whose overflow-x: hidden clips at its
-           padding box, so the outermost edge of the first/last ring was cut
-           off. The 3px geometry padding keeps the ring inside the clip. */
-        padding: 3px;
       }
       .themeSwatch {
         display: flex;

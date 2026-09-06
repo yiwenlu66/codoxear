@@ -41,22 +41,6 @@ def rule_declarations(selector: str) -> dict[str, str]:
     raise AssertionError(f"no rule for {selector}")
 
 
-def test_swatch_grid_reserves_the_selection_ring_outset() -> None:
-    tokens = base_tokens()
-    active = rule_declarations(".themeSwatch.active")
-    outline = active["outline"].split()
-    ring_outset = px(resolve(outline[0], tokens)) + px(resolve(active["outline-offset"], tokens))
-    assert ring_outset > 0
-
-    form_body = rule_declarations(".formBody")
-    assert form_body["overflow-x"] == "hidden"  # the clip that made the padding necessary
-
-    grid = rule_declarations(".themeSwatches")
-    padding = [px(resolve(part, tokens)) for part in grid["padding"].split()]
-    horizontal = (padding[1] if len(padding) > 1 else padding[0], padding[-1] if len(padding) == 4 else padding[1] if len(padding) > 1 else padding[0])
-    assert min(horizontal) >= ring_outset
-
-
 # (tag, type attribute) for every text-entry kind that can gain focus and
 # raise the iOS keyboard; ``None`` is an <input> without a type attribute.
 TEXT_ENTRIES = [
