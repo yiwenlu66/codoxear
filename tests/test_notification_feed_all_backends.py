@@ -74,9 +74,9 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
         }}
         const dom = {{
           announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(), voiceSettingsBackdrop: node(), voiceSettingsCloseBtn: node(),
+          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
-          voiceSettingsViewer: node(), voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+          voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
         const documentTarget = {{ activeElement: null, contains: () => true, createElement: () => node() }};
         const ctx = {{
@@ -106,7 +106,7 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
           eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
           isAppDisposed: () => false,
           api: async (url) => String(url).includes("/api/notifications/feed") ? {{ items: feedItems }} : {{ notifications: {{}}, audio: {{}} }},
-          setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
+          setToast() {{}}, handleAppAuthLoss() {{}}, openSettings() {{}}, closeSettings() {{}},
           resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
           storageGetItem: () => null, storageSetItem() {{}}, storageRemoveItem() {{}}, focusSessionFromNotification() {{}},
           requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}},

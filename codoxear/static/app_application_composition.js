@@ -365,10 +365,10 @@ import * as CodoxearWiring from "./app_wiring.js";
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
-      voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
+      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsSection,
+      voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
-      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+      unattendedPromptResetBtn, voiceSettingsCancelBtn, voiceSettingsSaveBtn
         } = applicationModalDOM;
 
         const dialogMenuController = CodoxearDialogMenu.createDialogMenuController(wiring.createDialogMenuOptions({ windowTarget: window }));
@@ -422,15 +422,19 @@ import * as CodoxearWiring from "./app_wiring.js";
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
 
-        // Settings owns the appearance controls; "Voice & notifications" hands
-        // off to the voice controller's dialog, which stays untouched.
+        // One flat Settings dialog: appearance controls plus the voice
+        // controller's inline "Voice & notifications" section. The dialog
+        // owns visibility; the voice controller is told when its section is
+        // shown or hidden and asks the dialog to open/close in return.
         settingsDialogController = codoxearSettings.createSettingsDialogController(wiring.createSettingsDialogOptions({
           root,
           el,
           iconSvg,
           themeController,
           openButton: $("#settingsBtnSide"),
-          openVoiceSettings: () => showVoiceSettingsDialog(),
+          voiceSection: voiceSettingsSection,
+          activateVoiceSection: () => voiceController.activateSettingsSection(),
+          deactivateVoiceSection: () => voiceController.deactivateSettingsSection(),
           documentTarget: document,
           ElementCtor: HTMLElement,
           prepareModalOpen,
@@ -454,7 +458,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           helpViewer,
           diagViewer,
           editViewer,
-          voiceSettingsViewer,
           newSessionDialogController.viewer,
         ];
 
@@ -727,8 +730,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           return codoxearVoice.createVoiceController(wiring.createVoiceOptions({
             announceBtn,
             liveAudio,
-            voiceSettingsBackdrop,
-            voiceSettingsCloseBtn,
             voiceSettingsStatus,
             voiceBaseUrlInput,
             voiceApiKeyInput,
@@ -736,7 +737,6 @@ import * as CodoxearWiring from "./app_wiring.js";
             narrationSettingToggle,
             unattendedPromptInput,
             unattendedPromptResetBtn,
-            voiceSettingsViewer,
             voiceSettingsCancelBtn,
             voiceSettingsSaveBtn,
             notificationOptions,
@@ -745,8 +745,8 @@ import * as CodoxearWiring from "./app_wiring.js";
             api,
             setToast,
             handleAppAuthLoss,
-            prepareModalOpen,
-            afterModalVisibilityChanged,
+            openSettings: () => settingsDialogController.show(),
+            closeSettings: () => settingsDialogController.hide(),
             resolveAppUrl,
             storageGetItem,
             storageSetItem,
@@ -759,12 +759,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
         function resumeAnnouncementRuntime(opts) {
           return voiceController.resumeAnnouncementRuntime(opts);
-        }
-        function showVoiceSettingsDialog() {
-          return voiceController.showVoiceSettingsDialog();
-        }
-        function hideVoiceSettingsDialog() {
-          return voiceController.hideVoiceSettingsDialog();
         }
         fileOpsController = CodoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
           wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
@@ -799,7 +793,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, fileVimModeChip, chatInner,
           codeBlockCopyRuntime, appConfirm, appConfirmFocusableControls, resolveAppConfirm,
           sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
-          hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog,
+          hideHelpViewer, diagViewer, hideDiagViewer,
           sessionState,
           sessionCatalog,
           getSessionLifecycleController: () => sessionLifecycleController,

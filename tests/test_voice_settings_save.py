@@ -58,9 +58,9 @@ def run_voice_settings_save_harness() -> dict:
 
         const dom = {{
           announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(), voiceSettingsBackdrop: node(), voiceSettingsCloseBtn: node(),
+          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
-          voiceSettingsViewer: node(), voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+          voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
         const documentTarget = {{ activeElement: null, contains: () => true, createElement: () => node() }};
         const ctx = {{
@@ -121,7 +121,7 @@ def run_voice_settings_save_harness() -> dict:
             if (url.indexOf("/api/notifications/feed") === 0) return {{ items: feedItems.splice(0) }};
             throw new Error(`unexpected API call: ${{url}}`);
           }},
-          setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
+          setToast() {{}}, handleAppAuthLoss() {{}}, openSettings() {{}}, closeSettings() {{}},
           resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
           storageGetItem: (key) => storage.get(key) || null,
           storageSetItem: (key, value) => storage.set(key, String(value)),

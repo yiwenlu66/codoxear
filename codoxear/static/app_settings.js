@@ -5,6 +5,11 @@ import * as CodoxearModal from "./app_modal.js";
 // through the theme controller, which remains the only writer of the theme
 // surface; this dialog only renders that controller's state and forwards
 // user intent to it.
+//
+// The "Voice & notifications" section is built and rendered by app_voice.js;
+// this dialog mounts that section below Appearance and reports its own
+// visibility to the voice controller (activate on show, deactivate on hide)
+// so the voice form is seeded while visible and its draft is dropped on close.
 
 const FAMILY_LABELS = Object.freeze({ paper: "Paper", clay: "Clay", slate: "Slate" });
 const MODE_LABELS = Object.freeze({ system: "System", light: "Light", dark: "Dark" });
@@ -29,7 +34,9 @@ function createSettingsDialogController(options = {}) {
   const themeController = options.themeController;
   if (!themeController || typeof themeController.subscribe !== "function") throw new TypeError("settings dependency missing: themeController");
   const openButton = requireNode(options.openButton, "openButton");
-  const openVoiceSettings = requireFunction(options.openVoiceSettings, "openVoiceSettings");
+  const voiceSection = requireNode(options.voiceSection, "voiceSection");
+  const activateVoiceSection = requireFunction(options.activateVoiceSection, "activateVoiceSection");
+  const deactivateVoiceSection = requireFunction(options.deactivateVoiceSection, "deactivateVoiceSection");
   const documentTarget = options.documentTarget;
   const ElementCtor = options.ElementCtor;
   if (!documentTarget || typeof documentTarget !== "object") throw new TypeError("settings dependency missing: documentTarget");
@@ -104,12 +111,6 @@ function createSettingsDialogController(options = {}) {
     "aria-describedby": "settingsCustomCssHint",
   });
   const resetButton = el("button", { id: "settingsResetAppearanceBtn", class: "text-btn", type: "button", text: "Reset appearance" });
-  const voiceButton = el("button", {
-    id: "settingsVoiceBtn",
-    class: "settingsLinkRow",
-    type: "button",
-    html: `<span>Voice &amp; notifications</span>${iconSvg("right")}`,
-  });
 
   const viewer = el("dialog", { class: "formViewer formDialog", id: "settingsViewer", "aria-label": "Settings" }, [
     el("div", { class: "queueHeader" }, [
@@ -117,22 +118,25 @@ function createSettingsDialogController(options = {}) {
       el("div", { class: "actions" }, [closeButton]),
     ]),
     el("div", { class: "formBody" }, [
-      el("div", { class: "field" }, [
-        el("span", { class: "fieldLabel", text: "Appearance" }),
-        swatches,
+      el("section", { class: "settingsSection", id: "appearanceSettingsSection", "aria-labelledby": "appearanceSettingsHeading" }, [
+        el("h3", { class: "settingsSectionTitle", id: "appearanceSettingsHeading", text: "Appearance" }),
+        el("div", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Theme" }),
+          swatches,
+        ]),
+        el("div", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Mode" }),
+          modeChips,
+          modeHint,
+        ]),
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Custom CSS" }),
+          customCssInput,
+          el("span", { class: "fieldHint", id: "settingsCustomCssHint", text: "Applied live on this device after the theme stylesheet. Stored in this browser only." }),
+        ]),
+        el("div", { class: "field settingsResetRow" }, [resetButton]),
       ]),
-      el("div", { class: "field" }, [
-        el("span", { class: "fieldLabel", text: "Mode" }),
-        modeChips,
-        modeHint,
-      ]),
-      el("label", { class: "field" }, [
-        el("span", { class: "fieldLabel", text: "Custom CSS" }),
-        customCssInput,
-        el("span", { class: "fieldHint", id: "settingsCustomCssHint", text: "Applied live on this device after the theme stylesheet. Stored in this browser only." }),
-      ]),
-      el("div", { class: "field settingsResetRow" }, [resetButton]),
-      voiceButton,
+      voiceSection,
     ]),
   ]);
   root.appendChild(backdrop);
@@ -192,6 +196,7 @@ function createSettingsDialogController(options = {}) {
     if (typeof viewer.showModal === "function" && !viewer.open) viewer.showModal();
     afterModalVisibilityChanged();
     focusModalCloseButton(viewer, closeButton);
+    activateVoiceSection();
   }
 
   function hide() {
@@ -199,6 +204,7 @@ function createSettingsDialogController(options = {}) {
     const focusTarget = returnFocusElement;
     returnFocusElement = null;
     flushCustomCss();
+    deactivateVoiceSection();
     backdrop.style.display = "none";
     viewer.style.display = "none";
     if (typeof viewer.close === "function" && viewer.open) viewer.close();
@@ -234,12 +240,6 @@ function createSettingsDialogController(options = {}) {
     if (customCssTimer !== null) clearTimeoutFn(customCssTimer);
     customCssTimer = null;
     themeController.reset();
-  });
-  addEvent(voiceButton, "click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    hide();
-    openVoiceSettings();
   });
 
   function dispose() {

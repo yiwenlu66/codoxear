@@ -52,9 +52,9 @@ def run_voice_vm() -> dict:
         }}
         const dom = {{
           announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(), voiceSettingsBackdrop: node(), voiceSettingsCloseBtn: node(),
+          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
-          voiceSettingsViewer: node(), voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+          voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
         const documentTarget = {{ activeElement: null, contains: () => true, createElement: () => node() }};
         const ctx = {{
@@ -87,7 +87,7 @@ def run_voice_vm() -> dict:
             if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
             return {{ notifications: {{}}, audio: {{}} }};
           }},
-          setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
+          setToast() {{}}, handleAppAuthLoss() {{}}, openSettings() {{}}, closeSettings() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
           storageGetItem: (key) => storage.get(key) || null, storageSetItem: (key, value) => storage.set(key, String(value)), storageRemoveItem: (key) => storage.delete(key),
           requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}}, focusSessionFromNotification() {{}},
         }});

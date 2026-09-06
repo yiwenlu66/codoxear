@@ -567,8 +567,7 @@ function requireFunction(value, name) {
     const {
       announceBtn,
       liveAudio,
-      voiceSettingsBackdrop,
-      voiceSettingsCloseBtn,
+      voiceSettingsSection,
       voiceSettingsStatus,
       voiceBaseUrlInput,
       voiceApiKeyInput,
@@ -576,7 +575,6 @@ function requireFunction(value, name) {
       narrationSettingToggle,
       unattendedPromptInput,
       unattendedPromptResetBtn,
-      voiceSettingsViewer,
       voiceSettingsCancelBtn,
       voiceSettingsSaveBtn,
     } = voiceDom;
@@ -595,10 +593,10 @@ function requireFunction(value, name) {
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
-      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsBackdrop,
-      voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
+      editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsSection,
+      voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
-      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+      unattendedPromptResetBtn, voiceSettingsCancelBtn, voiceSettingsSaveBtn
     });
   }
 

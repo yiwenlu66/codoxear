@@ -125,16 +125,21 @@ const dom = {
   announceBtn: labeledNode("announceBtn"),
   notificationBtn: labeledNode("notificationBtn"),
   liveAudio: labeledNode("liveAudio"),
-  voiceSettingsBackdrop: labeledNode("voiceSettingsBackdrop"),
-  voiceSettingsCloseBtn: labeledNode("voiceSettingsCloseBtn"),
   voiceSettingsStatus: labeledNode("voiceSettingsStatus"),
   voiceBaseUrlInput: labeledNode("voiceBaseUrlInput"),
   voiceApiKeyInput: labeledNode("voiceApiKeyInput"),
   voiceClearApiKeyToggle: labeledNode("voiceClearApiKeyToggle"),
   narrationSettingToggle: labeledNode("narrationSettingToggle"),
-  voiceSettingsViewer: labeledNode("voiceSettingsViewer"),
   voiceSettingsCancelBtn: labeledNode("voiceSettingsCancelBtn"),
   voiceSettingsSaveBtn: labeledNode("voiceSettingsSaveBtn"),
+};
+// The Settings dialog double: the voice controller asks it to open/close and
+// it reports back through activate/deactivate exactly as app_settings.js does.
+const settingsDialog = {
+  open: false,
+  show() { calls.push(["openSettings"]); this.open = true; if (this.controller) this.controller.activateSettingsSection(); },
+  hide() { calls.push(["closeSettings"]); this.open = false; if (this.controller) this.controller.deactivateSettingsSection(); },
+  controller: null,
 };
 
 // Configurable API responder: tests poke `apiRoutes` to override per-URL.
@@ -159,19 +164,18 @@ function defaultApi(url) {
 
 function buildDeps(overrides = {}) {
   return Object.assign({
-    announceBtn: dom.voiceAnnouncementsEnabled !== undefined ? dom.announceBtn : dom.announceBtn,
+    announceBtn: dom.announceBtn,
     notificationBtn: dom.notificationBtn,
     liveAudio: dom.liveAudio,
-    voiceSettingsBackdrop: dom.voiceSettingsBackdrop,
-    voiceSettingsCloseBtn: dom.voiceSettingsCloseBtn,
     voiceSettingsStatus: dom.voiceSettingsStatus,
     voiceBaseUrlInput: dom.voiceBaseUrlInput,
     voiceApiKeyInput: dom.voiceApiKeyInput,
     voiceClearApiKeyToggle: dom.voiceClearApiKeyToggle,
     narrationSettingToggle: dom.narrationSettingToggle,
-    voiceSettingsViewer: dom.voiceSettingsViewer,
     voiceSettingsCancelBtn: dom.voiceSettingsCancelBtn,
     voiceSettingsSaveBtn: dom.voiceSettingsSaveBtn,
+    openSettings: () => settingsDialog.show(),
+    closeSettings: () => settingsDialog.hide(),
     isAppDisposed: () => disposed,
     api: (url, options = {}) => {
       const body = options && options.body ? JSON.parse(JSON.stringify(options.body)) : null;
@@ -187,8 +191,6 @@ function buildDeps(overrides = {}) {
     },
     setToast: (t) => { toasts.push(t); calls.push(["setToast", t]); },
     handleAppAuthLoss: () => { calls.push(["handleAppAuthLoss"]); },
-    prepareModalOpen: () => { calls.push(["prepareModalOpen"]); },
-    afterModalVisibilityChanged: () => { calls.push(["afterModalVisibilityChanged"]); },
     resolveAppUrl: (p) => p,
     versionedShellAssetPath: (p) => p,
     storageGetItem: (k) => (storage.has(k) ? storage.get(k) : null),
@@ -257,7 +259,8 @@ globalThis.__harness = {
   storage,
   setApiRoutes,
   buildDeps,
-  createController: (overrides) => ctx.window.CodoxearVoice.createVoiceController(buildDeps(overrides)),
+  settingsDialog,
+  createController: (overrides) => { const c = ctx.window.CodoxearVoice.createVoiceController(buildDeps(overrides)); settingsDialog.controller = c; return c; },
   setDisposed: (v) => { disposed = v; },
   setNotificationPermission: (p) => { NotificationCtor.permission = p; },
   setUserAgent: (ua) => { ctx.navigator.userAgent = ua; },
@@ -338,47 +341,72 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         result = run_node_json(js)
         self.assertTrue(result["reused"])
 
-    # --- 3. settings dialog show/hide/focus + Settings label ---
+    # --- 3. inline settings section lifecycle (driven by the Settings dialog) ---
 
-    def test_settings_dialog_show_hide_uses_canonical_open_state(self) -> None:
+    def test_settings_section_activation_seeds_form_and_deactivation_drops_draft(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
+            h.setApiRoutes({ "/api/settings/unattended-prompt": { prompt: "saved prompt", default_prompt: "built-in" } });
             const c = h.createController();
             const closed = c.isSettingsOpen();
-            c.showVoiceSettingsDialog();
-            const afterShow = {
+            c.activateSettingsSection();
+            await new Promise((r) => setTimeout(r, 0));
+            const afterActivate = {
               open: c.isSettingsOpen(),
-              backdrop: h.dom.voiceSettingsBackdrop.style.display,
-              viewer: h.dom.voiceSettingsViewer.style.display,
-              prepareCalled: h.calls.some((x) => x[0] === "prepareModalOpen"),
-              afterModalCalled: h.calls.some((x) => x[0] === "afterModalVisibilityChanged"),
-              showModalCalled: h.calls.some((x) => x[0] === "showModal"),
+              baseUrl: h.dom.voiceBaseUrlInput.value,
+              prompt: h.dom.unattendedPromptInput ? h.dom.unattendedPromptInput.value : null,
+              promptLoaded: h.calls.some((x) => x[0] === "api" && x[1] === "/api/settings/unattended-prompt"),
             };
-            c.hideVoiceSettingsDialog();
-            const afterHide = {
-              open: c.isSettingsOpen(),
-              backdrop: h.dom.voiceSettingsBackdrop.style.display,
-              viewer: h.dom.voiceSettingsViewer.style.display,
-              closeCalled: h.calls.some((x) => x[0] === "close"),
-            };
-            globalThis.__result = { closed, afterShow, afterHide };
+            // A background snapshot must not clobber the user's draft while the section is active.
+            h.dom.voiceBaseUrlInput.value = "https://draft.example/v1";
+            await c.loadVoiceSettings();
+            const draftKept = h.dom.voiceBaseUrlInput.value;
+            h.dom.voiceSettingsStatus.textContent = "Saving...";
+            c.deactivateSettingsSection();
+            const afterDeactivate = { open: c.isSettingsOpen(), status: h.dom.voiceSettingsStatus.textContent };
+            // Once inactive, the next snapshot re-seeds the form from state.
+            await c.loadVoiceSettings();
+            const reseeded = h.dom.voiceBaseUrlInput.value;
+            globalThis.__result = { closed, afterActivate, draftKept, afterDeactivate, reseeded };
             """
         )
         result = run_node_json(js)
         self.assertFalse(result["closed"])
-        show = result["afterShow"]
-        self.assertTrue(show["open"])
-        self.assertEqual(show["backdrop"], "block")
-        self.assertEqual(show["viewer"], "flex")
-        self.assertTrue(show["prepareCalled"])
-        self.assertTrue(show["afterModalCalled"])
-        self.assertTrue(show["showModalCalled"])
-        hide = result["afterHide"]
-        self.assertFalse(hide["open"])
-        self.assertEqual(hide["backdrop"], "none")
-        self.assertEqual(hide["viewer"], "none")
-        self.assertTrue(hide["closeCalled"])
+        self.assertEqual(result["afterActivate"], {"open": True, "baseUrl": "https://api.openai.com/v1", "prompt": None, "promptLoaded": True})
+        self.assertEqual(result["draftKept"], "https://draft.example/v1")
+        self.assertEqual(result["afterDeactivate"], {"open": False, "status": ""})
+        self.assertEqual(result["reseeded"], "https://api.openai.com/v1")
+
+    def test_save_closes_the_settings_dialog_and_cancel_closes_without_saving(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            const c = h.createController();
+            h.settingsDialog.show();
+            h.dom.voiceBaseUrlInput.value = "https://voice.example/v1";
+            h.calls.length = 0;
+            await h.dom.voiceSettingsSaveBtn.onclick();
+            const afterSave = {
+              posted: h.calls.filter((x) => x[0] === "api" && x[1] === "/api/settings/voice" && x[2]).map((x) => x[2].tts_base_url),
+              closed: h.calls.some((x) => x[0] === "closeSettings"),
+              dialogOpen: h.settingsDialog.open,
+              sectionOpen: c.isSettingsOpen(),
+            };
+            h.settingsDialog.show();
+            h.calls.length = 0;
+            h.dom.voiceSettingsCancelBtn.onclick();
+            const afterCancel = {
+              posted: h.calls.filter((x) => x[0] === "api" && x[2]).length,
+              closed: h.calls.some((x) => x[0] === "closeSettings"),
+              dialogOpen: h.settingsDialog.open,
+            };
+            globalThis.__result = { afterSave, afterCancel };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["afterSave"], {"posted": ["https://voice.example/v1"], "closed": True, "dialogOpen": False, "sectionOpen": False})
+        self.assertEqual(result["afterCancel"], {"posted": 0, "closed": True, "dialogOpen": False})
 
     # --- 4. form sync + API-key placeholder / clear payload ---
 
@@ -441,7 +469,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             }});
             const c = h.createController();
             await c.loadVoiceSettings();
-            c.showVoiceSettingsDialog();
+            c.activateSettingsSection();
             globalThis.__result = { inputNeverHoldsSecret: h.dom.voiceApiKeyInput.value !== "SECRET" };
             """
         )
@@ -459,11 +487,12 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             const c = h.createController();
             const wasOpen = c.isSettingsOpen();
             const fakeEvent = { preventDefault() {}, stopPropagation() {} };
-            await c.showVoiceSettingsDialog ? h.dom.announceBtn.onclick(fakeEvent) : null;
+            await h.dom.announceBtn.onclick(fakeEvent);
             await Promise.resolve();
             globalThis.__result = {
               wasOpen,
               opened: c.isSettingsOpen(),
+              dialogOpened: h.settingsDialog.open,
               status: h.dom.voiceSettingsStatus.textContent,
               notEnabled: !c.voiceAnnouncementsEnabled(),
             };
@@ -472,6 +501,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         result = run_node_json(js)
         self.assertFalse(result["wasOpen"])
         self.assertTrue(result["opened"])
+        self.assertTrue(result["dialogOpened"])
         self.assertTrue(result["notEnabled"])
         self.assertContains("API base URL", result["status"])
 
@@ -589,19 +619,18 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             // Arm a voice save timer via the narration toggle.
             h.dom.narrationSettingToggle.onchange({ target: { checked: true } });
             const timersBefore = h.pendingTimerCount();
-            // Capture liveAudio + dialog listeners registered by the controller.
+            // Capture liveAudio listeners registered by the controller.
             const liveAudioAdds = h.listenerLog.filter((x) => x[1] === "liveAudio" && x[0] === "add").length;
-            const dialogCancelAdds = h.listenerLog.filter((x) => x[1] === "voiceSettingsViewer" && x[0] === "add").length;
             c.dispose();
             const timersAfter = h.pendingTimerCount();
             // After dispose, the controller-owned button onclick handlers are released.
-            const handlersCleared = h.dom.announceBtn.onclick === null && h.dom.voiceSettingsSaveBtn.onclick === null;
+            const handlersCleared = h.dom.announceBtn.onclick === null && h.dom.voiceSettingsSaveBtn.onclick === null && h.dom.voiceSettingsCancelBtn.onclick === null;
             // After dispose, running pending timers (none should remain) must not
             // issue any API call.
             const apiBefore = h.calls.filter((x) => x[0] === "api").length;
             h.runPendingTimers();
             const apiAfter = h.calls.filter((x) => x[0] === "api").length;
-            globalThis.__result = { timersBefore, timersAfter, handlersCleared, liveAudioAdds, dialogCancelAdds, apiBefore, apiAfter, settingsClosed: !c.isSettingsOpen() };
+            globalThis.__result = { timersBefore, timersAfter, handlersCleared, liveAudioAdds, apiBefore, apiAfter, settingsClosed: !c.isSettingsOpen() };
             """
         )
         result = run_node_json(js)
@@ -609,7 +638,6 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertEqual(result["timersAfter"], 0)
         self.assertTrue(result["handlersCleared"])
         self.assertGreater(result["liveAudioAdds"], 0)
-        self.assertGreater(result["dialogCancelAdds"], 0)
         self.assertEqual(result["apiBefore"], result["apiAfter"])
         self.assertTrue(result["settingsClosed"])
 

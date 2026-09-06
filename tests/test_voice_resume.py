@@ -30,10 +30,10 @@ def run_voice_resume_harness() -> dict:
         }}
         function makeController(ctx) {{
           const dom = {{
-            announceBtn: node(), notificationBtn: node(), liveAudio: node(), voiceSettingsBackdrop: node(),
-            voiceSettingsCloseBtn: node(), voiceSettingsStatus: node(), voiceBaseUrlInput: node(),
+            announceBtn: node(), notificationBtn: node(), liveAudio: node(),
+            voiceSettingsStatus: node(), voiceBaseUrlInput: node(),
             voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
-            voiceSettingsViewer: node(), voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
+            voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
           }};
           return ctx.window.CodoxearVoice.createVoiceController({{
             ...dom,
@@ -68,7 +68,7 @@ def run_voice_resume_harness() -> dict:
               }};
               return {{}};
             }},
-            setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
+            setToast() {{}}, handleAppAuthLoss() {{}}, openSettings() {{}}, closeSettings() {{}},
             resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
             storageGetItem: (key) => storage.has(key) ? storage.get(key) : null,
             storageSetItem: (key, value) => storage.set(key, String(value)),

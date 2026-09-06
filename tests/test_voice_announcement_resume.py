@@ -66,10 +66,9 @@ def run_voice_announcement_resume_harness() -> dict:
           }});
           const dom = {{
             announceBtn: eventTarget(), notificationBtn: eventTarget(), liveAudio,
-            voiceSettingsBackdrop: eventTarget(), voiceSettingsCloseBtn: eventTarget(),
             voiceSettingsStatus: eventTarget(), voiceBaseUrlInput: eventTarget(),
             voiceApiKeyInput: eventTarget(), voiceClearApiKeyToggle: eventTarget(),
-            narrationSettingToggle: eventTarget(), voiceSettingsViewer: eventTarget(),
+            narrationSettingToggle: eventTarget(),
             voiceSettingsCancelBtn: eventTarget(), voiceSettingsSaveBtn: eventTarget(),
           }};
           const controller = ctx.window.CodoxearVoice.createVoiceController({{
@@ -107,7 +106,7 @@ def run_voice_announcement_resume_harness() -> dict:
               }});
               return Promise.resolve({{}});
             }},
-            setToast() {{}}, handleAppAuthLoss() {{}}, prepareModalOpen() {{}}, afterModalVisibilityChanged() {{}},
+            setToast() {{}}, handleAppAuthLoss() {{}}, openSettings() {{}}, closeSettings() {{}},
             resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
             storageGetItem: (key) => storage.has(key) ? storage.get(key) : null,
             storageSetItem: (key, value) => storage.set(key, String(value)),

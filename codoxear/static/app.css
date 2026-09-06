@@ -3387,21 +3387,25 @@ select {
         padding: 0 var(--space-4);
         font-size: var(--font-md);
       }
-      .settingsLinkRow {
+      /* One flat Settings dialog: Appearance and Voice & notifications are
+         sibling sections separated by a rule, each a stack of fields. */
+      .settingsSection {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--space-3);
-        width: 100%;
-        min-height: var(--ctl);
-        padding: var(--space-3) var(--space-4);
-        font-size: var(--font-md);
-        font-weight: 600;
-        text-align: left;
+        flex-direction: column;
+        gap: var(--dialog-group-gap, var(--space-4));
       }
-      .settingsLinkRow .icon {
-        flex: 0 0 auto;
-        color: var(--muted);
+      .settingsSection + .settingsSection {
+        border-top: 1px solid var(--hairline);
+        padding-top: var(--dialog-group-gap, var(--space-4));
+      }
+      .settingsSectionTitle {
+        margin: 0;
+        font-size: var(--font-lg);
+        font-weight: 600;
+        color: var(--text);
+      }
+      #voiceSettingsStatus:empty {
+        display: none;
       }
 
       .customSnoozeRow {

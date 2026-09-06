@@ -1,10 +1,11 @@
-"""Settings dialog: modal lifecycle, live appearance controls, voice hand-off.
+"""Settings dialog: modal lifecycle, live appearance controls, inline voice section.
 
 Executes app_settings.js against the real app_theme.js controller in Node's
 vm with a small DOM double, and asserts the dialog renders controller state
 (swatch/mode selection, custom CSS), forwards intent to the controller (family,
-mode, debounced custom CSS, reset), never closes on Escape, and hands off to
-the voice dialog.
+mode, debounced custom CSS, reset), never closes on Escape, mounts the voice
+section it is handed below Appearance, and reports its visibility to that
+section's owner (activate after show, deactivate before hide).
 """
 
 from frontend_module_loader import module_path
@@ -91,10 +92,15 @@ const timers = [];
 const root = new ElementStub("div");
 const opener = el("button", { id: "settingsBtnSide" });
 const voiceCalls = [];
+// The voice section is built by app_voice.js; here a stand-in carries the
+// same id and one text entry so mount order and lifecycle can be observed.
+const voiceSection = el("section", { class: "settingsSection", id: "voiceSettingsSection" }, [el("input", { id: "voiceBaseUrlInput", type: "text" })]);
 const controller = CodoxearSettings.createSettingsDialogController({
   root, el, iconSvg: (name) => `<svg data-icon="${name}"></svg>`,
   themeController, openButton: opener,
-  openVoiceSettings: () => voiceCalls.push("voice"),
+  voiceSection,
+  activateVoiceSection: () => { voiceCalls.push("activate"); calls.push("voice:activate"); },
+  deactivateVoiceSection: () => { voiceCalls.push("deactivate"); calls.push("voice:deactivate"); },
   documentTarget, ElementCtor: ElementStub,
   prepareModalOpen: () => calls.push("prepare"),
   afterModalVisibilityChanged: () => calls.push("visibility"),
@@ -146,20 +152,25 @@ def run(body: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_dialog_is_a_form_viewer_with_three_swatches_three_modes_and_voice_row() -> None:
+def test_dialog_is_a_form_viewer_with_appearance_then_voice_sections() -> None:
     data = run("""
     const buttons = viewer.findAll((n) => n.tagName === "BUTTON").map((n) => n.attrs.id || n.attrs["data-theme-family"] || n.attrs["data-theme-mode"]);
+    const body = viewer.find((n) => n.classList.contains("formBody"));
     return {
       className: viewer.className, label: viewer.attrs["aria-label"], title: viewer.find((n) => n.classList.contains("title")).textContent,
       buttons, mounted: root.children.map((n) => n.attrs.id), initial: selection(), hint: hint.textContent,
       swatchPreviews: viewer.findAll((n) => n.attrs["data-swatch-family"]).length,
+      sections: body.children.map((n) => [n.tagName, n.attrs.id, n.find((c) => c.classList.contains("settingsSectionTitle"))?.textContent || null]),
+      voiceMountedInBody: voiceSection.parentNode === body,
       frozen: Object.isFrozen(controller),
     };
     """)
     assert data["className"] == "formViewer formDialog"
     assert data["label"] == "Settings"
     assert data["title"] == "Settings"
-    assert data["buttons"] == ["settingsCloseBtn", "paper", "clay", "slate", "system", "light", "dark", "settingsResetAppearanceBtn", "settingsVoiceBtn"]
+    assert data["buttons"] == ["settingsCloseBtn", "paper", "clay", "slate", "system", "light", "dark", "settingsResetAppearanceBtn"]
+    assert data["sections"] == [["SECTION", "appearanceSettingsSection", "Appearance"], ["SECTION", "voiceSettingsSection", None]]
+    assert data["voiceMountedInBody"] is True
     assert data["mounted"] == ["settingsBackdrop", "settingsViewer"]
     assert data["initial"] == {"family": ["paper"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}
     assert data["hint"] == "Follows the system setting (currently light)."
@@ -176,7 +187,9 @@ def test_open_button_shows_modal_and_close_restores_focus() -> None:
     """)
     assert data["openSnapshot"] == {"open": True, "backdrop": "block", "viewer": "flex", "native": True}
     assert data["closed"] is False
-    assert data["calls"] == ["prepare", "showModal", "visibility", "focus:settingsCloseBtn", "close", "visibility", "restore:false", "focus:settingsBtnSide"]
+    # The voice section is activated only once the modal is visible and
+    # focused, and deactivated before the dialog starts hiding.
+    assert data["calls"] == ["prepare", "showModal", "visibility", "focus:settingsCloseBtn", "voice:activate", "voice:deactivate", "close", "visibility", "restore:false", "focus:settingsBtnSide"]
 
 
 def test_escape_cancel_is_swallowed_and_backdrop_click_closes() -> None:
@@ -248,15 +261,17 @@ def test_reset_restores_paper_system_and_clears_the_textarea() -> None:
     assert data["state"]["customCss"] == ""
 
 
-def test_voice_row_closes_settings_then_opens_the_voice_dialog() -> None:
+def test_voice_section_lifecycle_follows_every_show_and_hide_path() -> None:
     data = run("""
     controller.show();
-    viewer.find((n) => n.attrs.id === "settingsVoiceBtn").emit("click");
-    return { open: controller.isOpen(), voiceCalls, order: calls.slice(-3) };
+    viewer.emit("click", { target: viewer });  // backdrop-equivalent click closes
+    controller.show();
+    controller.hide();  // programmatic close (voice Save/Cancel path)
+    return { voiceCalls, open: controller.isOpen(), voiceStillMounted: voiceSection.parentNode !== null };
     """)
+    assert data["voiceCalls"] == ["activate", "deactivate", "activate", "deactivate"]
     assert data["open"] is False
-    assert data["voiceCalls"] == ["voice"]
-    assert data["order"] == ["close", "visibility", "restore:false"]
+    assert data["voiceStillMounted"] is True
 
 
 def test_dispose_stops_rendering_controller_changes() -> None:

@@ -137,10 +137,10 @@ sessionState.set("selected", selected);
               await fileReferences.openReference({ path: "not-a-file-reference", literal: false });
 
               const voiceNodes = {
-                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), notificationEnableBtn: node("notificationEnableBtn"), liveAudio: node("liveAudio"), voiceSettingsBackdrop: node("voiceSettingsBackdrop"),
-                voiceSettingsCloseBtn: node("voiceSettingsCloseBtn"), voiceSettingsStatus: node("voiceSettingsStatus"), voiceBaseUrlInput: node("voiceBaseUrlInput"),
+                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), notificationEnableBtn: node("notificationEnableBtn"), liveAudio: node("liveAudio"),
+                voiceSettingsStatus: node("voiceSettingsStatus"), voiceBaseUrlInput: node("voiceBaseUrlInput"),
                 voiceApiKeyInput: node("voiceApiKeyInput"), voiceClearApiKeyToggle: node("voiceClearApiKeyToggle"), narrationSettingToggle: node("narrationSettingToggle"),
-                voiceSettingsViewer: node("voiceSettingsViewer"), voiceSettingsCancelBtn: node("voiceSettingsCancelBtn"), voiceSettingsSaveBtn: node("voiceSettingsSaveBtn"),
+                voiceSettingsCancelBtn: node("voiceSettingsCancelBtn"), voiceSettingsSaveBtn: node("voiceSettingsSaveBtn"),
               };
               const voiceController = ctx.window.CodoxearVoice.createVoiceController(Object.assign(voiceNodes, {
                 notificationOptions: {
@@ -155,7 +155,7 @@ sessionState.set("selected", selected);
                   Notification: undefined, clearTimeout() {},
                 },
             eventBindings: { on(target, type, handler) { target[`on${type}`] = handler; return handler; } },
-            isAppDisposed: () => false, api: async () => ({}), setToast: notify("voice"), handleAppAuthLoss: () => {}, prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
+            isAppDisposed: () => false, api: async () => ({}), setToast: notify("voice"), handleAppAuthLoss: () => {}, openSettings: () => {}, closeSettings: () => {},
                 resolveAppUrl: (value) => value, versionedShellAssetPath: (value) => value, storageGetItem: () => null, storageSetItem: () => {}, storageRemoveItem: () => {},
                 windowTarget: { isSecureContext: false }, navigatorTarget: { userAgent: "X11 Linux x86_64" }, documentTarget: { activeElement: null, contains: () => true },
                 Notification: undefined, requestFrame: (fn) => fn(), setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},

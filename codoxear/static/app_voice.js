@@ -1,4 +1,3 @@
-import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearNotifications from "./app_notifications.js";
 import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
@@ -8,6 +7,12 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 // app_notifications.js. This controller coordinates the shared
 // /api/settings/voice response by passing only its notification slice through
 // the notification runtime's narrow interface.
+//
+// The voice settings form is an inline section of the Settings dialog
+// (app_settings.js). This module owns the section's nodes, rendering, and
+// save flow; the dialog owns modal visibility and calls
+// activateSettingsSection()/deactivateSettingsSection() on show/hide, while
+// this controller asks the dialog to open/close through injected functions.
 
 
 
@@ -15,8 +20,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
   const browserSupportsMseLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback;
   const shouldPreferNativeLiveAudioPlayback = CodoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback;
   const browserSupportsLiveAudioPlayback = CodoxearVoiceHelpers.browserSupportsLiveAudioPlayback;
-  const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
-  const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   const LIVE_AUDIO_WATCHDOG_MS = 2500;
   const LIVE_AUDIO_STALL_GRACE_MS = 12000;
@@ -47,15 +50,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
     const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
     liveAudio.style.display = "none";
-    const voiceSettingsBackdrop = el("div", { class: "modalBackdrop", id: "voiceSettingsBackdrop" });
-    const voiceSettingsCloseBtn = el("button", {
-      id: "voiceSettingsCloseBtn",
-      class: "icon-btn",
-      title: "Close",
-      "aria-label": "Close",
-      type: "button",
-      html: iconSvg("x"),
-    });
     const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
     const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
     const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
@@ -70,46 +64,40 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
     const voiceSettingsCancelBtn = el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" });
     const voiceSettingsSaveBtn = el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" });
-    const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
-      el("div", { class: "queueHeader" }, [
-        el("div", { class: "title", text: "Settings" }),
-        el("div", { class: "actions" }, [voiceSettingsCloseBtn]),
-      ]),
+    // The section is mounted inside the Settings dialog body by
+    // app_settings.js; it is not appended to the root here.
+    const voiceSettingsSection = el("section", { class: "settingsSection", id: "voiceSettingsSection", "aria-labelledby": "voiceSettingsHeading" }, [
+      el("h3", { class: "settingsSectionTitle", id: "voiceSettingsHeading", text: "Voice & notifications" }),
       voiceSettingsStatus,
-      el("div", { class: "formBody" }, [
-        el("label", { class: "field" }, [
-          el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
-          voiceBaseUrlInput,
-          el("span", { class: "fieldHint", text: "Used for both summarization and speech." }),
-        ]),
-        el("label", { class: "field" }, [
-          el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
-          voiceApiKeyInput,
-          el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
-        ]),
-        el("div", { class: "field" }, [
-          el("label", { class: "voiceToggleRow" }, [voiceClearApiKeyToggle, el("span", { text: "Clear saved API key" })]),
-        ]),
-        el("div", { class: "field" }, [
-          el("label", { class: "voiceToggleRow" }, [narrationSettingToggle, el("span", { text: "Announce narration messages" })]),
-        ]),
-        el("div", { class: "field" }, [
-          el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
-          unattendedPromptInput,
-          el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
-          unattendedPromptResetBtn,
-        ]),
+      el("label", { class: "field" }, [
+        el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
+        voiceBaseUrlInput,
+        el("span", { class: "fieldHint", text: "Used for both summarization and speech." }),
+      ]),
+      el("label", { class: "field" }, [
+        el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
+        voiceApiKeyInput,
+        el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
+      ]),
+      el("div", { class: "field" }, [
+        el("label", { class: "voiceToggleRow" }, [voiceClearApiKeyToggle, el("span", { text: "Clear saved API key" })]),
+      ]),
+      el("div", { class: "field" }, [
+        el("label", { class: "voiceToggleRow" }, [narrationSettingToggle, el("span", { text: "Announce narration messages" })]),
+      ]),
+      el("div", { class: "field" }, [
+        el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
+        unattendedPromptInput,
+        el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
+        unattendedPromptResetBtn,
       ]),
       el("div", { class: "formActions" }, [voiceSettingsCancelBtn, voiceSettingsSaveBtn]),
     ]);
     root.appendChild(liveAudio);
-    root.appendChild(voiceSettingsBackdrop);
-    root.appendChild(voiceSettingsViewer);
     return Object.freeze({
       announceBtn,
       liveAudio,
-      voiceSettingsBackdrop,
-      voiceSettingsCloseBtn,
+      voiceSettingsSection,
       voiceSettingsStatus,
       voiceBaseUrlInput,
       voiceApiKeyInput,
@@ -117,7 +105,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       narrationSettingToggle,
       unattendedPromptInput,
       unattendedPromptResetBtn,
-      voiceSettingsViewer,
       voiceSettingsCancelBtn,
       voiceSettingsSaveBtn,
     });
@@ -126,11 +113,9 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
   function createVoiceController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("voice controller dependency missing: options");
 
-    // DOM nodes (created and owned by app.js).
+    // DOM nodes (created by createVoiceDom; the section lives in the Settings dialog).
     const announceBtn = requireNode(options.announceBtn, "announceBtn");
     const liveAudio = requireNode(options.liveAudio, "liveAudio");
-    const voiceSettingsBackdrop = requireNode(options.voiceSettingsBackdrop, "voiceSettingsBackdrop");
-    const voiceSettingsCloseBtn = requireNode(options.voiceSettingsCloseBtn, "voiceSettingsCloseBtn");
     const voiceSettingsStatus = requireNode(options.voiceSettingsStatus, "voiceSettingsStatus");
     const voiceBaseUrlInput = requireNode(options.voiceBaseUrlInput, "voiceBaseUrlInput");
     const voiceApiKeyInput = requireNode(options.voiceApiKeyInput, "voiceApiKeyInput");
@@ -138,7 +123,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const narrationSettingToggle = requireNode(options.narrationSettingToggle, "narrationSettingToggle");
     const unattendedPromptInput = options.unattendedPromptInput ? requireNode(options.unattendedPromptInput, "unattendedPromptInput") : null;
     const unattendedPromptResetBtn = options.unattendedPromptResetBtn ? requireNode(options.unattendedPromptResetBtn, "unattendedPromptResetBtn") : null;
-    const voiceSettingsViewer = requireNode(options.voiceSettingsViewer, "voiceSettingsViewer");
     const voiceSettingsCancelBtn = requireNode(options.voiceSettingsCancelBtn, "voiceSettingsCancelBtn");
     const voiceSettingsSaveBtn = requireNode(options.voiceSettingsSaveBtn, "voiceSettingsSaveBtn");
 
@@ -147,8 +131,9 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
     const handleAppAuthLoss = requireFunction(options.handleAppAuthLoss, "handleAppAuthLoss");
-    const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
-    const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
+    // Settings dialog visibility is owned by app_settings.js.
+    const openSettings = requireFunction(options.openSettings, "openSettings");
+    const closeSettings = requireFunction(options.closeSettings, "closeSettings");
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
@@ -164,7 +149,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const navigatorTarget = options.navigatorTarget || (typeof navigator !== "undefined" ? navigator : null);
     const documentTarget = options.documentTarget || document;
     const cryptoRef = typeof options.crypto !== "undefined" ? options.crypto : (typeof windowTarget.crypto !== "undefined" ? windowTarget.crypto : undefined);
-    const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (typeof requestAnimationFrame === "function" ? requestAnimationFrame : null);
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
     const clearTimeoutFn = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
     const setIntervalFn = typeof options.setInterval === "function" ? options.setInterval : setInterval;
@@ -207,11 +191,10 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     let liveAudioLastCurrentTime = 0;
     let liveAudioSuspectSinceTs = 0;
     let liveAudioLastRestartTs = 0;
-    // Canonical voice-settings dialog open flag. The controller owns this; the
-    // <dialog>.open / style state is a fallback only, so callers must not rely
-    // on style.display alone to decide whether the dialog is open.
+    // Canonical "voice section is being edited" flag: true between the Settings
+    // dialog's activate and deactivate calls. While set, background snapshots
+    // must not overwrite the user's draft in the form.
     let settingsOpen = false;
-    let voiceSettingsReturnFocusEl = null;
 
     const eventBindings = options.eventBindings;
     if (!eventBindings || typeof eventBindings.on !== "function") {
@@ -224,9 +207,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
 
     function isSettingsOpen() {
-      if (settingsOpen) return true;
-      if (voiceSettingsViewer && voiceSettingsViewer.open) return true;
-      return false;
+      return settingsOpen;
     }
 
     function currentVoiceStreamUrl() {
@@ -654,11 +635,9 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       return message || "unknown error";
     }
 
-    function showVoiceSettingsDialog() {
-      prepareModalOpen();
-      voiceSettingsReturnFocusEl = documentTarget.activeElement instanceof HTMLElement ? documentTarget.activeElement : null;
-      voiceSettingsBackdrop.style.display = "block";
-      voiceSettingsViewer.style.display = "flex";
+    // Called by the Settings dialog when it becomes visible: seed the form
+    // from the last snapshot and fetch the unattended prompt.
+    function activateSettingsSection() {
       settingsOpen = true;
       updateVoiceUi();
       syncVoiceSettingsFormFromState();
@@ -668,24 +647,13 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         console.error("load unattended prompt failed", e);
         voiceSettingsStatus.textContent = `unattended prompt error: ${e && e.message ? e.message : "unknown error"}`;
       });
-      if (typeof voiceSettingsViewer.showModal === "function" && !voiceSettingsViewer.open) voiceSettingsViewer.showModal();
-      afterModalVisibilityChanged();
     }
 
-    function hideVoiceSettingsDialog() {
-      const wasOpen = isModalTargetOpen(voiceSettingsViewer) || settingsOpen;
-      const focusTarget = voiceSettingsReturnFocusEl;
-      voiceSettingsReturnFocusEl = null;
-      voiceSettingsBackdrop.style.display = "none";
-      voiceSettingsViewer.style.display = "none";
+    // Called by the Settings dialog when it hides: unsaved edits are dropped
+    // and the next activation re-seeds the form from state.
+    function deactivateSettingsSection() {
       voiceSettingsStatus.textContent = "";
       settingsOpen = false;
-      if (typeof voiceSettingsViewer.close === "function" && voiceSettingsViewer.open) voiceSettingsViewer.close();
-      afterModalVisibilityChanged();
-      if (wasOpen && focusTarget && documentTarget.contains(focusTarget) && typeof focusTarget.focus === "function") {
-        const restore = () => isModalTargetOpen(voiceSettingsViewer) || settingsOpen;
-        restoreModalFocus(focusTarget, restore, requestFrame);
-      }
     }
 
     // --- Event handler wiring (owned by this controller) ---
@@ -695,8 +663,8 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       e.stopPropagation();
       const next = !voiceAnnouncementsEnabled();
       if (next && !hasAnnouncementCredentials()) {
+        openSettings();
         voiceSettingsStatus.textContent = "Set the OpenAI-compatible API base URL and API key before enabling announcements.";
-        showVoiceSettingsDialog();
         return;
       }
       setAnnouncementEnabled(next);
@@ -756,13 +724,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         if (unattendedPromptInput) unattendedPromptInput.value = unattendedPrompt.default_prompt;
       };
     }
-    voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
-    voiceSettingsCancelBtn.onclick = hideVoiceSettingsDialog;
-    voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
-    eventBindings.on(voiceSettingsViewer, "cancel", (e) => {
-      e.preventDefault();
-      hideVoiceSettingsDialog();
-    });
+    voiceSettingsCancelBtn.onclick = () => closeSettings();
     // The controller owns the browser's voice runtime. Restoring a visible tab
     // reasserts the listener and restarts a paused announcement stream even if
     // the session/SSE layer has not yet selected or refreshed a conversation.
@@ -777,7 +739,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         await saveUnattendedPrompt();
         await notificationRuntime.syncState(notificationSnapshot(voiceSettings));
         voiceSettingsStatus.textContent = "";
-        hideVoiceSettingsDialog();
+        closeSettings();
       } catch (e) {
         console.error("save voice settings failed", e);
         voiceSettingsStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
@@ -794,13 +756,10 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       resetLiveAudioState();
       notificationRuntime.dispose();
       settingsOpen = false;
-      voiceSettingsReturnFocusEl = null;
       announceBtn.onclick = null;
       narrationSettingToggle.onchange = null;
       if (unattendedPromptResetBtn) unattendedPromptResetBtn.onclick = null;
-      voiceSettingsCloseBtn.onclick = null;
       voiceSettingsCancelBtn.onclick = null;
-      voiceSettingsBackdrop.onclick = null;
       voiceSettingsSaveBtn.onclick = null;
       liveAudioErrorState = false;
     }
@@ -816,8 +775,8 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       loadVoiceSettings,
       refreshBackgroundState,
       resumeAnnouncementRuntime,
-      showVoiceSettingsDialog,
-      hideVoiceSettingsDialog,
+      activateSettingsSection,
+      deactivateSettingsSection,
       updateVoiceUi,
       dispose,
     });

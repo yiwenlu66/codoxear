@@ -398,7 +398,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
       filePasteBackdrop, filePasteDialog, filePasteInput, fileEditBtn, fileVimModeChip, chatInner,
       codeBlockCopyRuntime, appConfirm, appConfirmFocusableControls, resolveAppConfirm,
       sendChoice, closeSendChoiceDialog, queueViewer, hideQueueViewer, helpViewer,
-      hideHelpViewer, diagViewer, hideDiagViewer, voiceController, hideVoiceSettingsDialog
+      hideHelpViewer, diagViewer, hideDiagViewer
     } = options;
     requireObject(wiring, "wiring");
     requireObject(codoxearFilePicker, "codoxearFilePicker");
