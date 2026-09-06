@@ -70,6 +70,7 @@
         --text-error: #7f1d1d;
         --text-warning: #92400e;
         --state-pending: #f59e0b;
+        --on-accent: var(--paper);
         --state-amber-border: #face85;
         --focus-danger: #cd5c5c;
         --ink-hover: #2a2624;
@@ -2123,54 +2124,6 @@ select {
         flex: 1 1 auto;
         min-width: 0;
       }
-      .voiceToggleRow {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-3);
-        margin-bottom: var(--space-3);
-      }
-      .voiceToggleRow::after {
-        content: "";
-        position: absolute;
-        left: -13px;
-        top: 50%;
-        width: var(--ctl);
-        height: var(--ctl);
-        transform: translateY(-50%);
-      }
-      .voiceToggleRow input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 18px;
-        height: 18px;
-        margin: 0;
-        flex: 0 0 18px;
-        border: 1px solid var(--ink);
-        border-radius: var(--radius-control);
-        background: var(--paper);
-        display: grid;
-        place-content: center;
-        cursor: pointer;
-      }
-      .voiceToggleRow input[type="checkbox"]::after {
-        content: "✓";
-        color: var(--paper);
-        font-size: var(--font-lg);
-        font-weight: 700;
-        line-height: 1;
-        transform: scale(0);
-      }
-      .voiceToggleRow input[type="checkbox"]:checked {
-        background: var(--ink);
-      }
-      .voiceToggleRow input[type="checkbox"]:checked::after {
-        transform: scale(1);
-      }
-      .voiceToggleRow input[type="checkbox"]:focus-visible {
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 2px;
-      }
       .voiceStatusText {
         margin: var(--space-1) 0 var(--space-4) 0;
         line-height: 1.4;
@@ -2986,11 +2939,13 @@ select {
       .checkField input[type="checkbox"] {
         appearance: none;
         -webkit-appearance: none;
-        width: 18px;
-        height: 18px;
+        /* 16px pairs with the --font-md label plane; the 44px target stays in
+           the ::after lane (hit area is not visual size). */
+        width: 16px;
+        height: 16px;
         margin: 0;
-        flex: 0 0 18px;
-        border: 1px solid var(--ink);
+        flex: 0 0 16px;
+        border: 1px solid var(--border);
         border-radius: var(--radius-control);
         background: var(--paper);
         display: grid;
@@ -2998,15 +2953,20 @@ select {
         cursor: pointer;
       }
       .checkField input[type="checkbox"]::after {
-        content: "✓";
-        color: var(--paper);
-        font-size: var(--font-lg);
-        font-weight: 700;
-        line-height: 1;
+        /* The check glyph is an SVG mask, never a text "✓": text glyphs are
+           font-dependent and sit differently on every platform. */
+        content: "";
+        width: 10px;
+        height: 10px;
+        background: currentColor;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.4 5 8.9 9.6 3.4' fill='none' stroke='black' stroke-width='1.8'/%3E%3C/svg%3E") center / contain no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.4 5 8.9 9.6 3.4' fill='none' stroke='black' stroke-width='1.8'/%3E%3C/svg%3E") center / contain no-repeat;
         transform: scale(0);
       }
       .checkField input[type="checkbox"]:checked {
-        background: var(--ink);
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
       }
       .checkField input[type="checkbox"]:checked::after {
         transform: scale(1);

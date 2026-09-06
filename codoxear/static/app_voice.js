@@ -80,10 +80,10 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
         el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
       ]),
       el("div", { class: "field" }, [
-        el("label", { class: "voiceToggleRow" }, [voiceClearApiKeyToggle, el("span", { text: "Clear saved API key" })]),
+        el("label", { class: "checkField" }, [voiceClearApiKeyToggle, el("span", { text: "Clear saved API key" })]),
       ]),
       el("div", { class: "field" }, [
-        el("label", { class: "voiceToggleRow" }, [narrationSettingToggle, el("span", { text: "Announce narration messages" })]),
+        el("label", { class: "checkField" }, [narrationSettingToggle, el("span", { text: "Announce narration messages" })]),
       ]),
       el("div", { class: "field" }, [
         el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
