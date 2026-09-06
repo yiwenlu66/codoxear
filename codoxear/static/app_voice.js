@@ -57,11 +57,11 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
     const unattendedPromptInput = el("textarea", {
       id: "unattendedPromptInput",
-      rows: "14",
+      rows: "6",
       spellcheck: "true",
       "aria-describedby": "unattendedPromptHint",
     });
-    const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
+    const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to built-in prompt" });
     const voiceSettingsCancelBtn = el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" });
     const voiceSettingsSaveBtn = el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" });
     // The section is mounted inside the Settings dialog body by
@@ -88,7 +88,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       el("div", { class: "field" }, [
         el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
         unattendedPromptInput,
-        el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
+        el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session." }),
         unattendedPromptResetBtn,
       ]),
       el("div", { class: "formActions" }, [voiceSettingsCancelBtn, voiceSettingsSaveBtn]),

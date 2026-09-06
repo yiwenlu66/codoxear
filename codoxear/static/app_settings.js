@@ -103,7 +103,7 @@ function createSettingsDialogController(options = {}) {
   const customCssInput = el("textarea", {
     id: "settingsCustomCss",
     class: "customCssInput",
-    rows: "6",
+    rows: "4",
     spellcheck: "false",
     autocomplete: "off",
     autocapitalize: "off",

@@ -3387,7 +3387,11 @@ select {
       .settingsResetRow {
         align-items: flex-start;
       }
-      .settingsResetRow .text-btn {
+      /* Section-scoped resets are quiet secondary actions, never stretched
+         full-width boxes: a .field is flex-column and stretch is the default,
+         so every reset text-btn in a settings section snaps to content width. */
+      .settingsSection .field > .text-btn {
+        align-self: flex-start;
         height: var(--ctl-chrome);
         min-height: var(--ctl-chrome);
         padding: 0 var(--space-4);
