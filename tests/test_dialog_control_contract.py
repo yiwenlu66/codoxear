@@ -59,6 +59,15 @@ def test_dialog_header_chrome_is_borderless_on_every_surface() -> None:
     assert decls["border"] == "0"
 
 
+def test_programmatic_focus_targets_never_show_a_focus_indicator() -> None:
+    # Modal surfaces are focused on open (focusModalSurface) and carry
+    # tabindex="-1": unreachable by keyboard, so the UA default ring (system
+    # blue in Safari) must be suppressed — focus indicators belong to
+    # keyboard-reachable controls only.
+    decls = rule_declarations(app_rules(), '[tabindex="-1"]:focus')
+    assert decls["outline"] == "none"
+
+
 def test_no_per_dialog_close_button_rescue_selectors() -> None:
     selectors = [selector_text(rule) for rule in app_rules()]
     rescues = [sel for sel in selectors if any(fragment in sel for fragment in CLOSE_BUTTON_IDS)]

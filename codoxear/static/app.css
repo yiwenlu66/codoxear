@@ -1088,6 +1088,14 @@
         outline: 2px solid var(--focus-ring);
         outline-offset: 1px;
       }
+      /* tabindex="-1" marks focus-management targets (modal surfaces focused
+         on open, hover-revealed copy buttons). They are unreachable by
+         keyboard by definition, so no focus indicator belongs on them — and
+         without this, the UA paints its own default ring (system blue in
+         Safari) on the focused dialog surface. */
+      [tabindex="-1"]:focus {
+        outline: none;
+      }
       /* The composer band is the input surface; focus there is self-evident
          (keyboard opens, cursor blinks) and a 2px ink outline reads as a
          heavy box floating inside the band. */
