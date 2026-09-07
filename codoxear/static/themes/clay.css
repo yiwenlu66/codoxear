@@ -1,11 +1,12 @@
 /* Clay theme.
-   Warm editorial language. Light: cream paper, terracotta accent, serif
-   headings, generous radius. Dark: warm umber night, accent lifted.
+   Warm editorial language. Light: cream paper, terracotta accent,
+   generous radius. Dark: warm umber night, accent lifted.
 
    Geometry, type, focus, and elevation are token assignments; the component
    rules below are only the structural differences a token cannot express
-   (hairline chrome, accent primaries, the composer pill, serif heading
-   weight). See themes/paper.css for the theme file contract. */
+   (hairline chrome, accent primaries, the composer pill). Typeface is not a
+   family language: every theme renders through the base (paper) font tokens
+   in app.css. See themes/paper.css for the theme file contract. */
 :root[data-theme="clay"] {
   --ink: #35302a;
   --paper: #fffdf9;
@@ -24,8 +25,6 @@
   --accent-weak: #f3e3da;
   --on-accent: #fffdf9;
   --danger: #b3402e;
-  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-prose: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
   --radius-control: 6px;
   --radius-card: 12px;
   --radius-bubble: 18px;
@@ -227,9 +226,6 @@
   padding: var(--space-2) var(--space-4);
 }
 
-:where(:root[data-theme="clay"]) .md h1,
-:where(:root[data-theme="clay"]) .md h2,
-:where(:root[data-theme="clay"]) .md h3 { font-weight: 600; letter-spacing: 0.01em; }
 :where(:root[data-theme="clay"]) .md pre { background: var(--surface-code); }
 :where(:root[data-theme="clay"]) .md table { border-color: var(--border-subtle); }
 :where(:root[data-theme="clay"]) .code-copy-btn { border-color: var(--border); }

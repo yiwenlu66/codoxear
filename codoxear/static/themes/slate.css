@@ -5,8 +5,9 @@
 
    Geometry, type, focus, and elevation are token assignments; the component
    rules below are the structural differences a token cannot express (ghost
-   buttons, borderless rows, flat assistant messages, the composer pill). See
-   themes/paper.css for the theme file contract. */
+   buttons, borderless rows, flat assistant messages, the composer pill).
+   Typeface is family-invariant: fonts live in app.css base only and are not
+   retuned per family. See themes/paper.css for the theme file contract. */
 :root[data-theme="slate"] {
   --ink: #0d0d0d;
   --paper: #ffffff;
@@ -20,7 +21,6 @@
   --accent: #0d0d0d;
   --accent-weak: #ececec;
   --danger: #d92d20;
-  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius-control: 8px;
   --radius-card: 12px;
   --radius-bubble: 18px;

@@ -141,3 +141,15 @@ def test_family_stylesheets_retune_geometry_through_tokens_only() -> None:
             if radius and "var(" not in radius:
                 literal_selectors.add(selector_text(rule).replace(f':where(:root[data-theme="{family}"]) ', ""))
         assert literal_selectors == allowed_literal_radius[family]
+
+
+def test_family_stylesheets_never_retune_typeface() -> None:
+    # Typeface is family-invariant: fonts are declared once in app.css base
+    # (--font-ui: sans-serif; --font-prose: var(--font-ui)), and a family file
+    # must not redeclare font tokens or set its own font-family anywhere.
+    for family in ("paper", "clay", "slate"):
+        rules = parse_stylesheet(THEMES_DIR / f"{family}.css")
+        for rule in all_rules(rules):
+            for name, value in declarations(rule).items():
+                assert not name.startswith("--font-"), f"{family} redeclares {name} (typeface is family-invariant)"
+                assert name != "font-family", f"{family} sets font-family on {selector_text(rule)} (typeface is family-invariant)"
