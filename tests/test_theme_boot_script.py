@@ -126,7 +126,7 @@ def test_boot_resolves_system_mode_before_choosing_the_color(system_dark: bool, 
     assert data["meta"] == data["table"]["slate"][expected_mode]
 
 
-def test_boot_defaults_unknown_storage_to_paper() -> None:
+def test_boot_defaults_unknown_storage_to_clay() -> None:
     data = run_boot("neon", "sepia", system_dark=False)
-    assert data["attrs"] == {"data-theme": "paper", "data-mode": "light"}
-    assert data["meta"] == data["table"]["paper"]["light"]
+    assert data["attrs"] == {"data-theme": "clay", "data-mode": "light"}
+    assert data["meta"] == data["table"]["clay"]["light"]

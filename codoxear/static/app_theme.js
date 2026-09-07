@@ -9,9 +9,9 @@
 // Cascade: app.css (base = paper light) -> themes/<family>.css -> custom
 // <style>, so the theme link is always inserted before the custom style.
 
-const FAMILIES = Object.freeze(["paper", "clay", "slate"]);
+const FAMILIES = Object.freeze(["clay", "slate", "paper"]);
 const MODES = Object.freeze(["system", "light", "dark"]);
-const DEFAULT_FAMILY = "paper";
+const DEFAULT_FAMILY = "clay";
 const DEFAULT_MODE = "system";
 const STORAGE_KEYS = Object.freeze({
   family: "codoxear.ui.theme.family",

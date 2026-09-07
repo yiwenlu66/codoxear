@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#faf7f0" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
     <title>Codoxear</title>
     <script>
@@ -174,7 +174,7 @@
           }
         };
         var family = String(read("codoxear.ui.theme.family") || "").toLowerCase();
-        if (family !== "clay" && family !== "slate") family = "paper";
+        if (family !== "paper" && family !== "slate") family = "clay";
         var mode = String(read("codoxear.ui.theme.mode") || "").toLowerCase();
         if (mode !== "light" && mode !== "dark") {
           var dark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;

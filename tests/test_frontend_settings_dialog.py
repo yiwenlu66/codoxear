@@ -118,10 +118,10 @@ const swatches = viewer.find((n) => n.classList.contains("themeSwatches"));
 const textarea = viewer.find((n) => n.attrs.id === "settingsCustomCss");
 const hint = viewer.find((n) => n.attrs.id === "settingsModeHint");
 const selection = () => ({
-  family: ["paper", "clay", "slate"].filter((f) => family(f).classList.contains("active")),
+  family: ["clay", "slate", "paper"].filter((f) => family(f).classList.contains("active")),
   mode: ["system", "light", "dark"].filter((m) => mode(m).classList.contains("active")),
   swatchMode: swatches.attrs["data-swatch-mode"],
-  checked: ["paper", "clay", "slate"].map((f) => family(f).attrs["aria-checked"]).join(""),
+  checked: ["clay", "slate", "paper"].map((f) => family(f).attrs["aria-checked"]).join(""),
 });
 function runTimers() { while (timers.length) { const t = timers.shift(); t.fn(); } }
 """
@@ -169,12 +169,13 @@ def test_dialog_is_a_form_viewer_with_appearance_then_voice_sections() -> None:
     assert data["label"] == "Settings"
     assert data["title"] == "Settings"
     # Appearance is reversible through the swatches, mode chips, and clearing
-    # the CSS field; there is no dedicated reset control.
-    assert data["buttons"] == ["settingsCloseBtn", "paper", "clay", "slate", "system", "light", "dark"]
+    # the CSS field; there is no dedicated reset control. The swatch row order
+    # is clay (default), slate, paper.
+    assert data["buttons"] == ["settingsCloseBtn", "clay", "slate", "paper", "system", "light", "dark"]
     assert data["sections"] == [["SECTION", "appearanceSettingsSection", "Appearance"], ["SECTION", "voiceSettingsSection", None]]
     assert data["voiceMountedInBody"] is True
     assert data["mounted"] == ["settingsBackdrop", "settingsViewer"]
-    assert data["initial"] == {"family": ["paper"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}
+    assert data["initial"] == {"family": ["clay"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}
     assert data["hint"] == "Follows the system setting (currently light)."
     assert data["swatchPreviews"] == 3
     assert data["frozen"] is True
@@ -218,9 +219,9 @@ def test_swatch_and_mode_buttons_apply_live_and_render_selection() -> None:
     const afterSystem = { ...selection(), attrs: { ...html.attrs }, hint: hint.textContent };
     return { afterFamily, afterMode, afterSystem };
     """)
-    assert data["afterFamily"] == {"family": ["slate"], "mode": ["system"], "swatchMode": "light", "checked": "falsefalsetrue", "attrs": {"data-theme": "slate", "data-mode": "light"}, "hint": "Follows the system setting (currently light)."}
-    assert data["afterMode"] == {"family": ["slate"], "mode": ["dark"], "swatchMode": "dark", "checked": "falsefalsetrue", "attrs": {"data-theme": "slate", "data-mode": "dark"}, "hint": "Always dark.", "storage": {"codoxear.ui.theme.family": "slate", "codoxear.ui.theme.mode": "dark"}}
-    assert data["afterSystem"] == {"family": ["slate"], "mode": ["system"], "swatchMode": "dark", "checked": "falsefalsetrue", "attrs": {"data-theme": "slate", "data-mode": "dark"}, "hint": "Follows the system setting (currently dark)."}
+    assert data["afterFamily"] == {"family": ["slate"], "mode": ["system"], "swatchMode": "light", "checked": "falsetruefalse", "attrs": {"data-theme": "slate", "data-mode": "light"}, "hint": "Follows the system setting (currently light)."}
+    assert data["afterMode"] == {"family": ["slate"], "mode": ["dark"], "swatchMode": "dark", "checked": "falsetruefalse", "attrs": {"data-theme": "slate", "data-mode": "dark"}, "hint": "Always dark.", "storage": {"codoxear.ui.theme.family": "slate", "codoxear.ui.theme.mode": "dark"}}
+    assert data["afterSystem"] == {"family": ["slate"], "mode": ["system"], "swatchMode": "dark", "checked": "falsetruefalse", "attrs": {"data-theme": "slate", "data-mode": "dark"}, "hint": "Follows the system setting (currently dark)."}
 
 
 def test_custom_css_is_debounced_then_applied_and_flushed_on_close() -> None:
@@ -248,21 +249,21 @@ def test_custom_css_is_debounced_then_applied_and_flushed_on_close() -> None:
 def test_appearance_returns_to_defaults_through_the_same_controls() -> None:
     data = run("""
     controller.show();
-    family("clay").emit("click");
+    family("slate").emit("click");
     mode("light").emit("click");
     textarea.value = "a {}";
     textarea.emit("input");
     runTimers();
-    family("paper").emit("click");
+    family("clay").emit("click");
     mode("system").emit("click");
     textarea.value = "";
     textarea.emit("input");
     runTimers();
     return { selection: selection(), textarea: textarea.value, attrs: { ...html.attrs }, storage: { ...storage }, state: themeController.get() };
     """)
-    assert data["selection"] == {"family": ["paper"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}
+    assert data["selection"] == {"family": ["clay"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}
     assert data["textarea"] == ""
-    assert data["attrs"] == {"data-theme": "paper", "data-mode": "light"}
+    assert data["attrs"] == {"data-theme": "clay", "data-mode": "light"}
     assert data["storage"] == {}
     assert data["state"]["customCss"] == ""
 
@@ -283,7 +284,7 @@ def test_voice_section_lifecycle_follows_every_show_and_hide_path() -> None:
 def test_dispose_stops_rendering_controller_changes() -> None:
     data = run("""
     controller.dispose();
-    themeController.applyTheme({ family: "clay" });
+    themeController.applyTheme({ family: "slate" });
     return selection();
     """)
-    assert data["family"] == ["paper"]
+    assert data["family"] == ["clay"]

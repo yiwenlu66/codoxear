@@ -130,13 +130,13 @@ def make_controller_snippet(storage_initial: str = "{}", dark: str = "false") ->
     """
 
 
-def test_defaults_render_paper_following_a_light_system() -> None:
+def test_defaults_render_clay_following_a_light_system() -> None:
     data = run(make_controller_snippet() + """
     return { attrs: html.attrs, head: headSummary(head), state: controller.get(), storage: storage.data };
     """)
-    assert data["attrs"] == {"data-theme": "paper", "data-mode": "light"}
-    assert data["head"] == ["meta[theme-color=#ffffff]", "link#codoxearThemeLink[themes/paper.css?v=test1]", "style#codoxearCustomCss"]
-    assert data["state"] == {"family": "paper", "mode": "system", "resolvedMode": "light", "customCss": ""}
+    assert data["attrs"] == {"data-theme": "clay", "data-mode": "light"}
+    assert data["head"] == ["meta[theme-color=#faf7f0]", "link#codoxearThemeLink[themes/clay.css?v=test1]", "style#codoxearCustomCss"]
+    assert data["state"] == {"family": "clay", "mode": "system", "resolvedMode": "light", "customCss": ""}
     assert data["storage"] == {}
 
 
@@ -151,11 +151,11 @@ def test_apply_theme_writes_attributes_link_meta_and_storage() -> None:
     return { attrs: html.attrs, pending, head: headSummary(head), storage: storage.data, notified, meta: head.children[0].attrs.content };
     """)
     assert data["attrs"] == {"data-theme": "slate", "data-mode": "dark"}
-    # Swap-on-load: the paper link stays until slate has loaded, then retires.
-    assert data["pending"] == ["meta[theme-color=#171717]", "link[themes/paper.css?v=test1]", "link[themes/slate.css?v=test1]", "style#codoxearCustomCss"]
+    # Swap-on-load: the clay link stays until slate has loaded, then retires.
+    assert data["pending"] == ["meta[theme-color=#171717]", "link[themes/clay.css?v=test1]", "link[themes/slate.css?v=test1]", "style#codoxearCustomCss"]
     assert data["head"] == ["meta[theme-color=#171717]", "link#codoxearThemeLink[themes/slate.css?v=test1]", "style#codoxearCustomCss"]
     assert data["storage"] == {"codoxear.ui.theme.family": "slate", "codoxear.ui.theme.mode": "dark"}
-    assert data["notified"] == ["paper/system/light", "slate/dark/dark"]
+    assert data["notified"] == ["clay/system/light", "slate/dark/dark"]
 
 
 def test_persisted_state_and_dark_system_resolve_at_construction() -> None:
@@ -185,8 +185,8 @@ def test_system_mode_re_resolves_on_scheme_change_and_explicit_modes_ignore_it()
     controller.dispose();
     return { afterSystemFlip, afterExplicit, modes, listenersAfterDispose: query.listeners.length };
     """)
-    assert data["afterSystemFlip"] == {"data-theme": "paper", "data-mode": "dark"}
-    assert data["afterExplicit"] == {"data-theme": "paper", "data-mode": "light"}
+    assert data["afterSystemFlip"] == {"data-theme": "clay", "data-mode": "dark"}
+    assert data["afterExplicit"] == {"data-theme": "clay", "data-mode": "light"}
     assert data["modes"] == ["light", "dark", "light"]
     assert data["listenersAfterDispose"] == 0
 
@@ -206,14 +206,14 @@ def test_custom_css_lands_in_the_style_element_and_persists() -> None:
     assert data["order"][-1] == "style#codoxearCustomCss"
 
 
-def test_invalid_persisted_values_fall_back_to_paper_and_system() -> None:
+def test_invalid_persisted_values_fall_back_to_clay_and_system() -> None:
     data = run(make_controller_snippet('{ "codoxear.ui.theme.family": "neon", "codoxear.ui.theme.mode": "sepia" }') + """
     const applied = controller.applyTheme({ family: "Solar", mode: "DARK" });
     return { state: controller.get(), applied, attrs: html.attrs, storage: storage.data };
     """)
-    assert data["applied"]["family"] == "paper"
+    assert data["applied"]["family"] == "clay"
     assert data["applied"]["mode"] == "dark"
-    assert data["attrs"] == {"data-theme": "paper", "data-mode": "dark"}
+    assert data["attrs"] == {"data-theme": "clay", "data-mode": "dark"}
     assert data["storage"] == {"codoxear.ui.theme.mode": "dark"}
 
 

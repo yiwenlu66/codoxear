@@ -204,7 +204,7 @@ THEME_PROBE='(() => {
     sidebarBg: (() => { const s = document.querySelector(".sidebar"); return s ? getComputedStyle(s).backgroundColor : null; })(),
     dialogOpen: Boolean(dialog && dialog.open),
     swatchMode: (() => { const s = document.querySelector(".themeSwatches"); return s ? s.getAttribute("data-swatch-mode") : null; })(),
-    activeFamily: ["paper","clay","slate"].find((f) => active(`[data-theme-family="${f}"]`)) || null,
+    activeFamily: ["clay","slate","paper"].find((f) => active(`[data-theme-family="${f}"]`)) || null,
     activeMode: ["system","light","dark"].find((m) => active(`[data-theme-mode="${m}"]`)) || null,
     modeHint: (() => { const h = document.getElementById("settingsModeHint"); return h ? h.textContent : null; })(),
     textarea: (() => { const t = document.getElementById("settingsCustomCss"); return t ? t.value : null; })(),
@@ -250,11 +250,11 @@ browser click '#sessions .session' > /dev/null 2>&1 || true
 browser wait 1200 > /dev/null 2>&1
 
 probe 01-initial
-shot 01-paper-light-app
+shot 01-clay-light-app
 
 open_settings
 probe 02-settings-open
-shot 02-settings-dialog-paper-light
+shot 02-settings-dialog-clay-light
 # Escape never closes a dialog; hint mode covers the dialog's own buttons.
 browser press Escape > /dev/null 2>&1 || true
 browser wait 200 > /dev/null 2>&1
@@ -315,7 +315,7 @@ close_settings
 shot 12-slate-light-app
 
 # Appearance has no dedicated reset control: clearing the stored preferences
-# boots the next load into paper + system with no custom CSS.
+# boots the next load into clay + system with no custom CSS.
 browser eval '(() => { for (const key of ["codoxear.ui.theme.family", "codoxear.ui.theme.mode", "codoxear.ui.customCss"]) localStorage.removeItem(key); return true; })()' --json > /dev/null 2>&1 || fail "could not clear stored theme preferences"
 browser reload > /dev/null 2>&1 || fail "reload after clearing preferences failed"
 browser wait 3500 > /dev/null 2>&1
@@ -326,8 +326,8 @@ probe 13-after-reset
 shot 13-settings-after-reset
 close_settings
 
-# Monaco follows the theme store live: open a real file under paper/system,
-# then flip the emulated OS scheme with the editor already created. The
+# Monaco follows the theme store live: open a real file under the clay
+# default + system, then flip the emulated OS scheme with the editor already created. The
 # rendered editor background must move with the resolved mode.
 browser click '#fileBtn' > /dev/null 2>&1 || fail "could not open file viewer"
 browser click '#filePickerInput' > /dev/null 2>&1 || fail "could not focus file picker"
@@ -347,18 +347,18 @@ monaco_probe() {
     return { present: true, theme: [...editor.classList].find((c) => /^vs(-dark)?$/.test(c)) || null, background: getComputedStyle(editor.querySelector(".monaco-editor-background") || editor).backgroundColor };
   })()' --json > "$artifacts/$1.json" 2>&1 || fail "monaco probe $1 failed"
 }
-monaco_probe 16-monaco-paper-light
-shot 16-fileviewer-paper-light
+monaco_probe 16-monaco-clay-light
+shot 16-fileviewer-clay-light
 
 # Follow-system: emulate a dark OS scheme and expect live re-resolution.
 browser set media dark > /dev/null 2>&1 || fail "media emulation unavailable"
 browser wait 900 > /dev/null 2>&1
-monaco_probe 17-monaco-paper-dark
-shot 17-fileviewer-paper-dark
+monaco_probe 17-monaco-clay-dark
+shot 17-fileviewer-clay-dark
 browser click '#fileCloseBtn' > /dev/null 2>&1 || fail "could not close file viewer"
 browser wait 300 > /dev/null 2>&1
 probe 14-system-dark
-shot 14-paper-system-dark-app
+shot 14-clay-system-dark-app
 browser set media light > /dev/null 2>&1 || true
 browser wait 900 > /dev/null 2>&1
 probe 15-system-light
@@ -468,8 +468,8 @@ p = {name: load(name) for name in [
 ]}
 outline = load("08-custom-css-outline")
 file_selected = load("16-file-selection")
-monaco_light = load("16-monaco-paper-light")
-monaco_dark = load("17-monaco-paper-dark")
+monaco_light = load("16-monaco-clay-light")
+monaco_dark = load("17-monaco-clay-dark")
 mobile = {name: load(f"18-mobile-settings-{name}") for name in ("393x852", "390x844")}
 voice_saved = load("19-voice-save-closed")
 voice_reopened = load("19-voice-save-reopened")
@@ -506,11 +506,11 @@ def link_follows_app_css(order):
 
 version = re.search(r"\?v=([0-9a-f]+)$", str(p["01-initial"]["href"] or "")) 
 checks = {
-    "boot_renders_paper_light": p["01-initial"]["theme"] == "paper" and p["01-initial"]["mode"] == "light",
+    "boot_renders_clay_light": p["01-initial"]["theme"] == "clay" and p["01-initial"]["mode"] == "light",
     "theme_link_is_versioned_and_after_app_css": bool(version) and link_follows_app_css(p["01-initial"]["linkOrder"]),
-    "meta_theme_color_paper_light": p["01-initial"]["metaColor"] == "#ffffff",
-    "paper_light_is_square": p["01-initial"]["sessionRadius"] == "0px",
-    "settings_opens_as_native_modal": p["02-settings-open"]["dialogOpen"] is True and p["02-settings-open"]["activeFamily"] == "paper" and p["02-settings-open"]["activeMode"] == "system",
+    "meta_theme_color_clay_light": p["01-initial"]["metaColor"] == "#faf7f0",
+    "clay_light_rounds_sessions": p["01-initial"]["sessionRadius"] == "12px",
+    "settings_opens_as_native_modal": p["02-settings-open"]["dialogOpen"] is True and p["02-settings-open"]["activeFamily"] == "clay" and p["02-settings-open"]["activeMode"] == "system",
     "escape_keeps_settings_open": p["03-after-escape"]["dialogOpen"] is True,
     "hint_mode_covers_dialog_buttons": p["04-hint-mode"]["hintBadges"] >= 8,
     "slate_dark_applies_live": p["05-slate-dark-selected"]["theme"] == "slate" and p["05-slate-dark-selected"]["mode"] == "dark" and p["05-slate-dark-selected"]["href"].startswith("themes/slate.css") and p["05-slate-dark-selected"]["swatchMode"] == "dark",
@@ -522,12 +522,12 @@ checks = {
     "reload_keeps_single_theme_link": sum(h.startswith("themes/") for h in p["07-after-reload"]["linkOrder"]) == 1,
     "custom_css_applies_live": outline == "rgb(255, 0, 128)" and p["08-custom-css"]["storage"]["customCss"] is not None,
     "custom_css_clears_live": p["08b-custom-css-cleared"]["customCss"] == "" and p["08b-custom-css-cleared"]["storage"]["customCss"] is None,
-    "cleared_preferences_boot_defaults": p["13-after-reset"]["theme"] == "paper" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
+    "cleared_preferences_boot_defaults": p["13-after-reset"]["theme"] == "clay" and p["13-after-reset"]["activeMode"] == "system" and p["13-after-reset"]["textarea"] == "" and p["13-after-reset"]["storage"] == {"family": None, "mode": None, "customCss": None},
     "no_reset_appearance_control": p["02-settings-open"]["resetControl"] is False and p["13-after-reset"]["resetControl"] is False,
-    "system_mode_follows_dark_scheme": p["14-system-dark"]["mode"] == "dark" and p["14-system-dark"]["theme"] == "paper" and p["14-system-dark"]["bodyBg"] == "rgb(24, 22, 19)",
+    "system_mode_follows_dark_scheme": p["14-system-dark"]["mode"] == "dark" and p["14-system-dark"]["theme"] == "clay" and p["14-system-dark"]["bodyBg"] == "rgb(27, 24, 21)",
     "system_mode_returns_to_light": p["15-system-light"]["mode"] == "light",
-    "monaco_opens_paper_light": file_selected is True and monaco_light.get("present") is True and monaco_light.get("theme") == "vs" and monaco_light.get("background") == "rgb(255, 255, 255)",
-    "monaco_follows_live_dark_switch": monaco_dark.get("present") is True and monaco_dark.get("theme") == "vs-dark" and monaco_dark.get("background") == "rgb(32, 29, 23)",
+    "monaco_opens_clay_light": file_selected is True and monaco_light.get("present") is True and monaco_light.get("theme") == "vs" and monaco_light.get("background") == "rgb(242, 237, 226)",
+    "monaco_follows_live_dark_switch": monaco_dark.get("present") is True and monaco_dark.get("theme") == "vs-dark" and monaco_dark.get("background") == "rgb(31, 27, 22)",
     "mobile_settings_fits_ring_unclipped_voice_inline_393x852": mobile_settings_ok(mobile["393x852"]),
     "mobile_settings_fits_ring_unclipped_voice_inline_390x844": mobile_settings_ok(mobile["390x844"]),
     "settings_sections_are_appearance_then_voice": mobile["393x852"]["sectionOrder"] == ["appearanceSettingsSection", "voiceSettingsSection"],
