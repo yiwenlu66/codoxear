@@ -522,6 +522,7 @@ def run_monaco_loader_probe() -> dict[str, object]:
           success();
         }};
         fakeGlobal.require.config = (options) => events.push(["config", options]);
+        fakeGlobal.CODOXEAR_ASSET_VERSION = "test-build-1";
         // Theme store stand-in: subscribe() replays the current snapshot at
         // once (as app_theme.js does) and notify() pushes a new one later.
         let snapshot = {{ family: "clay", mode: "system", resolvedMode: "dark", customCss: "" }};
@@ -580,6 +581,37 @@ def run_monaco_loader_probe() -> dict[str, object]:
             missingResolveError,
             missingSubscribeError,
           }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def run_monaco_loader_versionless_probe() -> dict[str, object]:
+    editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(editor_source)}, ctx);
+        const mod = ctx.window.CodoxearFileEditor;
+        const events = [];
+        const monaco = {{ editor: {{ defineTheme: () => null, setTheme: () => null }} }};
+        const fakeGlobal = {{ setTimeout: (fn, _ms) => fn() }};
+        fakeGlobal.require = (deps, success) => {{ fakeGlobal.monaco = monaco; success(); }};
+        fakeGlobal.require.config = (options) => events.push(["config", options]);
+        const loader = mod.createMonacoLoader({{
+          resolveAppUrl: (path) => `app:${{path}}`,
+          globalObject: fakeGlobal,
+          timeoutMs: 10,
+          pollMs: 1,
+          subscribeTheme: (fn) => {{ fn({{ family: "paper", resolvedMode: "light" }}); return () => null; }},
+        }});
+        (async () => {{
+          await loader.ensure();
+          process.stdout.write(JSON.stringify({{ events }}));
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
     )
@@ -822,7 +854,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         self.assertEqual(
             result["events"],
             [
-                ["config", {"paths": {"vs": "app:monaco/vs"}}],
+                ["config", {"paths": {"vs": "app:monaco/vs"}, "urlArgs": "v=test-build-1"}],
                 ["require", ["vs/editor/editor.main"]],
                 *[["defineTheme", name] for name in six],
                 ["setTheme", "codoxear-clay-dark"],
@@ -866,6 +898,10 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         })
         self.assertContains("file editor dependency missing: resolveAppUrl", result["missingResolveError"])
         self.assertContains("file editor dependency missing: subscribeTheme", result["missingSubscribeError"])
+
+    def test_monaco_loader_omits_url_args_when_asset_version_absent(self) -> None:
+        result = run_monaco_loader_versionless_probe()
+        self.assertEqual(result["events"], [["config", {"paths": {"vs": "app:monaco/vs"}, "urlArgs": ""}]])
 
     def test_monaco_theme_name_mapping(self) -> None:
         result = run_monaco_theme_name_probe()

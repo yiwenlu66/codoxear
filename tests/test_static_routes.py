@@ -106,6 +106,40 @@ def test_static_get_route_caches_versioned_assets_and_gzips_large_responses(tmp_
     assert ("Content-Length", str(len(handler.wfile.getvalue()))) in handler.headers
 
 
+def test_static_get_route_revalidates_unversioned_assets_with_etag(tmp_path: Path) -> None:
+    asset = tmp_path / "worker.js"
+    asset.write_text("first body", encoding="utf-8")
+    first = _FakeHandler()
+
+    assert handle_static_get_route(first, path="/static/worker.js", query="", deps=_deps(tmp_path)) is True
+
+    assert first.status == 200
+    etag = next(value for name, value in first.headers if name == "ETag")
+    assert etag
+    assert ("Cache-Control", "no-cache") in first.headers
+    assert first.wfile.getvalue() == b"first body"
+
+    revalidated = _FakeHandler()
+    revalidated.headers.request["If-None-Match"] = etag
+
+    assert handle_static_get_route(revalidated, path="/static/worker.js", query="", deps=_deps(tmp_path)) is True
+
+    assert revalidated.status == 304
+    assert revalidated.wfile.getvalue() == b""
+    assert ("ETag", etag) in revalidated.headers
+    assert ("Cache-Control", "no-cache") in revalidated.headers
+
+    asset.write_text("second body, changed", encoding="utf-8")
+    changed = _FakeHandler()
+    changed.headers.request["If-None-Match"] = etag
+
+    assert handle_static_get_route(changed, path="/static/worker.js", query="", deps=_deps(tmp_path)) is True
+
+    assert changed.status == 200
+    assert changed.wfile.getvalue() == b"second body, changed"
+    assert next(value for name, value in changed.headers if name == "ETag") != etag
+
+
 def test_static_content_type_policy() -> None:
     assert static_content_type(Path("index.html")) == "text/html; charset=utf-8"
     assert static_content_type(Path("app.js")) == "text/javascript; charset=utf-8"

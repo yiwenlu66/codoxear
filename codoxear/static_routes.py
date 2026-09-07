@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
-from .server_http import gzip_response_body
+from .server_http import gzip_response_body, if_none_match_contains
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -175,6 +175,24 @@ def send_static_file(handler: Any, rel: str, *, query: str, deps: StaticRouteDep
     if not path.exists() or not path.is_file():
         handler.send_error(404)
         return
+    stat = path.stat()
+    etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+    cache_headers = deps.static_cache_control_headers(
+        versioned="v" in urllib.parse.parse_qs(query, keep_blank_values=True),
+        is_html=path.suffix == ".html",
+    )
+    if if_none_match_contains(handler.headers.get("If-None-Match"), etag):
+        # Unversioned static URLs (for example Monaco's worker assets, whose
+        # URLs the editor computes internally) are served no-cache. The ETag
+        # turns their mandatory per-load revalidation into a cheap 304
+        # instead of a full re-download.
+        handler.send_response(304)
+        handler.send_header("ETag", etag)
+        handler.send_header("Content-Length", "0")
+        for name, value in cache_headers.items():
+            handler.send_header(name, value)
+        handler.end_headers()
+        return
     data = deps.read_static_bytes(path)
     body, gzip_encoded = gzip_response_body(handler, data)
     handler.send_response(200)
@@ -186,10 +204,8 @@ def send_static_file(handler: Any, rel: str, *, query: str, deps: StaticRouteDep
         handler.send_header("Content-Security-Policy", deps.content_security_policy)
         handler.send_header("X-Frame-Options", "DENY")
     handler.send_header("Content-Length", str(len(body)))
-    for name, value in deps.static_cache_control_headers(
-        versioned="v" in urllib.parse.parse_qs(query, keep_blank_values=True),
-        is_html=path.suffix == ".html",
-    ).items():
+    handler.send_header("ETag", etag)
+    for name, value in cache_headers.items():
         handler.send_header(name, value)
     handler.end_headers()
     handler.wfile.write(body)

@@ -158,7 +158,14 @@
           // and blob: workers, not data-scheme workers, and a global override
           // would bypass Monaco's per-language same-origin worker URLs.
           globalObject.MonacoEnvironment = globalObject.MonacoEnvironment || {};
-          globalObject.require.config({ paths: { vs: base } });
+          // AMD-loaded Monaco modules (editor.main.js, the editor chunk, css,
+          // nls, per-language contributions) carry no version query of their
+          // own, and unversioned static responses are served no-cache with no
+          // validators, so the browser would re-download megabytes on every
+          // page load. urlArgs appends the deployed asset version to every
+          // module URL, putting them on the immutable static cache path.
+          const assetVersion = typeof globalObject.CODOXEAR_ASSET_VERSION === "string" ? globalObject.CODOXEAR_ASSET_VERSION : "";
+          globalObject.require.config({ paths: { vs: base }, urlArgs: assetVersion ? `v=${encodeURIComponent(assetVersion)}` : "" });
           globalObject.require(["vs/editor/editor.main"], () => {
             monacoNs = globalObject.monaco;
             if (!monacoNs) {
