@@ -2723,13 +2723,6 @@ select {
         min-height: 0;
         overflow: hidden;
       }
-      .diagViewer .queueHeader .icon-btn {
-        width: var(--ctl-chrome);
-        height: var(--ctl-chrome);
-        min-width: var(--ctl-chrome);
-        min-height: var(--ctl-chrome);
-        border: 0;
-      }
       .diagViewer .detailsGrid {
         flex: 1 1 auto;
         min-height: 0;
@@ -2779,11 +2772,6 @@ select {
       #newSessionModelMenu .fileMenuPath,
       #newSessionModelMenu .fileMenuHint {
         font-family: inherit;
-      }
-      #newSessionCloseBtn {
-        border: 0;
-        background: transparent;
-        overflow: visible;
       }
       #newSessionStatus {
         color: var(--muted);
@@ -2989,8 +2977,22 @@ select {
         min-height: 18px;
         padding: 0;
       }
+      /* Dialog control contract: icon-only chrome (header close buttons,
+         backend logo tabs) stays square at the dialog control height in
+         every modal surface; content-sizing belongs to text-bearing
+         controls only. Icon-only buttons collapsed to glyph width before
+         this was stated once — each dialog carried its own rescue rule. */
       .formViewer .icon-btn,
-      .formViewer .agentBackendTab,
+      .queueViewer .icon-btn,
+      .diagViewer .icon-btn,
+      .helpViewer .icon-btn,
+      .formViewer .agentBackendTab {
+        position: relative;
+        width: var(--dialog-control-h);
+        min-width: var(--dialog-control-h);
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
+      }
       .formViewer .choiceChip {
         position: relative;
         width: auto;
@@ -3019,12 +3021,10 @@ select {
         height: var(--ctl);
         min-height: var(--ctl);
       }
-      #newSessionViewer .agentBackendTab,
-      #newSessionCloseBtn {
-        width: var(--dialog-control-h);
-        min-width: var(--dialog-control-h);
-      }
-      .formViewer .queueHeader .icon-btn {
+      /* Every modal header shares one chrome rule regardless of surface
+         class (formViewer / queueViewer / diagViewer / helpViewer all use
+         .queueHeader for their title row). */
+      .queueHeader .icon-btn {
         border: 0;
       }
       .pickerField {
