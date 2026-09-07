@@ -41,6 +41,48 @@ process.stdout.write(JSON.stringify({ frozen: Object.isFrozen(module), error }))
         self.assertTrue(result["frozen"])
         self.assertEqual(result["error"], "file viewer dependency missing: el")
 
+    def test_pdf_loader_versions_module_and_worker_urls(self) -> None:
+        result = run_vm(
+            """
+const module = ctx.window.CodoxearFileViewer;
+ctx.setTimeout = setTimeout;
+ctx.clearTimeout = clearTimeout;
+const events = [];
+const fakeGlobal = { CODOXEAR_ASSET_VERSION: 'test-build-9' };
+const pdfjs = { GlobalWorkerOptions: {}, getDocument: () => null };
+const loader = module.createPdfLoader({
+  resolveAppUrl: (path) => `app:${path}`,
+  globalObject: fakeGlobal,
+  timeoutMs: 1000,
+  importModule: (url) => { events.push(['import', url]); return Promise.resolve(pdfjs); },
+});
+(async () => {
+  await loader.ensure();
+  events.push(['workerSrc', pdfjs.GlobalWorkerOptions.workerSrc]);
+  const versionlessGlobal = {};
+  const versionlessPdfjs = { GlobalWorkerOptions: {}, getDocument: () => null };
+  const versionlessLoader = module.createPdfLoader({
+    resolveAppUrl: (path) => `app:${path}`,
+    globalObject: versionlessGlobal,
+    timeoutMs: 1000,
+    importModule: (url) => { events.push(['importVersionless', url]); return Promise.resolve(versionlessPdfjs); },
+  });
+  await versionlessLoader.ensure();
+  events.push(['workerSrcVersionless', versionlessPdfjs.GlobalWorkerOptions.workerSrc]);
+  process.stdout.write(JSON.stringify({ events }));
+})().catch((err) => { console.error(err && err.stack ? err.stack : err); process.exit(1); });
+"""
+        )
+        self.assertEqual(
+            result["events"],
+            [
+                ["import", "app:pdf.mjs?v=test-build-9"],
+                ["workerSrc", "app:pdf.worker.mjs?v=test-build-9"],
+                ["importVersionless", "app:pdf.mjs"],
+                ["workerSrcVersionless", "app:pdf.worker.mjs"],
+            ],
+        )
+
     def test_controller_requires_operations_wiring_after_base_dependencies(self) -> None:
         result = run_vm(
             """

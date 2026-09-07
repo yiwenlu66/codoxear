@@ -1011,15 +1011,25 @@ function requireFunction(value, name) {
     const importModule = typeof options.importModule === "function" ? options.importModule : (url) => import(url);
     let readyPromise = null;
 
+    // pdf.mjs / pdf.worker.mjs carry no content hash of their own; append the
+    // deployed asset version so they use the immutable static cache instead of
+    // revalidating (and, before ETag support, re-downloading) on every load.
+    const assetVersion = typeof globalObject.CODOXEAR_ASSET_VERSION === "string" ? globalObject.CODOXEAR_ASSET_VERSION.trim() : "";
+    const versionedUrl = (path) => {
+      const url = resolveAppUrl(path);
+      if (!assetVersion) return url;
+      return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(assetVersion)}`;
+    };
+
     function ensure() {
       if (readyPromise) return readyPromise;
       if (globalObject.pdfjsLib && typeof globalObject.pdfjsLib.getDocument === "function") {
         readyPromise = Promise.resolve(globalObject.pdfjsLib);
       } else {
-        readyPromise = timeoutPromise(importModule(resolveAppUrl("pdf.mjs")), timeoutMs, "PDF renderer timed out");
+        readyPromise = timeoutPromise(importModule(versionedUrl("pdf.mjs")), timeoutMs, "PDF renderer timed out");
       }
       readyPromise = readyPromise.then((pdfjs) => {
-        if (pdfjs && pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = resolveAppUrl("pdf.worker.mjs");
+        if (pdfjs && pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = versionedUrl("pdf.worker.mjs");
         return pdfjs;
       });
       readyPromise.catch(() => {
