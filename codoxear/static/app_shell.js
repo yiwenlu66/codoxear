@@ -266,7 +266,7 @@ function requireFunction(value, name) {
     const fileVimModeChip = el("span", { id: "fileVimMode", class: "fileVimMode", text: "", "aria-hidden": "true" });
     const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
     const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
-    const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
+    const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer", tabindex: "-1" }, [
       el("div", { class: "fileViewerHeader" }, [
         el("div", { class: "title", text: "View file" }),
         el("div", { class: "actions" }, [fileVimModeChip, fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
@@ -365,7 +365,7 @@ function requireFunction(value, name) {
       type: "button",
       html: iconSvg("x"),
     });
-    const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help" }, [
+    const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help", tabindex: "-1" }, [
       el("div", { class: "queueHeader" }, [
         el("div", { class: "title", text: "Help" }),
         el("div", { class: "actions" }, [helpCloseBtn]),
@@ -456,7 +456,7 @@ function requireFunction(value, name) {
     diagCopyBtn.disabled = true;
     const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
     const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
-    const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
+    const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details", tabindex: "-1" }, [
       el("div", { class: "queueHeader" }, [
         el("div", { class: "title", text: "Details" }),
         el("div", { class: "actions" }, [diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),

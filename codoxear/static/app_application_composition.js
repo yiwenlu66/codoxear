@@ -395,7 +395,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         }));
         const {
           afterModalVisibilityChanged,
-          focusModalCloseButton,
+          focusModalSurface,
           isModalTargetOpen,
           prepareModalOpen,
           restoreModalFocus,
@@ -442,7 +442,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           addEvent: addAppEvent,
           setTimeout,
           clearTimeout,
-          focusModalCloseButton,
+          focusModalSurface,
           isModalTargetOpen,
           restoreModalFocus,
         }));
@@ -772,7 +772,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           codoxearFileVim: CodoxearFileVim,
           hintModeController,
           codoxearFileTouch, codoxearDialogMenus,
-          prepareModalOpen, afterModalVisibilityChanged, focusModalCloseButton, restoreModalFocus,
+          prepareModalOpen, afterModalVisibilityChanged, focusModalSurface, restoreModalFocus,
           isModalTargetOpen, newSessionDialogController, eventBindings,
           codoxearFileHelpers, copyToClipboard, dialogMenuController, duplicateFilePickerPaths,
           editCloseBtn, editDependencyBtn, editDependencyMenu, editNameInput, editPriorityRange,
@@ -860,7 +860,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           prepareModalOpen,
           afterModalVisibilityChanged,
           addEvent: addAppEvent,
-          focusModalCloseButton,
+          focusModalSurface,
           isModalTargetOpen,
           restoreModalFocus,
         }));

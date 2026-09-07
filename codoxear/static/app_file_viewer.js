@@ -171,7 +171,7 @@ function requireFunction(value, name) {
     const closeButton = options.closeButton || null;
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
     const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
-    const focusModalCloseButton = requireFunction(options.focusModalCloseButton, "focusModalCloseButton");
+    const focusModalSurface = requireFunction(options.focusModalSurface, "focusModalSurface");
     const restoreModalFocus = requireFunction(options.restoreModalFocus, "restoreModalFocus");
     const isModalTargetOpen = requireFunction(options.isModalTargetOpen, "isModalTargetOpen");
     const setReturnFocusElement = requireFunction(options.setReturnFocusElement, "setReturnFocusElement");
@@ -198,7 +198,7 @@ function requireFunction(value, name) {
       viewer.style.display = "flex";
       afterModalVisibilityChanged();
       if (!wasOpen && queryOpen) focusPickerInput();
-      else if (!wasOpen) focusModalCloseButton(viewer, closeButton);
+      else if (!wasOpen) focusModalSurface(viewer);
       return true;
     }
 

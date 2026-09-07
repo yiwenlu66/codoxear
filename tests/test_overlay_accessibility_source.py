@@ -90,7 +90,7 @@ class TestOverlayAccessibilityBehavior(unittest.TestCase):
         shown = result["shown"]
         self.assertTrue(shown["open"])
         self.assertEqual(shown["attrs"], {"inert": "", "aria-hidden": "true"})
-        self.assertEqual(shown["calls"], ["prepare", "showModal", "isolation:true", "focus:settingsCloseBtn"])
+        self.assertEqual(shown["calls"], ["prepare", "showModal", "isolation:true", "focus:settingsViewer"])
         hidden = result["hidden"]
         self.assertFalse(hidden["open"])
         self.assertEqual(hidden["attrs"], {})

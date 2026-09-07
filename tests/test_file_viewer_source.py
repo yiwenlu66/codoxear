@@ -71,7 +71,7 @@ process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff,
 const viewer = ctx.window.CodoxearFileViewer;
 const events = []; const backdrop = { style: {} }; const panel = { style: {} };
 const picker = { focus() { events.push('picker-focus'); } };
-const modal = viewer.createFileViewerModalRuntime({ backdrop, viewer: panel, pickerInput: picker, closeButton: {}, prepareModalOpen() { events.push('prepare'); }, afterModalVisibilityChanged() { events.push('sync'); }, focusModalCloseButton() { events.push('close-focus'); }, restoreModalFocus() { events.push('restore'); }, isModalTargetOpen(node) { return node.style.display === 'flex'; }, setReturnFocusElement() { events.push('remember'); }, takeReturnFocusElement() { return { id: 'origin' }; } });
+const modal = viewer.createFileViewerModalRuntime({ backdrop, viewer: panel, pickerInput: picker, closeButton: {}, prepareModalOpen() { events.push('prepare'); }, afterModalVisibilityChanged() { events.push('sync'); }, focusModalSurface() { events.push('surface-focus'); }, restoreModalFocus() { events.push('restore'); }, isModalTargetOpen(node) { return node.style.display === 'flex'; }, setReturnFocusElement() { events.push('remember'); }, takeReturnFocusElement() { return { id: 'origin' }; } });
 modal.show({ wasOpen: false, queryOpen: true, activeElement: {} }); const beforeHide = modal.beginHide(); modal.hideDisplay(); modal.finishHide(beforeHide);
 const listeners = {}; const button = { addEventListener(type, fn) { listeners[type] = fn; } };
 let presses = 0; let now = 0; viewer.bindFileTouchPress(button, () => { presses += 1; }, { nowMs: () => now });

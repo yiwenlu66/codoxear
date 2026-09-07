@@ -24,7 +24,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
   const sessionIsOrphanRecovery = CodoxearSessionHelpers.sessionIsOrphanRecovery;
   const sessionHasOrphanQueueRecovery = CodoxearSessionHelpers.sessionHasOrphanQueueRecovery;
   const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
-  const focusModalCloseButton = CodoxearModal.focusModalCloseButton;
+  const focusModalSurface = CodoxearModal.focusModalSurface;
   const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   const QUEUE_UPDATE_DEBOUNCE_MS = 350;
@@ -53,6 +53,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       role: "dialog",
       "aria-modal": "true",
       "aria-label": "Queued messages",
+      tabindex: "-1",
     }, [
       el("div", { class: "queueHeader" }, [
         el("div", { class: "title", text: "Queued messages" }),
@@ -506,7 +507,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       queueBackdrop.style.display = "block";
       queueViewer.style.display = "flex";
       afterModalVisibilityChanged();
-      focusModalCloseButton(queueViewer, queueCloseBtn, requestFrame);
+      focusModalSurface(queueViewer, requestFrame);
       void refreshQueueViewer();
     }
 

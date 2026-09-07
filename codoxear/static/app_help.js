@@ -25,7 +25,7 @@ function createHelpController(options = {}) {
   const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
   const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
   const addEvent = requireFunction(options.addEvent, "addEvent");
-  const focusModalCloseButton = options.focusModalCloseButton || CodoxearModal.focusModalCloseButton;
+  const focusModalSurface = options.focusModalSurface || CodoxearModal.focusModalSurface;
   const isModalTargetOpen = options.isModalTargetOpen || CodoxearModal.isModalTargetOpen;
   const restoreModalFocus = options.restoreModalFocus || CodoxearModal.restoreModalFocus;
 
@@ -41,7 +41,7 @@ function createHelpController(options = {}) {
     backdrop.style.display = "block";
     viewer.style.display = "flex";
     afterModalVisibilityChanged();
-    focusModalCloseButton(viewer, closeButton);
+    focusModalSurface(viewer);
   }
 
   function hide() {

@@ -107,7 +107,7 @@ const controller = CodoxearSettings.createSettingsDialogController({
   addEvent: (target, type, handler) => target.addEventListener(type, handler),
   setTimeout: (fn, ms) => { const id = timers.length + 1; timers.push({ id, fn, ms }); return id; },
   clearTimeout: (id) => { const i = timers.findIndex((t) => t.id === id); if (i >= 0) timers.splice(i, 1); },
-  focusModalCloseButton: (_viewer, button) => button.focus(),
+  focusModalSurface: (viewer) => viewer.focus(),
   isModalTargetOpen: (target) => target.open || (target.style.display && target.style.display !== "none"),
   restoreModalFocus: (target, stillOpen) => { calls.push(`restore:${stillOpen()}`); if (target) target.focus(); },
 });
@@ -192,7 +192,7 @@ def test_open_button_shows_modal_and_close_restores_focus() -> None:
     assert data["closed"] is False
     # The voice section is activated only once the modal is visible and
     # focused, and deactivated before the dialog starts hiding.
-    assert data["calls"] == ["prepare", "showModal", "visibility", "focus:settingsCloseBtn", "voice:activate", "voice:deactivate", "close", "visibility", "restore:false", "focus:settingsBtnSide"]
+    assert data["calls"] == ["prepare", "showModal", "visibility", "focus:settingsViewer", "voice:activate", "voice:deactivate", "close", "visibility", "restore:false", "focus:settingsBtnSide"]
 
 
 def test_escape_cancel_is_swallowed_and_backdrop_click_closes() -> None:

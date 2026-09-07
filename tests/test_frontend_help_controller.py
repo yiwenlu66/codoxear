@@ -47,7 +47,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
           prepareModalOpen: () => calls.push("prepare"),
           afterModalVisibilityChanged: () => calls.push("visibility"),
           addEvent: (target, type, handler) => target.addEventListener(type, handler),
-          focusModalCloseButton: (_viewer, button) => { calls.push("focus-close"); button.focus(); },
+          focusModalSurface: (viewer) => { calls.push("focus-surface"); viewer.focus(); },
           isModalTargetOpen: (target) => target.style.display === "flex",
           restoreModalFocus: (target, stillOpen) => { calls.push(`restore:${stillOpen()}`); target.focus(); },
         });
@@ -82,8 +82,8 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
     assert data["openSnapshot"] == {"backdrop": "block", "viewer": "flex", "isOpen": True}
     assert data["closeSnapshot"] == {"backdrop": "none", "viewer": "none", "isOpen": False}
     assert data["calls"] == [
-        "prevent", "stop", "prepare", "visibility", "focus-close", "focus:close",
+        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer",
         "prevent", "stop", "visibility", "restore:false", "focus:opener",
-        "prepare", "visibility", "focus-close", "focus:close",
+        "prepare", "visibility", "focus-surface", "focus:viewer",
         "visibility", "restore:false", "focus:fallback",
     ]

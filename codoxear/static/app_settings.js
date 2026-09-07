@@ -46,7 +46,7 @@ function createSettingsDialogController(options = {}) {
   const addEvent = requireFunction(options.addEvent, "addEvent");
   const setTimeoutFn = requireFunction(options.setTimeout, "setTimeout");
   const clearTimeoutFn = requireFunction(options.clearTimeout, "clearTimeout");
-  const focusModalCloseButton = options.focusModalCloseButton || CodoxearModal.focusModalCloseButton;
+  const focusModalSurface = options.focusModalSurface || CodoxearModal.focusModalSurface;
   const isModalTargetOpen = options.isModalTargetOpen || CodoxearModal.isModalTargetOpen;
   const restoreModalFocus = options.restoreModalFocus || CodoxearModal.restoreModalFocus;
 
@@ -111,7 +111,7 @@ function createSettingsDialogController(options = {}) {
     "aria-describedby": "settingsCustomCssHint",
   });
 
-  const viewer = el("dialog", { class: "formViewer formDialog", id: "settingsViewer", "aria-label": "Settings" }, [
+  const viewer = el("dialog", { class: "formViewer formDialog", id: "settingsViewer", "aria-label": "Settings", tabindex: "-1" }, [
     el("div", { class: "queueHeader" }, [
       el("div", { class: "title", text: "Settings" }),
       el("div", { class: "actions" }, [closeButton]),
@@ -193,7 +193,7 @@ function createSettingsDialogController(options = {}) {
     viewer.style.display = "flex";
     if (typeof viewer.showModal === "function" && !viewer.open) viewer.showModal();
     afterModalVisibilityChanged();
-    focusModalCloseButton(viewer, closeButton);
+    focusModalSurface(viewer);
     activateVoiceSection();
   }
 

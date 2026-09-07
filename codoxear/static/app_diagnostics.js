@@ -21,7 +21,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
   const sessionLaunchFailed = CodoxearSessionHelpers.sessionLaunchFailed;
   const isModalTargetOpen = CodoxearModal.isModalTargetOpen;
-  const focusModalCloseButton = CodoxearModal.focusModalCloseButton;
+  const focusModalSurface = CodoxearModal.focusModalSurface;
   const restoreModalFocus = CodoxearModal.restoreModalFocus;
 
   function requireFunction(value, name) {
@@ -214,7 +214,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       diagBackdrop.style.display = "block";
       diagViewer.style.display = "flex";
       afterModalVisibilityChanged();
-      focusModalCloseButton(diagViewer, diagCloseBtn, requestFrame);
+      focusModalSurface(diagViewer, requestFrame);
       const selectedInfo = getSessionInfo(sid) || null;
       if (sessionLaunchFailed(selectedInfo)) {
         renderFailedLaunchRows(sid, selectedInfo);

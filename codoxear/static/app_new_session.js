@@ -848,7 +848,7 @@ function requireFunction(value, name) {
     const worktreeField = el("div", { class: "field", id: "newSessionWorktreeField" }, [el("span", { class: "fieldLabel", text: "Git worktree branch" }), el("label", { class: "checkField" }, [worktreeToggle, el("span", { text: "Create a new worktree for this session" })]), worktreeInput]);
     const startBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
     const cancelBtn = el("button", { id: "newSessionCancelBtn", type: "button", text: "Cancel" });
-    const viewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
+    const viewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session", tabindex: "-1" }, [
       el("div", { class: "queueHeader" }, [el("div", { class: "newSessionHeaderLead" }, [el("div", { class: "title", text: "New session" }), backendTabs, backendName]), el("div", { class: "actions" }, [closeBtn])]),
       status,
       el("div", { class: "formBody" }, [
@@ -999,7 +999,7 @@ function requireFunction(value, name) {
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
       backdrop.style.display = "block"; viewer.style.display = "flex"; afterModalVisibilityChanged(); controller.scheduleNewSessionResumeLoad(); controller.syncNewSessionTmuxUi(); controller.syncNewSessionWorktreeUi();
-      win.requestAnimationFrame(() => { if (!isModalTargetOpen(viewer)) return; const target = isMobile() ? closeBtn : cwdInput; target.focus({ preventScroll: true }); if (target === cwdInput) { const end = cwdInput.value.length; try { cwdInput.setSelectionRange(end, end); } catch (_) {} } });
+      win.requestAnimationFrame(() => { if (!isModalTargetOpen(viewer)) return; const target = isMobile() ? viewer : cwdInput; target.focus({ preventScroll: true }); if (target === cwdInput) { const end = cwdInput.value.length; try { cwdInput.setSelectionRange(end, end); } catch (_) {} } });
     }
 
     function start() {

@@ -24,11 +24,17 @@
     });
   }
 
-  function focusModalCloseButton(viewer, closeBtn, requestFrame = requestAnimationFrame) {
+  // Modal-open focus contract: an opened modal focuses its surface, never a
+  // control inside it. Focusing the close button painted the theme focus ring
+  // on WebKit (script focus with no prior focus matches :focus-visible), so
+  // every dialog opened with a phantom accent outline on touch. The surface
+  // carries tabindex=-1, Tab still reaches the controls, and the focus-ring
+  // CSS targets button/input/textarea/select only — a surface cannot ring.
+  function focusModalSurface(viewer, requestFrame = requestAnimationFrame) {
     requestFrame(() => {
       if (!isModalTargetOpen(viewer)) return;
       try {
-        closeBtn.focus({ preventScroll: true });
+        viewer.focus({ preventScroll: true });
       } catch {}
     });
   }
@@ -92,7 +98,7 @@
     return Object.freeze({
       afterModalVisibilityChanged,
       closeTransientOverlays,
-      focusModalCloseButton,
+      focusModalSurface,
       isModalTargetOpen,
       prepareModalOpen,
       restoreModalFocus,
@@ -232,7 +238,7 @@ export {
   isModalTargetOpen,
   syncModalIsolation,
   restoreModalFocus,
-  focusModalCloseButton,
+  focusModalSurface,
   createModalPolicyController,
   createConfirmationController,
   createModalKeyboardHandler,
