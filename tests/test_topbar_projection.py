@@ -22,7 +22,12 @@ def run_node_json(script: str) -> dict:
 
 
 def test_topbar_subscribes_to_runtime_store_and_disposes() -> None:
-    """Topbar store subscriptions synchronously project queue, interrupt, and context widgets."""
+    """Topbar store subscriptions synchronously project interrupt and context widgets.
+
+    The topbar owns no status chip: queue depth belongs to the composer queue
+    button badge and the sidebar session card, so queueLen churn must not reach
+    this controller.
+    """
     script = f"""
     const vm = require("vm");
     const ctx = {{ window: {{}}, console }};
@@ -47,9 +52,8 @@ def test_topbar_subscribes_to_runtime_store_and_disposes() -> None:
       el, iconSvg: () => "", sessionState, setToast: (text) => toasts.push(text), onInterrupt: () => {{ interrupts += 1; }},
       topMeta, topActions, eventBindings: events,
     }});
-    const {{ statusChip, interruptBtn, ctxChip }} = controller.elements;
+    const {{ interruptBtn, ctxChip }} = controller.elements;
     const snap = () => ({{
-      status: {{ text: statusChip.textContent, display: statusChip.style.display }},
       interrupt: {{ display: interruptBtn.style.display, disabled: interruptBtn.disabled }},
       context: {{ text: ctxChip.textContent, display: ctxChip.style.display, disabled: ctxChip.disabled, title: ctxChip.title }},
     }});
@@ -81,12 +85,10 @@ def test_topbar_subscribes_to_runtime_store_and_disposes() -> None:
     """
     assert run_node_json(script) == {
         "initial": {
-            "status": {"text": "", "display": "none"},
             "interrupt": {"display": "none", "disabled": True},
             "context": {"text": "", "display": "none", "disabled": True, "title": ""},
         },
         "active": {
-            "status": {"text": "Queue 2", "display": "inline-flex"},
             "interrupt": {"display": "inline-flex", "disabled": False},
             "context": {
                 "text": "Ctx 60%",
@@ -99,19 +101,17 @@ def test_topbar_subscribes_to_runtime_store_and_disposes() -> None:
             "toast": "ctx 40/100 (60% left)",
             "interrupts": 1,
             "mounted": {
-                "topMeta": ["statusChip", "ctxChip"],
+                "topMeta": ["ctxChip"],
                 "topActions": ["interruptBtn"],
                 "contextHint": "y",
                 "interruptHint": "z",
             },
         },
         "cleared": {
-            "status": {"text": "", "display": "none"},
             "interrupt": {"display": "none", "disabled": True},
             "context": {"text": "", "display": "none", "disabled": True, "title": ""},
         },
         "disposed": {
-            "status": {"text": "", "display": "none"},
             "interrupt": {"display": "none", "disabled": True},
             "context": {"text": "", "display": "none", "disabled": True, "title": ""},
         },

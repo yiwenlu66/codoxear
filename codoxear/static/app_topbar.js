@@ -34,8 +34,6 @@ function createTopbarController(options = {}) {
 
   // The shell owns the title row and action layout. This controller owns every
   // topbar status widget that occupies those layout slots.
-  const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "" });
-  statusChip.style.display = "none";
   const ctxChip = el("button", {
     class: "status-chip",
     id: "ctxChip",
@@ -56,24 +54,17 @@ function createTopbarController(options = {}) {
     html: iconSvg("stop"),
   });
   interruptBtn.style.display = "none";
-  topMeta.append(statusChip, ctxChip);
+  topMeta.appendChild(ctxChip);
   topActions.appendChild(interruptBtn);
 
   let lastToken = null;
 
-  function renderStatus() {
-    // The topbar chip only carries payload not shown elsewhere: the queued
-    // message count. Busy/idle is owned by the sidebar state dot and the
-    // interrupt button; the ▸N subagent gauge lives in the sidebar meta line
-    // and the transcript idle activity row.
-    const queueLen = Math.max(0, Number(sessionState.get("queueLen")) || 0);
-    if (queueLen > 0) {
-      statusChip.style.display = "inline-flex";
-      statusChip.textContent = `Queue ${queueLen}`;
-    } else {
-      statusChip.style.display = "none";
-      statusChip.textContent = "";
-    }
+  function renderInterrupt() {
+    // The topbar carries no status chip. The queued-message count is owned by
+    // the composer queue button badge (count attached to the control that acts
+    // on it) and the sidebar session card badge; busy/idle is owned by the
+    // sidebar state dot and this interrupt button; the subagent gauge lives in
+    // the sidebar meta line and the transcript idle activity row.
     const canInterrupt = Boolean(sessionState.get("running") && sessionState.get("selected"));
     interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
     interruptBtn.disabled = !canInterrupt;
@@ -113,12 +104,11 @@ function createTopbarController(options = {}) {
   }
 
   const unsubscribers = [
-    sessionState.subscribe("selected", renderStatus),
-    sessionState.subscribe("running", renderStatus),
-    sessionState.subscribe("queueLen", renderStatus),
+    sessionState.subscribe("selected", renderInterrupt),
+    sessionState.subscribe("running", renderInterrupt),
     sessionState.subscribe("token", renderContext),
   ];
-  renderStatus();
+  renderInterrupt();
   renderContext();
 
   eventBindings.on(ctxChip, "click", () => {
@@ -136,7 +126,7 @@ function createTopbarController(options = {}) {
   }
 
   return Object.freeze({
-    elements: Object.freeze({ statusChip, ctxChip, interruptBtn }),
+    elements: Object.freeze({ ctxChip, interruptBtn }),
     dispose,
   });
 }
