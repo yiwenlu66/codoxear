@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="932" height="470" viewBox="0 0 932 470" role="img" aria-labelledby="title desc">
+  <title id="title">Paper Outline reference geometry versus tinted-paper recolor</title>
+  <desc id="desc">The original Paper Outline and an exact-geometry recolor are shown at 180 and 60 pixels.</desc>
+  <rect width="932" height="470" fill="#f6f5f1"/>
+  <text x="36" y="48" fill="#2f2b26" font-family="sans-serif" font-size="26" font-weight="700">Reference geometry — color-only correction</text>
+  <text x="36" y="76" fill="#6b6862" font-family="sans-serif" font-size="15">180px review · 60px home-screen check</text>
+  <g transform="translate(36 100)">
+    <rect width="410" height="334" rx="20" fill="#fffdf9" stroke="#d9d0be" stroke-width="2"/>
+    <text x="24" y="38" fill="#2f2b26" font-family="sans-serif" font-size="18" font-weight="700">Reference · Paper Outline</text>
+    <svg x="115" y="58" width="180" height="180" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="108" fill="#f6f5f1"/>
+      <rect x="30" y="30" width="452" height="452" rx="88" fill="#fffdf9" stroke="#d9d0be" stroke-width="8"/>
+      <path d="M142 104h172l88 88v216H142z" fill="#fffdf9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+      <path d="M314 104v88h88" fill="#efeee9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+      <path d="m204 268 38 36-38 36M270 340h50" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+    </svg>
+    <svg x="175" y="256" width="60" height="60" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="108" fill="#f6f5f1"/>
+      <rect x="30" y="30" width="452" height="452" rx="88" fill="#fffdf9" stroke="#d9d0be" stroke-width="8"/>
+      <path d="M142 104h172l88 88v216H142z" fill="#fffdf9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+      <path d="M314 104v88h88" fill="#efeee9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+      <path d="m204 268 38 36-38 36M270 340h50" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+    </svg>
+  </g>
+  <g transform="translate(486 100)">
+    <rect width="410" height="334" rx="20" fill="#fffdf9" stroke="#d9d0be" stroke-width="2"/>
+    <text x="24" y="38" fill="#2f2b26" font-family="sans-serif" font-size="18" font-weight="700">Exact reference · Tinted Paper</text>
+    <image href="reference-geometry-tinted-paper.svg" xlink:href="reference-geometry-tinted-paper.svg" x="115" y="58" width="180" height="180"/>
+    <image href="reference-geometry-tinted-paper.svg" xlink:href="reference-geometry-tinted-paper.svg" x="175" y="256" width="60" height="60"/>
+  </g>
+</svg>

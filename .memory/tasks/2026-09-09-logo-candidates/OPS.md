@@ -71,3 +71,13 @@ The preceding OPS entry's filenames and color literals were blanked by shell com
 Artifacts: `review/logo-paper-refined/B-tinted-paper-reference-weight-combined.svg` and its 512×512 PNG preserve B's `#eae4d8` tile, `#fdfbf6` page, `#a79a84` contour/fold, `#e8e1d2` fold fill, and `#c96442` prompt. Page contour, fold, and prompt all use the original reference's 24px stroke weight. The fold begins at B's actual page corner (302,102) rather than its prior 4px inset. `B-tinted-paper-reference-weight-combined-comparison.svg/png` is a B-original versus requested-combination side-by-side sheet with actual 180px and 60px samples.
 
 Observation: the first 24px prompt raster let B's original 16px chevron-to-dash centerline gap visually overlap because its 24px round caps extended 12px each. Moving only the dash from x=230 to x=246 makes a 32px centerline gap and an 8px visible gap; the 512px standalone and 60px preview now show a distinct terminal chevron and dash. The heavier taupe contour and dog-ear remain clean at both sizes. XML parsing succeeded for both SVGs; raster dimensions are exactly 512×512 and 2144×980. Production paths were not changed.
+
+## 2026-09-10T00:44:41+08:00 — Exact-reference tinted-paper correction
+
+Instruction: replace the incorrect B-geometry combination with one preview that uses the original `01-paper-outline.svg` document and prompt paths, geometry, 24px strokes, caps, joins, placement, and proportions exactly; recolor only with B Tinted Paper values and omit the reference's inset tile border.
+
+Prediction before render: copying the source path data rather than adapting B will make the broad page and large bold square/miter `>_` identical at both 180px and 60px; palette changes cannot alter silhouette.
+
+Artifacts: `review/logo-paper-refined/reference-geometry-tinted-paper.svg/png` and `reference-geometry-tinted-paper-comparison.svg/png`. The standalone is 512×512; the comparison is 1864×940 and shows the source reference and corrected recolor at 180px and 60px.
+
+Observation: XML comparison verifies all three document/prompt `d` values plus stroke widths, caps, and joins exactly match `review/logo-candidates-2026-09-09/01-paper-outline.svg`; the corrected mark has exactly one tile rect. The rendered side-by-side visibly confirms identical broad document and terminal geometry; colors differ and the reference-only inner tile border is absent on the recolor. Production files were not changed.
