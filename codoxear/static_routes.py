@@ -22,10 +22,12 @@ FRONTEND_ASSET_FILES = (
 )
 SHELL_ASSET_FILES = (
     "favicon.png",
+    "apple-touch-icon.png",
     "manifest.webmanifest",
     "service-worker.js",
 )
 UI_IMAGE_ASSET_FILES = (
+    "codoxear-icon.svg",
     "codoxear-icon.png",
     "logos/codex.svg",
     "logos/pi.svg",
@@ -43,6 +45,7 @@ TOP_LEVEL_STATIC_ASSETS = (
     ("/pdf.worker.mjs", "vendor/pdf.worker.mjs"),
     *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
     ("/favicon.png", "favicon.png"),
+    ("/apple-touch-icon.png", "apple-touch-icon.png"),
     ("/", "index.html"),
 )
 CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"

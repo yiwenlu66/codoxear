@@ -81,3 +81,23 @@ Prediction before render: copying the source path data rather than adapting B wi
 Artifacts: `review/logo-paper-refined/reference-geometry-tinted-paper.svg/png` and `reference-geometry-tinted-paper-comparison.svg/png`. The standalone is 512×512; the comparison is 1864×940 and shows the source reference and corrected recolor at 180px and 60px.
 
 Observation: XML comparison verifies all three document/prompt `d` values plus stroke widths, caps, and joins exactly match `review/logo-candidates-2026-09-09/01-paper-outline.svg`; the corrected mark has exactly one tile rect. The rendered side-by-side visibly confirms identical broad document and terminal geometry; colors differ and the reference-only inner tile border is absent on the recolor. Production files were not changed.
+
+## 2026-09-10T00:54:13+08:00 — Approved logo promoted to production source and installed outputs
+
+Instruction: user approved the exact `reference-geometry-tinted-paper.svg/png` mark and requested production promotion, with no deployment before independent review.
+
+Intervention: promoted a self-contained canonical source to `codoxear/static/codoxear-icon.svg`; it retains the review asset's three document/prompt paths, colors, widths, caps, and joins exactly, while changing only the outer tile from a rounded `#eae4d8` rect to a full-bleed `#eae4d8` rect. Rasterized it into production `codoxear-icon.png` (512×512), `favicon.png` (64×64), and `apple-touch-icon.png` (180×180). Added the versioned apple-touch link, made the manifest icon URL resolve from the manifest to `/codoxear-icon.png`, and replaced only its stale blue PWA background/theme colors with `#eae4d8`. The dynamic UI theme-color implementation is untouched.
+
+Prediction before verification: parsing the served shell in Docker would expose versioned favicon, apple-touch, and manifest URLs; browser fetch/decode would show the three requested dimensions and fully opaque beige corners; the manifest's icon URL would fetch successfully.
+
+Observation: Docker unit/static tests passed (17 tests). Docker sandbox browser logged into the real served shell with `appBootstrapped: true`, versioned `/favicon.png`, `/apple-touch-icon.png`, and `/manifest.webmanifest` links. Browser fetch/decode confirmed 64×64, 180×180, and 512×512 PNGs, each with `[234,228,216,255]` at the corner; the manifest returned `#eae4d8` colors and resolved `codoxear-icon.png` to a successful `/codoxear-icon.png` response. `/tmp/codoxear-logo-docker-icon.png` is the browser screenshot of the actual served 512px mark.
+
+Mask-safe measurement: visible non-beige foreground reaches radius 222.85px at 512px, exceeding the standard 204.8px 80%-diameter mask-safe radius. No `purpose: "maskable"` was advertised. The full canvas is deliberately opaque for platform-provided rounding.
+
+Release boundary: implementation is ready for independent review only. No deploy command or live port was used.
+
+## 2026-09-10T00:56:23+08:00 — Commit-archive Docker gate
+
+Observation: `scripts/docker_verify.sh ad9cec96b1dd15074a6a034eec9f2589d3ad844e` built the Git archive of the committed source, ran an isolated Pi/broker/server/browser flow on loopback port 19643, and passed every application bootstrap check. The retained artifact directory is `/tmp/codoxear-docker-verify-results.tWVFYC`; its screenshot is `verification.png`.
+
+Interpretation: the committed production asset changes coexist with the real packaged application boot path. This gate validates archive-based serving and UI bootstrap; the prior sandbox browser evidence remains the direct proof of icon link fetch/decode and icon screenshot.
