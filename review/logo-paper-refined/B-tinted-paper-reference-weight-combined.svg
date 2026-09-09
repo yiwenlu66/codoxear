@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo — B Tinted Paper with reference-weight linework</title>
+  <desc id="desc">B Tinted Paper's beige tile and cream page with taupe 24-pixel document contour and fold, plus a terracotta 24-pixel terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#eae4d8"/>
+  <path d="M160 102h142l66 66v226q0 16-16 16H160q-16 0-16-16V118q0-16 16-16z"
+        fill="#fdfbf6" stroke="#a79a84" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M302 102v66h66z" fill="#e8e1d2"/>
+  <path d="M302 102v66h66" fill="none" stroke="#a79a84" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M192 244l22 14-22 14M246 272h26" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
