@@ -4,6 +4,7 @@ import subprocess
 import textwrap
 import unittest
 from pathlib import Path
+from xml.etree import ElementTree
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,7 @@ def render_shell_parents() -> dict[str, str | None]:
           searchNextButtonClass: elements.chatSearchNextBtn.attrs.class,
           searchCloseButtonClass: elements.chatSearchCloseBtn.attrs.class,
           hasComposerStop: Object.hasOwn(elements, "composerStopBtn"),
+          brandLogoMarkup: root.children[0].children[0].children[0].children[0].attrs.html,
         }}));
         """
     )
@@ -76,9 +78,20 @@ def render_shell_parents() -> dict[str, str | None]:
 
 
 class TestFrontendShellDomSource(unittest.TestCase):
+    def test_sidebar_brand_logo_uses_approved_dog_ear_geometry(self) -> None:
+        result = render_shell_parents()
+        logo = ElementTree.fromstring(result.pop("brandLogoMarkup").split("Codoxear", 1)[0])
+        self.assertEqual(logo.attrib["data-brand"], "codoxear")
+        self.assertEqual(logo.attrib["data-logo-motif"], "dog-ear-terminal")
+        self.assertEqual(logo.attrib["viewBox"], "0 0 512 512")
+        self.assertEqual([child.attrib["class"] for child in logo], ["brandLogoPage", "brandLogoFold", "brandLogoTerminal"])
+        self.assertEqual(result["searchPlaceholder"], "Search conversation")
+
     def test_message_navigation_controls_mount_in_chat_nav_rail(self) -> None:
+        result = render_shell_parents()
+        result.pop("brandLogoMarkup")
         self.assertEqual(
-            render_shell_parents(),
+            result,
             {
                 "chatSearch": "chatNavRail",
                 "prev": "chatMessageNavControls",

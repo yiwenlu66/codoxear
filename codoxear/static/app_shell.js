@@ -105,7 +105,7 @@ function requireFunction(value, name) {
       imgInput,
     ]);
     composer.appendChild(form);
-    sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
+    sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo brandLogo" viewBox="0 0 512 512" data-brand="codoxear" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path class="brandLogoPage" d="M142 104h172l88 88v216H142z" stroke-width="24" stroke-linejoin="round"/><path class="brandLogoFold" d="M314 104v88h88" stroke-width="24" stroke-linejoin="round"/><path class="brandLogoTerminal" d="m204 268 38 36-38 36M270 340h50" fill="none" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
     main.append(topbar, networkBanner, toast, chatWrap, composer);
     app.append(sidebar, main, backdrop);

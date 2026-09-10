@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="130 92 284 328" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo</title>
+  <desc id="desc">A folded paper document with a terminal prompt.</desc>
+  <path d="M142 104h172l88 88v216H142z" fill="#fdfbf6" stroke="#a79a84" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M314 104v88h88" fill="#e8e1d2" stroke="#a79a84" stroke-width="24" stroke-linejoin="round"/>
+  <path d="m204 268 38 36-38 36M270 340h50" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

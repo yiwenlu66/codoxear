@@ -11,6 +11,12 @@
         --accent: #2f2b26;
         --accent-weak: #efeee9;
         --danger: #b91c1c;
+        /* The in-app dog-ear mark keeps the approved paper palette by default.
+           Families retune these semantic tokens rather than mutating the DOM. */
+        --brand-logo-page: #fdfbf6;
+        --brand-logo-outline: #a79a84;
+        --brand-logo-fold: #e8e1d2;
+        --brand-logo-terminal: #c96442;
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         /* Appearance tokens. Paper values are today's literals: square
            geometry, generic sans-serif, ink focus rings, no elevation. Theme
@@ -227,7 +233,17 @@
         width: 20px;
         height: 20px;
         display: block;
-        color: var(--ink);
+      }
+      .brandLogo .brandLogoPage {
+        fill: var(--brand-logo-page);
+        stroke: var(--brand-logo-outline);
+      }
+      .brandLogo .brandLogoFold {
+        fill: var(--brand-logo-fold);
+        stroke: var(--brand-logo-outline);
+      }
+      .brandLogo .brandLogoTerminal {
+        stroke: var(--brand-logo-terminal);
       }
       @media (min-width: 881px) {
       }

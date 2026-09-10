@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlparse
+from xml.etree import ElementTree
 
 from PIL import Image
 
@@ -88,6 +89,55 @@ def _link(links: list[dict[str, str]], rel: str) -> dict[str, str]:
     return next(link for link in links if link.get("rel") == rel)
 
 
+def test_favicon_is_full_bleed_and_distinct_from_padded_pwa_icons(tmp_path: Path) -> None:
+    _html_headers, html = _get("/")
+    parser = _HeadLinks()
+    parser.feed(html.decode("utf-8"))
+    version = static_asset_version(STATIC_DIR)
+    base = "http://codoxear.test/"
+
+    favicon_link = _link(parser.links, "icon")
+    touch_link = _link(parser.links, "apple-touch-icon")
+    manifest_link = _link(parser.links, "manifest")
+    assert favicon_link["type"] == "image/svg+xml"
+    assert "sizes" not in favicon_link
+    assert parse_qs(urlparse(favicon_link["href"]).query) == {"v": [version]}
+
+    favicon_url = urlparse(urljoin(base, favicon_link["href"]))
+    favicon_headers, favicon_svg = _get(favicon_url.path + f"?{favicon_url.query}")
+    assert ("Content-Type", "image/svg+xml; charset=utf-8") in favicon_headers.headers
+    favicon_document = ElementTree.fromstring(favicon_svg)
+    assert favicon_document.attrib["viewBox"] == "130 92 284 328"
+    assert not favicon_document.findall("{http://www.w3.org/2000/svg}rect")
+
+    _png_headers, favicon_png = _get(f"/favicon.png?v={version}")
+    favicon_path = tmp_path / "favicon.png"
+    favicon_path.write_bytes(favicon_png)
+    with Image.open(favicon_path) as image:
+        favicon = image.convert("RGBA")
+        assert favicon.size == (64, 64)
+        assert favicon.getchannel("A").getbbox() == (0, 0, 64, 64)
+        assert favicon.getchannel("A").getextrema()[0] == 0
+        assert not any(pixel[:3] == (234, 228, 216) for _count, pixel in favicon.getcolors(64 * 64) or [])
+
+    touch_url = urlparse(urljoin(base, touch_link["href"]))
+    manifest_url = urlparse(urljoin(base, manifest_link["href"]))
+    _touch_headers, touch_png = _get(touch_url.path + f"?{touch_url.query}")
+    _manifest_headers, manifest_body = _get(manifest_url.path + f"?{manifest_url.query}")
+    manifest = json.loads(manifest_body)
+    pwa_url = urlparse(urljoin(base + "manifest.webmanifest", manifest["icons"][0]["src"]))
+    _pwa_headers, pwa_png = _get(pwa_url.path)
+
+    for name, data, expected_size in (("touch", touch_png, (180, 180)), ("pwa", pwa_png, (512, 512))):
+        image_path = tmp_path / f"{name}.png"
+        image_path.write_bytes(data)
+        with Image.open(image_path) as image:
+            rgba = image.convert("RGBA")
+            assert rgba.size == expected_size
+            assert rgba.getpixel((0, 0)) == (234, 228, 216, 255)
+            assert rgba.getpixel((expected_size[0] - 1, expected_size[1] - 1)) == (234, 228, 216, 255)
+
+
 def test_installed_brand_assets_are_versioned_opaque_and_resolve_from_served_shell(tmp_path: Path) -> None:
     _html_headers, html = _get("/")
     parser = _HeadLinks()
@@ -97,7 +147,7 @@ def test_installed_brand_assets_are_versioned_opaque_and_resolve_from_served_she
     favicon_link = _link(parser.links, "icon")
     touch_link = _link(parser.links, "apple-touch-icon")
     manifest_link = _link(parser.links, "manifest")
-    assert favicon_link["sizes"] == "64x64"
+    assert favicon_link["type"] == "image/svg+xml"
     assert touch_link["sizes"] == "180x180"
 
     base = "http://codoxear.test/"
@@ -121,7 +171,6 @@ def test_installed_brand_assets_are_versioned_opaque_and_resolve_from_served_she
     icon_url = urlparse(urljoin(base + "manifest.webmanifest", manifest["icons"][0]["src"]))
     _icon_headers, icon_body = _get(icon_url.path)
     assets = {
-        "favicon": (urlparse(urljoin(base, favicon_link["href"])).path, (64, 64)),
         "apple-touch": (urlparse(urljoin(base, touch_link["href"])).path, (180, 180)),
         "manifest": (icon_url.path, (512, 512)),
     }
@@ -143,6 +192,7 @@ def test_canonical_brand_source_and_installed_derivatives_are_package_version_in
     required = {
         "codoxear-icon.svg",
         "codoxear-icon.png",
+        "favicon.svg",
         "favicon.png",
         "apple-touch-icon.png",
     }

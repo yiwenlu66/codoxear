@@ -21,6 +21,10 @@
   --accent: var(--ink);
   --accent-weak: #26231d;
   --danger: #e0685a;
+  --brand-logo-page: #211e19;
+  --brand-logo-outline: #e6e1d7;
+  --brand-logo-fold: #26231d;
+  --brand-logo-terminal: #e6e1d7;
   --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
   --bubble-user: #262219;
   --bubble-assistant: var(--paper);

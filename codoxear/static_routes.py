@@ -21,6 +21,7 @@ FRONTEND_ASSET_FILES = (
     "themes/slate.css",
 )
 SHELL_ASSET_FILES = (
+    "favicon.svg",
     "favicon.png",
     "apple-touch-icon.png",
     "manifest.webmanifest",

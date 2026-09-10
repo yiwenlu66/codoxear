@@ -25,6 +25,10 @@
   --accent-weak: #f3e3da;
   --on-accent: #fffdf9;
   --danger: #b3402e;
+  --brand-logo-page: var(--paper);
+  --brand-logo-outline: var(--accent);
+  --brand-logo-fold: var(--accent-weak);
+  --brand-logo-terminal: var(--ink);
   --radius-control: 6px;
   --radius-card: 12px;
   --radius-bubble: 18px;
@@ -116,6 +120,10 @@
   --on-accent: #2b2118;
   --accent-strong: var(--accent);
   --danger: #e0685a;
+  --brand-logo-page: var(--paper);
+  --brand-logo-outline: var(--accent);
+  --brand-logo-fold: var(--accent-weak);
+  --brand-logo-terminal: var(--ink);
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
   --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
 

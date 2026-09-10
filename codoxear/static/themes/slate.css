@@ -21,6 +21,10 @@
   --accent: #0d0d0d;
   --accent-weak: #ececec;
   --danger: #d92d20;
+  --brand-logo-page: var(--paper);
+  --brand-logo-outline: var(--ink);
+  --brand-logo-fold: var(--wash);
+  --brand-logo-terminal: var(--ink);
   --radius-control: 8px;
   --radius-card: 12px;
   --radius-bubble: 18px;
@@ -108,6 +112,10 @@
   --accent: #ececec;
   --accent-weak: #3a3a3a;
   --danger: #e5684e;
+  --brand-logo-page: var(--paper);
+  --brand-logo-outline: var(--ink);
+  --brand-logo-fold: var(--wash);
+  --brand-logo-terminal: var(--ink);
   --focus-ring: #ececec;
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.45);
   --icon-muted-filter: grayscale(1) brightness(0) invert(0.92) opacity(0.7);
@@ -231,6 +239,10 @@
 :where(:root[data-theme="slate"]) .md pre { background: var(--surface-code); }
 :where(:root[data-theme="slate"]) .md table { border-color: var(--border-subtle); }
 :where(:root[data-theme="slate"]) .code-copy-btn { border-color: var(--border); }
+
+/* Slate keeps the dog-ear as a crisp monochrome outline; the page beneath
+   remains visible through the fold rather than carrying Paper's tonal fill. */
+:where(:root[data-theme="slate"]) .brandLogo .brandLogoFold { fill: transparent; }
 
 :where(:root[data-theme="slate"]) .helpViewer,
 :where(:root[data-theme="slate"]) .diagViewer,

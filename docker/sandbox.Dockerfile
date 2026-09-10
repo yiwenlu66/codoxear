@@ -23,7 +23,8 @@ RUN python3 -m pip install --no-cache-dir \
         Pillow>=9.0 \
         py-vapid>=1.9.2 \
         pywebpush>=2.3.0 \
-        pytest
+        pytest \
+        "tinycss2>=1.3"
 
 RUN useradd -ms /bin/bash tester
 

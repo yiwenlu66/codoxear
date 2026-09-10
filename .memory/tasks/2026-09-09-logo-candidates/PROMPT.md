@@ -1,14 +1,21 @@
+# Branding follow-on: full-bleed favicon and theme-aware in-app mark
+
 ## Objective
-Promote the user-approved `review/logo-paper-refined/reference-geometry-tinted-paper.svg/png` mark to Codoxear production branding, then leave the resulting commit for independent review before any deployment.
 
-## Approved design contract
-- Exact original Paper Outline page and terminal geometry: document `M142 104h172l88 88v216H142z`; terminal `m204 268 38 36-38 36M270 340h50`; 24px strokes with the approved joins/caps.
-- Approved tinted-paper palette: beige `#eae4d8` canvas, cream `#fdfbf6` page, taupe `#a79a84` contour/fold, `#e8e1d2` fold fill, terracotta `#c96442` terminal.
-- The canonical production source must be a static SVG owned by the application, never the review directory.
-- Installed raster outputs: 512px `codoxear-icon.png`, existing-target-size `favicon.png` (64px), and 180px `apple-touch-icon.png`. Each must be opaque at every corner with full-bleed beige canvas; platforms, not transparent pixels, provide rounded masks.
-- Add the apple-touch link, use resolved production manifest icon URLs, update stale manifest blue branding colors, and retain dynamic UI `theme-color` ownership.
-- Do not declare a maskable icon: the approved foreground exceeds the standard 80%-diameter safe circle.
+Keep the approved tinted-paper dog-ear as the PWA/home-screen installation icon, while making browser chrome use an unpadded, full-bleed favicon derived from the same canonical paths. Replace the legacy monochrome sidebar glyph with the approved dog-ear geometry and give the visible in-app mark a family-specific presentation through CSS/theme tokens.
 
-## Verification and release boundary
-- Verify only in Docker isolation. Required evidence includes served landing HTML links with versioned URLs, asset fetching and dimensions from a browser, manifest icon resolution, favicon link projection, and a browser screenshot of the served icon.
-- Do not deploy in this phase. The next parent must independently review the committed diff and explicitly authorize deployment.
+## Contract
+
+- `codoxear/static/codoxear-icon.svg` and its 512px PNG remain the padded, opaque warm-gray PWA/manifest asset. `apple-touch-icon.png` remains that padded installation treatment.
+- `favicon.svg` and `favicon.png` are the distinct browser assets. They use the approved document/fold/terminal paths and colors without a warm-gray outer canvas. The favicon SVG is the HTML `rel="icon"` target; PNG remains the compatibility route and `/favicon.ico` fallback.
+- The app sidebar header is the product’s in-app brand surface. It renders semantic page/fold/terminal paths with `--brand-logo-*` tokens; theme selection remains solely owned by the existing theme controller and stylesheet cascade.
+- Paper light preserves the approved tinted-paper rendering. Clay and Slate visibly differ through their family tokens; Slate also presents the fold as a monochrome outline. No JavaScript writes logo appearance.
+- Browser/runtime checks run only against Docker isolation. Do not deploy this follow-on without a later explicit instruction.
+
+## Success criteria
+
+1. Served HTML keeps favicon and PWA/home-screen metadata distinct and versioned.
+2. The favicon raster has no warm-gray outer-canvas pixels, while Apple-touch and manifest raster corners remain opaque warm gray.
+3. The sidebar renders the approved dog-ear mark, and theme selections yield three distinct computed logo presentations.
+4. Behavioral tests execute HTML/SVG delivery, image decoding, shell DOM construction, and CSS token cascade; Docker browser evidence covers live theme switches.
+5. The change is committed atomically after reviewable staged-diff inspection; deployment is not run.
