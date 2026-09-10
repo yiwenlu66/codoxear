@@ -27,6 +27,8 @@ HARNESS = textwrap.dedent(
       const listeners = {};
       const value = {
         tag, attrs, children: [], dataset: {}, style: {}, parentNode: null,
+        setAttribute(name, value) { this.attrs[name] = String(value); },
+        contains(target) { return this === target || this.children.some((child) => typeof child.contains === "function" && child.contains(target)); },
         appendChild(child) { if (child) { child.parentNode = this; this.children.push(child); } return child; },
         remove() { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); if (i >= 0) this.parentNode.children.splice(i, 1); this.parentNode = null; },
         addEventListener(type, listener) { (listeners[type] ||= []).push(listener); },
@@ -65,8 +67,13 @@ HARNESS = textwrap.dedent(
       const selections = [];
       const sidebarOpen = [];
       const sessionState = { get: () => "s1", subscribe: () => () => true };
+      const documentTarget = {
+        listeners: {},
+        addEventListener(type, listener) { this.listeners[type] = listener; },
+        removeEventListener(type) { delete this.listeners[type]; },
+      };
       const controller = ctx.window.CodoxearSessions.createSessionsController({
-        sessionState, sessionsWrap: wrap, sidebarEmptyHint: node("div"), el, iconSvg: (name) => `<svg>${name}</svg>`,
+        sessionState, sessionsWrap: wrap, sidebarEmptyHint: node("div"), documentTarget, el, iconSvg: (name) => `<svg>${name}</svg>`,
         sidebarRenderSignature: () => `${swipeActions}`, sidebarSessionEntries: (sessions) => sessions.map((session) => ({ type: "session", session })),
         sessionDisplayName: () => "Unified card", sessionLaunchFailed: () => false, sessionLaunchPending: () => false,
         redactedLaunchErrorText: () => "", fmtRelativeAge: () => "2m", sidebarEffortCode: () => "hi", sidebarModelText: () => "model-2026",
@@ -78,6 +85,7 @@ HARNESS = textwrap.dedent(
       });
       controller.renderSessions([{
         session_id: "s1", busy: true, queue_len: 2, unread_count: 1, cwd: "/work/codoxear", git_branch: "main", agent_backend: "pi", owned: false,
+        subagents_running: 1, subagent_details: [{ role: "reviewer", model: "provider/model", tools: 3, tokens: 4200 }],
       }], { selectedId: "s1", swipeActions });
       const card = wrap.children[0];
       const swipe = byClass(card, "sessionSwipe");
@@ -86,12 +94,25 @@ HARNESS = textwrap.dedent(
       const title = textByClass(card, "titleText");
       const badges = byClass(card, "sessionBadges").children.map((badge) => badge.attrs.text);
       const metadata = textByClass(card, "metaText");
+      const subagentMarker = byClass(card, "subagentMarker");
+      const subagentPopover = byClass(card, "subagentPopover");
+      const popoverInitiallyHidden = Object.hasOwn(subagentPopover.attrs, "hidden");
+      subagentMarker.onclick({ preventDefault() {}, stopPropagation() {} });
+      const popoverAfterOpen = {
+        hidden: subagentPopover.hidden,
+        expanded: subagentMarker.attrs["aria-expanded"],
+        cardClasses: classes(card),
+        lines: subagentPopover.children.map((line) => line.attrs.text),
+      };
+      documentTarget.listeners.pointerdown({ target: node("button") });
+      const popoverAfterOutside = { hidden: subagentPopover.hidden, expanded: subagentMarker.attrs["aria-expanded"], cardClasses: classes(card) };
       card.onclick();
       return {
         cardClasses: classes(card), cardTopology: topology(card), contentTopology: topology(content),
         hasSwipeActions: Boolean(swipe), hasInlineActions: Boolean(inlineActions),
         swipeX: Object.hasOwn(content.dataset, "swipeX") ? content.dataset.swipeX : null,
         swipeListeners: Object.keys(content.listeners).sort(), title, badges, metadata, selections, sidebarOpen,
+        popoverInitiallyHidden, popoverAfterOpen, popoverAfterOutside,
         touchActionLabels: swipe ? swipe.children.slice(0, 2).flatMap((actions) => actions.children.map((button) => button.attrs["aria-label"])) : [],
         desktopActionLabels: inlineActions ? inlineActions.children.map((button) => button.attrs["aria-label"]) : [],
       };
@@ -120,6 +141,31 @@ def test_session_card_content_tree_is_identical_across_reveal_branches() -> None
     assert touch["title"] == desktop["title"] == "Unified card"
     assert touch["badges"] == desktop["badges"] == ["queue 2", "unread 1"]
     assert touch["metadata"] == desktop["metadata"] == "2m | model-2026 ·hi | codoxear | main"
+
+    assert touch["popoverInitiallyHidden"] is True
+    assert desktop["popoverInitiallyHidden"] is True
+    assert touch["popoverAfterOpen"] == {
+        "hidden": False,
+        "expanded": "true",
+        "cardClasses": ["session", "subagentPopoverOpen"],
+        "lines": ["reviewer · provider/model · 3 tools · 4200 tok"],
+    }
+    assert desktop["popoverAfterOpen"] == {
+        "hidden": False,
+        "expanded": "true",
+        "cardClasses": ["desktop", "session", "subagentPopoverOpen"],
+        "lines": ["reviewer · provider/model · 3 tools · 4200 tok"],
+    }
+    assert touch["popoverAfterOutside"] == {
+        "hidden": True,
+        "expanded": "false",
+        "cardClasses": ["session"],
+    }
+    assert desktop["popoverAfterOutside"] == {
+        "hidden": True,
+        "expanded": "false",
+        "cardClasses": ["desktop", "session"],
+    }
 
     assert touch["hasSwipeActions"] is True
     assert touch["hasInlineActions"] is False

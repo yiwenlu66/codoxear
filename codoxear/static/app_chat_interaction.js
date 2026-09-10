@@ -343,7 +343,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
     }
     function refreshSessions() { return getSessionRefreshController().refreshSessions(); }
     const sidebarController = codoxearSessions.createSessionsController(wiring.createSessionsOptions({
-      sessionState, sessionsWrap, sidebarEmptyHint, el, iconSvg, sidebarRenderSignature, sidebarSessionEntries,
+      sessionState, sessionsWrap, sidebarEmptyHint, documentTarget: document, el, iconSvg, sidebarRenderSignature, sidebarSessionEntries,
       sessionDisplayName, sessionLaunchFailed, sessionLaunchPending, redactedLaunchErrorText,
       fmtRelativeAge, sidebarEffortCode, sidebarModelText, baseName, sessionIsFast, agentBackendLogoPath,
       agentBackendDisplayName, sessionAgentBackend, sessionLaunchIcon, sessionLaunchLabel,

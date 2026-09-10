@@ -216,9 +216,9 @@ def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path)
         priority_half_life_seconds=100.0,
         priority_bucket_seconds=10.0,
         subagent_runs={
-            str(pi_log): [{"run_id": "one"}, {"run_id": "two"}],
-            "codex-thread": [{"thread_id": "codex-child"}],
-            "cc-thread": [{"agent_id": "cc-child"}],
+            str(pi_log): [{"run_id": "one", "detail": {"role": "executor", "model": "pi-model", "tools": 2, "tokens": 1200}}, {"run_id": "two"}],
+            "codex-thread": [{"thread_id": "codex-child", "detail": {"role": "Subagent", "model": None, "tools": None, "tokens": None}}],
+            "cc-thread": [{"agent_id": "cc-child", "detail": {"role": "Explore", "model": None, "tools": None, "tokens": None}}],
             "cc-terminal-thread": [{"agent_id": "must-not-project"}],
             str(codex_log): [{"run_id": "ignored"}],
             str(tmp_path / "unbound.jsonl"): [{"run_id": "ignored"}],
@@ -230,6 +230,13 @@ def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path)
     assert by_id["codex"]["subagents_running"] == 1
     assert by_id["cc"]["subagents_running"] == 1
     assert by_id["cc-terminal"]["subagents_running"] == 0
+    assert by_id["pi"]["subagent_details"] == [
+        {"role": "executor", "model": "pi-model", "tools": 2, "tokens": 1200},
+        {"role": None, "model": None, "tools": None, "tokens": None},
+    ]
+    assert by_id["codex"]["subagent_details"] == [{"role": "Subagent", "model": None, "tools": None, "tokens": None}]
+    assert by_id["cc"]["subagent_details"] == [{"role": "Explore", "model": None, "tools": None, "tokens": None}]
+    assert by_id["cc-terminal"]["subagent_details"] == []
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:

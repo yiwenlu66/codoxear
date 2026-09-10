@@ -74,7 +74,7 @@ _SUBAGENT_RUNS_CACHE_TTL_S = 2.0
 _SUBAGENT_RUNS_CACHE_ROOT: str | None = None
 _SUBAGENT_RUNS_CACHE_AT = 0.0
 _SUBAGENT_RUNS_CACHE: dict[str, list[dict[str, Any]]] = {}
-_ACTIVE_SUBAGENT_STATES = frozenset({"running", "pending"})
+_ACTIVE_SUBAGENT_STATES = frozenset({"queued", "running", "pending"})
 # Codex retains completed child rollout files indefinitely. Child liveness is a
 # process signal when a writer still has the file open, with a short mtime grace
 # period for a just-started writer that has not yet exposed its FD through
@@ -229,6 +229,7 @@ def scan_active_codex_subagents(
                 "thread_id": child_thread_id if isinstance(child_thread_id, str) and child_thread_id else child_path.stem,
                 "log_path": str(child_path),
                 "updated_at": float(stat.st_mtime),
+                "detail": {"role": "Subagent", "model": None, "tools": None, "tokens": None},
             }
             run["event"] = emit_subagent_event(
                 "codex",
@@ -297,7 +298,16 @@ def scan_active_cc_subagents(*, parent_broker_pids: Mapping[str, int]) -> dict[s
             ):
                 continue
             event = payload.get("event")
-            run: dict[str, Any] = {"agent_id": agent_id}
+            agent_type = payload.get("agent_type")
+            run: dict[str, Any] = {
+                "agent_id": agent_id,
+                "detail": {
+                    "role": agent_type.strip() if isinstance(agent_type, str) and agent_type.strip() else agent_id,
+                    "model": None,
+                    "tools": None,
+                    "tokens": None,
+                },
+            }
             if isinstance(event, dict):
                 run["event"] = dict(event)
             grouped.setdefault(parent_session_id, []).append(run)
@@ -350,24 +360,47 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
             continue
         if not isinstance(started_at, (int, float)) or isinstance(started_at, bool):
             continue
+        steps = payload.get("steps")
+        current_step = payload.get("currentStep")
+        selected_step: Mapping[str, Any] | None = None
+        if isinstance(steps, list):
+            if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps):
+                candidate = steps[current_step]
+                if isinstance(candidate, Mapping) and str(candidate.get("status", "")).strip().lower() in _ACTIVE_SUBAGENT_STATES:
+                    selected_step = candidate
+            if selected_step is None:
+                selected_step = next(
+                    (
+                        step
+                        for step in steps
+                        if isinstance(step, Mapping) and str(step.get("status", "")).strip().lower() in _ACTIVE_SUBAGENT_STATES
+                    ),
+                    None,
+                )
         agent = payload.get("agent")
         if not isinstance(agent, str) or not agent.strip():
-            steps = payload.get("steps")
-            if isinstance(steps, list):
-                current_step = payload.get("currentStep")
-                ordered_steps = (
-                    [steps[current_step], *steps[:current_step], *steps[current_step + 1 :]]
-                    if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps)
-                    else steps
-                )
-                for step in ordered_steps:
+            if isinstance(selected_step, Mapping) and isinstance(selected_step.get("agent"), str) and selected_step["agent"].strip():
+                agent = selected_step["agent"]
+            elif isinstance(steps, list):
+                for step in steps:
                     if isinstance(step, dict) and isinstance(step.get("agent"), str) and step["agent"].strip():
                         agent = step["agent"]
                         break
+        step_tokens = selected_step.get("tokens") if isinstance(selected_step, Mapping) else None
+        total_tokens = payload.get("totalTokens")
+        tokens = step_tokens.get("total") if isinstance(step_tokens, Mapping) else total_tokens.get("total") if isinstance(total_tokens, Mapping) else None
+        tools = selected_step.get("toolCount") if isinstance(selected_step, Mapping) else payload.get("toolCount")
+        model = selected_step.get("model") if isinstance(selected_step, Mapping) else None
         grouped.setdefault(parent, []).append({
             "run_id": run_id,
             "agent": agent.strip() if isinstance(agent, str) else None,
             "started_at": started_at,
+            "detail": {
+                "role": agent.strip() if isinstance(agent, str) and agent.strip() else None,
+                "model": model.strip() if isinstance(model, str) and model.strip() else None,
+                "tools": int(tools) if isinstance(tools, (int, float)) and not isinstance(tools, bool) and tools >= 0 else None,
+                "tokens": int(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens >= 0 else None,
+            },
         })
 
     _SUBAGENT_RUNS_CACHE_ROOT = root_key

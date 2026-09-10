@@ -75,6 +75,7 @@ def handle_hook_event(event: Mapping[str, Any], *, environ: Mapping[str, str] | 
                 "state": "running",
                 "parent_session_id": session_id,
                 "agent_id": agent_id,
+                "agent_type": agent_type.strip() if isinstance(agent_type, str) and agent_type.strip() else None,
                 "broker_pid": broker_pid,
                 "event": emit_subagent_event("cc", event_id=agent_id, text=label),
             },

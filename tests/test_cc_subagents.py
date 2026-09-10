@@ -30,6 +30,7 @@ def test_cc_hook_status_is_live_only_between_start_and_stop(tmp_path: Path, monk
     )
     runs = scan_active_cc_subagents(parent_broker_pids={SESSION_ID: os.getpid()})
     assert [run["agent_id"] for run in runs[SESSION_ID]] == ["agent-abc"]
+    assert runs[SESSION_ID][0]["detail"] == {"role": "Explore", "model": None, "tools": None, "tokens": None}
     assert runs[SESSION_ID][0]["event"]["message_id"] == "cc-subagent:agent-abc"
 
     assert handle_hook_event(

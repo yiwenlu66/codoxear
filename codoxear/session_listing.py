@@ -92,6 +92,7 @@ class ActiveSessionRowFacts:
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
+    subagent_details: list[dict[str, Any]] = field(default_factory=list)
     run_settings_log_revision: tuple[int, int, int, int] | None = None
 
 
@@ -223,6 +224,25 @@ _PRIVATE_LISTING_KEYS = (
 )
 
 
+def _public_subagent_details(runs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Project compact, safe-to-render details from backend scanner records."""
+    details: list[dict[str, Any]] = []
+    for run in runs:
+        source = run.get("detail")
+        source = source if isinstance(source, Mapping) else {}
+        role = source.get("role")
+        model = source.get("model")
+        tools = source.get("tools")
+        tokens = source.get("tokens")
+        details.append({
+            "role": role.strip()[:160] if isinstance(role, str) and role.strip() else None,
+            "model": model.strip()[:200] if isinstance(model, str) and model.strip() else None,
+            "tools": int(tools) if isinstance(tools, (int, float)) and not isinstance(tools, bool) and tools >= 0 else None,
+            "tokens": int(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens >= 0 else None,
+        })
+    return details
+
+
 def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
     commit_unknown = facts.commit_unknown_send if isinstance(facts.commit_unknown_send, Mapping) else None
     return {
@@ -289,6 +309,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "snoozed": facts.snoozed,
         "lost": bool(facts.lost),
         "subagents_running": max(0, int(facts.subagents_running)),
+        "subagent_details": _public_subagent_details(facts.subagent_details),
     }
 
 
@@ -474,6 +495,7 @@ def build_active_session_rows_snapshot(
                     pi_thinking_command=bool(s.pi_thinking_command),
                     slash_commands=list(s.slash_commands),
                     subagents_running=len(matching_subagents),
+                    subagent_details=[dict(run) for run in matching_subagents if isinstance(run, Mapping)],
                     run_settings_log_revision=log_revision,
                 )
             )

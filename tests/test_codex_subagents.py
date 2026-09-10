@@ -37,6 +37,7 @@ def test_scan_active_codex_subagents_groups_live_child_headers_by_parent_thread(
     ] == [
         {"thread_id": "child-thread", "log_path": str(child), "updated_at": 1.0}
     ]
+    assert active["parent-thread"][0]["detail"] == {"role": "Subagent", "model": None, "tools": None, "tokens": None}
     assert active["parent-thread"][0]["event"]["message_id"] == "codex-subagent:child-thread"
     assert scan_active_codex_subagents(
         sessions_dirs=(sessions_dir,),
