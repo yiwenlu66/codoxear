@@ -11,12 +11,12 @@
         --accent: #2f2b26;
         --accent-weak: #efeee9;
         --danger: #b91c1c;
-        /* The in-app dog-ear mark keeps the approved paper palette by default.
+        /* The in-app dog-ear mark is Paper ink on Paper surfaces by default.
            Families retune these semantic tokens rather than mutating the DOM. */
-        --brand-logo-page: #fdfbf6;
-        --brand-logo-outline: #a79a84;
-        --brand-logo-fold: #e8e1d2;
-        --brand-logo-terminal: #c96442;
+        --brand-logo-page: var(--paper);
+        --brand-logo-outline: var(--ink);
+        --brand-logo-fold: var(--bg);
+        --brand-logo-terminal: var(--ink);
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         /* Appearance tokens. Paper values are today's literals: square
            geometry, generic sans-serif, ink focus rings, no elevation. Theme

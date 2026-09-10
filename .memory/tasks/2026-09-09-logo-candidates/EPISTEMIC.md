@@ -2,21 +2,40 @@
 
 ## Phenomenon
 
-The installation icon needs an opaque warm-gray canvas so home-screen platforms can mask it; the browser favicon must instead show the approved dog-ear without that canvas. The first separation implementation correctly retained distinct assets but carried the PWA coordinate system into the 20px sidebar mark and stretched the non-square favicon raster fallback.
+The deployed Paper sidebar dog-ear carries a stale tinted-paper palette: taupe
+contours/fold and a terracotta terminal in light mode. Those colors contradict
+Paper's declared ink-on-paper language and make the in-app mark read like a
+Clay variant. The approved canonical dog-ear geometry, tight viewport, browser
+favicon, and PWA artwork are separate concerns and are not implicated.
 
 ## Mechanism
 
-`codoxear-icon.svg/png`, `apple-touch-icon.png`, and `manifest.webmanifest` remain the padded installation family. `favicon.svg` contains the approved document/fold/prompt paths in the tight `130 92 284 328` viewport without a background rect. Its PNG fallback is made by uniformly rasterizing the SVG at 56×64 and centering it in a transparent 64×64 canvas, so the fallback does not horizontally deform the mark.
+The sidebar SVG has semantic page, fold, and terminal paths. `app.css` assigns
+their paints exclusively through `--brand-logo-*` tokens. The base tokens still
+encoded the prior tinted-paper literals, and Paper dark gave its fold a separate
+wash literal. Consequently, Paper's semantic mark did not resolve from its own
+surface and ink roles.
 
-The sidebar is the in-app brand surface. Its semantic dog-ear SVG uses that same tight viewport, which maps its 328-unit height onto the existing 20px CSS height and yields a 17.317px painted width. The CSS theme-token design remains unchanged: `app.css` owns base `--brand-logo-*` paints and family stylesheets supply Clay/Slate/Paper presentation without a JavaScript appearance writer.
+The correction makes Paper page resolve from `--paper`, fold from `--bg`, and
+both contour and terminal from `--ink` in the base light palette and the Paper
+dark override. CSS remains the only paint writer. Clay and Slate retain their
+independent family token assignments.
 
 ## Evidence
 
-- The favicon fallback alpha bbox is `(4, 0, 60, 64)`: vertical paint fills the 64px raster, 4px transparent side margins preserve a 56/64 aspect of 0.875, and the difference from the SVG viewport aspect 284/328 (~0.866) is below 0.02. It has no `#eae4d8` pixels.
-- Docker targeted tests pass 22 tests, including the served HTML/SVG/image decode test that compares PNG painted aspect against the parsed SVG viewport and the executed shell DOM test that pins the tight sidebar viewport.
-- Docker browser evidence on port 19011 measured the sidebar as a 20px square containing a 20px-tall, 17.317px-wide mark. Clay, Slate, and Paper stayed visually distinct in screenshots named in OPS.
-- PWA/Apple assets and manifest are byte-identical to the reviewed parent commit.
+- Before the correction, the resolved Paper-light signature was page
+  `#fdfbf6`, contour `#a79a84`, fold `#e8e1d2`, terminal `#c96442`.
+- `tests/test_brand_logo_theme.py` had behaviorally resolved and pinned that
+  stale signature. Its revised contract resolves actual CSS tokens and requires
+  the Paper signature to equal `(paper, ink, background, ink)` in light and
+  dark modes.
+- Docker browser validation and final rendered screenshots are recorded in the
+  task OPS entry added for this correction.
 
 ## Current commitment
 
-The two independent-review blockers are fixed in the working successor change. It has not been deployed; parent review determines the next release action. The sandbox wrapper's root-owned HOME failure and the three full-suite failures are environmental/unrelated boundaries described in OPS: deploy fixture needs a writable repository for Git worktree creation, and the vendored PDF.js Node checks need `Promise.withResolvers`, unavailable in the sandbox's Node 20.19.2.
+The Paper in-app mark alone is monochrome: Paper light uses charcoal ink on
+Paper surfaces and Paper dark uses light ink on its dark Paper surfaces. The
+fold uses the theme background role to remain visibly folded without introducing
+an independent tinted paint. No deployment occurs until parent independent
+review.

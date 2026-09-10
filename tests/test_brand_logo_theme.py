@@ -60,17 +60,25 @@ def _resolved_brand_signature(family: str, mode: str) -> tuple[str, str, str, st
 
 
 def test_brand_logo_is_token_rendered_and_family_styles_are_visibly_distinct() -> None:
-    tokens, styles = _theme_logo_styles("paper", "light")
+    _tokens, styles = _theme_logo_styles("paper", "light")
     assert styles["page"] == {"fill": "var(--brand-logo-page)", "stroke": "var(--brand-logo-outline)"}
     assert styles["fold"] == {"fill": "var(--brand-logo-fold)", "stroke": "var(--brand-logo-outline)"}
     assert styles["terminal"] == {"stroke": "var(--brand-logo-terminal)"}
-    assert resolve(styles["page"]["fill"], tokens) == "#fdfbf6"
 
     signatures = {family: _resolved_brand_signature(family, "light") for family in ("paper", "clay", "slate")}
     assert len(set(signatures.values())) == 3
-    assert signatures["paper"] == ("#fdfbf6", "#a79a84", "#e8e1d2", "#c96442")
+    assert signatures["paper"] == ("#ffffff", "#2f2b26", "#f6f5f1", "#2f2b26")
     assert signatures["clay"] == ("#fffdf9", "#c96442", "#f3e3da", "#35302a")
     assert signatures["slate"] == ("#ffffff", "#0d0d0d", "transparent", "#0d0d0d")
+
+
+def test_paper_logo_resolves_to_ink_and_paper_roles_in_both_modes() -> None:
+    for mode in ("light", "dark"):
+        tokens, _styles = _theme_logo_styles("paper", mode)
+        paper = resolve(tokens["--paper"], tokens)
+        ink = resolve(tokens["--ink"], tokens)
+        background = resolve(tokens["--bg"], tokens)
+        assert _resolved_brand_signature("paper", mode) == (paper, ink, background, ink)
 
 
 def test_brand_logo_tokens_remain_concrete_in_every_theme_mode() -> None:

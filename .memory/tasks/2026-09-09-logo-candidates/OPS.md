@@ -171,3 +171,37 @@ Independent review of `a7573235` found two geometry defects: the sidebar SVG kep
 Evidence: Docker targeted tests passed 22 tests from a tester-writable isolated HOME. The normal sandbox wrapper run through `sudo` again produced permission errors because it creates the mounted HOME as root; this is a wrapper invocation ownership issue, not test behavior. Docker browser at port 19011 reported the tight sidebar viewBox and the expected 20px × 17.317px painted dimensions. Settings-driven Clay, Slate, and Paper screenshots were captured at `/tmp/codoxear-brand-fix-clay.png`, `/tmp/codoxear-brand-fix-slate.png`, and `/tmp/codoxear-brand-fix-paper.png`.
 
 Correction to OPS 2026-09-10T11:09:47+08:00: the deploy-script test failure came from the sandbox's read-only `/workspace`, which prevented Git from creating `.git/worktrees/deploy2`; it was not caused by an uncommitted checkout. The two PDF.js failures are due to Node 20.19.2 lacking `Promise.withResolvers`; no PDF/vendor/runtime file changed in this work. PWA/Apple source assets and `manifest.webmanifest` remain byte-identical to `a7573235`.
+
+## 2026-09-10T12:02:01+08:00 — Follow-on release authorization and ordering check
+
+Authorization: the user explicitly authorized production deployment of reviewed branding commit `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`. The independent review `.pi-subagents/artifacts/5f2a51fa_critic_output.md` approves the sidebar sizing and transparent favicon aspect corrections with no release blockers; `.pi-subagents/artifacts/f07c7d13-05b9-4518-bd34-6d0a2aac0d7f_critic_output.md` is the initial review that identified the corrected geometry defects.
+
+Ordering and guard observation: the current detached deployed snapshot is clean at `0f0e261fc163515aee705ea9ae6e64198bd25de8` and is an ancestor of target `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`; deployment will advance rather than downgrade a newer/unrelated release. The source checkout is at the target commit with no staged files, although it carries unrelated untracked artifacts. The server is active from `~/.local/share/codoxear/deploy`. No source artifact will be cleaned; the deployment script alone may restore its documented stale derived `app.bundle.js` before enforcing the clean deployment-worktree guard.
+
+Commitment: run only `CODOXEAR_SKIP_BOOT_CHECK=1 scripts/deploy.sh 2bec55ddbf137c436f7a5a9f887e4a2ad1287d19` through a new `deploy-2bec` window in the existing project tmux session. This disables only the optional authenticated live-browser smoke check; the script retains its required active-service, `/` 200, and unauthenticated `/api/sessions` 401 health boundary. The script alone restarts `codoxear-server.service`; brokers and agent CLI/session processes are not targeted.
+
+## 2026-09-10T12:03:46+08:00 — Follow-on branding deployment result
+
+Command and environment: the authorized command ran in the new `codoxear:deploy-2bec` tmux window as `CODOXEAR_SKIP_BOOT_CHECK=1 scripts/deploy.sh 2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`.
+
+Observation: the script advanced the detached deployment snapshot from actual prior release `0f0e261fc163515aee705ea9ae6e64198bd25de8` to `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`, rebuilt its derived bundle, passed its JavaScript/wiring guards, reinstalled the package, and printed `deployed 2bec55ddbf137c436f7a5a9f887e4a2ad1287d19 from /home/yiwen/.local/share/codoxear/deploy` followed by `__CODOXEAR_DEPLOY_EXIT=0__`. The script's successful exit follows its mandatory server-active check and permitted HTTP health boundary (`/` 200 and unauthenticated `/api/sessions` 401). The optional authenticated browser smoke check was intentionally disabled; no live browser or feature test was run.
+
+Scope: the deployment script restarted only `codoxear-server.service`. No broker, backend CLI, or session process was stopped, signaled, or otherwise targeted.
+
+## 2026-09-10T12:05:18+08:00 — Post-deployment verification
+
+Observation: `git -C ~/.local/share/codoxear/deploy rev-parse HEAD` returned exactly `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`, with empty deployment-worktree porcelain status. `systemctl --user show codoxear-server.service` reports `ActiveState=active`, `SubState=running`, `ExecMainStatus=0`, `ActiveEnterTimestamp=Thu 2026-09-10 12:03:17 CST`, `WorkingDirectory=/home/yiwen/.local/share/codoxear/deploy`, and an `ExecStart` from the Codoxear pipx environment. The editable source index remains empty; the only tracked working-tree changes are the permitted task `OPS.md` and `EPISTEMIC.md` deployment records. `git diff --check` reported no whitespace errors.
+
+Conclusion: the forward reviewed branding release is served by the active immutable detached snapshot. The actual previous release retained for the documented rollback procedure is `0f0e261fc163515aee705ea9ae6e64198bd25de8`.
+
+## 2026-09-10T12:33:49+08:00 — Paper in-app logo regression correction
+
+Observation: the deployed Paper-light sidebar mark resolved to page `#fdfbf6`, contour `#a79a84`, fold `#e8e1d2`, and terminal `#c96442`. The taupe contour/fold and terracotta terminal make the mark a tinted-paper variant rather than Paper's monochrome ink-on-paper treatment. Paper dark already used light ink for contour/terminal but used the independent wash `#26231d` for its fold.
+
+Intervention: changed only the CSS paint tokens for the in-app Paper mark. Base Paper now resolves page from `--paper`, fold from `--bg`, and contour/terminal from `--ink`; Paper dark mirrors those same semantic roles. The canonical SVG geometry/viewBox, Clay and Slate tokens, favicon, PWA, and installation artwork were not changed. `tests/test_brand_logo_theme.py` now resolves the stylesheet cascade and requires the Paper signature to equal `(paper, ink, background, ink)` in both modes instead of pinning the old tinted signature.
+
+Prediction before browser validation: Settings-driven Paper light would render white page / charcoal contour, fold, and terminal context; Paper dark would render dark-paper page/background with a light-ink contour and terminal. Clay and Slate would retain their existing distinct signatures.
+
+Evidence: Docker-targeted tests passed: `20 passed in 1.61s` for `tests/test_brand_logo_theme.py`, `tests/test_theme_token_coverage.py`, and `tests/test_frontend_shell_dom_source.py`. In the Docker-isolated browser at `http://127.0.0.1:19127/`, live Settings selections produced Paper light page `rgb(255, 255, 255)`, fold `rgb(246, 245, 241)`, contour/terminal `rgb(47, 43, 38)` and Paper dark page `rgb(33, 30, 25)`, fold `rgb(24, 22, 19)`, contour/terminal `rgb(230, 225, 215)`. Screenshots: `/tmp/codoxear-paper-logo-light.png` and `/tmp/codoxear-paper-logo-dark.png`. The visible marks are a crisp charcoal/light-ink dog-ear with no taupe or terracotta paint. Clay spot-check remained page/contour/fold/terminal `rgb(255, 253, 249)` / `rgb(201, 100, 66)` / `rgb(243, 227, 218)` / `rgb(53, 48, 42)`; Slate remained white/black with transparent fold. The browser recorded no page errors; its only console entries were the existing meta CSP `frame-ancestors` notice and expected pre-login `401`.
+
+Release boundary: Docker browser and sandbox containers were stopped after validation. No deployment command or live service/browser was used; parent independent review remains required.
