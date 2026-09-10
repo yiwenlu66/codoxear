@@ -246,6 +246,37 @@ def test_cross_chunk_steer_preserves_open_turn_counters(tmp_path: Path) -> None:
     assert (session.meta_thinking, session.meta_tools) == (1, 3)
 
 
+def test_busy_false_log_activity_opens_and_counts_the_current_pi_turn(tmp_path: Path) -> None:
+    """A stale broker idle snapshot cannot discard Pi log activity."""
+    log_path = tmp_path / "pi.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=0, thinking_tokens=0, tools=0, turn_open=False)
+    session.busy = False
+    runtime = _runtime(session)
+
+    _append(
+        log_path,
+        _pi_user("run"),
+        _pi_thinking("plan", 12),
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "stopReason": "toolUse",
+                "content": [
+                    {"type": "toolCall", "id": "one", "name": "read", "arguments": {}},
+                    {"type": "toolCall", "id": "two", "name": "bash", "arguments": {}},
+                ],
+            },
+        },
+    )
+    runtime.update_meta_counters()
+
+    assert session.meta_turn_open is True
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (1, 12, 2)
+
+
+
 def test_busy_false_preserves_counters_while_subagents_active(tmp_path: Path, monkeypatch) -> None:
     """The episode continues in the background: with an active subagent run
     whose parent is this session's log, the busy-false scan must NOT zero the

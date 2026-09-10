@@ -2459,6 +2459,56 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["paint"], ["scroll"], ["jump"]])
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
+    def test_live_turn_boundaries_keep_pi_activity_open_and_dedupe_cursor_deltas(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
+        session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
+        catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console, Date }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(session_state_source)}, ctx);
+            vm.runInContext({json.dumps(catalog_source)}, ctx);
+            vm.runInContext({json.dumps(message_flow_source)}, ctx);
+            {MESSAGE_FLOW_HARNESS_JS}
+            const state = {{ selected: "sid", running: false, resets: 0, stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }};
+            const flow = createMessageFlow(state, {{
+              typingRowRuntime: {{
+                snapshot: () => ({{ stats: {{ ...state.stats }} }}),
+                updateTypingStats: (next, options = {{}}) => {{
+                  state.stats = options.delta
+                    ? {{ thinking: state.stats.thinking + (Number(next.thinking) || 0), thinkingTokens: state.stats.thinkingTokens + (Number(next.thinkingTokens) || 0), thinkingMode: next.thinkingMode || state.stats.thinkingMode, tools: state.stats.tools + (Number(next.tools) || 0) }}
+                    : {{ ...state.stats, ...next }};
+                }},
+                updateSubagentGauge: () => {{}},
+                resetTypingStats: () => {{ state.resets += 1; state.stats = {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }}; }},
+              }},
+            }});
+            const first = {{
+              transcript_state: "bound", log_path: "/tmp/log.jsonl", live_cursor: "c2", busy: false, queue_len: 0,
+              events: [{{ role: "user", text: "second" }}], meta_delta: {{ thinking: 1, thinking_tokens: 12, tool: 2 }},
+              turn_start: true, turn_end: true, turn_aborted: false, turn_boundaries: ["start", "end", "start"], turn_activity: true,
+            }};
+            const second = {{ ...first, live_cursor: "c3", events: [], meta_delta: {{ thinking: 1, thinking_tokens: 8, tool: 2 }}, turn_start: true, turn_boundaries: ["end", "start"] }};
+            (async () => {{
+              await flow.applyLiveMessageData("sid", 1, first);
+              const afterFirst = {{ running: state.sessionState.get("running"), turnOpen: state.sessionState.get("turnOpen"), stats: {{ ...state.stats }} }};
+              await flow.applyLiveMessageData("sid", 1, first);
+              const afterDuplicate = {{ running: state.sessionState.get("running"), turnOpen: state.sessionState.get("turnOpen"), stats: {{ ...state.stats }} }};
+              await flow.applyLiveMessageData("sid", 1, second);
+              process.stdout.write(JSON.stringify({{ afterFirst, afterDuplicate, afterSecond: {{ running: state.sessionState.get("running"), turnOpen: state.sessionState.get("turnOpen"), stats: state.stats }} }}));
+            }})().catch((error) => {{ console.error(error); process.exit(1); }});
+            """
+        )
+        out = _run_node(js)
+        expected_first = {"running": True, "turnOpen": True, "stats": {"thinking": 1, "thinkingTokens": 12, "thinkingMode": "tokens", "tools": 2}}
+        self.assertEqual(out["afterFirst"], expected_first)
+        self.assertEqual(out["afterDuplicate"], expected_first)
+        self.assertEqual(out["afterSecond"], {"running": True, "turnOpen": True, "stats": {"thinking": 2, "thinkingTokens": 20, "thinkingMode": "tokens", "tools": 4}})
+
     def test_composer_resets_typing_counts_for_idle_send_but_not_steer(self) -> None:
         polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")

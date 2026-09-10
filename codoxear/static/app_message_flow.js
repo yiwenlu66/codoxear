@@ -368,7 +368,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       }
     }
 
-    function applyTypingMetaDelta(data) {
+    function applyTypingMetaDelta(data, { duplicate = false } = {}) {
+      if (duplicate) return;
       const delta = data && data.meta_delta;
       if (!delta || typeof delta !== "object") return;
       const currentStats = typingRowRuntime.snapshot().stats || { thinkingTokens: 0 };
@@ -414,21 +415,30 @@ import * as CodoxearTranscript from "./app_transcript.js";
         return;
       }
       const nextLiveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+      const duplicateLiveWindow = Boolean(nextLiveCursor && nextLiveCursor === active.liveCursor);
       setLiveCursor(nextLiveCursor);
       const events = Array.isArray(data.events) ? data.events : [];
       appendEvents(events);
       const turnStart = Boolean(data.turn_start);
       const turnEnd = Boolean(data.turn_end);
       const turnAborted = Boolean(data.turn_aborted);
+      const turnBoundaries = Array.isArray(data.turn_boundaries)
+        ? data.turn_boundaries.filter((boundary) => boundary === "start" || boundary === "end" || boundary === "aborted")
+        : [];
+      const turnActivity = Boolean(data.turn_activity);
       const newTurn = CodoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
       if (newTurn && CodoxearTranscript.hasHumanOriginatedUserEvent(events)) typingRowRuntime.resetTypingStats();
       let turnOpen = wasTurnOpen;
-      if (turnStart) turnOpen = true;
-      if (!turnOpen && nowBusy) turnOpen = true;
-      if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
-      if (turnOpen && !nowBusy) turnOpen = false;
+      if (turnBoundaries.length) {
+        for (const boundary of turnBoundaries) turnOpen = boundary === "start";
+      } else {
+        if (turnStart) turnOpen = true;
+        if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
+      }
+      const terminalBoundary = turnBoundaries.length ? turnBoundaries[turnBoundaries.length - 1] !== "start" : (turnEnd || turnAborted);
+      if (!turnOpen && (turnActivity || nowBusy) && !terminalBoundary) turnOpen = true;
       sessionState.set("turnOpen", turnOpen);
-      applyTypingMetaDelta(data);
+      applyTypingMetaDelta(data, { duplicate: duplicateLiveWindow });
       const running = Boolean(turnOpen || nowBusy);
       const queueLen = Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
       sessionState.applyRuntime({ running, queueLen, token: data.token || null });

@@ -33,6 +33,8 @@ _NORMALIZED_LIVE_FIELDS = (
     "turn_start",
     "turn_end",
     "turn_aborted",
+    "turn_boundaries",
+    "turn_activity",
     "busy",
     "queue_len",
     "token",

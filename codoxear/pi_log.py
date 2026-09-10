@@ -34,6 +34,7 @@ from .pi_message import pi_assistant_pending_tool_call_ids
 from .pi_message import pi_assistant_text
 from .pi_message import pi_assistant_thinking_count
 from .pi_message import pi_assistant_reasoning_tokens
+from .pi_message import pi_assistant_tool_invocation_count
 from .pi_message import pi_assistant_tool_use_count
 from .pi_message import pi_duplicate_tool_call_id
 from .pi_message import pi_message_role

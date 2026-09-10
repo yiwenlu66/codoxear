@@ -11,7 +11,7 @@ from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_reasoning_tokens
-from .pi_log import pi_assistant_tool_use_count
+from .pi_log import pi_assistant_tool_invocation_count
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_user_text
 from .rollout_chat_events import _single_chat_event
@@ -126,7 +126,7 @@ def _extract_chat_events(
                 turn_start = True
                 continue
 
-            tool_count = pi_assistant_tool_use_count(obj)
+            tool_count = pi_assistant_tool_invocation_count(obj)
             thinking_count = pi_assistant_thinking_count(obj)
             reasoning_tokens = pi_assistant_reasoning_tokens(obj)
             if thinking_count > 0:

@@ -13,6 +13,12 @@ from . import rollout_log as _rollout_log
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .session_log_projection import log_revision
+from .pi_log import pi_assistant_is_aborted_turn
+from .pi_log import pi_assistant_is_final_turn_end
+from .pi_log import pi_assistant_is_terminal_no_visible_response
+from .pi_log import pi_assistant_thinking_count
+from .pi_log import pi_assistant_tool_invocation_count
+from .pi_log import pi_user_text
 from .transcript_search import clip_search_match_text as _clip_search_match_text
 from .transcript_search import read_chat_window_around as _read_chat_window_around
 from .transcript_search import search_chat_logs_bounded as _search_chat_logs_bounded
@@ -341,6 +347,37 @@ def _sse_write_event(handler: Any, event_name: str, payload: Mapping[str, Any]) 
     handler.wfile.flush()
 
 
+def _pi_live_turn_state(objs: list[dict[str, Any]]) -> tuple[list[str], bool]:
+    """Return Pi turn boundaries in log order plus non-boundary work activity.
+
+    The legacy aggregate flags cannot distinguish ``end → start`` from
+    ``start → end`` in a single live window.  Pi tool/thinking rows also prove
+    that a turn remains open even while a stale broker snapshot reports idle.
+    """
+    boundaries: list[str] = []
+    activity = False
+    for obj in objs:
+        if obj.get("type") == "custom_message":
+            boundaries.append("start")
+            activity = True
+            continue
+        if obj.get("type") != "message":
+            continue
+        if pi_user_text(obj):
+            boundaries.append("start")
+            activity = True
+            continue
+        if pi_assistant_is_aborted_turn(obj):
+            boundaries.append("aborted")
+            continue
+        if pi_assistant_is_final_turn_end(obj) or pi_assistant_is_terminal_no_visible_response(obj):
+            boundaries.append("end")
+            continue
+        if pi_assistant_thinking_count(obj) > 0 or pi_assistant_tool_invocation_count(obj) > 0:
+            activity = True
+    return boundaries, activity
+
+
 def _project_live_record_window(
     *,
     records: list[Any],
@@ -371,6 +408,7 @@ def _project_live_record_window(
         initial_cc_pending_tool_ids=initial_cc_pending,
     )
     token_update = _rollout_log._extract_token_observation(objs)
+    pi_turn_boundaries, pi_turn_activity = _pi_live_turn_state(objs)
     prior_user_byte, prior_turn_has_assistant = (
         _rollout_log._prior_open_turn_context(log_path, after_byte) if records and after_byte > 0 else (None, False)
     )
@@ -405,6 +443,8 @@ def _project_live_record_window(
         "turn_start": bool(flags.get("turn_start")),
         "turn_end": bool(flags.get("turn_end")),
         "turn_aborted": bool(flags.get("turn_aborted")),
+        "turn_boundaries": pi_turn_boundaries,
+        "turn_activity": pi_turn_activity,
         "busy": bool(busy_val),
         "queue_len": int(queue_val),
         "token": token_val,

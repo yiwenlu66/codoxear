@@ -23,7 +23,7 @@ from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_reasoning_tokens
-from .pi_log import pi_assistant_tool_use_count
+from .pi_log import pi_assistant_tool_invocation_count
 from .pi_log import pi_message_role
 from .pi_log import pi_user_is_agent_internal_delivery
 from .pi_log import pi_user_text
@@ -103,7 +103,7 @@ def _analyze_log_chunk(
                 continue
             d_th += pi_assistant_thinking_count(obj)
             d_thinking_tokens += pi_assistant_reasoning_tokens(obj)
-            d_tools += pi_assistant_tool_use_count(obj)
+            d_tools += pi_assistant_tool_invocation_count(obj)
             if pi_assistant_error_text(obj):
                 turn_open = True
             elif (
@@ -114,7 +114,7 @@ def _analyze_log_chunk(
                 turn_open = False
             elif (
                 pi_message_role(obj) == "toolResult"
-                or pi_assistant_tool_use_count(obj) > 0
+                or pi_assistant_tool_invocation_count(obj) > 0
                 or pi_assistant_thinking_count(obj) > 0
             ):
                 turn_open = True

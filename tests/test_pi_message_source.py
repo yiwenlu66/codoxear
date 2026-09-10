@@ -114,6 +114,8 @@ class TestPiMessageSource(unittest.TestCase):
                 ],
             },
         }
+        self.assertEqual(pi_message.pi_assistant_tool_invocation_count(assistant), 3)
+        self.assertEqual(pi_message.pi_assistant_tool_use_count(assistant), 3)
         ids = pi_message.pi_assistant_pending_tool_call_ids(assistant)
         self.assertEqual(ids[0], "tool-1")
         self.assertIsInstance(ids[1], pi_message.PiDuplicateToolCallId)

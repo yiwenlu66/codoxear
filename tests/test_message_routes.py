@@ -540,6 +540,33 @@ def test_messages_live_streams_new_events_after_valid_cursor() -> None:
     assert metrics and metrics[0][0] == "api_messages_poll_ms"
 
 
+def test_messages_live_pi_preserves_ordered_boundaries_and_invocation_counts() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "pi.jsonl"
+        rows = [
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "first"}]}},
+            {"type": "message", "message": {"role": "assistant", "stopReason": "stop", "content": [{"type": "text", "text": "done"}]}},
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "second"}]}},
+            {"type": "message", "message": {"role": "assistant", "stopReason": "toolUse", "content": [
+                {"type": "thinking", "thinking": "plan"},
+                {"type": "toolCall", "id": "one", "name": "read", "arguments": {}},
+                {"type": "toolCall", "id": "two", "name": "bash", "arguments": {}},
+            ]}},
+        ]
+        log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        session = _session(td, log_path)
+        session.agent_backend = "pi"
+        deps, responses, _metrics = _deps()
+        cursor = encode_message_cursor(kind="live", session=session, pos=0, secret=_SECRET)
+        handle_messages_live(_FakeHandler(), session_id="s1", query=f"cursor={cursor}", manager=_OrderedLiveManager(session), deps=deps)
+
+    status, body = responses.pop()
+    assert status == 200
+    assert body["turn_boundaries"] == ["start", "end", "start"]
+    assert body["turn_activity"] is True
+    assert body["meta_delta"] == {"thinking": 1, "thinking_tokens": 0, "tool": 2, "system": 0}
+
+
 def test_messages_live_at_eof_skips_jsonl_reopen() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "rollout.jsonl"

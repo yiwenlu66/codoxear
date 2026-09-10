@@ -215,12 +215,14 @@ def pi_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     return False
 
 
+def pi_assistant_tool_invocation_count(obj: dict[str, Any]) -> int:
+    """Count requested Pi tool invocations, not their result rows."""
+    return sum(1 for part in pi_assistant_content_parts(obj) if part.get("type") == "toolCall")
+
+
 def pi_assistant_tool_use_count(obj: dict[str, Any]) -> int:
-    count = 0
-    for part in pi_assistant_content_parts(obj):
-        if part.get("type") == "toolCall":
-            count += 1
-    return count
+    """Compatibility name for the invocation-count contract."""
+    return pi_assistant_tool_invocation_count(obj)
 
 
 def pi_unknown_tool_call_id(index: int = 0) -> PiUnknownToolCallId:

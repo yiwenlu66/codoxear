@@ -205,6 +205,7 @@ class SessionLogRuntimeCoordinator:
             codex_reasoning_total = session.meta_codex_reasoning_total
             latest_chat_ts: float | None = None
             latest_token_observation: TokenObservation = TOKEN_NONE
+            processed_rows = False
             loops = 0
             while offset < size and loops < 16:
                 objs, new_offset = self.read_jsonl_from_offset(log_path, offset, max_bytes=256 * 1024)
@@ -224,6 +225,8 @@ class SessionLogRuntimeCoordinator:
                     initial_turn_open=turn_open,
                     initial_codex_reasoning_total=codex_reasoning_total,
                 )
+                if objs:
+                    processed_rows = True
                 codex_reasoning_total = chunk_turn_state.codex_reasoning_total
                 token_observation = coerce_token_observation(token_update)
                 if chunk_turn_state.counters_reset:
@@ -283,7 +286,12 @@ class SessionLogRuntimeCoordinator:
                 if not current or current.log_path != log_path:
                     continue
                 current.meta_codex_reasoning_total = codex_reasoning_total
-                if current.busy:
+                # Broker liveness can lag a just-written Pi log row. The log
+                # establishes the counting window: never discard tool/thinking
+                # deltas merely because the contemporaneous broker snapshot
+                # still says busy=false.
+                counting_turn_open = bool(current.busy) or (processed_rows and bool(turn_open))
+                if counting_turn_open:
                     if counters_reset:
                         current.meta_thinking = total_thinking
                         current.meta_thinking_tokens = total_thinking_tokens
