@@ -359,6 +359,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
           });
         }
       }
+      if (typeof typingRowRuntime.updateSubagentDetails === "function") {
+        typingRowRuntime.updateSubagentDetails(session && session.subagent_details);
+      }
 
       if (shouldApplyRuntime) {
         const queueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;

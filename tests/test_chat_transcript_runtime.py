@@ -627,6 +627,61 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "connected": False,
         })
 
+    def test_typing_bubble_expands_active_subagent_details_in_place(self) -> None:
+        source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(source)}, ctx);
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false }};
+              out.appendChild = (child) => {{ out.children.push(child); return child; }};
+              out.remove = () => {{ out.isConnected = false; }};
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+            const root = {{ insertBefore: (row) => {{ row.isConnected = true; }} }};
+            const runtime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: node(), el: (_tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
+            }});
+            runtime.updateSubagentGauge(2);
+            runtime.updateSubagentDetails([
+              {{ role: "reviewer", model: "provider/model", tools: 3, tokens: 4200 }},
+              {{ role: "scout", model: "small-model", tools: 1, tokens: 84 }},
+            ]);
+            runtime.setVisible(true);
+            const bubble = runtime.anchor().children[0];
+            const stats = bubble.children[1];
+            const details = bubble.children[2];
+            const collapsed = {{ text: stats.textContent, expanded: stats["aria-expanded"], hidden: Boolean(details.hidden) }};
+            stats.onclick();
+            const expanded = {{
+              text: stats.textContent,
+              expanded: stats["aria-expanded"],
+              hidden: details.hidden,
+              lines: details.children.map((line) => line.text),
+            }};
+            runtime.updateSubagentGauge(0);
+            process.stdout.write(JSON.stringify({{ collapsed, expanded, cleared: {{ hidden: details.hidden, expanded: stats["aria-expanded"] || null }} }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "collapsed": {"text": "subagents: 2", "expanded": "false", "hidden": True},
+            "expanded": {
+                "text": "subagents: 2",
+                "expanded": "true",
+                "hidden": False,
+                "lines": [
+                    "reviewer · provider/model · 3 tools · 4200 tok",
+                    "scout · small-model · 1 tools · 84 tok",
+                ],
+            },
+            "cleared": {"hidden": True, "expanded": None},
+        })
+
     def test_typing_count_window_starts_only_from_idle(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(

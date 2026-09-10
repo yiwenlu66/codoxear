@@ -48,37 +48,12 @@
     const now = typeof options.now === "function" ? options.now : () => Date.now();
     const performanceNow = typeof options.performanceNow === "function" ? options.performanceNow : () => performance.now();
     const consoleError = typeof options.consoleError === "function" ? options.consoleError : () => {};
-    const documentTarget = options.documentTarget && typeof options.documentTarget.addEventListener === "function" ? options.documentTarget : null;
 
     let openSwipeContent = null;
     let openSwipeSessionId = null;
     let openSwipeTargetX = 0;
     let refreshDeferred = false;
     let lastRenderSignature = "";
-    let openSubagentPopover = null;
-
-    function closeSubagentPopover() {
-      if (!openSubagentPopover) return;
-      const { card, marker, popover } = openSubagentPopover;
-      popover.hidden = true;
-      marker.setAttribute("aria-expanded", "false");
-      card.classList.remove("subagentPopoverOpen");
-      openSubagentPopover = null;
-    }
-
-    function subagentDetailText(detail) {
-      const record = detail && typeof detail === "object" ? detail : {};
-      const role = typeof record.role === "string" && record.role.trim() ? record.role.trim() : "Subagent";
-      const model = typeof record.model === "string" && record.model.trim() ? record.model.trim() : "model unknown";
-      const tools = Number.isFinite(Number(record.tools)) && Number(record.tools) >= 0 ? `${Math.floor(Number(record.tools))} tools` : "tools unknown";
-      const tokens = Number.isFinite(Number(record.tokens)) && Number(record.tokens) >= 0 ? `${Math.floor(Number(record.tokens))} tok` : "tokens unknown";
-      return `${role} · ${model} · ${tools} · ${tokens}`;
-    }
-
-    function subagentDetailsForSession(session, count) {
-      const details = Array.isArray(session.subagent_details) ? session.subagent_details : [];
-      return Array.from({ length: count }, (_unused, index) => details[index] || {});
-    }
 
     function renderSessionGroupHeader(entry) {
       const count = Number(entry.count) || 0;
@@ -197,7 +172,6 @@
       const unchanged = !applyingDeferredRefresh && sessionsWrap.childElementCount > 0 && signature === lastRenderSignature;
       if (applyingDeferredRefresh) refreshDeferred = false;
       if (!unchanged) {
-        closeSubagentPopover();
         sessionsWrap.innerHTML = "";
         openSwipeContent = null;
         lastRenderSignature = signature;
@@ -268,51 +242,12 @@
           deleteBtn.onclick = (event) => void doDelete(event);
           const stateDot = el("span", { class: `stateDot${launchPending ? " pending" : session.busy ? " busy" : " idle"}` });
           const subagentsRunning = Number(session.subagents_running);
-          const subagentCount = Number.isFinite(subagentsRunning) && subagentsRunning > 0 ? Math.floor(subagentsRunning) : 0;
-          const subagentPopoverId = `subagent-popover-${sessionId}`;
-          const subagentMarker = subagentCount > 0
-            ? el("button", {
-                class: "muted subagentMarker",
-                type: "button",
-                text: `▸${subagentCount}`,
-                title: "Show active subagents",
-                "aria-label": `Show ${subagentCount} active subagent${subagentCount === 1 ? "" : "s"}`,
-                "aria-expanded": "false",
-                "aria-controls": subagentPopoverId,
-              })
+          const subagentMarker = Number.isFinite(subagentsRunning) && subagentsRunning > 0
+            ? el("span", { class: "muted subagentMarker", text: `▸${Math.floor(subagentsRunning)}` })
             : null;
-          const subagentPopover = subagentMarker
-            ? el("div", {
-                class: "subagentPopover",
-                id: subagentPopoverId,
-                role: "status",
-                hidden: "",
-              }, subagentDetailsForSession(session, subagentCount).map((detail) => el("div", {
-                class: "subagentPopoverLine",
-                text: subagentDetailText(detail),
-              })))
-            : null;
-          const subagentAnchor = subagentMarker
-            ? el("span", { class: "subagentMarkerAnchor" }, [subagentMarker, subagentPopover])
-            : null;
-          if (subagentMarker && subagentPopover && subagentAnchor) {
-            subagentMarker.onclick = (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (openSubagentPopover && openSubagentPopover.card === card) {
-                closeSubagentPopover();
-                return;
-              }
-              closeSubagentPopover();
-              subagentPopover.hidden = false;
-              subagentMarker.setAttribute("aria-expanded", "true");
-              card.classList.add("subagentPopoverOpen");
-              openSubagentPopover = { card, marker: subagentMarker, popover: subagentPopover };
-            };
-          }
           const titleRow = el("div", { class: "sessionTitleRow" }, [
             stateDot,
-            subagentAnchor,
+            subagentMarker,
             el("div", { class: "titleLine", title: session.cwd || "" }, [
               el("span", { class: "titleText", text: title }),
               sessionIsFast(session) ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" }) : null,
@@ -413,10 +348,6 @@
     }
 
     const unsubscribeSelected = sessionState.subscribe("selected", () => applyActiveClass());
-    const onDocumentPointerDown = (event) => {
-      if (openSubagentPopover && (!event || !openSubagentPopover.card.contains(event.target))) closeSubagentPopover();
-    };
-    if (documentTarget) documentTarget.addEventListener("pointerdown", onDocumentPointerDown);
 
     return Object.freeze({
       render,
@@ -425,8 +356,6 @@
       hasDeferredRefresh: () => refreshDeferred,
       dispose() {
         unsubscribeSelected();
-        closeSubagentPopover();
-        if (documentTarget && typeof documentTarget.removeEventListener === "function") documentTarget.removeEventListener("pointerdown", onDocumentPointerDown);
         openSwipeContent = null;
         openSwipeSessionId = null;
         openSwipeTargetX = 0;

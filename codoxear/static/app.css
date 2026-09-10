@@ -578,62 +578,6 @@
         gap: var(--space-3);
         min-width: 0;
       }
-      .subagentMarkerAnchor {
-        position: relative;
-        display: inline-flex;
-        flex: 0 0 auto;
-        align-items: center;
-      }
-      button.subagentMarker {
-        position: relative;
-        z-index: 1;
-        appearance: none;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--muted);
-        font: var(--font-sm)/1 var(--font-mono);
-        cursor: pointer;
-      }
-      button.subagentMarker::after {
-        content: "";
-        position: absolute;
-        inset: -14px -10px;
-      }
-      button.subagentMarker:focus-visible {
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 3px;
-      }
-      .subagentPopover {
-        position: absolute;
-        z-index: 6;
-        top: calc(-1 * var(--space-2));
-        left: calc(100% + var(--space-2));
-        width: min(280px, calc(100vw - 80px));
-        padding: var(--space-2) var(--space-3);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-card);
-        background: var(--paper);
-        box-shadow: var(--shadow-pop);
-        color: var(--ink);
-      }
-      .subagentPopover[hidden] {
-        display: none;
-      }
-      .subagentPopoverLine {
-        overflow: hidden;
-        color: var(--muted);
-        font: var(--font-2xs)/1.4 var(--font-mono);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .session.subagentPopoverOpen {
-        z-index: 4;
-      }
-      .session.subagentPopoverOpen .sessionSwipe {
-        overflow: visible;
-      }
       .sessionBackendStatusIcon {
         width: 10px;
         height: 10px;
@@ -1520,6 +1464,9 @@
         height: 15px;
       }
       .msg.typing {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
         padding: var(--space-4) var(--space-5);
         min-width: 54px;
       }
@@ -1543,6 +1490,28 @@
       }
       .typingStats:empty {
         display: none;
+      }
+      .typingStats[role="button"] {
+        cursor: pointer;
+      }
+      .typingStats[role="button"]:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 3px;
+      }
+      .typingSubagentDetails {
+        flex: 0 0 100%;
+        width: 100%;
+        margin-top: var(--space-3);
+        color: var(--muted);
+        font: var(--font-2xs)/1.4 var(--font-mono);
+      }
+      .typingSubagentDetails[hidden] {
+        display: none;
+      }
+      .typingSubagentDetailLine {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .subagentActivity {
         display: inline-flex;

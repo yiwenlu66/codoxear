@@ -161,6 +161,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
 
         const subagentCounts = [];
         const gaugeUpdates = [];
+        const subagentDetailUpdates = [];
         const quietRows = [];
         for (const row of rows) {{
           const root = node();
@@ -179,6 +180,10 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             updateSubagentGauge: (count) => {{
               gaugeUpdates.push(count);
               return concreteTypingRuntime.updateSubagentGauge(count);
+            }},
+            updateSubagentDetails: (details) => {{
+              subagentDetailUpdates.push(Array.isArray(details) ? details.map((detail) => detail && detail.role || null) : []);
+              return concreteTypingRuntime.updateSubagentDetails(details);
             }},
           }};
           const noop = () => {{}};
@@ -225,6 +230,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           subagentCounts,
           quietRows,
           gaugeUpdates,
+          subagentDetailUpdates,
         }}));
         """
     )
@@ -320,4 +326,5 @@ def test_subagent_indicator_reconciles_native_sources_to_every_surface(tmp_path:
         "subagentCounts": [1, 1, 1],
         "quietRows": ["▸1 subagent working", "▸1 subagent working", "▸1 subagent working"],
         "gaugeUpdates": [1, 1, 1],
+        "subagentDetailUpdates": [["Explore"], ["Subagent"], ["executor"]],
     }
