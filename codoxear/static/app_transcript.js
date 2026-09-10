@@ -407,9 +407,9 @@
     let typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
     let typingSubagents = 0;
     let typingSubagentDetails = [];
-    let typingSubagentDetailsExpanded = false;
     let subagentActivityRow = null;
     let subagentActivityTextNode = null;
+    let subagentActivityDetailsNode = null;
 
     function normalizeTypingCount(value) {
       const count = Number(value);
@@ -423,52 +423,32 @@
       return String(tokens);
     }
 
-    function setNodeAttribute(node, name, value) {
-      if (!node) return;
-      if (typeof node.setAttribute === "function") node.setAttribute(name, value);
-      else node[name] = String(value);
-    }
-
-    function removeNodeAttribute(node, name) {
-      if (!node) return;
-      if (typeof node.removeAttribute === "function") node.removeAttribute(name);
-      else if (node.attrs && typeof node.attrs === "object") delete node.attrs[name];
-      else node[name] = undefined;
-    }
-
-    function subagentDetailsForCount() {
-      return Array.from({ length: typingSubagents }, (_unused, index) => typingSubagentDetails[index] || {});
-    }
-
     function subagentDetailText(detail) {
       const record = detail && typeof detail === "object" ? detail : {};
       const role = typeof record.role === "string" && record.role.trim() ? record.role.trim() : "Subagent";
-      const model = typeof record.model === "string" && record.model.trim() ? record.model.trim() : "model unknown";
-      const tools = Number.isFinite(Number(record.tools)) && Number(record.tools) >= 0 ? `${Math.floor(Number(record.tools))} tools` : "tools unknown";
-      const tokens = Number.isFinite(Number(record.tokens)) && Number(record.tokens) >= 0 ? `${Math.floor(Number(record.tokens))} tok` : "tokens unknown";
-      return `${role} · ${model} · ${tools} · ${tokens}`;
+      const parts = [role];
+      if (typeof record.model === "string" && record.model.trim()) parts.push(record.model.trim());
+      if (record.tools !== null && record.tools !== undefined && Number.isFinite(Number(record.tools)) && Number(record.tools) >= 0) {
+        parts.push(`tools: ${Math.floor(Number(record.tools))}`);
+      }
+      if (record.tokens !== null && record.tokens !== undefined && Number.isFinite(Number(record.tokens)) && Number(record.tokens) >= 0) {
+        parts.push(`tokens used: ${formatThinkingTokens(record.tokens)}`);
+      }
+      return parts.join(" · ");
+    }
+
+    function renderSubagentDetailsNode(node) {
+      if (!node) return;
+      node.textContent = "";
+      if (typingSubagents < 1) return;
+      for (const detail of typingSubagentDetails.slice(0, typingSubagents)) {
+        node.appendChild(el("div", { class: "subagentDetailLine", text: subagentDetailText(detail) }));
+      }
     }
 
     function renderSubagentDetails() {
-      if (!typingSubagentDetailsNode) return;
-      const show = typingSubagentDetailsExpanded && typingSubagents > 0;
-      typingSubagentDetailsNode.hidden = !show;
-      if (!show) {
-        typingSubagentDetailsNode.textContent = "";
-        return;
-      }
-      typingSubagentDetailsNode.textContent = "";
-      for (const detail of subagentDetailsForCount()) {
-        typingSubagentDetailsNode.appendChild(el("div", { class: "typingSubagentDetailLine", text: subagentDetailText(detail) }));
-      }
-    }
-
-    function toggleSubagentDetails() {
-      if (!typingSubagents) return;
-      typingSubagentDetailsExpanded = !typingSubagentDetailsExpanded;
-      renderTypingStats();
-      renderSubagentDetails();
-      if (typingSubagentDetailsExpanded && shouldAutoScroll()) scheduleScrollToBottom();
+      renderSubagentDetailsNode(typingSubagentDetailsNode);
+      renderSubagentDetailsNode(subagentActivityDetailsNode);
     }
 
     function renderTypingStats() {
@@ -482,28 +462,6 @@
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
       const text = [activity, subagents].filter(Boolean).join(" · ");
       typingStatsNode.textContent = text || (typingRowVisible ? "working" : "");
-      if (!typingSubagents) {
-        removeNodeAttribute(typingStatsNode, "role");
-        removeNodeAttribute(typingStatsNode, "tabindex");
-        removeNodeAttribute(typingStatsNode, "aria-controls");
-        removeNodeAttribute(typingStatsNode, "aria-expanded");
-        setNodeAttribute(typingStatsNode, "aria-hidden", "true");
-        typingStatsNode.onclick = null;
-        typingStatsNode.onkeydown = null;
-        return;
-      }
-      removeNodeAttribute(typingStatsNode, "aria-hidden");
-      setNodeAttribute(typingStatsNode, "role", "button");
-      setNodeAttribute(typingStatsNode, "tabindex", "0");
-      setNodeAttribute(typingStatsNode, "aria-controls", "typing-subagent-details");
-      setNodeAttribute(typingStatsNode, "aria-expanded", String(typingSubagentDetailsExpanded));
-      setNodeAttribute(typingStatsNode, "aria-label", `${typingSubagentDetailsExpanded ? "Hide" : "Show"} ${typingSubagents} active subagent${typingSubagents === 1 ? "" : "s"}`);
-      typingStatsNode.onclick = toggleSubagentDetails;
-      typingStatsNode.onkeydown = (event) => {
-        if (!event || (event.key !== "Enter" && event.key !== " ")) return;
-        event.preventDefault();
-        toggleSubagentDetails();
-      };
     }
 
     function ensureSubagentActivityRow() {
@@ -516,11 +474,14 @@
         el("span", { class: "subagentActivitySquare" }),
       ]);
       subagentActivityTextNode = el("span", { class: "subagentActivityText" });
+      subagentActivityDetailsNode = el("div", { class: "subagentDetails" });
       bubble.appendChild(squares);
       bubble.appendChild(subagentActivityTextNode);
+      bubble.appendChild(subagentActivityDetailsNode);
       row.appendChild(bubble);
       subagentActivityRow = row;
       renderSubagentActivity();
+      renderSubagentDetails();
       return row;
     }
 
@@ -556,7 +517,7 @@
       ]);
       bubble.appendChild(dots);
       typingStatsNode = el("span", { class: "typingStats", "aria-hidden": "true" });
-      typingSubagentDetailsNode = el("div", { class: "typingSubagentDetails", id: "typing-subagent-details", hidden: "" });
+      typingSubagentDetailsNode = el("div", { class: "subagentDetails" });
       bubble.appendChild(typingStatsNode);
       bubble.appendChild(typingSubagentDetailsNode);
       row.appendChild(bubble);
@@ -590,7 +551,6 @@
       if (resetGauge) {
         typingSubagents = 0;
         typingSubagentDetails = [];
-        typingSubagentDetailsExpanded = false;
       }
       renderTypingStats();
       renderSubagentDetails();
@@ -600,12 +560,12 @@
     function updateSubagentDetails(details) {
       typingSubagentDetails = Array.isArray(details) ? details.filter((detail) => detail && typeof detail === "object") : [];
       renderSubagentDetails();
+      if (typingSubagents > 0 && shouldAutoScroll()) scheduleScrollToBottom();
       return snapshot();
     }
 
     function updateSubagentGauge(count) {
       typingSubagents = normalizeTypingCount(count);
-      if (!typingSubagents) typingSubagentDetailsExpanded = false;
       renderTypingStats();
       renderSubagentDetails();
       renderSubagentActivity();
@@ -623,8 +583,6 @@
       typingRowVisible = Boolean(show);
       if (!show) {
         resetTypingStats({ resetGauge: false });
-        typingSubagentDetailsExpanded = false;
-        renderSubagentDetails();
         if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
         return snapshot();
       }
@@ -647,6 +605,7 @@
       typingSubagentDetailsNode = null;
       subagentActivityRow = null;
       subagentActivityTextNode = null;
+      subagentActivityDetailsNode = null;
       return snapshot();
     }
 

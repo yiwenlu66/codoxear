@@ -20,6 +20,7 @@ from codoxear.util import scan_active_cc_subagents
 ROOT = Path(__file__).resolve().parents[1]
 APP_SESSIONS_JS = module_path("app_sessions.js")
 APP_TRANSCRIPT_JS = module_path("app_transcript.js")
+APP_TRANSCRIPT_RENDER_JS = module_path("app_transcript_render.js")
 APP_MESSAGE_FLOW_JS = module_path("app_message_flow.js")
 APP_SESSION_CATALOG_JS = module_path("app_session_catalog.js")
 APP_SESSION_STATE_JS = module_path("app_session_state.js")
@@ -59,6 +60,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 def _run_surface_projection(rows: list[dict]) -> dict:
     sessions_source = APP_SESSIONS_JS.read_text(encoding="utf-8")
     transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+    transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
     message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
     session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
     catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
@@ -76,6 +78,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(transcript_source)}, ctx);
+        vm.runInContext({json.dumps(transcript_render_source)}, ctx);
         vm.runInContext({json.dumps(message_flow_source)}, ctx);
         vm.runInContext({json.dumps(session_state_source)}, ctx);
         vm.runInContext({json.dumps(catalog_source)}, ctx);
@@ -110,6 +113,8 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           out.addEventListener = () => {{}};
           Object.defineProperty(out, "childElementCount", {{ get: () => out.children.length }});
           Object.defineProperty(out, "innerHTML", {{ set: () => {{ out.children = []; }} }});
+          let textValue = "";
+          Object.defineProperty(out, "textContent", {{ get: () => textValue, set: (value) => {{ textValue = String(value); if (value === "") out.children = []; }} }});
           for (const child of children) out.appendChild(child);
           return out;
         }}
@@ -163,9 +168,12 @@ def _run_surface_projection(rows: list[dict]) -> dict:
         const gaugeUpdates = [];
         const subagentDetailUpdates = [];
         const quietRows = [];
+        const inlineDetails = [];
         for (const row of rows) {{
           const root = node();
           const bottom = node();
+          root.appendChild(bottom);
+          bottom.isConnected = true;
           const concreteTypingRuntime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
             root,
             bottomSentinel: bottom,
@@ -177,6 +185,8 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             snapshot: concreteTypingRuntime.snapshot,
             updateTypingStats: concreteTypingRuntime.updateTypingStats,
             resetTypingStats: concreteTypingRuntime.resetTypingStats,
+            setVisible: concreteTypingRuntime.setVisible,
+            setSubagentVisible: concreteTypingRuntime.setSubagentVisible,
             updateSubagentGauge: (count) => {{
               gaugeUpdates.push(count);
               return concreteTypingRuntime.updateSubagentGauge(count);
@@ -188,12 +198,8 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           }};
           const noop = () => {{}};
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
-          sessionState.subscribe("subagentsRunning", (count) => {{
-            subagentCounts.push(count);
-            gaugeUpdates.push(count);
-            concreteTypingRuntime.updateSubagentGauge(count);
-            concreteTypingRuntime.setSubagentVisible(true);
-          }});
+          sessionState.subscribe("subagentsRunning", (count) => subagentCounts.push(count));
+          const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
           const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
           sessionCatalog.set("latestSessions", [{{ ...row, session_id: row.session_id || "sid" }}]);
           const flow = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
@@ -224,11 +230,14 @@ def _run_surface_projection(rows: list[dict]) -> dict:
           }});
           flow.updateTypingStatsFromSession(row);
           quietRows.push(root.children[0].children[0].children[1].textContent);
+          inlineDetails.push(findText(root, "subagentDetailLine"));
+          projection.dispose();
         }}
         process.stdout.write(JSON.stringify({{
           sidebarMarkers: findText(wrap, "muted subagentMarker"),
           subagentCounts,
           quietRows,
+          inlineDetails,
           gaugeUpdates,
           subagentDetailUpdates,
         }}));
@@ -325,6 +334,7 @@ def test_subagent_indicator_reconciles_native_sources_to_every_surface(tmp_path:
         "sidebarMarkers": ["▸1", "▸1", "▸1"],
         "subagentCounts": [1, 1, 1],
         "quietRows": ["▸1 subagent working", "▸1 subagent working", "▸1 subagent working"],
-        "gaugeUpdates": [1, 1, 1],
-        "subagentDetailUpdates": [["Explore"], ["Subagent"], ["executor"]],
+        "inlineDetails": [["Explore"], ["Subagent"], ["executor"]],
+        "gaugeUpdates": [0, 1, 0, 1, 0, 1],
+        "subagentDetailUpdates": [[], ["Explore"], [], ["Subagent"], [], ["executor"]],
     }

@@ -1491,24 +1491,19 @@
       .typingStats:empty {
         display: none;
       }
-      .typingStats[role="button"] {
-        cursor: pointer;
-      }
-      .typingStats[role="button"]:focus-visible {
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 3px;
-      }
-      .typingSubagentDetails {
+      .subagentDetails {
         flex: 0 0 100%;
         width: 100%;
-        margin-top: var(--space-3);
         color: var(--muted);
         font: var(--font-2xs)/1.4 var(--font-mono);
       }
-      .typingSubagentDetails[hidden] {
+      .subagentDetails:empty {
         display: none;
       }
-      .typingSubagentDetailLine {
+      .msg.typing .subagentDetails {
+        margin-top: var(--space-3);
+      }
+      .subagentDetailLine {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -1516,10 +1511,14 @@
       .subagentActivity {
         display: inline-flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: var(--space-3);
         padding: var(--space-3) var(--space-4);
         color: var(--muted);
         background: var(--wash);
+      }
+      .subagentActivity .subagentDetails {
+        padding-left: calc(10px + var(--space-3));
       }
       .subagentActivitySquares {
         display: inline-flex;

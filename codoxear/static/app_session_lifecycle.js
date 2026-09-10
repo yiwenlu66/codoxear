@@ -125,7 +125,7 @@
       sessionState.set("turnOpen", false);
       removePersistedSelected();
       setSessionHash("");
-      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
+      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0, subagentDetails: [] });
       clearAttachments();
       resetChatRenderState();
       if (isUnattendedOpen()) hideUnattendedMenu();
@@ -156,7 +156,7 @@
         resetTranscriptForSession();
       }
       syncAttachments();
-      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0 });
+      sessionState.applyRuntime({ running: false, queueLen: 0, token: null, subagentsRunning: 0, subagentDetails: [] });
       if (!reloadingSelectedSession) resetChatRenderState();
 
       const session = getSession(sessionId);
@@ -165,6 +165,7 @@
       const optimisticBusy = Boolean(session && session.busy);
       const optimisticQueueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
       const optimisticSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+      const optimisticSubagentDetails = session && Array.isArray(session.subagent_details) ? session.subagent_details.slice() : [];
       sessionState.set("turnOpen", optimisticBusy);
       updateTypingStats(session, { updateSubagents: false });
       sessionState.applyRuntime({
@@ -172,6 +173,7 @@
         queueLen: optimisticQueueLen,
         token: session ? session.token || null : null,
         subagentsRunning: optimisticSubagentsRunning,
+        subagentDetails: optimisticSubagentDetails,
       });
       const fileViewerSyncStarted = beginFileViewerSync();
 

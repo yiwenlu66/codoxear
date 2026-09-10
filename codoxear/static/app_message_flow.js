@@ -78,7 +78,6 @@ import * as CodoxearTranscript from "./app_transcript.js";
       !typingRowRuntime ||
       typeof typingRowRuntime.snapshot !== "function" ||
       typeof typingRowRuntime.updateTypingStats !== "function" ||
-      typeof typingRowRuntime.updateSubagentGauge !== "function" ||
       typeof typingRowRuntime.resetTypingStats !== "function"
     )
       throw new TypeError("message flow dependency missing: typingRowRuntime");
@@ -359,15 +358,12 @@ import * as CodoxearTranscript from "./app_transcript.js";
           });
         }
       }
-      if (typeof typingRowRuntime.updateSubagentDetails === "function") {
-        typingRowRuntime.updateSubagentDetails(session && session.subagent_details);
-      }
-
       if (shouldApplyRuntime) {
         const queueLen = session && Number.isFinite(Number(session.queue_len)) ? Number(session.queue_len) : 0;
         const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+        const subagentDetails = session && Array.isArray(session.subagent_details) ? session.subagent_details.slice() : [];
         sessionState.set("turnOpen", running);
-        sessionState.applyRuntime({ running, queueLen, token: session ? session.token || null : null, subagentsRunning });
+        sessionState.applyRuntime({ running, queueLen, token: session ? session.token || null : null, subagentsRunning, subagentDetails });
       }
     }
 

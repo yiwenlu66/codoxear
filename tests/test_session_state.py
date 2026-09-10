@@ -27,13 +27,14 @@ def test_session_state_initial_values_and_set_get_roundtrip() -> None:
     result = evaluate(
         """
         const state = createSessionState();
-        const initial = ["selected", "running", "queueLen", "subagentsRunning", "turnOpen", "sending", "token"]
+        const initial = ["selected", "running", "queueLen", "subagentsRunning", "subagentDetails", "turnOpen", "sending", "token"]
           .reduce((out, field) => ({ ...out, [field]: state.get(field) }), {});
         const updates = {
           selected: { id: "session-a" },
           running: true,
           queueLen: 2,
           subagentsRunning: 1,
+          subagentDetails: [{ role: "reviewer", tools: 2 }],
           turnOpen: true,
           sending: true,
           token: { context_window: 128000 },
@@ -48,6 +49,7 @@ def test_session_state_initial_values_and_set_get_roundtrip() -> None:
         "running": False,
         "queueLen": 0,
         "subagentsRunning": 0,
+        "subagentDetails": [],
         "turnOpen": False,
         "sending": False,
         "token": None,
@@ -57,6 +59,7 @@ def test_session_state_initial_values_and_set_get_roundtrip() -> None:
         "running": True,
         "queueLen": True,
         "subagentsRunning": True,
+        "subagentDetails": True,
         "turnOpen": True,
         "sending": True,
         "token": True,
@@ -66,6 +69,7 @@ def test_session_state_initial_values_and_set_get_roundtrip() -> None:
         "running": True,
         "queueLen": 2,
         "subagentsRunning": 1,
+        "subagentDetails": [{"role": "reviewer", "tools": 2}],
         "turnOpen": True,
         "sending": True,
         "token": {"context_window": 128000},
@@ -158,6 +162,40 @@ def test_session_state_apply_runtime_notifies_shared_subscriber_once() -> None:
     assert result == {
         "changed": ["running", "queueLen"],
         "calls": [["running", True, True, 2]],
+    }
+
+
+def test_session_state_subagent_snapshot_is_atomic_and_detail_refreshes_at_same_count() -> None:
+    result = evaluate(
+        """
+        const state = createSessionState();
+        const calls = [];
+        const shared = (_value, field) => calls.push({
+          field,
+          count: state.get("subagentsRunning"),
+          tools: state.get("subagentDetails").map((detail) => detail.tools),
+          tokens: state.get("subagentDetails").map((detail) => detail.tokens),
+        });
+        state.subscribe("subagentsRunning", shared);
+        state.subscribe("subagentDetails", shared);
+        const first = state.applyRuntime({
+          subagentsRunning: 2,
+          subagentDetails: [{ role: "reviewer", tools: 2, tokens: 1200 }, { role: "worker", tools: 4, tokens: 2400 }],
+        });
+        const second = state.applyRuntime({
+          subagentsRunning: 2,
+          subagentDetails: [{ role: "reviewer", tools: 3, tokens: 1300 }, { role: "worker", tools: 5, tokens: 2500 }],
+        });
+        process.stdout.write(JSON.stringify({ first, second, calls }));
+        """
+    )
+    assert result == {
+        "first": ["subagentsRunning", "subagentDetails"],
+        "second": ["subagentDetails"],
+        "calls": [
+            {"field": "subagentsRunning", "count": 2, "tools": [2, 4], "tokens": [1200, 2400]},
+            {"field": "subagentDetails", "count": 2, "tools": [3, 5], "tokens": [1300, 2500]},
+        ],
     }
 
 

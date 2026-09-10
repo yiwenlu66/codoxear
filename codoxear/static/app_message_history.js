@@ -289,7 +289,8 @@ function applySessionRuntimeFromTail(sessionId, data) {
   const session = getSessionIndex().get(sessionId);
   updateTypingStatsFromSession(session, { updateSubagents: false });
   const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
-  sessionState.applyRuntime({ running: nowBusy, queueLen, token: data ? data.token || null : null, subagentsRunning });
+  const subagentDetails = session && Array.isArray(session.subagent_details) ? session.subagent_details.slice() : [];
+  sessionState.applyRuntime({ running: nowBusy, queueLen, token: data ? data.token || null : null, subagentsRunning, subagentDetails });
   if (slot.state === "bound") {
     const s = getSessionIndex().get(sessionId);
     if (s) rememberTailSnapshot(sessionId, s, data);
@@ -421,11 +422,13 @@ function applyCachedTail(sessionId, cache, sessionMeta) {
   sessionState.set("turnOpen", cachedBusy);
   updateTypingStatsFromSession(sessionMeta, { updateSubagents: false });
   const subagentsRunning = sessionMeta ? Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0)) : 0;
+  const subagentDetails = sessionMeta && Array.isArray(sessionMeta.subagent_details) ? sessionMeta.subagent_details.slice() : [];
   sessionState.applyRuntime({
     running: cachedBusy,
     queueLen,
     token: cache.token || (sessionMeta ? sessionMeta.token || null : null),
     subagentsRunning,
+    subagentDetails,
   });
 }
 

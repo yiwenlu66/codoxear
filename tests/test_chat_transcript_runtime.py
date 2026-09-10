@@ -204,6 +204,115 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0},
         })
 
+    def test_session_refresh_projects_same_count_detail_updates_from_catalog_to_busy_bubble(self) -> None:
+        sources = [
+            APP_POLLING_JS.read_text(encoding="utf-8"),
+            APP_TRANSCRIPT_JS.read_text(encoding="utf-8"),
+            APP_SESSION_STATE_JS.read_text(encoding="utf-8"),
+            APP_SESSION_CATALOG_JS.read_text(encoding="utf-8"),
+            APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8"),
+            APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8"),
+            APP_SESSION_REFRESH_JS.read_text(encoding="utf-8"),
+        ]
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
+            vm.createContext(ctx);
+            {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
+            {MESSAGE_FLOW_HARNESS_JS}
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, parentNode: null }};
+              out.appendChild = (child) => {{ out.children.push(child); child.parentNode = out; return child; }};
+              out.insertBefore = (child, before) => {{
+                if (child.parentNode) child.parentNode.children = child.parentNode.children.filter((item) => item !== child);
+                const index = out.children.indexOf(before);
+                out.children.splice(index < 0 ? out.children.length : index, 0, child);
+                child.parentNode = out;
+                child.isConnected = true;
+                return child;
+              }};
+              out.remove = () => {{
+                if (out.parentNode) out.parentNode.children = out.parentNode.children.filter((item) => item !== out);
+                out.parentNode = null;
+                out.isConnected = false;
+              }};
+              Object.defineProperty(out, "nextSibling", {{ get: () => out.parentNode ? out.parentNode.children[out.parentNode.children.indexOf(out) + 1] || null : null }});
+              let textValue = "";
+              Object.defineProperty(out, "textContent", {{ get: () => textValue, set: (value) => {{ textValue = String(value); if (value === "") out.children = []; }} }});
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+            const noop = () => {{}};
+            const root = node();
+            const bottom = node();
+            root.appendChild(bottom);
+            bottom.isConnected = true;
+            const typingRowRuntime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: bottom, el: (_tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false, scheduleScrollToBottom: noop,
+            }});
+            const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
+            const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
+            const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
+            const state = {{ selected: "sid", sessionState, sessionCatalog }};
+            const flow = createMessageFlow(state, {{ typingRowRuntime }});
+            const responses = [
+              {{ sessions: [{{ session_id: "sid", agent_backend: "pi", busy: true, queue_len: 0, subagents_running: 2, subagent_details: [
+                {{ role: "reviewer", model: "model-a", tools: 2, tokens: 1200 }},
+                {{ role: "worker", model: "model-b", tools: 4, tokens: 2400 }},
+              ] }}] }},
+              {{ sessions: [{{ session_id: "sid", agent_backend: "pi", busy: true, queue_len: 0, subagents_running: 2, subagent_details: [
+                {{ role: "reviewer", model: "model-a", tools: 3, tokens: 1300 }},
+                {{ role: "worker", model: "model-b", tools: 5, tokens: 2500 }},
+              ] }}] }},
+            ];
+            const refresh = ctx.window.CodoxearSessionRefresh.createSessionRefreshController({{
+              sessionState, sessionCatalog, api: async () => responses.shift(), isDisposed: () => false,
+              apiResponseNotModified: () => false, emptyDefaults: () => ({{}}), clearFileDiscoveryCaches: noop,
+              useDesktopSessionActions: () => true, clearSelectedSessionAfterRemoval: noop,
+              applySessionListTranscriptIdentity: noop, syncAttachments: noop, clearAttachments: noop,
+              renderSessions: () => true, hasDeferredRefresh: () => false,
+              updateTypingStats: flow.updateTypingStatsFromSession, maybeSelectPendingHashSession: noop,
+            }});
+            const lines = () => typingRowRuntime.anchor().children[0].children[2].children.map((line) => line.text);
+            (async () => {{
+              await refresh.refreshSessions();
+              const first = {{
+                summary: typingRowRuntime.anchor().children[0].children[1].textContent,
+                lines: lines(), count: sessionState.get("subagentsRunning"),
+              }};
+              await refresh.refreshSessions();
+              const second = {{
+                summary: typingRowRuntime.anchor().children[0].children[1].textContent,
+                lines: lines(), count: sessionState.get("subagentsRunning"),
+                catalogTokens: sessionCatalog.get("sessionIndex").get("sid").subagent_details.map((detail) => detail.tokens),
+              }};
+              projection.dispose();
+              process.stdout.write(JSON.stringify({{ first, second }}));
+            }})().catch((error) => {{ console.error(error); process.exit(1); }});
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "first": {
+                "summary": "subagents: 2",
+                "lines": [
+                    "reviewer · model-a · tools: 2 · tokens used: 1.2k",
+                    "worker · model-b · tools: 4 · tokens used: 2.4k",
+                ],
+                "count": 2,
+            },
+            "second": {
+                "summary": "subagents: 2",
+                "lines": [
+                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
+                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                ],
+                "count": 2,
+                "catalogTokens": [1300, 2500],
+            },
+        })
+
     def test_recovery_refresh_updates_catalog_subscribers_without_imperative_projection_calls(self) -> None:
         session_refresh_source = APP_SESSION_REFRESH_JS.read_text(encoding="utf-8")
         session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
@@ -367,7 +476,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["gaugeCleared"], {"text": "tools: 7", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
 
-    def test_idle_subagent_store_projection_materializes_and_removes_activity_row(self) -> None:
+    def test_subagent_store_projection_refreshes_details_across_busy_idle_and_session_switch(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         transcript_render_source = APP_TRANSCRIPT_RENDER_JS.read_text(encoding="utf-8")
         session_state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
@@ -398,6 +507,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 out.isConnected = false;
               }};
               Object.defineProperty(out, "nextSibling", {{ get: () => out.parentNode ? out.parentNode.children[out.parentNode.children.indexOf(out) + 1] || null : null }});
+              let textValue = "";
+              Object.defineProperty(out, "textContent", {{ get: () => textValue, set: (value) => {{ textValue = String(value); if (value === "") out.children = []; }} }});
               for (const child of children) out.appendChild(child);
               return out;
             }}
@@ -411,21 +522,72 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
             }});
             const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
+            sessionState.set("selected", "sid");
             const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
             const countActivityRows = () => root.children.filter((child) => child.class === "msg-row assistant subagent-activity-row").length;
+            const lines = () => typingRowRuntime.anchor().children[0].children[2].children.map((line) => line.text);
             const initial = {{ children: root.children.length, activityRows: countActivityRows() }};
-            sessionState.applyRuntime({{ subagentsRunning: 1 }});
-            const afterOne = {{ children: root.children.length, activityRows: countActivityRows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
-            sessionState.applyRuntime({{ subagentsRunning: 0 }});
-            const afterZero = {{ children: root.children.length, activityRows: countActivityRows() }};
+            sessionState.applyRuntime({{
+              subagentsRunning: 2,
+              subagentDetails: [
+                {{ role: "reviewer", model: "model-a", tools: 2, tokens: 1200 }},
+                {{ role: "worker", model: "model-b", tools: 4, tokens: 2400 }},
+              ],
+            }});
+            const idleTwo = {{ activityRows: countActivityRows(), summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            sessionState.applyRuntime({{
+              subagentsRunning: 2,
+              subagentDetails: [
+                {{ role: "reviewer", model: "model-a", tools: 3, tokens: 1300 }},
+                {{ role: "worker", model: "model-b", tools: 5, tokens: 2500 }},
+              ],
+            }});
+            const sameCountFresh = {{ summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            sessionState.set("running", true);
+            const busy = {{ activityRows: countActivityRows(), rowClass: typingRowRuntime.anchor().class, summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            sessionState.set("running", false);
+            const idleAgain = {{ activityRows: countActivityRows(), summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            sessionState.applyRuntime({{ selected: "other", subagentsRunning: 0, subagentDetails: [] }});
+            const switched = {{ children: root.children.length, activityRows: countActivityRows() }};
             projection.dispose();
-            process.stdout.write(JSON.stringify({{ initial, afterOne, afterZero }}));
+            process.stdout.write(JSON.stringify({{ initial, idleTwo, sameCountFresh, busy, idleAgain, switched }}));
             """
         )
         self.assertEqual(_run_node(js), {
             "initial": {"children": 1, "activityRows": 0},
-            "afterOne": {"children": 2, "activityRows": 1, "text": "▸1 subagent working"},
-            "afterZero": {"children": 1, "activityRows": 0},
+            "idleTwo": {
+                "activityRows": 1,
+                "summary": "▸2 subagents working",
+                "lines": [
+                    "reviewer · model-a · tools: 2 · tokens used: 1.2k",
+                    "worker · model-b · tools: 4 · tokens used: 2.4k",
+                ],
+            },
+            "sameCountFresh": {
+                "summary": "▸2 subagents working",
+                "lines": [
+                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
+                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                ],
+            },
+            "busy": {
+                "activityRows": 0,
+                "rowClass": "msg-row assistant typing-row",
+                "summary": "subagents: 2",
+                "lines": [
+                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
+                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                ],
+            },
+            "idleAgain": {
+                "activityRows": 1,
+                "summary": "▸2 subagents working",
+                "lines": [
+                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
+                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                ],
+            },
+            "switched": {"children": 1, "activityRows": 0},
         })
 
     def test_transcript_replacement_reprojects_busy_typing_row_from_store(self) -> None:
@@ -597,6 +759,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(source)}, ctx);
             function node(attrs = {{}}, children = []) {{
               const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, appendChild(child) {{ out.children.push(child); return child; }}, remove() {{ out.isConnected = false; }} }};
+              let textValue = "";
+              Object.defineProperty(out, "textContent", {{ get: () => textValue, set: (value) => {{ textValue = String(value); if (value === "") out.children = []; }} }});
               out.nextSibling = null;
               for (const child of children) out.appendChild(child);
               return out;
@@ -607,15 +771,26 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               root, bottomSentinel: bottom, el: (tag, attrs, children) => node(attrs, children),
               shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
             }});
+            runtime.updateSubagentDetails([
+              {{ role: "reviewer", model: "provider/model", tools: 3, tokens: 4200 }},
+              {{ role: "scout", model: "small-model", tools: 1, tokens: 84 }},
+            ]);
             runtime.updateSubagentGauge(2);
             runtime.setSubagentVisible(true);
             const first = runtime.anchor();
             const firstBubble = first.children[0];
             const firstText = firstBubble.children[1].textContent;
+            const firstLines = firstBubble.children[2].children.map((line) => line.text);
+            runtime.updateSubagentDetails([
+              {{ role: "reviewer", model: "provider/model", tools: 4, tokens: 4300 }},
+              {{ role: "scout", model: "small-model", tools: 2, tokens: 100 }},
+              {{ role: "executor", model: "large-model", tools: 0, tokens: 0 }},
+            ]);
             runtime.updateSubagentGauge(3);
             const replacedText = firstBubble.children[1].textContent;
+            const replacedLines = firstBubble.children[2].children.map((line) => line.text);
             runtime.setSubagentVisible(false);
-            process.stdout.write(JSON.stringify({{ className: first.class, squares: firstBubble.children[0].children.length, firstText, replacedText, connected: first.isConnected }}));
+            process.stdout.write(JSON.stringify({{ className: first.class, squares: firstBubble.children[0].children.length, firstText, firstLines, replacedText, replacedLines, connected: first.isConnected }}));
             """
         )
         proc = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
@@ -623,11 +798,20 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "className": "msg-row assistant subagent-activity-row",
             "squares": 2,
             "firstText": "▸2 subagents working",
+            "firstLines": [
+                "reviewer · provider/model · tools: 3 · tokens used: 4.2k",
+                "scout · small-model · tools: 1 · tokens used: 84",
+            ],
             "replacedText": "▸3 subagents working",
+            "replacedLines": [
+                "reviewer · provider/model · tools: 4 · tokens used: 4.3k",
+                "scout · small-model · tools: 2 · tokens used: 100",
+                "executor · large-model · tools: 0 · tokens used: 0",
+            ],
             "connected": False,
         })
 
-    def test_typing_bubble_expands_active_subagent_details_in_place(self) -> None:
+    def test_typing_bubble_shows_active_subagent_details_without_interaction(self) -> None:
         source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
@@ -637,6 +821,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.runInContext({json.dumps(source)}, ctx);
             function node(attrs = {{}}, children = []) {{
               const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false }};
+              let textValue = "";
+              Object.defineProperty(out, "textContent", {{ get: () => textValue, set: (value) => {{ textValue = String(value); if (value === "") out.children = []; }} }});
               out.appendChild = (child) => {{ out.children.push(child); return child; }};
               out.remove = () => {{ out.isConnected = false; }};
               for (const child of children) out.appendChild(child);
@@ -656,30 +842,33 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const bubble = runtime.anchor().children[0];
             const stats = bubble.children[1];
             const details = bubble.children[2];
-            const collapsed = {{ text: stats.textContent, expanded: stats["aria-expanded"], hidden: Boolean(details.hidden) }};
-            stats.onclick();
-            const expanded = {{
+            const rendered = {{
               text: stats.textContent,
-              expanded: stats["aria-expanded"],
-              hidden: details.hidden,
+              ariaHidden: stats["aria-hidden"],
+              role: stats.role || null,
+              tabIndex: stats.tabindex || null,
+              expanded: stats["aria-expanded"] || null,
+              clickable: typeof stats.onclick === "function",
               lines: details.children.map((line) => line.text),
             }};
             runtime.updateSubagentGauge(0);
-            process.stdout.write(JSON.stringify({{ collapsed, expanded, cleared: {{ hidden: details.hidden, expanded: stats["aria-expanded"] || null }} }}));
+            process.stdout.write(JSON.stringify({{ rendered, cleared: {{ lines: details.children.map((line) => line.text) }} }}));
             """
         )
         self.assertEqual(_run_node(js), {
-            "collapsed": {"text": "subagents: 2", "expanded": "false", "hidden": True},
-            "expanded": {
+            "rendered": {
                 "text": "subagents: 2",
-                "expanded": "true",
-                "hidden": False,
+                "ariaHidden": "true",
+                "role": None,
+                "tabIndex": None,
+                "expanded": None,
+                "clickable": False,
                 "lines": [
-                    "reviewer · provider/model · 3 tools · 4200 tok",
-                    "scout · small-model · 1 tools · 84 tok",
+                    "reviewer · provider/model · tools: 3 · tokens used: 4.2k",
+                    "scout · small-model · tools: 1 · tokens used: 84",
                 ],
             },
-            "cleared": {"hidden": True, "expanded": None},
+            "cleared": {"lines": []},
         })
 
     def test_typing_count_window_starts_only_from_idle(self) -> None:
@@ -1658,7 +1847,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 }},
                 CodoxearTranscript: {{
                   createTranscriptSlotRuntime: () => ({{ activeSnapshot: () => ({{}}), getSlot: () => ({{ epoch: 0 }}), syncActiveSlot: () => ({{ state: "bound" }}), clearLiveCursor: noop, setLiveCursor: noop, updateSlot: () => ({{ resetPending: false }}), beginRenewal: noop, tailCacheMatchesSession: () => false, rememberTail: noop, appendTailEvents: noop, deleteTailCache: noop }}),
-                  createTypingRowRuntime: () => ({{ setVisible: noop, setSubagentVisible: noop, updateSubagentGauge: noop, reset: noop, anchor: () => ({{}}) }}),
+                  createTypingRowRuntime: () => ({{ setVisible: noop, setSubagentVisible: noop, updateSubagentDetails: noop, updateSubagentGauge: noop, reset: noop, anchor: () => ({{}}) }}),
                   createTranscriptScrollRuntime: () => ({{ enableAutoScroll: noop, markLiveTail: noop, reset: noop, syncVisibleTimeIndicator: noop, snapshot: () => ({{ renderedAtLiveTail: true }}) }}),
                   createTranscriptDomRuntime: () => ({{ rebuildDecorations: noop, trimRenderedRows: noop, trimRowsBeforeViewport: noop, clear: noop }}),
                   createTranscriptEventRuntime: () => ({{ resetRecentEvents: noop, dropPendingUsers: () => [], pendingUsersForSession: () => [], markEventSeen: noop, isDuplicateEvent: () => false, isAdjacentAssistantDuplicateEvent: () => false, takePendingUserMatch: () => null }}),

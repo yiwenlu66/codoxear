@@ -6,8 +6,11 @@
 
 Every mutable state field has one owner module:
 
-- `app_session_state.js` — 7-field observable runtime store (`selected`,
-  `running`, `queueLen`, `subagentsRunning`, `turnOpen`, `sending`, `token`).
+- `app_session_state.js` — 8-field observable runtime store (`selected`,
+  `running`, `queueLen`, `subagentsRunning`, `subagentDetails`, `turnOpen`,
+  `sending`, `token`). `subagentsRunning` and `subagentDetails` commit as one
+  selected-session liveness snapshot so same-count telemetry updates remain
+  observable.
   API: `get`/`set`/`subscribe`/`applyRuntime`.
 - `app_session_catalog.js` — session list (`latestSessions`), derived
   `sessionIndex`, `recentCwds`, `newSessionDefaults`, `tmuxAvailable`.
@@ -85,6 +88,12 @@ it does not replace it.
 `app_transcript_view.js` owns the rendered DOM range and history cursor.
 State machine: LIVE / BROWSING / LOADING_OLDER / REPLACING. Only
 REPLACING may clear the DOM.
+
+`createTypingRowStoreProjection` owns transcript child-activity projection from
+the selected-session store. It reads count and detail records atomically and
+writes the same automatically visible per-child lines into busy and idle
+activity bubbles. The sidebar marker remains summary-only; message flow never
+calls a child-detail renderer directly.
 
 ### CSS design system
 

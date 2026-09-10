@@ -362,46 +362,61 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
             continue
         steps = payload.get("steps")
         current_step = payload.get("currentStep")
-        selected_step: Mapping[str, Any] | None = None
-        if isinstance(steps, list):
-            if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps):
-                candidate = steps[current_step]
-                if isinstance(candidate, Mapping) and str(candidate.get("status", "")).strip().lower() in _ACTIVE_SUBAGENT_STATES:
-                    selected_step = candidate
-            if selected_step is None:
-                selected_step = next(
-                    (
-                        step
-                        for step in steps
-                        if isinstance(step, Mapping) and str(step.get("status", "")).strip().lower() in _ACTIVE_SUBAGENT_STATES
-                    ),
-                    None,
-                )
-        agent = payload.get("agent")
-        if not isinstance(agent, str) or not agent.strip():
-            if isinstance(selected_step, Mapping) and isinstance(selected_step.get("agent"), str) and selected_step["agent"].strip():
-                agent = selected_step["agent"]
-            elif isinstance(steps, list):
-                for step in steps:
-                    if isinstance(step, dict) and isinstance(step.get("agent"), str) and step["agent"].strip():
-                        agent = step["agent"]
-                        break
-        step_tokens = selected_step.get("tokens") if isinstance(selected_step, Mapping) else None
-        total_tokens = payload.get("totalTokens")
-        tokens = step_tokens.get("total") if isinstance(step_tokens, Mapping) else total_tokens.get("total") if isinstance(total_tokens, Mapping) else None
-        tools = selected_step.get("toolCount") if isinstance(selected_step, Mapping) else payload.get("toolCount")
-        model = selected_step.get("model") if isinstance(selected_step, Mapping) else None
-        grouped.setdefault(parent, []).append({
-            "run_id": run_id,
-            "agent": agent.strip() if isinstance(agent, str) else None,
-            "started_at": started_at,
-            "detail": {
-                "role": agent.strip() if isinstance(agent, str) and agent.strip() else None,
-                "model": model.strip() if isinstance(model, str) and model.strip() else None,
-                "tools": int(tools) if isinstance(tools, (int, float)) and not isinstance(tools, bool) and tools >= 0 else None,
-                "tokens": int(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens >= 0 else None,
-            },
-        })
+        status_steps = [
+            (index, step)
+            for index, step in enumerate(steps)
+            if isinstance(step, Mapping) and isinstance(step.get("status"), str) and step["status"].strip()
+        ] if isinstance(steps, list) else []
+        active_steps = [
+            (index, step)
+            for index, step in status_steps
+            if str(step.get("status", "")).strip().lower() == "running"
+        ]
+
+        # Lifecycle-v3 Pi status files own child identity and telemetry at the
+        # step level. Parallel siblings transition independently, while future
+        # chain steps remain pending; only running steps are actual active
+        # children. Older producers omitted step status, so retain their single
+        # current-step/run-level projection as a best-effort compatibility path.
+        projected_steps: list[tuple[int | None, Mapping[str, Any]]] = active_steps
+        if not status_steps:
+            selected_step: Mapping[str, Any] | None = None
+            if isinstance(steps, list):
+                if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps):
+                    candidate = steps[current_step]
+                    if isinstance(candidate, Mapping):
+                        selected_step = candidate
+                if selected_step is None:
+                    selected_step = next((step for step in steps if isinstance(step, Mapping)), None)
+            projected_steps = [(None, selected_step or {})]
+
+        for step_index, step in projected_steps:
+            agent = step.get("agent")
+            if not isinstance(agent, str) or not agent.strip():
+                agent = payload.get("agent")
+            step_tokens = step.get("tokens")
+            total_tokens = payload.get("totalTokens")
+            tokens = step_tokens.get("total") if isinstance(step_tokens, Mapping) else total_tokens.get("total") if isinstance(total_tokens, Mapping) else None
+            tools = step.get("toolCount") if step_index is not None or step else payload.get("toolCount")
+            model = step.get("model")
+            step_started_at = step.get("startedAt")
+            child_started_at = (
+                step_started_at
+                if isinstance(step_started_at, (int, float)) and not isinstance(step_started_at, bool)
+                else started_at
+            )
+            child_id = f"{run_id}:{step_index}" if step_index is not None else run_id
+            grouped.setdefault(parent, []).append({
+                "run_id": child_id,
+                "agent": agent.strip() if isinstance(agent, str) else None,
+                "started_at": child_started_at,
+                "detail": {
+                    "role": agent.strip() if isinstance(agent, str) and agent.strip() else None,
+                    "model": model.strip() if isinstance(model, str) and model.strip() else None,
+                    "tools": int(tools) if isinstance(tools, (int, float)) and not isinstance(tools, bool) and tools >= 0 else None,
+                    "tokens": int(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens >= 0 else None,
+                },
+            })
 
     _SUBAGENT_RUNS_CACHE_ROOT = root_key
     _SUBAGENT_RUNS_CACHE_AT = now_value

@@ -24,6 +24,7 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
       !typingRowRuntime ||
       typeof typingRowRuntime.setVisible !== "function" ||
       typeof typingRowRuntime.setSubagentVisible !== "function" ||
+      typeof typingRowRuntime.updateSubagentDetails !== "function" ||
       typeof typingRowRuntime.updateSubagentGauge !== "function"
     ) {
       throw new TypeError("typing row projection dependency missing: typingRowRuntime");
@@ -35,18 +36,21 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
       typingRowRuntime.setSubagentVisible(!running);
     }
 
-    function syncSubagentGauge() {
+    function syncSubagentState() {
+      const details = sessionState.get("subagentDetails");
+      typingRowRuntime.updateSubagentDetails(Array.isArray(details) ? details : []);
       typingRowRuntime.updateSubagentGauge(Math.max(0, Number(sessionState.get("subagentsRunning")) || 0));
-      // Count changes while idle must materialize/remove the static activity
-      // row; running changes need not accompany subagent transitions.
+      // Detail-only changes and count changes while idle must both refresh the
+      // static activity row; running changes need not accompany either.
       typingRowRuntime.setSubagentVisible(!sessionState.get("running"));
     }
 
     const unsubscribers = [
       sessionState.subscribe("running", syncTypingVisibility),
-      sessionState.subscribe("subagentsRunning", syncSubagentGauge),
+      sessionState.subscribe("subagentsRunning", syncSubagentState),
+      sessionState.subscribe("subagentDetails", syncSubagentState),
     ];
-    syncSubagentGauge();
+    syncSubagentState();
     syncTypingVisibility();
 
     return Object.freeze({
@@ -54,7 +58,7 @@ import * as CodoxearTranscriptView from "./app_transcript_view.js";
         while (unsubscribers.length) unsubscribers.pop()();
       },
       sync() {
-        syncSubagentGauge();
+        syncSubagentState();
         syncTypingVisibility();
       },
     });
@@ -664,8 +668,9 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
   const running = Boolean(sessionMeta.busy);
   const queueLen = Number.isFinite(Number(sessionMeta.queue_len)) ? Number(sessionMeta.queue_len) : 0;
   const subagentsRunning = Math.max(0, Math.floor(Number(sessionMeta.subagents_running) || 0));
+  const subagentDetails = Array.isArray(sessionMeta.subagent_details) ? sessionMeta.subagent_details.slice() : [];
   sessionState.set("turnOpen", running);
-  sessionState.applyRuntime({ running, queueLen, token: sessionMeta.token || null, subagentsRunning });
+  sessionState.applyRuntime({ running, queueLen, token: sessionMeta.token || null, subagentsRunning, subagentDetails });
 }
 
   function markClickLoad() {

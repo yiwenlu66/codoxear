@@ -9,6 +9,7 @@ const INITIAL_STATE = Object.freeze({
   running: false,
   queueLen: 0,
   subagentsRunning: 0,
+  subagentDetails: Object.freeze([]),
   turnOpen: false,
   sending: false,
   token: null,
