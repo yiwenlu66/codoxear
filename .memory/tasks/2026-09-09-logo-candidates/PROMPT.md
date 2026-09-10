@@ -10,7 +10,7 @@ Keep the approved tinted-paper dog-ear as the PWA/home-screen installation icon,
 - `favicon.svg` and `favicon.png` are the distinct browser assets. They use the approved document/fold/terminal paths and colors without a warm-gray outer canvas. The favicon SVG is the HTML `rel="icon"` target; PNG remains the compatibility route and `/favicon.ico` fallback.
 - The app sidebar header is the product’s in-app brand surface. It renders semantic page/fold/terminal paths with `--brand-logo-*` tokens; theme selection remains solely owned by the existing theme controller and stylesheet cascade.
 - Paper light preserves the approved tinted-paper rendering. Clay and Slate visibly differ through their family tokens; Slate also presents the fold as a monochrome outline. No JavaScript writes logo appearance.
-- Browser/runtime checks run only against Docker isolation. Do not deploy this follow-on without a later explicit instruction.
+- Browser/runtime checks run only against Docker isolation. Deployment remains pending parent review for this follow-on.
 
 ## Success criteria
 

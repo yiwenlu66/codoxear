@@ -116,8 +116,14 @@ def test_favicon_is_full_bleed_and_distinct_from_padded_pwa_icons(tmp_path: Path
     with Image.open(favicon_path) as image:
         favicon = image.convert("RGBA")
         assert favicon.size == (64, 64)
-        assert favicon.getchannel("A").getbbox() == (0, 0, 64, 64)
-        assert favicon.getchannel("A").getextrema()[0] == 0
+        alpha = favicon.getchannel("A")
+        painted = alpha.getbbox()
+        assert painted == (4, 0, 60, 64)
+        assert alpha.getextrema()[0] == 0
+        svg_width, svg_height = (float(value) for value in favicon_document.attrib["viewBox"].split()[2:])
+        painted_width = painted[2] - painted[0]
+        painted_height = painted[3] - painted[1]
+        assert abs((painted_width / painted_height) - (svg_width / svg_height)) < 0.02
         assert not any(pixel[:3] == (234, 228, 216) for _count, pixel in favicon.getcolors(64 * 64) or [])
 
     touch_url = urlparse(urljoin(base, touch_link["href"]))

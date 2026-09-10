@@ -2,20 +2,21 @@
 
 ## Phenomenon
 
-The previous approved paper icon deliberately included an opaque warm-gray tile so PWA and home-screen platforms can apply their own masks. Reusing that same tile for browser favicon metadata introduced visible warm-gray padding in browser chrome. The app itself did not render that approved mark: its sidebar used a separate monochrome 24px glyph, so family themes could not express brand identity.
+The installation icon needs an opaque warm-gray canvas so home-screen platforms can mask it; the browser favicon must instead show the approved dog-ear without that canvas. The first separation implementation correctly retained distinct assets but carried the PWA coordinate system into the 20px sidebar mark and stretched the non-square favicon raster fallback.
 
 ## Mechanism
 
-`codoxear-icon.svg/png` and `apple-touch-icon.png` remain the installation asset family: their full-bleed warm-gray raster canvases are intentional PWA padding. `favicon.svg` derives the exact approved document/fold/prompt paths, but crops the SVG viewBox to the stroked document bounds and has no tile rect; its PNG fallback therefore contains alpha outside the dog-ear instead of warm-gray pixels. `index.html` selects that SVG only for `rel="icon"`; manifest and Apple-touch metadata retain the padded installation assets.
+`codoxear-icon.svg/png`, `apple-touch-icon.png`, and `manifest.webmanifest` remain the padded installation family. `favicon.svg` contains the approved document/fold/prompt paths in the tight `130 92 284 328` viewport without a background rect. Its PNG fallback is made by uniformly rasterizing the SVG at 56×64 and centering it in a transparent 64×64 canvas, so the fallback does not horizontally deform the mark.
 
-The actual in-app brand surface is the sidebar header made by `createShellDOM` in `app_shell.js`. It now renders canonical page/fold/terminal paths with semantic child classes. `app.css` owns their base paints through `--brand-logo-*`; family stylesheet token blocks override those values and Slate adds a scoped transparent-fold structural rule. The existing theme controller remains the sole owner of `data-theme`, `data-mode`, and stylesheet swapping: logo appearance has no JavaScript writer.
+The sidebar is the in-app brand surface. Its semantic dog-ear SVG uses that same tight viewport, which maps its 328-unit height onto the existing 20px CSS height and yields a 17.317px painted width. The CSS theme-token design remains unchanged: `app.css` owns base `--brand-logo-*` paints and family stylesheets supply Clay/Slate/Paper presentation without a JavaScript appearance writer.
 
 ## Evidence
 
-- Docker-targeted behavioral tests (OPS correction 2026-09-10T11:06:21+08:00) passed 22 tests. They serve and parse HTML/SVG metadata, decode favicon/PWA raster pixels, execute the shell factory, and resolve theme CSS cascades.
-- The favicon raster is 64×64, has alpha outside the page, reaches all bitmap bounds through its stroked geometry, and has no `#eae4d8` pixels. Apple-touch (180px) and manifest PWA (512px) corners remain `[234,228,216,255]`.
-- In the Docker browser, the served page used versioned `favicon.svg` while Apple-touch and manifest stayed padded. Settings-driven live theme selection yielded Clay's terracotta/pale-fold mark, Slate's transparent-fold black outline, and Paper's approved tinted-paper palette. Screenshots are named in OPS.
+- The favicon fallback alpha bbox is `(4, 0, 60, 64)`: vertical paint fills the 64px raster, 4px transparent side margins preserve a 56/64 aspect of 0.875, and the difference from the SVG viewport aspect 284/328 (~0.866) is below 0.02. It has no `#eae4d8` pixels.
+- Docker targeted tests pass 22 tests, including the served HTML/SVG/image decode test that compares PNG painted aspect against the parsed SVG viewport and the executed shell DOM test that pins the tight sidebar viewport.
+- Docker browser evidence on port 19011 measured the sidebar as a 20px square containing a 20px-tall, 17.317px-wide mark. Clay, Slate, and Paper stayed visually distinct in screenshots named in OPS.
+- PWA/Apple assets and manifest are byte-identical to the reviewed parent commit.
 
 ## Current commitment
 
-The branding follow-on is committed and prepared for independent review; it must not be deployed without a later explicit instruction. Its commit-archive Docker verification passed (OPS 2026-09-10T11:13:01+08:00), proving the packaged bundle boots inside an isolated Pi/broker/server/browser flow. The Docker sandbox now installs the repository's declared `tinycss2` test dependency so its standard test command can execute the existing CSS theme suite as well as this feature's behavior tests. The full isolated suite reached 1868 passed and 112 subtests; its three failures are unrelated baseline/environment boundaries documented in OPS (vendored PDF.js under the sandbox Node runtime and deploy-script clean-worktree enforcement). The prior deployment snapshot remains unchanged at `0f0e261fc163515aee705ea9ae6e64198bd25de8` until an approved follow-on is deployed.
+The two independent-review blockers are fixed in the working successor change. It has not been deployed; parent review determines the next release action. The sandbox wrapper's root-owned HOME failure and the three full-suite failures are environmental/unrelated boundaries described in OPS: deploy fixture needs a writable repository for Git worktree creation, and the vendored PDF.js Node checks need `Promise.withResolvers`, unavailable in the sandbox's Node 20.19.2.

@@ -83,7 +83,9 @@ class TestFrontendShellDomSource(unittest.TestCase):
         logo = ElementTree.fromstring(result.pop("brandLogoMarkup").split("Codoxear", 1)[0])
         self.assertEqual(logo.attrib["data-brand"], "codoxear")
         self.assertEqual(logo.attrib["data-logo-motif"], "dog-ear-terminal")
-        self.assertEqual(logo.attrib["viewBox"], "0 0 512 512")
+        self.assertEqual(logo.attrib["viewBox"], "130 92 284 328")
+        view_box = [float(value) for value in logo.attrib["viewBox"].split()]
+        self.assertAlmostEqual(view_box[2] / view_box[3], 284 / 328)
         self.assertEqual([child.attrib["class"] for child in logo], ["brandLogoPage", "brandLogoFold", "brandLogoTerminal"])
         self.assertEqual(result["searchPlaceholder"], "Search conversation")
 
