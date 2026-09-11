@@ -53,16 +53,35 @@ def _notification_feed_from_route(coordinator: VoicePushCoordinator) -> list[dic
     return items
 
 
-def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[str, Any]:
+def _delivery_after_refresh(feed_items: list[dict[str, Any]]) -> dict[str, Any]:
     script = textwrap.dedent(
         f"""
         const vm = require("node:vm");
         const feedItems = {json.dumps(feed_items)};
+        const notifications = [];
+        const storage = new Map([["codoxear.notificationEnabled", "1"], ["codoxear.desktopNotificationsEnabled", "1"]]);
+        class NotificationCtor {{
+          constructor(title, options) {{ notifications.push([title, options.body]); }}
+          close() {{}}
+        }}
+        NotificationCtor.permission = "granted";
+        class AudioContextCtor {{
+          constructor() {{ this.state = "running"; this.currentTime = 0; this.destination = {{}}; }}
+          resume() {{ return Promise.resolve(); }}
+          createOscillator() {{ return {{ frequency: {{}}, connect() {{}}, start() {{}}, stop() {{}} }}; }}
+          createGain() {{ return {{ gain: {{ setValueAtTime() {{}}, exponentialRampToValueAtTime() {{}} }}, connect() {{}} }}; }}
+          close() {{ return Promise.resolve(); }}
+        }}
         function node() {{
           return {{
             style: {{}}, dataset: {{}}, textContent: "", title: "", disabled: false, open: false, value: "", checked: false,
             _children: [], _attrs: {{}},
-            classList: {{ toggle() {{}}, add() {{}}, remove() {{}} }},
+            classList: {{
+              values: new Set(),
+              toggle(name, enabled) {{ enabled ? this.values.add(name) : this.values.delete(name); }},
+              add(name) {{ this.values.add(name); }}, remove(name) {{ this.values.delete(name); }},
+              contains(name) {{ return this.values.has(name); }},
+            }},
             setAttribute(name, value) {{ this._attrs[name] = String(value); }},
             removeAttribute(name) {{ delete this._attrs[name]; }},
             append(...children) {{ this._children.push(...children); }},
@@ -73,35 +92,32 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
           }};
         }}
         const dom = {{
-          announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
+          announceBtn: node(), notificationBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
           voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
         const documentTarget = {{ activeElement: null, contains: () => true, createElement: () => node() }};
         const ctx = {{
-          HTMLElement: function HTMLElement() {{}}, console,
-          window: {{ isSecureContext: true }}, navigator: {{ userAgent: "X11 Linux" }}, document: documentTarget,
+          HTMLElement: function HTMLElement() {{}}, console, Notification: NotificationCtor,
+          window: {{ isSecureContext: true }}, navigator: {{ userAgent: "X11 Linux x86_64" }}, document: documentTarget,
         }};
         vm.createContext(ctx);
         for (const source of [{json.dumps(MODAL_SOURCE)}, {json.dumps(VOICE_HELPERS_SOURCE)}, {json.dumps(NOTIFICATIONS_SOURCE)}, {json.dumps(VOICE_SOURCE)}]) vm.runInContext(source, ctx);
         const controller = ctx.window.CodoxearVoice.createVoiceController({{
           ...dom, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
           notificationOptions: {{
-            root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
+            voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
             el: (_tag, attrs = {{}}, children = []) => {{ const created = attrs.id && dom[attrs.id] ? dom[attrs.id] : node(); created.append(...children); return created; }}, iconSvg: () => "",
-            notificationBtn: dom.notificationBtn, notificationPanel: dom.notificationPanel, notificationList: dom.notificationList,
-            notificationEmpty: dom.notificationEmpty, notificationClearBtn: dom.notificationClearBtn, notificationEnableBtn: dom.notificationEnableBtn,
             isAppDisposed: () => false, api: async (url, options = {{}}) => {{
               if (url.includes("/api/notifications/feed")) return {{ items: typeof feeds !== "undefined" ? (feeds.shift() || []) : typeof feedItems !== "undefined" ? feedItems.splice(0) : [] }};
               if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
               return {{}};
             }}, setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
-            storageGetItem: (key) => key === "codoxear.notificationEnabled" ? "1" : null,
-            storageSetItem() {{}}, storageRemoveItem() {{}},
+            storageGetItem: (key) => storage.get(key) || null,
+            storageSetItem: (key, value) => storage.set(key, String(value)), storageRemoveItem: (key) => storage.delete(key),
             eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
-            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
-            Notification: undefined, AudioContext: undefined, clearTimeout() {{}},
+            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator,
+            Notification: NotificationCtor, AudioContext: AudioContextCtor, clearTimeout() {{}},
           }},
           eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
           isAppDisposed: () => false,
@@ -113,13 +129,16 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
         }});
         (async () => {{
           await controller.refreshBackgroundState({{ force: true }});
-          const beforeOpening = dom.notificationBtn.dataset.unread;
-          await dom.notificationBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
+          const firstDelivered = notifications.splice(0).map((entry) => entry.join(" :: "));
+          // Replay the same feed items: none may deliver twice.
+          feedItems.push(...{json.dumps(feed_items)});
+          await controller.refreshBackgroundState({{ force: true }});
+          const replayDelivered = notifications.splice(0).map((entry) => entry.join(" :: "));
           process.stdout.write(JSON.stringify({{
-            beforeOpening,
-            afterOpening: dom.notificationBtn.dataset.unread,
-            panelDisplay: dom.notificationPanel.style.display,
-            panelRows: dom.notificationList._children.map((row) => row._children[1].textContent),
+            firstDelivered,
+            replayDelivered,
+            bellActive: dom.notificationBtn.classList.contains("active"),
+            bellTitle: dom.notificationBtn.title,
           }}));
         }})().catch((error) => {{ console.error(error.stack || error); process.exit(1); }});
         """
@@ -205,12 +224,16 @@ def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_pat
         "Claude Code completed the requested review.",
     }
 
-    bell_state = _bell_state_after_opening_panel(feed_items)
-    assert bell_state["beforeOpening"] == "3"
-    assert bell_state["afterOpening"] == "0"
-    assert bell_state["panelDisplay"] == "flex"
-    assert set(bell_state["panelRows"]) == {
-        "Pi completed the requested review.",
-        "Codex completed the requested review.",
-        "Claude Code completed the requested review.",
+    delivery = _delivery_after_refresh(feed_items)
+    expected_deliveries = {
+        "Pi :: Pi completed the requested review.",
+        "Codex :: Codex completed the requested review.",
+        "Cc :: Claude Code completed the requested review.",
     }
+    # Each backend's feed item is delivered exactly once as a desktop
+    # notification carrying its session name and notification text; a replay
+    # of the same items delivers nothing, and the bell shows the enabled state.
+    assert set(delivery["firstDelivered"]) == expected_deliveries
+    assert delivery["replayDelivered"] == []
+    assert delivery["bellActive"] is True
+    assert delivery["bellTitle"] == "Notifications on"

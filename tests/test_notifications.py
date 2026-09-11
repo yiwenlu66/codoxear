@@ -41,7 +41,12 @@ def run_voice_vm() -> dict:
           return {{
             style: {{}}, dataset: {{}}, textContent: "", title: "", disabled: false, open: false, value: "", checked: false,
             _children: [], _attrs: {{}},
-            classList: {{ toggle() {{}}, add() {{}}, remove() {{}} }},
+            classList: {{
+              values: new Set(),
+              toggle(name, enabled) {{ enabled ? this.values.add(name) : this.values.delete(name); }},
+              add(name) {{ this.values.add(name); }}, remove(name) {{ this.values.delete(name); }},
+              contains(name) {{ return this.values.has(name); }},
+            }},
             setAttribute(name, value) {{ this._attrs[name] = String(value); }}, removeAttribute(name) {{ delete this._attrs[name]; }},
             append(...children) {{ this._children.push(...children); }}, appendChild(child) {{ this._children.push(child); return child; }},
             replaceChildren(...children) {{ this._children = children; }},
@@ -50,8 +55,7 @@ def run_voice_vm() -> dict:
           }};
         }}
         const dom = {{
-          announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
+          announceBtn: node(), notificationBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
           voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
@@ -65,10 +69,8 @@ def run_voice_vm() -> dict:
         const controller = ctx.window.CodoxearVoice.createVoiceController({{
           ...dom, Notification: NotificationCtor, AudioContext: AudioContextCtor, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
           notificationOptions: {{
-            root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
+            voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
             el: (_tag, attrs = {{}}, children = []) => {{ const created = attrs.id && dom[attrs.id] ? dom[attrs.id] : node(); created.append(...children); return created; }}, iconSvg: () => "",
-            notificationBtn: dom.notificationBtn, notificationPanel: dom.notificationPanel, notificationList: dom.notificationList,
-            notificationEmpty: dom.notificationEmpty, notificationClearBtn: dom.notificationClearBtn, notificationEnableBtn: dom.notificationEnableBtn,
             isAppDisposed: () => false, api: async (url, options = {{}}) => {{
               if (url.includes("/api/notifications/feed")) return {{ items: typeof feeds !== "undefined" ? (feeds.shift() || []) : typeof feedItems !== "undefined" ? feedItems.splice(0) : [] }};
               if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
@@ -76,7 +78,7 @@ def run_voice_vm() -> dict:
             }}, setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
             storageGetItem: (key) => storage.get(key) || null, storageSetItem: (key, value) => storage.set(key, String(value)),
             storageRemoveItem: (key) => storage.delete(key), eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
-            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator,
             Notification: NotificationCtor, AudioContext: typeof AudioContextCtor === "undefined" ? undefined : AudioContextCtor, clearTimeout() {{}},
           }},
           eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
@@ -91,18 +93,30 @@ def run_voice_vm() -> dict:
           requestFrame: (fn) => fn(), setTimeout: () => 1, clearTimeout() {{}}, setInterval: () => 1, clearInterval() {{}}, focusSessionFromNotification() {{}},
         }});
         (async () => {{
-          await dom.notificationEnableBtn.onclick();
+          // Bell click enables notifications on this device (permission request
+          // included), priming the audio context for later delivery.
+          await dom.notificationBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
+          const afterEnable = {{
+            active: dom.notificationBtn.classList.contains("active"),
+            title: dom.notificationBtn.title,
+          }};
+          // Prime records existing feed items without delivering; the next
+          // refresh delivers the fresh item as a desktop notification + sound.
           await controller.refreshBackgroundState({{ force: true, primeNotifications: true }});
           await controller.refreshBackgroundState({{ force: true }});
-          const beforeRead = dom.notificationBtn.dataset.unread;
+          // A replayed feed item id must not deliver a second notification.
+          feeds.push([{{ message_id: "fresh", session_id: "s1", session_display_name: "Agent", notification_text: "Needs attention", updated_ts: 2 }}]);
+          await controller.refreshBackgroundState({{ force: true }});
+          // Bell click again disables notifications on this device.
           await dom.notificationBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
           process.stdout.write(JSON.stringify({{
             browserNotifications: notifications,
             sound,
-            beforeRead,
-            afterRead: dom.notificationBtn.dataset.unread,
-            panelOpen: dom.notificationPanel.style.display,
-            panelRows: dom.notificationList._children.length,
+            afterEnable,
+            afterDisable: {{
+              active: dom.notificationBtn.classList.contains("active"),
+              title: dom.notificationBtn.title,
+            }},
             permission: NotificationCtor.permission,
           }}));
         }})().catch((error) => {{ console.error(error.stack || error); process.exit(1); }});
@@ -152,13 +166,15 @@ def test_tagged_harness_rows_are_excluded_from_delivery() -> None:
     assert _extract_delivery_messages(tagged) == []
 
 
-def test_notification_panel_tracks_feed_alerts_with_sound_and_marks_read() -> None:
+def test_notification_feed_delivers_desktop_alerts_and_bell_toggles_device() -> None:
     result = run_voice_vm()
 
     assert result["permission"] == "granted"
+    # Primed item suppressed; fresh item delivered once with feed title/body;
+    # replayed id deduped.
     assert result["browserNotifications"] == [{"title": "Agent", "body": "Needs attention"}]
     assert result["sound"] == {"starts": 1, "stops": 1, "resumes": 1}
-    assert result["beforeRead"] == "1"
-    assert result["afterRead"] == "0"
-    assert result["panelOpen"] == "flex"
-    assert result["panelRows"] == 2
+    # Bell reflects the device toggle: active + "on" label after enabling,
+    # inactive + "off" label after disabling.
+    assert result["afterEnable"] == {"active": True, "title": "Notifications on"}
+    assert result["afterDisable"] == {"active": False, "title": "Notifications off"}

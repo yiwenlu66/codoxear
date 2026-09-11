@@ -697,7 +697,6 @@ import * as CodoxearWiring from "./app_wiring.js";
         // state, transport, DOM construction, widget rendering, and handlers
         // stay behind the notification runtime hosted by the shell's voice slot.
         const notificationOptions = wiring.createNotificationOptions({
-          root,
           voiceHost: shellDOM.elements.voiceHost,
           el,
           iconSvg,
@@ -720,7 +719,6 @@ import * as CodoxearWiring from "./app_wiring.js";
           },
           windowTarget: window,
           navigatorTarget: navigator,
-          documentTarget: document,
           Notification: window.Notification,
           AudioContext: window.AudioContext || window.webkitAudioContext,
           clearTimeout,

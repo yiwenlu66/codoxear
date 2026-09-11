@@ -2,7 +2,6 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
 const base64UrlToUint8Array = CodoxearVoiceHelpers.base64UrlToUint8Array;
 const notificationDeviceClass = CodoxearVoiceHelpers.notificationDeviceClass;
-const NOTIFICATION_PANEL_MAX_ITEMS = 100;
 
 function requireFunction(value, name) {
   if (typeof value !== "function") throw new TypeError(`notification runtime dependency missing: ${name}`);
@@ -16,81 +15,29 @@ function requireNode(value, name) {
   return value;
 }
 
-function createNotificationDom(root, elValue, iconSvgValue, voiceHostValue) {
+function createNotificationDom(elValue, iconSvgValue, voiceHostValue) {
   const el = requireFunction(elValue, "el");
   const iconSvg = requireFunction(iconSvgValue, "iconSvg");
   const voiceHost = requireNode(voiceHostValue, "voiceHost");
-  if (!root || typeof root.appendChild !== "function") throw new TypeError("notification DOM dependency missing: root");
 
   const notificationBtn = el("button", {
     id: "notificationBtn",
     class: "icon-btn",
     title: "Notifications",
     "aria-label": "Notifications",
-    "aria-controls": "notificationPanel",
-    "aria-expanded": "false",
     type: "button",
     html: iconSvg("bell"),
   });
-  const notificationPanel = el("section", {
-    id: "notificationPanel",
-    class: "notificationPanel",
-    role: "dialog",
-    "aria-label": "Notifications",
-  });
-  const notificationClearBtn = el("button", {
-    id: "notificationClearBtn",
-    class: "text-btn",
-    type: "button",
-    text: "Mark read",
-  });
-  const notificationPanelHeader = el("div", { class: "notificationPanelHeader" }, [
-    el("div", { class: "title", text: "Notifications" }),
-    notificationClearBtn,
-  ]);
-  const notificationEnableBtn = el("button", {
-    id: "notificationEnableBtn",
-    class: "text-btn",
-    type: "button",
-    text: "Enable browser alerts",
-  });
-  const notificationEmpty = el("div", {
-    id: "notificationEmpty",
-    class: "muted",
-    text: "No notifications",
-  });
-  const notificationList = el("div", {
-    id: "notificationList",
-    class: "notificationList",
-    role: "list",
-  });
-  notificationPanel.append(notificationPanelHeader, notificationEnableBtn, notificationEmpty, notificationList);
-  notificationPanel.style.display = "none";
   if (typeof voiceHost.insertBefore === "function") voiceHost.insertBefore(notificationBtn, voiceHost.firstChild || null);
   else voiceHost.appendChild(notificationBtn);
-  root.appendChild(notificationPanel);
 
-  return Object.freeze({
-    notificationBtn,
-    notificationPanel,
-    notificationList,
-    notificationEmpty,
-    notificationClearBtn,
-    notificationEnableBtn,
-  });
+  return Object.freeze({ notificationBtn });
 }
 
 function createNotificationRuntime(options = {}) {
   if (!options || typeof options !== "object") throw new TypeError("notification runtime dependency missing: options");
 
-  const {
-    notificationBtn,
-    notificationPanel,
-    notificationList,
-    notificationEmpty,
-    notificationClearBtn,
-    notificationEnableBtn,
-  } = createNotificationDom(options.root, options.el, options.iconSvg, options.voiceHost);
+  const { notificationBtn } = createNotificationDom(options.el, options.iconSvg, options.voiceHost);
   const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
   const api = requireFunction(options.api, "api");
   const setToast = requireFunction(options.setToast, "setToast");
@@ -110,7 +57,6 @@ function createNotificationRuntime(options = {}) {
 
   const windowTarget = options.windowTarget || window;
   const navigatorTarget = options.navigatorTarget || (typeof navigator !== "undefined" ? navigator : null);
-  const documentTarget = options.documentTarget || document;
   const NotificationCtor = typeof options.Notification !== "undefined"
     ? options.Notification
     : (typeof Notification !== "undefined" ? Notification : undefined);
@@ -122,10 +68,8 @@ function createNotificationRuntime(options = {}) {
   let localNotificationEnabled = storageGetItem("codoxear.notificationEnabled") === "1";
   const desktopNotificationTimers = new Map();
   const deliveredDesktopNotificationIds = new Set();
+  const knownNotificationIds = new Set();
   let notificationFeedSinceTs = 0;
-  const notificationItems = new Map();
-  const readNotificationIds = new Set();
-  let notificationPanelOpen = false;
   let notificationAudioContext = null;
   let notificationState = {
     desktop_supported: false,
@@ -254,75 +198,18 @@ function createNotificationRuntime(options = {}) {
     }
   }
 
-  function sortedNotificationItems() {
-    return Array.from(notificationItems.values()).sort((left, right) => {
-      const byUpdated = Number(right.updated_ts || 0) - Number(left.updated_ts || 0);
-      return byUpdated || String(right.message_id || "").localeCompare(String(left.message_id || ""));
-    });
-  }
-
-  function trimNotificationItems() {
-    for (const item of sortedNotificationItems().slice(NOTIFICATION_PANEL_MAX_ITEMS)) {
-      notificationItems.delete(item.message_id);
-      readNotificationIds.delete(item.message_id);
-    }
-  }
-
-  function markNotificationRead(messageId) {
-    const id = String(messageId || "").trim();
-    if (id) readNotificationIds.add(id);
-  }
-
-  function markAllNotificationsRead() {
-    notificationItems.forEach((_item, messageId) => markNotificationRead(messageId));
-  }
-
-  function unreadNotificationCount() {
-    let count = 0;
-    notificationItems.forEach((_item, messageId) => {
-      if (!readNotificationIds.has(messageId)) count += 1;
-    });
-    return count;
-  }
-
   function render() {
     notificationState.permission = NotificationCtor ? NotificationCtor.permission : "unsupported";
-    // The panel widget has one render authority. Unread state owns the active
-    // affordance whenever the panel exists; this preserves the former final
-    // write from renderNotificationPanel without a competing enablement write.
-    const unread = unreadNotificationCount();
-    const suffix = unread ? `, ${unread} unread` : "";
-    notificationBtn.dataset.unread = String(unread);
-    notificationBtn.setAttribute("aria-label", `Notifications${suffix}`);
-    notificationBtn.title = `Notifications${suffix}`;
-    notificationBtn.classList.toggle("active", unread > 0);
-    notificationBtn.setAttribute("aria-expanded", notificationPanelOpen ? "true" : "false");
-    notificationPanel.style.display = notificationPanelOpen ? "flex" : "none";
-    notificationEmpty.style.display = notificationItems.size ? "none" : "block";
-    notificationClearBtn.disabled = unread === 0;
-    notificationEnableBtn.textContent = enabledLocally() ? "Disable browser alerts" : "Enable browser alerts";
-    notificationList.replaceChildren();
-    for (const item of sortedNotificationItems()) {
-      const row = documentTarget.createElement("button");
-      row.type = "button";
-      row.className = "notificationItem";
-      row.setAttribute("role", "listitem");
-      row.classList.toggle("unread", !readNotificationIds.has(item.message_id));
-      const title = documentTarget.createElement("span");
-      title.className = "notificationItemTitle";
-      title.textContent = String(item.session_display_name || "Session");
-      const body = documentTarget.createElement("span");
-      body.className = "notificationItemBody";
-      body.textContent = String(item.notification_text || "");
-      row.append(title, body);
-      row.onclick = () => {
-        markNotificationRead(item.message_id);
-        notificationPanelOpen = false;
-        render();
-        focusOriginSession(item.session_id);
-      };
-      notificationList.appendChild(row);
-    }
+    notificationBtn.classList.toggle("active", enabledLocally());
+    const transport = activeNotificationTransport();
+    notificationBtn.title = enabledLocally()
+      ? transport === "push"
+        ? "Notifications on (push)"
+        : transport === "desktop"
+          ? "Notifications on"
+          : "Notifications pending"
+      : "Notifications off";
+    notificationBtn.setAttribute("aria-label", notificationBtn.title);
   }
 
   async function pollFeed({ prime = false } = {}) {
@@ -337,9 +224,8 @@ function createNotificationRuntime(options = {}) {
         if (!messageId) continue;
         const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
         if (updatedTs > maxSeen) maxSeen = updatedTs;
-        const alreadyKnown = notificationItems.has(messageId);
-        notificationItems.set(messageId, { ...item, message_id: messageId });
-        if (prime || notificationPanelOpen) markNotificationRead(messageId);
+        const alreadyKnown = knownNotificationIds.has(messageId);
+        knownNotificationIds.add(messageId);
         if (!prime && !alreadyKnown && desktopNotificationsEnabled()) {
           showDesktopNotification({
             messageId,
@@ -350,7 +236,6 @@ function createNotificationRuntime(options = {}) {
           playNotificationSound();
         }
       }
-      trimNotificationItems();
     } catch (error) {
       if (error && error.status === 401) {
         handleAppAuthLoss();
@@ -475,46 +360,30 @@ function createNotificationRuntime(options = {}) {
     await syncState(nextSnapshot);
   }
 
+  // The bell is a pure browser-notification toggle for this device: click
+  // enables (prime sound, persist, request permission/subscription) or disables
+  // (server toggle-off, persist). Errors revert the local flag and surface a
+  // toast.
   eventBindings.on(notificationBtn, "click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
-    notificationPanelOpen = !notificationPanelOpen;
-    if (notificationPanelOpen) {
-      markAllNotificationsRead();
-      render();
-      await pollFeed();
-      return;
+    try {
+      await syncState();
+      if (enabledLocally()) {
+        await toggleCurrentDeviceNotifications(false);
+        setNotificationEnabledLocal(false);
+      } else {
+        await primeNotificationSound();
+        setNotificationEnabledLocal(true);
+        await enableNotificationsOnDevice();
+      }
+    } catch (error) {
+      console.error("notification toggle failed", error);
+      setNotificationEnabledLocal(false);
+      setToast(`notification error: ${error && error.message ? error.message : "unknown error"}`);
     }
     render();
   });
-
-  if (notificationClearBtn) {
-    eventBindings.on(notificationClearBtn, "click", () => {
-      markAllNotificationsRead();
-      render();
-    });
-  }
-
-  if (notificationEnableBtn) {
-    eventBindings.on(notificationEnableBtn, "click", async () => {
-      try {
-        await syncState();
-        if (enabledLocally()) {
-          await toggleCurrentDeviceNotifications(false);
-          setNotificationEnabledLocal(false);
-        } else {
-          await primeNotificationSound();
-          setNotificationEnabledLocal(true);
-          await enableNotificationsOnDevice();
-        }
-      } catch (error) {
-        console.error("notification toggle failed", error);
-        setNotificationEnabledLocal(false);
-        setToast(`notification error: ${error && error.message ? error.message : "unknown error"}`);
-      }
-      render();
-    });
-  }
 
   render();
 
@@ -528,11 +397,8 @@ function createNotificationRuntime(options = {}) {
       void notificationAudioContext.close();
     }
     notificationAudioContext = null;
-    notificationItems.clear();
-    readNotificationIds.clear();
-    notificationPanelOpen = false;
+    knownNotificationIds.clear();
     swRegistration = null;
-    if (notificationList && typeof notificationList.replaceChildren === "function") notificationList.replaceChildren();
   }
 
   return Object.freeze({ enabledLocally, syncState, pollFeed, dispose });

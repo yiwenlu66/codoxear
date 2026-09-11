@@ -57,8 +57,7 @@ def run_voice_settings_save_harness() -> dict:
         }}
 
         const dom = {{
-          announceBtn: node(), notificationBtn: node(), notificationPanel: node(), notificationList: node(), notificationEmpty: node(),
-          notificationClearBtn: node(), notificationEnableBtn: node(), liveAudio: node(),
+          announceBtn: node(), notificationBtn: node(), liveAudio: node(),
           voiceSettingsStatus: node(), voiceBaseUrlInput: node(), voiceApiKeyInput: node(), voiceClearApiKeyToggle: node(), narrationSettingToggle: node(),
           voiceSettingsCancelBtn: node(), voiceSettingsSaveBtn: node(),
         }};
@@ -83,10 +82,8 @@ def run_voice_settings_save_harness() -> dict:
           navigatorTarget: ctx.navigator,
           documentTarget,
           notificationOptions: {{
-            root: {{ appendChild() {{}} }}, voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
+            voiceHost: {{ style: {{}}, appendChild() {{}}, insertBefore() {{}}, firstChild: null }},
             el: (_tag, attrs = {{}}, children = []) => {{ const created = attrs.id && dom[attrs.id] ? dom[attrs.id] : node(); created.append(...children); return created; }}, iconSvg: () => "",
-            notificationBtn: dom.notificationBtn, notificationPanel: dom.notificationPanel, notificationList: dom.notificationList,
-            notificationEmpty: dom.notificationEmpty, notificationClearBtn: dom.notificationClearBtn, notificationEnableBtn: dom.notificationEnableBtn,
             isAppDisposed: () => false, api: async (url, options = {{}}) => {{
               if (url.includes("/api/notifications/feed")) return {{ items: typeof feeds !== "undefined" ? (feeds.shift() || []) : typeof feedItems !== "undefined" ? feedItems.splice(0) : [] }};
               if (url.includes("/api/notifications/subscription")) return {{ subscriptions: [] }};
@@ -94,7 +91,7 @@ def run_voice_settings_save_harness() -> dict:
             }}, setToast() {{}}, handleAppAuthLoss() {{}}, resolveAppUrl: (x) => x, versionedShellAssetPath: (x) => x,
             storageGetItem: (key) => storage.get(key) || null, storageSetItem: (key, value) => storage.set(key, String(value)),
             storageRemoveItem: (key) => storage.delete(key), eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
-            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget,
+            focusSessionFromNotification() {{}}, windowTarget: ctx.window, navigatorTarget: ctx.navigator,
             Notification: NotificationCtor, AudioContext: typeof AudioContextCtor === "undefined" ? undefined : AudioContextCtor, clearTimeout() {{}},
           }},
           eventBindings: {{ on(target, type, handler) {{ target[`on${{type}}`] = handler; return handler; }} }},
@@ -135,7 +132,7 @@ def run_voice_settings_save_harness() -> dict:
           dom.narrationSettingToggle.onchange({{ target: {{ checked: true }} }});
           await dom.voiceSettingsSaveBtn.onclick();
 
-          await dom.notificationEnableBtn.onclick();
+          await dom.notificationBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
           await controller.refreshBackgroundState({{ force: true }});
 
           const settingsSave = calls.find((entry) => entry[0] === "api" && entry[1] === "/api/settings/voice" && entry[2]);

@@ -137,21 +137,21 @@ sessionState.set("selected", selected);
               await fileReferences.openReference({ path: "not-a-file-reference", literal: false });
 
               const voiceNodes = {
-                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), notificationEnableBtn: node("notificationEnableBtn"), liveAudio: node("liveAudio"),
+                announceBtn: node("announceBtn"), notificationBtn: node("notificationBtn"), liveAudio: node("liveAudio"),
                 voiceSettingsStatus: node("voiceSettingsStatus"), voiceBaseUrlInput: node("voiceBaseUrlInput"),
                 voiceApiKeyInput: node("voiceApiKeyInput"), voiceClearApiKeyToggle: node("voiceClearApiKeyToggle"), narrationSettingToggle: node("narrationSettingToggle"),
                 voiceSettingsCancelBtn: node("voiceSettingsCancelBtn"), voiceSettingsSaveBtn: node("voiceSettingsSaveBtn"),
               };
               const voiceController = ctx.window.CodoxearVoice.createVoiceController(Object.assign(voiceNodes, {
                 notificationOptions: {
-                  root: { appendChild() {} }, voiceHost: { style: {}, firstChild: null, appendChild() {}, insertBefore() {} },
+                  voiceHost: { style: {}, firstChild: null, appendChild() {}, insertBefore() {} },
                   el: (_tag, attrs = {}) => attrs.id && voiceNodes[attrs.id] ? voiceNodes[attrs.id] : node(attrs.id || "notification-node"), iconSvg: () => "",
                   isAppDisposed: () => false,
                   api: async () => ({ subscriptions: [], items: [] }),
                   setToast: notify("voice"), handleAppAuthLoss() {}, resolveAppUrl: (path) => path, versionedShellAssetPath: (path) => path,
                   storageGetItem: () => null, storageSetItem() {}, storageRemoveItem() {},
                   eventBindings: { on(target, type, handler) { target[`on${type}`] = handler; return handler; } },
-                  windowTarget: ctx.window, navigatorTarget: ctx.navigator, documentTarget: ctx.document,
+                  windowTarget: ctx.window, navigatorTarget: ctx.navigator,
                   Notification: undefined, clearTimeout() {},
                 },
             eventBindings: { on(target, type, handler) { target[`on${type}`] = handler; return handler; } },
@@ -160,7 +160,7 @@ sessionState.set("selected", selected);
                 windowTarget: { isSecureContext: false }, navigatorTarget: { userAgent: "X11 Linux x86_64" }, documentTarget: { activeElement: null, contains: () => true },
                 Notification: undefined, requestFrame: (fn) => fn(), setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
               }));
-              await voiceNodes.notificationEnableBtn.onclick();
+              await voiceNodes.notificationBtn.onclick({ preventDefault() {}, stopPropagation() {} });
 
               const lastTimer = timers[timers.length - 1];
               const beforeDismiss = toast.textContent;

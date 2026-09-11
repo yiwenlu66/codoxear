@@ -325,7 +325,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertTrue(result["announcements"])
-        self.assertEqual(result["notificationTitle"], "Notifications")
+        self.assertEqual(result["notificationTitle"], "Notifications off")
         self.assertTrue(result["clientIdStored"])
 
     def test_announcement_client_id_reuses_persisted_value(self) -> None:
@@ -542,10 +542,10 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["desktop"]["title"], "Notifications")
-        self.assertFalse(result["desktop"]["active"])
-        self.assertEqual(result["mobile"]["title"], "Notifications")
-        self.assertEqual(result["off"]["title"], "Notifications")
+        self.assertEqual(result["desktop"]["title"], "Notifications on")
+        self.assertTrue(result["desktop"]["active"])
+        self.assertEqual(result["mobile"]["title"], "Notifications pending")
+        self.assertEqual(result["off"]["title"], "Notifications off")
         self.assertFalse(result["off"]["active"])
 
     def test_background_refresh_coalesces_subscription_snapshot_and_skips_inactive_polling(self) -> None:
