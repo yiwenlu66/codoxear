@@ -34,8 +34,4 @@ independent family token assignments.
 
 ## Current commitment
 
-The Paper in-app mark alone is monochrome: Paper light uses charcoal ink on
-Paper surfaces and Paper dark uses light ink on its dark Paper surfaces. The
-fold uses the theme background role to remain visibly folded without introducing
-an independent tinted paint. No deployment occurs until parent independent
-review.
+The scoped Paper correction was deployed through the prescribed script. OPS 2026-09-10T12:44:53+08:00 records the exact tmux command, resolved SHA, successful output, health-boundary result, and restart scope; OPS 2026-09-10T12:45:42+08:00 records exact snapshot and service confirmation. The active immutable snapshot is `79d71532e03b946d78bf912a269fc1e04e8e3c04`; the actual prior release retained for script-based rollback is `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`. The optional authenticated browser smoke check was disabled as directed; the script's required active-service and HTTP boundary checks succeeded. Broker, agent CLI, and runtime session processes were preserved because only the server service was restarted.

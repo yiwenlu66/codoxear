@@ -205,3 +205,25 @@ Prediction before browser validation: Settings-driven Paper light would render w
 Evidence: Docker-targeted tests passed: `20 passed in 1.61s` for `tests/test_brand_logo_theme.py`, `tests/test_theme_token_coverage.py`, and `tests/test_frontend_shell_dom_source.py`. In the Docker-isolated browser at `http://127.0.0.1:19127/`, live Settings selections produced Paper light page `rgb(255, 255, 255)`, fold `rgb(246, 245, 241)`, contour/terminal `rgb(47, 43, 38)` and Paper dark page `rgb(33, 30, 25)`, fold `rgb(24, 22, 19)`, contour/terminal `rgb(230, 225, 215)`. Screenshots: `/tmp/codoxear-paper-logo-light.png` and `/tmp/codoxear-paper-logo-dark.png`. The visible marks are a crisp charcoal/light-ink dog-ear with no taupe or terracotta paint. Clay spot-check remained page/contour/fold/terminal `rgb(255, 253, 249)` / `rgb(201, 100, 66)` / `rgb(243, 227, 218)` / `rgb(53, 48, 42)`; Slate remained white/black with transparent fold. The browser recorded no page errors; its only console entries were the existing meta CSP `frame-ancestors` notice and expected pre-login `401`.
 
 Release boundary: Docker browser and sandbox containers were stopped after validation. No deployment command or live service/browser was used; parent independent review remains required.
+
+## 2026-09-10T12:43:30+08:00 — Paper correction release authorization and ordering check
+
+Authorization: the user explicitly requested deployment of independently approved scoped Paper-logo correction `79d71532` (resolved full SHA `79d71532e03b946d78bf912a269fc1e04e8e3c04`). Review `.pi-subagents/artifacts/4101e43f-bcef-45e8-bc5d-2c35ff36537a_critic_output.md` approved with no release blockers.
+
+Ordering and guard observation: the active deployed snapshot is clean at `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`, which is an ancestor of target `79d71532e03b946d78bf912a269fc1e04e8e3c04`; this will advance the release, not downgrade a newer concurrent deployment. The editable source checkout is already at newer commit `81ca406fa5e9e84b12d4c6f7b18e154bf5264b86`, but its index is empty and its unrelated untracked artifacts will be preserved. The server is active from the detached deployment path. No source or deployment path will be cleaned manually; only the script's documented derived-bundle handling may precede its snapshot dirty guard.
+
+Commitment: run exactly `CODOXEAR_SKIP_BOOT_CHECK=1 scripts/deploy.sh 79d71532` through a new tmux window. This excludes only the optional authenticated production browser smoke path while retaining the script's active-service and two HTTP health checks (`/` 200 and unauthenticated `/api/sessions` 401). The script alone restarts `codoxear-server.service`; no broker, agent CLI, or session process is targeted.
+
+## 2026-09-10T12:44:53+08:00 — Scoped Paper correction deployment result
+
+Command and environment: the requested short commit command ran in a new `codoxear:deploy-79d71532` tmux window as `CODOXEAR_SKIP_BOOT_CHECK=1 scripts/deploy.sh 79d71532`, resolving to `79d71532e03b946d78bf912a269fc1e04e8e3c04`.
+
+Observation: the deployment script advanced the detached snapshot from actual prior release `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19` to the resolved target, rebuilt the derived bundle, passed JavaScript/wiring guards, reinstalled the package, and printed `deployed 79d71532e03b946d78bf912a269fc1e04e8e3c04 from /home/yiwen/.local/share/codoxear/deploy` plus `__CODOXEAR_DEPLOY_EXIT=0__`. Its successful exit follows the mandatory active-server check and allowed endpoint health boundary (`/` 200; unauthenticated `/api/sessions` 401). The optional authenticated browser smoke check was intentionally disabled; no live feature or browser test was run.
+
+Scope: only `codoxear-server.service` was restarted by the prescribed script. No broker, backend CLI, or session process was stopped, signaled, or otherwise targeted.
+
+## 2026-09-10T12:45:42+08:00 — Post-deployment verification
+
+Observation: `git -C ~/.local/share/codoxear/deploy rev-parse HEAD` returned exactly `79d71532e03b946d78bf912a269fc1e04e8e3c04`, and the deployment worktree porcelain status is empty. `systemctl --user show codoxear-server.service` reports `ActiveState=active`, `SubState=running`, `ExecMainStatus=0`, `ActiveEnterTimestamp=Thu 2026-09-10 12:44:30 CST`, `WorkingDirectory=/home/yiwen/.local/share/codoxear/deploy`, and a pipx Codoxear `ExecStart`. The editable source index remains empty; the only tracked working-tree changes are the permitted task `OPS.md` and `EPISTEMIC.md` release records. `git diff --check` reported no whitespace errors.
+
+Conclusion: the independently approved Paper correction now serves from the exact immutable snapshot. The actual prior release for the documented script-based rollback remains `2bec55ddbf137c436f7a5a9f887e4a2ad1287d19`.
