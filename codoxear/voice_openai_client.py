@@ -75,6 +75,8 @@ class OpenAICompatibleClient:
                 "Aim for about 15 words, roughly 12 to 18 words. "
                 "Use at most 15 words. If the source is already 15 words or fewer, do not expand it. "
                 "Compression only: never add filler, politeness, waiting language, stage directions, or meta-commentary. "
+                "Never spell out hashes, UUIDs, commit IDs, run IDs, or other long identifiers; omit them or refer to them generically (for example 'the commit' or 'the run'). "
+                "Do not read file paths verbatim; name the file or area instead. "
                 "No markdown, no quotes, no prefixes."
             )
         else:
@@ -84,6 +86,8 @@ class OpenAICompatibleClient:
                 "Aim for about 30 words, roughly 24 to 36 words. "
                 "Use at most 30 words. Prefer compression over paraphrase. "
                 "Never add filler, politeness, stage directions, or meta-commentary, and never invent details not present in the source. "
+                "Never spell out hashes, UUIDs, commit IDs, run IDs, or other long identifiers; omit them or refer to them generically (for example 'the commit' or 'the run'). "
+                "Do not read file paths verbatim; name the file or area instead. "
                 "No markdown, no quotes, no prefixes."
             )
         obj = self._request_json(

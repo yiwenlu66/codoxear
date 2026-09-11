@@ -5,7 +5,6 @@ import textwrap
 from pathlib import Path
 
 from codoxear.rollout_delivery import _extract_delivery_messages
-from codoxear.voice_projection import notification_feed_since
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,45 +112,44 @@ def run_voice_vm() -> dict:
     return json.loads(result.stdout)
 
 
-def test_intercom_delivery_is_a_notification_feed_item() -> None:
-    messages = _extract_delivery_messages(
-        [
-            {
-                "type": "custom_message",
-                "customType": "intercom_message",
-                "id": "intercom-1",
-                "timestamp": "2026-08-04T12:00:00.000Z",
-                "content": "Subagent needs attention in run 12345678-1234-1234-1234-123456789012",
-            }
-        ]
-    )
+def test_custom_message_envelopes_are_excluded_from_delivery() -> None:
+    # Voice delivery reuses the transcript's structural exclusion: every Pi
+    # custom_message envelope (intercom, subagent control, supervisor updates)
+    # is harness coordination traffic and must not produce announcements.
+    envelopes = [
+        {
+            "type": "custom_message",
+            "customType": custom_type,
+            "id": f"custom-{index}",
+            "timestamp": "2026-08-04T12:00:00.000Z",
+            "content": "Subagent needs attention in run 12345678-1234-1234-1234-123456789012",
+        }
+        for index, custom_type in enumerate(
+            ("intercom_message", "subagent_control_notice", "subagent_supervisor_request")
+        )
+    ]
 
-    assert len(messages) == 1
-    assert messages[0].message_class == "intercom"
-    assert messages[0].text.startswith("Subagent needs attention")
-    feed = notification_feed_since(
+    assert _extract_delivery_messages(envelopes) == []
+
+
+def test_tagged_harness_rows_are_excluded_from_delivery() -> None:
+    # The transcript excludes rows tagged as harness/intercom plumbing even
+    # when they carry assistant text; delivery must apply the same filter.
+    tagged = [
         {
-            messages[0].message_id: {
-                "message_id": messages[0].message_id,
-                "message_class": "intercom",
-                "session_id": "s1",
-                "session_display_name": "Agent",
-                "notification_text": messages[0].text,
-                "summary_status": "skipped",
-                "updated_ts": 4.0,
-            }
-        },
-        since_ts=0,
-    )
-    assert feed == [
-        {
-            "message_id": messages[0].message_id,
-            "session_id": "s1",
-            "session_display_name": "Agent",
-            "notification_text": messages[0].text,
-            "updated_ts": 4.0,
+            "type": "message",
+            "id": "tagged-1",
+            "timestamp": "2026-08-04T12:00:00.000Z",
+            "message": {
+                "role": "assistant",
+                "stopReason": "end_turn",
+                "metadata": {"source": "harness"},
+                "content": [{"type": "text", "text": "harness-injected narration"}],
+            },
         }
     ]
+
+    assert _extract_delivery_messages(tagged) == []
 
 
 def test_notification_panel_tracks_feed_alerts_with_sound_and_marks_read() -> None:

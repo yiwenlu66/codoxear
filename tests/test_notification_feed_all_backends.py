@@ -129,17 +129,20 @@ def _bell_state_after_opening_panel(feed_items: list[dict[str, Any]]) -> dict[st
 
 
 def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_path: Path) -> None:
-    # Pi intercom messages are custom envelopes, whereas Codex and Claude Code
-    # publish user-visible completion records. All three must enter the same
-    # delivery ledger and feed route with an attention-readable text payload.
+    # Pi, Codex, and Claude Code each publish user-visible completion records.
+    # All three must enter the same delivery ledger and feed route with an
+    # attention-readable text payload.
     records_by_backend = {
         "pi": [
             {
-                "type": "custom_message",
-                "customType": "intercom_message",
-                "id": "pi-intercom-1",
+                "type": "message",
+                "id": "pi-final-1",
                 "timestamp": "2026-08-04T12:00:00.000Z",
-                "content": "Subagent needs attention in run 12345678-1234-1234-1234-123456789012",
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "end_turn",
+                    "content": [{"type": "text", "text": "Pi completed the requested review."}],
+                },
             }
         ],
         "codex": [
@@ -166,7 +169,7 @@ def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_pat
         ],
     }
     expected_texts = {
-        "pi": "Subagent needs attention",
+        "pi": "Pi completed the requested review.",
         "codex": "Codex completed the requested review.",
         "cc": "Claude Code completed the requested review.",
     }
@@ -186,8 +189,7 @@ def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_pat
     for backend, records in records_by_backend.items():
         messages = _extract_delivery_messages(records)
         assert len(messages) == 1
-        expected_class = "intercom" if backend == "pi" else "final_response"
-        assert messages[0].message_class == expected_class
+        assert messages[0].message_class == "final_response"
         assert messages[0].text.startswith(expected_texts[backend])
         coordinator.observe_messages(
             session_id=f"{backend}-session",
@@ -198,7 +200,7 @@ def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_pat
     feed_items = _notification_feed_from_route(coordinator)
     assert {item["session_id"] for item in feed_items} == {"pi-session", "codex-session", "cc-session"}
     assert {item["notification_text"] for item in feed_items} == {
-        "Subagent needs attention — Subagent (run 12345678)",
+        "Pi completed the requested review.",
         "Codex completed the requested review.",
         "Claude Code completed the requested review.",
     }
@@ -208,7 +210,7 @@ def test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_pat
     assert bell_state["afterOpening"] == "0"
     assert bell_state["panelDisplay"] == "flex"
     assert set(bell_state["panelRows"]) == {
-        "Subagent needs attention — Subagent (run 12345678)",
+        "Pi completed the requested review.",
         "Codex completed the requested review.",
         "Claude Code completed the requested review.",
     }

@@ -12,6 +12,7 @@ from codoxear.voice_push import GeneratedAnnouncement
 from codoxear.voice_push import MergedHLSStream
 from codoxear.voice_push import OpenAICompatibleClient
 from codoxear.voice_push import _default_vapid_subject
+from codoxear.voice_push import _sanitize_spoken_text
 from codoxear.voice_push import VoicePushCoordinator
 
 
@@ -211,6 +212,49 @@ class TestOpenAICompatibleClient(unittest.TestCase):
         self.assertIn("Use at most 15 words.", system_prompt)
         self.assertIn("do not expand it", system_prompt)
         self.assertIn("never add filler", system_prompt)
+        self.assertIn("Never spell out hashes, UUIDs, commit IDs", system_prompt)
+
+    def test_final_summary_prompt_forbids_reading_identifiers_aloud(self) -> None:
+        client = OpenAICompatibleClient(timeout_seconds=1.0)
+        captured = {}
+
+        def fake_request_json(**kwargs):
+            captured.update(kwargs)
+            return {"choices": [{"message": {"content": "done"}}]}
+
+        client._request_json = fake_request_json  # type: ignore[method-assign]
+        client.summarize(
+            base_url="https://api.openai.com/v1",
+            api_key="test-key",
+            model="gpt-test",
+            session_name="Repo",
+            source_label="Final assistant response",
+            text="committed a1b2c3d4 with the fix",
+            target_words=30,
+        )
+        system_prompt = captured["payload"]["messages"][0]["content"]
+        self.assertIn("Never spell out hashes, UUIDs, commit IDs", system_prompt)
+        self.assertIn("Do not read file paths verbatim", system_prompt)
+
+
+class TestSanitizeSpokenText(unittest.TestCase):
+    def test_strips_uuids_hashes_and_long_digit_ids(self) -> None:
+        self.assertEqual(
+            _sanitize_spoken_text("Committed a1b2c3d4 fixing run 12345678-1234-1234-1234-123456789012 today"),
+            "Committed fixing run today",
+        )
+
+    def test_strips_subagent_run_label_left_empty_by_hash_strip(self) -> None:
+        self.assertEqual(
+            _sanitize_spoken_text("From Repo. Subagent needs attention — executor (run fdb5fbe4)"),
+            "From Repo. Subagent needs attention — executor",
+        )
+
+    def test_preserves_ordinary_words_and_small_numbers(self) -> None:
+        self.assertEqual(
+            _sanitize_spoken_text("From Repo. checked 42 files across 1000000 lines of facade code"),
+            "From Repo. checked 42 files across 1000000 lines of facade code",
+        )
 
 
 class TestVoicePushCoordinator(unittest.TestCase):
@@ -471,6 +515,57 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(row["summary_status"], "skipped")
             self.assertEqual(row["summary_text"], "")
             self.assertEqual(row["narrated_status"], "sent")
+
+    def test_short_narration_with_hash_is_sanitized_before_synthesis(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _FakeClient()
+            fake_hls = _FakeHLS()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord._hls = fake_hls  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": False,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.listener_heartbeat(client_id="listener-1", enabled=True)
+            message = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "committed a1b2c3d4 fix"}],
+                        },
+                        "ts": 4.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            with coord._lock:
+                task = coord._queue[0]
+            coord._process_task(task)
+            with coord._lock:
+                prepared = coord._prepared
+            self.assertIsNotNone(prepared)
+            assert prepared is not None
+            coord._append_prepared(prepared)
+            self.assertEqual(fake_client.summary_calls, [])
+            self.assertEqual(len(fake_client.speech_calls), 1)
+            self.assertEqual(fake_client.speech_calls[0]["text"], "From Repo. committed fix")
 
     def test_notification_text_falls_back_to_raw_when_no_api_key(self) -> None:
         with TemporaryDirectory() as td:

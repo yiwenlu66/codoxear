@@ -139,6 +139,22 @@ dependencies are focused dataclass records
   final-turn detection, run settings, context usage.
 - `codoxear/cc_log.py` — Claude Code log parsing.
 
+### Voice delivery invariants
+
+- Voice/notification delivery reuses the transcript's structural exclusion:
+  `_extract_delivery_messages` applies `pi_log_row_is_transcript_excluded`, so
+  every `custom_message` envelope (intercom, subagent control, supervisor
+  updates) and every tagged harness row is agent plumbing — never announced
+  and never a feed item. Speakable classes are only `narration` and
+  `final_response`.
+- The TTS speech boundary is sanitized: `_sanitize_spoken_text`
+  (`voice_push_state.py`) strips UUIDs, hex hashes, and long numeric IDs from
+  anything synthesized, covering both the LLM-summary path and the verbatim
+  short-message path (narration under 15 words skips summarization).
+- Per-session announcement voice is deterministic:
+  `DEFAULT_VOICES[sha256(sock-stem session_id)[:8] mod 13]`. The catalog is
+  male-skewed (7 male-leaning of 13); the mapping itself is uniform.
+
 ## Pi integration strategy
 
 Codoxear wraps all backends in a PTY so web and terminal share the same

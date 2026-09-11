@@ -39,6 +39,7 @@ from .voice_push_state import _clean_voice_settings
 from .voice_push_state import _clip_text
 from .voice_push_state import _compact_text
 from .voice_push_state import _normalize_vapid_subject
+from .voice_push_state import _sanitize_spoken_text
 from .voice_push_state import _sha256_hex
 from .voice_push_state import _subscription_id
 from .voice_openai_client import OpenAICompatibleClient
@@ -281,17 +282,13 @@ class VoicePushCoordinator:
                 listener_epoch = self._listener_epoch
                 listener_count = self._active_listener_count_locked(now_ts=now_ts)
                 is_final_response = msg.message_class == "final_response"
-                is_intercom = msg.message_class == "intercom"
                 self._delivery_ledger[msg.message_id] = {
                     "message_id": msg.message_id,
                     "session_id": session_id,
                     "session_display_name": session_display_name,
                     "message_class": msg.message_class,
                     "preview_text": _clip_text(msg.text, limit=160),
-                    # Intercom is an explicit outside-attention event. It does
-                    # not require an LLM summary before it is useful in the
-                    # notification feed, unlike a final agent response.
-                    "notification_text": _clip_text(_compact_text(msg.text), limit=120) if is_intercom else "",
+                    "notification_text": "",
                     "summary_text": "",
                     "summary_status": "pending" if (is_final_response or narration_enabled) else "skipped",
                     "narrated_status": "pending" if (is_final_response or narration_enabled) else "skipped",
@@ -486,7 +483,7 @@ class VoicePushCoordinator:
             api_key=settings["tts_api_key"],
             model=settings["tts_model"],
             voice=task.voice,
-            text=spoken_text,
+            text=_sanitize_spoken_text(spoken_text),
         )
         with self._lock:
             if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:

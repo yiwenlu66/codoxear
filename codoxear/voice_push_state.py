@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,30 @@ def _clip_text(raw: str, *, limit: int) -> str:
 
 def _compact_text(raw: str) -> str:
     return " ".join(str(raw or "").split()).strip()
+
+
+_SPOKEN_UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+_SPOKEN_HEX_RE = re.compile(r"\b(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{7,}\b")
+_SPOKEN_LONG_DIGITS_RE = re.compile(r"\b\d{9,}\b")
+_SPOKEN_EMPTY_RUN_LABEL_RE = re.compile(r"\(\s*run\s*\)", re.IGNORECASE)
+_SPOKEN_EMPTY_BRACKETS_RE = re.compile(r"[\[({]\s*[\])}]")
+
+
+def _sanitize_spoken_text(raw: str) -> str:
+    """Remove identifier noise from text about to be synthesized for speech.
+
+    UUIDs, commit hashes, and long hex/numeric identifiers carry no audible
+    meaning, yet TTS spells them out character by character. Strip them at the
+    single speech boundary so every path (LLM summary or verbatim short text)
+    is covered regardless of what the summarizer returns.
+    """
+    text = str(raw or "")
+    text = _SPOKEN_UUID_RE.sub("", text)
+    text = _SPOKEN_HEX_RE.sub("", text)
+    text = _SPOKEN_LONG_DIGITS_RE.sub("", text)
+    text = _SPOKEN_EMPTY_RUN_LABEL_RE.sub("", text)
+    text = _SPOKEN_EMPTY_BRACKETS_RE.sub("", text)
+    return " ".join(text.split())
 
 
 def _normalize_base_url(raw: Any) -> str:

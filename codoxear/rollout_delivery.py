@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .agent_backend.pi import _pi_subagent_intercom_summary
 from .cc_log import cc_apply_tool_result_to_pending
 from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
@@ -13,6 +12,7 @@ from .cc_log import cc_user_text
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_assistant_text
+from .pi_log import pi_log_row_is_transcript_excluded
 from .rollout_events import _event_ts
 from .rollout_events import _strip_oai_mem_citation_tail
 from .rollout_events import _text_message_id
@@ -35,6 +35,11 @@ def _extract_delivery_messages(
         typ = obj.get("type")
         message_class: str | None = None
         text = ""
+        # Delivery reuses the transcript's structural exclusion: harness
+        # coordination rows (every custom_message envelope, tagged plumbing)
+        # are agent-internal traffic and never speakable narration.
+        if pi_log_row_is_transcript_excluded(obj):
+            continue
         if typ == "user":
             user_text = cc_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -43,21 +48,7 @@ def _extract_delivery_messages(
             if cc_message_role(obj) == "toolResult":
                 cc_apply_tool_result_to_pending(obj, cc_pending_tool_ids)
                 continue
-        if typ == "custom_message":
-            # Pi's intercom bridge emits a custom envelope rather than an
-            # assistant turn. The transcript normalizer already turns this
-            # into a concise user-facing narration; use the same summary for
-            # the attention feed instead of dropping it from delivery.
-            if obj.get("customType") != "intercom_message":
-                continue
-            content = obj.get("content")
-            if not isinstance(content, str):
-                continue
-            text = _pi_subagent_intercom_summary(content) or ""
-            if not text.strip():
-                continue
-            message_class = "intercom"
-        elif typ == "message":
+        if typ == "message":
             if pi_assistant_is_aborted_turn(obj):
                 continue
             text = pi_assistant_text(obj) or ""

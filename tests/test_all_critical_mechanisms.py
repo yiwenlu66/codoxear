@@ -211,8 +211,8 @@ def test_pdf_get_document_loads_minimal_pdf() -> None:
     module.test_vendored_pdfjs_parses_page_and_extracts_text_in_node()
 
 
-# a52f1582 — Pi intercom delivery records feed the browser notification panel.
-def test_pi_intercom_messages_appear_in_notification_feed(tmp_path: Path) -> None:
+# a52f1582 — Pi, Codex, and Claude Code completion records feed the browser notification panel.
+def test_backend_completion_messages_appear_in_notification_feed(tmp_path: Path) -> None:
     module = _test_module("test_notification_feed_all_backends")
     module.test_notification_feed_and_read_state_cover_pi_codex_and_claude_code(tmp_path)
 
