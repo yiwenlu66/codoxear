@@ -1464,9 +1464,9 @@
         height: 15px;
       }
       .msg.typing {
-        display: inline-flex;
+        display: inline-grid;
+        grid-template-columns: auto minmax(0, auto);
         align-items: center;
-        flex-wrap: wrap;
         padding: var(--space-4) var(--space-5);
         min-width: 54px;
       }
@@ -1492,8 +1492,8 @@
         display: none;
       }
       .subagentDetails {
-        flex: 0 0 100%;
-        width: 100%;
+        grid-column: 1 / -1;
+        min-width: 0;
         color: var(--muted);
         font: var(--font-2xs)/1.4 var(--font-mono);
       }
@@ -1504,14 +1504,13 @@
         margin-top: var(--space-3);
       }
       .subagentDetailLine {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
       .subagentActivity {
-        display: inline-flex;
+        display: inline-grid;
+        grid-template-columns: auto minmax(0, auto);
         align-items: center;
-        flex-wrap: wrap;
         gap: var(--space-3);
         padding: var(--space-3) var(--space-4);
         color: var(--muted);

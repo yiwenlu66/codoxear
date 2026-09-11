@@ -427,12 +427,15 @@
       const record = detail && typeof detail === "object" ? detail : {};
       const role = typeof record.role === "string" && record.role.trim() ? record.role.trim() : "Subagent";
       const parts = [role];
-      if (typeof record.model === "string" && record.model.trim()) parts.push(record.model.trim());
+      if (typeof record.model === "string" && record.model.trim()) {
+        const model = record.model.trim();
+        parts.push(model.slice(model.lastIndexOf("/") + 1));
+      }
       if (record.tools !== null && record.tools !== undefined && Number.isFinite(Number(record.tools)) && Number(record.tools) >= 0) {
         parts.push(`tools: ${Math.floor(Number(record.tools))}`);
       }
       if (record.tokens !== null && record.tokens !== undefined && Number.isFinite(Number(record.tokens)) && Number(record.tokens) >= 0) {
-        parts.push(`tokens used: ${formatThinkingTokens(record.tokens)}`);
+        parts.push(`tokens: ${formatThinkingTokens(record.tokens)}`);
       }
       return parts.join(" · ");
     }

@@ -92,8 +92,11 @@ REPLACING may clear the DOM.
 `createTypingRowStoreProjection` owns transcript child-activity projection from
 the selected-session store. It reads count and detail records atomically and
 writes the same automatically visible per-child lines into busy and idle
-activity bubbles. The sidebar marker remains summary-only; message flow never
-calls a child-detail renderer directly.
+activity bubbles. The bubbles use intrinsic inline-grid sizing up to the normal
+message maximum, so short telemetry does not stretch the row and long telemetry
+wraps without horizontal overflow. Qualified `provider/model` identifiers render
+as `model`, and cumulative usage is labeled `tokens`. The sidebar marker remains
+summary-only; message flow never calls a child-detail renderer directly.
 
 ### CSS design system
 

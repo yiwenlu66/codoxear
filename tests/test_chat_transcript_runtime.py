@@ -297,16 +297,16 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "first": {
                 "summary": "subagents: 2",
                 "lines": [
-                    "reviewer · model-a · tools: 2 · tokens used: 1.2k",
-                    "worker · model-b · tools: 4 · tokens used: 2.4k",
+                    "reviewer · model-a · tools: 2 · tokens: 1.2k",
+                    "worker · model-b · tools: 4 · tokens: 2.4k",
                 ],
                 "count": 2,
             },
             "second": {
                 "summary": "subagents: 2",
                 "lines": [
-                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
-                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                    "reviewer · model-a · tools: 3 · tokens: 1.3k",
+                    "worker · model-b · tools: 5 · tokens: 2.5k",
                 ],
                 "count": 2,
                 "catalogTokens": [1300, 2500],
@@ -559,15 +559,15 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 "activityRows": 1,
                 "summary": "▸2 subagents working",
                 "lines": [
-                    "reviewer · model-a · tools: 2 · tokens used: 1.2k",
-                    "worker · model-b · tools: 4 · tokens used: 2.4k",
+                    "reviewer · model-a · tools: 2 · tokens: 1.2k",
+                    "worker · model-b · tools: 4 · tokens: 2.4k",
                 ],
             },
             "sameCountFresh": {
                 "summary": "▸2 subagents working",
                 "lines": [
-                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
-                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                    "reviewer · model-a · tools: 3 · tokens: 1.3k",
+                    "worker · model-b · tools: 5 · tokens: 2.5k",
                 ],
             },
             "busy": {
@@ -575,16 +575,16 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 "rowClass": "msg-row assistant typing-row",
                 "summary": "subagents: 2",
                 "lines": [
-                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
-                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                    "reviewer · model-a · tools: 3 · tokens: 1.3k",
+                    "worker · model-b · tools: 5 · tokens: 2.5k",
                 ],
             },
             "idleAgain": {
                 "activityRows": 1,
                 "summary": "▸2 subagents working",
                 "lines": [
-                    "reviewer · model-a · tools: 3 · tokens used: 1.3k",
-                    "worker · model-b · tools: 5 · tokens used: 2.5k",
+                    "reviewer · model-a · tools: 3 · tokens: 1.3k",
+                    "worker · model-b · tools: 5 · tokens: 2.5k",
                 ],
             },
             "switched": {"children": 1, "activityRows": 0},
@@ -799,14 +799,14 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "squares": 2,
             "firstText": "▸2 subagents working",
             "firstLines": [
-                "reviewer · provider/model · tools: 3 · tokens used: 4.2k",
-                "scout · small-model · tools: 1 · tokens used: 84",
+                "reviewer · model · tools: 3 · tokens: 4.2k",
+                "scout · small-model · tools: 1 · tokens: 84",
             ],
             "replacedText": "▸3 subagents working",
             "replacedLines": [
-                "reviewer · provider/model · tools: 4 · tokens used: 4.3k",
-                "scout · small-model · tools: 2 · tokens used: 100",
-                "executor · large-model · tools: 0 · tokens used: 0",
+                "reviewer · model · tools: 4 · tokens: 4.3k",
+                "scout · small-model · tools: 2 · tokens: 100",
+                "executor · large-model · tools: 0 · tokens: 0",
             ],
             "connected": False,
         })
@@ -864,8 +864,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 "expanded": None,
                 "clickable": False,
                 "lines": [
-                    "reviewer · provider/model · tools: 3 · tokens used: 4.2k",
-                    "scout · small-model · tools: 1 · tokens used: 84",
+                    "reviewer · model · tools: 3 · tokens: 4.2k",
+                    "scout · small-model · tools: 1 · tokens: 84",
                 ],
             },
             "cleared": {"lines": []},
