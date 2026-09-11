@@ -179,11 +179,27 @@ def send_static_file(handler: Any, rel: str, *, query: str, deps: StaticRouteDep
     if not path.exists() or not path.is_file():
         handler.send_error(404)
         return
-    stat = path.stat()
-    etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+    is_html = path.suffix == ".html"
+    if is_html:
+        # HTML is the only static response whose served bytes differ from the
+        # file on disk: read_static_bytes injects the content-hashed asset
+        # version and the attachment limit. A release that changes only assets
+        # leaves index.html's stat untouched while the rendered ?v= URLs (the
+        # representation) change, so a stat-based validator would answer 304
+        # for a changed representation and pin clients to immutable old asset
+        # URLs. The HTML validator therefore hashes the final substituted
+        # bytes. It stays weak and is computed before any content coding, so
+        # one validator is shared across gzip/identity encodings like the
+        # non-HTML stat validators.
+        data = deps.read_static_bytes(path)
+        etag = f'W/"{hashlib.sha256(data).hexdigest()}"'
+    else:
+        data = None
+        stat = path.stat()
+        etag = f'W/"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
     cache_headers = deps.static_cache_control_headers(
         versioned="v" in urllib.parse.parse_qs(query, keep_blank_values=True),
-        is_html=path.suffix == ".html",
+        is_html=is_html,
     )
     if if_none_match_contains(handler.headers.get("If-None-Match"), etag):
         # Unversioned static URLs (for example Monaco's worker assets, whose
@@ -197,7 +213,8 @@ def send_static_file(handler: Any, rel: str, *, query: str, deps: StaticRouteDep
             handler.send_header(name, value)
         handler.end_headers()
         return
-    data = deps.read_static_bytes(path)
+    if data is None:
+        data = deps.read_static_bytes(path)
     body, gzip_encoded = gzip_response_body(handler, data)
     handler.send_response(200)
     handler.send_header("Content-Type", static_content_type(path))
