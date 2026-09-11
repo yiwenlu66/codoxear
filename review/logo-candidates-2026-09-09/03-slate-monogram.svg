@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate 03 — Slate Monogram</title>
+  <desc id="desc">Slate-black icon tile with a white folded document silhouette and a centered dark terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#0d0d0d"/>
+  <path d="M126 92h182l98 98v230H126z" fill="#ffffff"/>
+  <path d="M308 92v98h98" fill="#e8e8e8"/>
+  <path d="m193 264 39 39-39 39M260 342h61" fill="none" stroke="#0d0d0d" stroke-width="26" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

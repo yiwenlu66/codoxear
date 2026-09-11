@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate 01 — Paper Outline</title>
+  <desc id="desc">Warm paper app tile with a charcoal folded document and compact terracotta terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#f6f5f1"/>
+  <rect x="30" y="30" width="452" height="452" rx="88" fill="#fffdf9" stroke="#d9d0be" stroke-width="8"/>
+  <path d="M142 104h172l88 88v216H142z" fill="#fffdf9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M314 104v88h88" fill="#efeee9" stroke="#2f2b26" stroke-width="24" stroke-linejoin="round"/>
+  <path d="m204 268 38 36-38 36M270 340h50" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

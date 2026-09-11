@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate 04 — Paper Reverse</title>
+  <desc id="desc">Warm charcoal icon tile with a cream document, dark folded corner, and terracotta terminal cursor.</desc>
+  <rect width="512" height="512" rx="108" fill="#2f2b26"/>
+  <path d="M130 94h180l92 92v232H130z" fill="#fffdf9"/>
+  <path d="M310 94v92h92" fill="#2f2b26"/>
+  <path d="M310 94v92h92" fill="none" stroke="#fffdf9" stroke-width="16" stroke-linejoin="round"/>
+  <path d="m197 268 38 36-38 36M265 340h54" fill="none" stroke="#c96442" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

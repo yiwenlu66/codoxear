@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate 05 — Clay Tab</title>
+  <desc id="desc">Cream tile with a charcoal document block, terracotta folded tab, and paper terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#f4f0e8"/>
+  <rect x="30" y="30" width="452" height="452" rx="88" fill="#fffdf9" stroke="#d9d0be" stroke-width="8"/>
+  <path d="M132 96h180l90 90v230H132z" fill="#35302a"/>
+  <path d="M312 96v90h90" fill="#c96442"/>
+  <path d="m197 268 38 36-38 36M265 340h56" fill="none" stroke="#fffdf9" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

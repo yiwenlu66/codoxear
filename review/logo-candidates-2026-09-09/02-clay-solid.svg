@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate 02 — Clay Solid</title>
+  <desc id="desc">Terracotta app tile with a warm paper document and small charcoal terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#c96442"/>
+  <path d="M130 96h178l94 94v226H130z" fill="#fffdf9"/>
+  <path d="M308 96v94h94" fill="#f3e3da"/>
+  <path d="M308 96v94h94" fill="none" stroke="#fffdf9" stroke-width="18" stroke-linejoin="round"/>
+  <path d="m197 269 36 34-36 34M258 337h55" fill="none" stroke="#35302a" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>
