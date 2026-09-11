@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Ribbon</title>
+  <desc id="desc">A dog-ear synonym becomes a moving ribbon: its tail exits the bookmark and continues forward.</desc>
+  <rect width="512" height="512" fill="#0D0D0D"/>
+  <path d="M160 104H350V336L256 410L160 336Z" fill="#FFFDF9"/>
+  <path d="M256 410C292 397 308 365 335 340C356 321 383 315 410 299" fill="none" stroke="#C96442" stroke-width="48" stroke-linecap="round"/>
+  <path d="M230 310L256 332L282 310V350L256 372L230 350Z" fill="#0D0D0D"/>
+
+</svg>

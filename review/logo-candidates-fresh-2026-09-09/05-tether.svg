@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Tether</title>
+  <desc id="desc">Unequal local and remote nodes stay bound by one broad, asymmetric topology.</desc>
+  <rect width="512" height="512" fill="#C96442"/>
+  <path d="M258 286L363 224" fill="none" stroke="#FFFDF9" stroke-width="58" stroke-linecap="round"/>
+  <rect x="112" y="190" width="188" height="176" rx="82" fill="#2F2B26"/>
+  <rect x="150" y="228" width="112" height="100" rx="48" fill="#FFFDF9"/>
+  <circle cx="365" cy="224" r="54" fill="#FFFDF9"/>
+  <circle cx="365" cy="224" r="24" fill="#2F2B26"/>
+
+</svg>

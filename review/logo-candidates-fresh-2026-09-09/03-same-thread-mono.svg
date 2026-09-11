@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Same Thread, monochrome</title>
+  <desc id="desc">One continuous thread passes through two offset eyelets, joining two views of one session.</desc>
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <path d="M106 294C144 294 140 230 184 230C252 230 266 312 334 312C374 312 374 348 397 344" fill="none" stroke="#111111" stroke-width="46" stroke-linecap="round"/>
+  <path fill="#111111" fill-rule="evenodd" d="M174 126C137 126 108 155 108 192V312C108 349 137 378 174 378C211 378 240 349 240 312V192C240 155 211 126 174 126ZM174 174C184 174 192 182 192 192V312C192 322 184 330 174 330C164 330 156 322 156 312V192C156 182 164 174 174 174Z"/>
+  <path fill="#111111" fill-rule="evenodd" d="M338 158C305 158 278 185 278 218V332C278 365 305 392 338 392C371 392 398 365 398 332V218C398 185 371 158 338 158ZM338 204C346 204 352 210 352 218V332C352 340 346 346 338 346C330 346 324 340 324 332V218C324 210 330 204 338 204Z"/>
+
+</svg>

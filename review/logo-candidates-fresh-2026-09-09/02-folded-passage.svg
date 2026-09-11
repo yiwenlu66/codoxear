@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Folded Passage</title>
+  <desc id="desc">A doorway and bridge whose roof joint carries the dog-ear as a functional fold.</desc>
+  <rect width="512" height="512" fill="#F6F5F1"/>
+  <path d="M120 392V124H294L396 226V392H326V262H238V392H170V194H262L326 258V226L266 164H170V392Z" fill="#2F2B26"/>
+  <path d="M294 124V226H396L326 156V194H294Z" fill="#C96442"/>
+
+</svg>

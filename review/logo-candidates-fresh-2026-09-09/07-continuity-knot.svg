@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Continuity Knot</title>
+  <desc id="desc">A folded loop and outgoing tab combine the dog-ear, one-session thread, and remote attachment into a compact ownable knot.</desc>
+  <rect width="512" height="512" fill="#211E19"/>
+  <path d="M128 188L242 122L348 184L348 320L246 386L128 320Z" fill="#FFFDF9"/>
+  <path d="M181 218L242 183L295 214V286L244 319L181 286Z" fill="#211E19"/>
+  <path d="M348 184L402 152V246L348 280Z" fill="#C96442"/>
+  <path d="M242 122L294 152L348 184L294 214L242 183Z" fill="#C96442"/>
+
+</svg>

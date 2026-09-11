@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Session Dock, monochrome</title>
+  <desc id="desc">A remote capsule is received by an open local socket; the session remains in place.</desc>
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <path d="M289 159A128 128 0 1 0 340 222" fill="none" stroke="#111111" stroke-width="52" stroke-linecap="round"/>
+  <path d="M298 214L370 142" fill="none" stroke="#111111" stroke-width="54" stroke-linecap="butt"/>
+  <circle cx="370" cy="142" r="27" fill="#111111"/>
+
+</svg>

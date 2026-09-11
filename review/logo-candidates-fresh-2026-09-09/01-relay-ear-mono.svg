@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear — Relay Ear, monochrome</title>
+  <desc id="desc">An abstract listening spiral ends in a square live-session connector.</desc>
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <path d="M382 142H368C340 93 272 87 211 112C127 146 94 246 135 326C171 396 259 425 329 384C386 350 406 273 369 220C338 177 277 163 232 193C193 219 190 274 222 307C248 334 286 337 314 313" fill="none" stroke="#111111" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="278" y="277" width="72" height="72" rx="16" fill="#111111"/>
+
+</svg>

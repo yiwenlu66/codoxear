@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1842" height="704" viewBox="0 0 1842 704" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear fresh logo candidates</title>
+  <desc id="desc">Seven distinct flat logo directions, each shown in color at 180, 64, and 32 pixels, and in monochrome at 32 pixels.</desc>
+  <rect width="1842" height="704" fill="#F6F5F1"/>
+  <text x="36" y="56" fill="#2F2B26" font-family="sans-serif" font-size="32" font-weight="700">Codoxear · fresh identity directions</text>
+  <text x="36" y="91" fill="#6B6862" font-family="sans-serif" font-size="19">Flat, mask-safe, no-page marks · color at 180 / 64 / 32px · one-color check at 32px</text>
+  <line x1="36" y1="116" x2="1806" y2="116" stroke="#D9D0BE" stroke-width="2"/>
+  <g transform="translate(36 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">01 · Relay Ear</text>
+    <image href="01-relay-ear.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="01-relay-ear.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="01-relay-ear.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="01-relay-ear-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(294 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">02 · Folded Passage</text>
+    <image href="02-folded-passage.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="02-folded-passage.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="02-folded-passage.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="02-folded-passage-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(552 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">03 · Same Thread</text>
+    <image href="03-same-thread.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="03-same-thread.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="03-same-thread.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="03-same-thread-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(810 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">04 · Session Dock</text>
+    <image href="04-session-dock.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="04-session-dock.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="04-session-dock.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="04-session-dock-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(1068 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">05 · Tether</text>
+    <image href="05-tether.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="05-tether.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="05-tether.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="05-tether-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(1326 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">06 · Ribbon</text>
+    <image href="06-ribbon.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="06-ribbon.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="06-ribbon.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="06-ribbon-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+  <g transform="translate(1584 148)">
+    <rect width="238" height="510" rx="18" fill="#FFFDF9" stroke="#D9D0BE" stroke-width="2"/>
+    <text x="18" y="34" fill="#2F2B26" font-family="sans-serif" font-size="17" font-weight="700">07 · Continuity Knot</text>
+    <image href="07-continuity-knot.svg" x="29" y="55" width="180" height="180"/>
+    <text x="18" y="265" fill="#6B6862" font-family="sans-serif" font-size="14">COLOR · 180px</text>
+    <image href="07-continuity-knot.svg" x="18" y="282" width="64" height="64"/>
+    <text x="96" y="322" fill="#6B6862" font-family="sans-serif" font-size="14">64px</text>
+    <image href="07-continuity-knot.svg" x="18" y="360" width="32" height="32"/>
+    <text x="62" y="382" fill="#6B6862" font-family="sans-serif" font-size="14">32px</text>
+    <image href="07-continuity-knot-mono.svg" x="18" y="414" width="32" height="32"/>
+    <text x="62" y="436" fill="#6B6862" font-family="sans-serif" font-size="14">MONO · 32px</text>
+  </g>
+</svg>
