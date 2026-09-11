@@ -229,7 +229,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             consoleWarn: noop, consoleError: noop,
           }});
           flow.updateTypingStatsFromSession(row);
-          quietRows.push(root.children[0].children[0].children[1].textContent);
+          quietRows.push(root.children[0].children[0].children[0].children[1].textContent);
           inlineDetails.push(findText(root, "subagentDetailLine"));
           projection.dispose();
         }}

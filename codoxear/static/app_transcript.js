@@ -478,8 +478,8 @@
       ]);
       subagentActivityTextNode = el("span", { class: "subagentActivityText" });
       subagentActivityDetailsNode = el("div", { class: "subagentDetails" });
-      bubble.appendChild(squares);
-      bubble.appendChild(subagentActivityTextNode);
+      const header = el("div", { class: "subagentActivityHeader" }, [squares, subagentActivityTextNode]);
+      bubble.appendChild(header);
       bubble.appendChild(subagentActivityDetailsNode);
       row.appendChild(bubble);
       subagentActivityRow = row;
@@ -518,10 +518,10 @@
         el("span", { class: "typingDot" }),
         el("span", { class: "typingDot" }),
       ]);
-      bubble.appendChild(dots);
       typingStatsNode = el("span", { class: "typingStats", "aria-hidden": "true" });
       typingSubagentDetailsNode = el("div", { class: "subagentDetails" });
-      bubble.appendChild(typingStatsNode);
+      const header = el("div", { class: "subagentActivityHeader" }, [dots, typingStatsNode]);
+      bubble.appendChild(header);
       bubble.appendChild(typingSubagentDetailsNode);
       row.appendChild(bubble);
       typingRow = row;

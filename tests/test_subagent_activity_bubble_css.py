@@ -2,8 +2,12 @@
 
 The activity detail row participates in the bubble's intrinsic inline size. A
 100%-wide flex child makes even short content stretch the bubble to its maximum;
-nowrap then hides long telemetry instead of wrapping it. These checks parse the
-cascade and assert the layout mechanism rather than matching stylesheet source.
+nowrap then hides long telemetry instead of wrapping it. A spanning grid item
+can also enlarge either intrinsic track, displacing the label even when the
+marker-to-label gap itself remains correct. The dots and label therefore share
+an independent inline-flex header while the detail row occupies its own grid
+row. These checks parse the cascade and assert that layout mechanism rather than
+matching stylesheet source.
 """
 
 from __future__ import annotations
@@ -28,9 +32,15 @@ def test_busy_and_idle_activity_bubbles_use_intrinsic_grid_width() -> None:
     for selector in (".msg.typing", ".subagentActivity"):
         style = cascaded(selector)
         assert style["display"] == "inline-grid"
-        assert style["grid-template-columns"] == "auto minmax(0, auto)"
+        assert style["grid-template-columns"] == "minmax(0, auto)"
         assert "width" not in style
         assert "max-width" not in style
+
+    header = cascaded(".subagentActivityHeader")
+    assert header["display"] == "inline-flex"
+    assert header["justify-self"] == "start"
+    assert header["gap"] == "var(--space-3)"
+    assert header["max-width"] == "100%"
 
     details = cascaded(".subagentDetails")
     assert details["grid-column"] == "1 / -1"

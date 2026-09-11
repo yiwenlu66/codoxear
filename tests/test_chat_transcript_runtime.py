@@ -275,16 +275,17 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               renderSessions: () => true, hasDeferredRefresh: () => false,
               updateTypingStats: flow.updateTypingStatsFromSession, maybeSelectPendingHashSession: noop,
             }});
-            const lines = () => typingRowRuntime.anchor().children[0].children[2].children.map((line) => line.text);
+            const lines = () => typingRowRuntime.anchor().children[0].children[1].children.map((line) => line.text);
+            const summary = () => typingRowRuntime.anchor().children[0].children[0].children[1].textContent;
             (async () => {{
               await refresh.refreshSessions();
               const first = {{
-                summary: typingRowRuntime.anchor().children[0].children[1].textContent,
+                summary: summary(),
                 lines: lines(), count: sessionState.get("subagentsRunning"),
               }};
               await refresh.refreshSessions();
               const second = {{
-                summary: typingRowRuntime.anchor().children[0].children[1].textContent,
+                summary: summary(),
                 lines: lines(), count: sessionState.get("subagentsRunning"),
                 catalogTokens: sessionCatalog.get("sessionIndex").get("sid").subagent_details.map((detail) => detail.tokens),
               }};
@@ -525,7 +526,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             sessionState.set("selected", "sid");
             const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
             const countActivityRows = () => root.children.filter((child) => child.class === "msg-row assistant subagent-activity-row").length;
-            const lines = () => typingRowRuntime.anchor().children[0].children[2].children.map((line) => line.text);
+            const typingBubble = () => typingRowRuntime.anchor().children[0];
+            const lines = () => typingBubble().children[1].children.map((line) => line.text);
+            const summary = () => typingBubble().children[0].children[1].textContent;
             const initial = {{ children: root.children.length, activityRows: countActivityRows() }};
             sessionState.applyRuntime({{
               subagentsRunning: 2,
@@ -534,7 +537,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 {{ role: "worker", model: "model-b", tools: 4, tokens: 2400 }},
               ],
             }});
-            const idleTwo = {{ activityRows: countActivityRows(), summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            const idleTwo = {{ activityRows: countActivityRows(), summary: summary(), lines: lines() }};
             sessionState.applyRuntime({{
               subagentsRunning: 2,
               subagentDetails: [
@@ -542,11 +545,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 {{ role: "worker", model: "model-b", tools: 5, tokens: 2500 }},
               ],
             }});
-            const sameCountFresh = {{ summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            const sameCountFresh = {{ summary: summary(), lines: lines() }};
             sessionState.set("running", true);
-            const busy = {{ activityRows: countActivityRows(), rowClass: typingRowRuntime.anchor().class, summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            const busy = {{ activityRows: countActivityRows(), rowClass: typingRowRuntime.anchor().class, summary: summary(), lines: lines() }};
             sessionState.set("running", false);
-            const idleAgain = {{ activityRows: countActivityRows(), summary: typingRowRuntime.anchor().children[0].children[1].textContent, lines: lines() }};
+            const idleAgain = {{ activityRows: countActivityRows(), summary: summary(), lines: lines() }};
             sessionState.applyRuntime({{ selected: "other", subagentsRunning: 0, subagentDetails: [] }});
             const switched = {{ children: root.children.length, activityRows: countActivityRows() }};
             projection.dispose();
@@ -687,11 +690,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }});
             const rows = () => root.children.map((child) => String(child.class || ""));
             sessionState.set("running", true);
-            const before = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            const busySummary = () => typingRowRuntime.anchor().children[0].children[0].children[1].textContent;
+            const before = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: busySummary() }};
             view.replaceWith([{{ role: "assistant", text: "saved response", message_id: "a1" }}]);
-            const afterEvents = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            const afterEvents = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: busySummary() }};
             view.replaceWithLoading();
-            const afterLoading = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: typingRowRuntime.anchor().children[0].children[1].textContent }};
+            const afterLoading = {{ connected: typingRowRuntime.snapshot().connected, rows: rows(), text: busySummary() }};
             sessionState.set("running", false);
             view.replaceWith([{{ role: "assistant", text: "idle response", message_id: "a2" }}]);
             const afterIdleReplacement = {{ connected: typingRowRuntime.snapshot().connected, rows: rows() }};
@@ -779,23 +783,25 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             runtime.setSubagentVisible(true);
             const first = runtime.anchor();
             const firstBubble = first.children[0];
-            const firstText = firstBubble.children[1].textContent;
-            const firstLines = firstBubble.children[2].children.map((line) => line.text);
+            const firstHeader = firstBubble.children[0];
+            const firstText = firstHeader.children[1].textContent;
+            const firstLines = firstBubble.children[1].children.map((line) => line.text);
             runtime.updateSubagentDetails([
               {{ role: "reviewer", model: "provider/model", tools: 4, tokens: 4300 }},
               {{ role: "scout", model: "small-model", tools: 2, tokens: 100 }},
               {{ role: "executor", model: "large-model", tools: 0, tokens: 0 }},
             ]);
             runtime.updateSubagentGauge(3);
-            const replacedText = firstBubble.children[1].textContent;
-            const replacedLines = firstBubble.children[2].children.map((line) => line.text);
+            const replacedText = firstHeader.children[1].textContent;
+            const replacedLines = firstBubble.children[1].children.map((line) => line.text);
             runtime.setSubagentVisible(false);
-            process.stdout.write(JSON.stringify({{ className: first.class, squares: firstBubble.children[0].children.length, firstText, firstLines, replacedText, replacedLines, connected: first.isConnected }}));
+            process.stdout.write(JSON.stringify({{ className: first.class, headerClass: firstHeader.class, squares: firstHeader.children[0].children.length, firstText, firstLines, replacedText, replacedLines, connected: first.isConnected }}));
             """
         )
         proc = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
         self.assertEqual(json.loads(proc.stdout), {
             "className": "msg-row assistant subagent-activity-row",
+            "headerClass": "subagentActivityHeader",
             "squares": 2,
             "firstText": "▸2 subagents working",
             "firstLines": [
@@ -840,8 +846,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             ]);
             runtime.setVisible(true);
             const bubble = runtime.anchor().children[0];
-            const stats = bubble.children[1];
-            const details = bubble.children[2];
+            const header = bubble.children[0];
+            const stats = header.children[1];
+            const details = bubble.children[1];
             const rendered = {{
               text: stats.textContent,
               ariaHidden: stats["aria-hidden"],
@@ -2210,8 +2217,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               rowClass: row.attrs.class,
               rowRole: row.dataset.role,
               bubbleClass: row.children[0].attrs.class,
-              dotsClass: row.children[0].children[0].attrs.class,
-              dotCount: row.children[0].children[0].children.length,
+              headerClass: row.children[0].children[0].attrs.class,
+              dotsClass: row.children[0].children[0].children[0].attrs.class,
+              dotCount: row.children[0].children[0].children[0].children.length,
               afterShowAnchorIsRow,
               beforeHide,
               afterHide,
@@ -2228,6 +2236,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["rowClass"], "msg-row assistant typing-row")
         self.assertEqual(out["rowRole"], "assistant")
         self.assertEqual(out["bubbleClass"], "msg assistant typing")
+        self.assertEqual(out["headerClass"], "subagentActivityHeader")
         self.assertEqual(out["dotsClass"], "typingDots")
         self.assertEqual(out["dotCount"], 3)
         self.assertTrue(out["afterShowAnchorIsRow"])

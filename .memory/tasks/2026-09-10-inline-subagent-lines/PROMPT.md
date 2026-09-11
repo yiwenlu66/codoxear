@@ -1,5 +1,5 @@
 ## Objective
-Implement automatically visible compact per-child activity lines inside both busy and idle transcript activity bubbles, with accurate fresh child telemetry from API through selected-session state and no click/toggle UI. Correct their presentation so each activity bubble is content-sized up to the available transcript width, and child telemetry is concise and wraps without horizontal overflow.
+Implement automatically visible compact per-child activity lines inside both busy and idle transcript activity bubbles, with accurate fresh child telemetry from API through selected-session state and no click/toggle UI. Correct their presentation so each activity bubble is content-sized up to the available transcript width, child telemetry is concise and wraps without horizontal overflow, and each header label begins immediately after its dots/marker at the intended gap regardless of child-line length.
 
 ## Workbench
 1. Trace Pi producer records and selected-session projection freshness.
@@ -25,7 +25,8 @@ Implement automatically visible compact per-child activity lines inside both bus
 - Activity bubbles must use only the width their wrapping content needs, bounded by the available transcript width; short content must not stretch across the row, while long model/tool lines wrap without horizontal overflow at 390px.
 - In child detail lines, render a `provider/model` model identifier as `model`; leave bare model names unchanged.
 - Label cumulative usage as `tokens`, replacing `tokens used`.
-- Verify the real API-to-UI path for both busy and idle states with short and long actual model identifiers at phone and desktop widths. Capture screenshots and raw computed geometry (`bubble width`, `available width`, `scrollWidth`, `clientWidth`, and text) without relying on a fake DOM/store.
+- Verify the real API-to-UI path for both busy and idle states with short and long actual model identifiers at phone and desktop widths. Capture screenshots and raw computed geometry (`bubble width`, `available width`, `scrollWidth`, `clientWidth`, text, and header marker-to-label gap) without relying on a fake DOM/store.
+- Follow-up regression report `/home/yiwen/.local/share/codoxear/uploads/broker-1219519/1789103548085_IMG_3099.jpeg`: the idle dots remain at the left edge but `▸2 subagents working` is displaced toward the center because a spanning detail row contributes width to an `auto` marker track. Constrain the marker track to its intrinsic marker width in both idle and busy grids; the marker-to-label gap must remain unchanged between short and long two-child telemetry at 390×844 and desktop sizes.
 - Rebuild tracked bundle and update AGENTS actual UI contract.
 
 ## Constraints
