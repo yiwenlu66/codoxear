@@ -50,6 +50,58 @@ def test_busy_and_idle_activity_bubbles_use_intrinsic_grid_width() -> None:
     assert "flex-basis" not in details
 
 
+def merged_cascade(*selectors: str) -> dict[str, str]:
+    """Cascaded declarations for selectors applied in source order.
+
+    Later (more specific or simply later) rules override earlier ones, and
+    selectors with no rule contribute nothing.
+    """
+    style: dict[str, str] = {}
+    rules = parse_stylesheet(APP_CSS)
+    wanted = set(selectors)
+    for rule in top_level_rules(rules):
+        for part in selector_text(rule).split(","):
+            if part.strip() in wanted:
+                style.update(declarations(rule))
+    return style
+
+
+def test_activity_bubbles_share_one_internal_layout() -> None:
+    """Busy and idle bubbles must be the same padded box with one left edge.
+
+    The busy typing bubble and the idle activity bubble render the same
+    header + child-lines content, so their internal padding comes from one
+    token pair, child lines share the marker group's left edge (bubble
+    content-left) in both states, and no per-state indent override exists.
+    """
+    busy = cascaded(".msg.typing")
+    idle = cascaded(".subagentActivity")
+    shared_padding = "var(--space-3) var(--space-4)"
+    assert busy["padding"] == shared_padding
+    assert idle["padding"] == shared_padding
+    assert "row-gap" not in idle
+    assert "row-gap" not in busy
+
+    # Child lines sit at bubble content-left: no state-specific indent.
+    details = merged_cascade(".subagentDetails", ".msg.typing .subagentDetails", ".subagentActivity .subagentDetails")
+    assert "padding-left" not in details
+    assert "padding" not in details
+
+
+def test_child_lines_own_their_vertical_rhythm() -> None:
+    """Details attach tighter to the summary than children sit from each other.
+
+    The header-to-details gap (one shared rule, not per-bubble overrides)
+    tightens the block under its summary, while a smaller flex gap separates
+    distinct children so a wrapped continuation stays visually inside its row.
+    """
+    details = cascaded(".subagentDetails")
+    assert details["margin-top"] == "var(--space-2)"
+    assert details["display"] == "flex"
+    assert details["flex-direction"] == "column"
+    assert details["gap"] == "var(--space-1)"
+
+
 def test_subagent_detail_lines_wrap_instead_of_clipping() -> None:
     line = cascaded(".subagentDetailLine")
     assert line["white-space"] == "normal"

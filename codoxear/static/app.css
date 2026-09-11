@@ -1467,7 +1467,7 @@
         display: inline-grid;
         grid-template-columns: minmax(0, auto);
         align-items: center;
-        padding: var(--space-4) var(--space-5);
+        padding: var(--space-3) var(--space-4);
         min-width: 54px;
       }
       .msg.loading {
@@ -1493,14 +1493,15 @@
       .subagentDetails {
         grid-column: 1 / -1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        margin-top: var(--space-2);
         color: var(--muted);
         font: var(--font-2xs)/1.4 var(--font-mono);
       }
       .subagentDetails:empty {
         display: none;
-      }
-      .msg.typing .subagentDetails {
-        margin-top: var(--space-3);
       }
       .subagentDetailLine {
         white-space: normal;
@@ -1510,13 +1511,9 @@
         display: inline-grid;
         grid-template-columns: minmax(0, auto);
         align-items: center;
-        row-gap: var(--space-3);
         padding: var(--space-3) var(--space-4);
         color: var(--muted);
         background: var(--wash);
-      }
-      .subagentActivity .subagentDetails {
-        padding-left: calc(10px + var(--space-3));
       }
       .subagentActivityHeader {
         display: inline-flex;

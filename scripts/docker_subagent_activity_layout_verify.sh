@@ -119,21 +119,33 @@ PROBE='(() => {
   const marker = bubble.querySelector(busy ? ".typingDots" : ".subagentActivitySquares");
   const lastDot = bubble.querySelector(busy ? ".typingDot:last-child" : ".subagentActivitySquare:last-child");
   const label = bubble.querySelector(busy ? ".typingStats" : ".subagentActivityText");
+  const header = bubble.querySelector(".subagentActivityHeader");
+  const details = bubble.querySelector(".subagentDetails");
   const row = bubble.closest(".msg-row");
   const lines = [...bubble.querySelectorAll(".subagentDetailLine")];
   const rect = (node) => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
-  const br = rect(bubble), mr = rect(marker), dr = rect(lastDot), lr = rect(label), rr = rect(row);
-  const bs = getComputedStyle(bubble), ls = getComputedStyle(label);
+  const br = rect(bubble), mr = rect(marker), dr = rect(lastDot), lr = rect(label), rr = rect(row), hr = rect(header);
+  const bs = getComputedStyle(bubble), ds = details ? getComputedStyle(details) : null;
+  const contentLeft = br.left + parseFloat(bs.borderLeftWidth) + parseFloat(bs.paddingLeft);
+  const first = lines[0] ? rect(lines[0]) : null;
   return {
     state, viewport: { width: innerWidth, height: innerHeight },
     bubble: { ...br, clientWidth:bubble.clientWidth, scrollWidth:bubble.scrollWidth, gridTemplateColumns:bs.gridTemplateColumns },
     row: rr,
     availableWidth: rr.width,
+    padding: { top: parseFloat(bs.paddingTop), left: parseFloat(bs.paddingLeft) },
+    contentLeft,
+    markerOffsetFromContent: mr.left - contentLeft,
+    firstLineOffsetFromContent: first ? first.left - contentLeft : null,
+    headerToDetailsGap: details ? rect(details).top - hr.bottom : null,
+    intendedHeaderToDetailsGap: ds ? parseFloat(ds.marginTop) : null,
+    interChildGap: lines.length > 1 ? rect(lines[1]).top - rect(lines[0]).bottom : null,
+    intendedInterChildGap: ds ? parseFloat(ds.rowGap) : null,
     marker: mr,
     lastDot: dr,
     label: { ...lr, text:label.textContent },
     headerGap: lr.left - dr.right,
-    intendedGap: parseFloat(getComputedStyle(bubble.querySelector(".subagentActivityHeader")).columnGap),
+    intendedGap: parseFloat(getComputedStyle(header).columnGap),
     details: lines.map((line) => ({ ...rect(line), text:line.textContent, clientWidth:line.clientWidth, scrollWidth:line.scrollWidth })),
     documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     bodyOverflow: document.body.scrollWidth - document.body.clientWidth,
@@ -212,6 +224,14 @@ for name, probe in probes.items():
     label = probe["label"]["text"]
     checks[f"{name}:summary"] = ("subagents: 2" in label) if expected_state == "busy" else label == "▸2 subagents working"
     checks[f"{name}:compact_labels"] = all("tokens:" in line["text"] and "tokens used" not in line["text"] for line in probe["details"])
+    # Shared internal layout: matched padding (space-3/space-4), child lines and
+    # marker at bubble content-left, tightened header->details gap, modest
+    # inter-child gap.
+    checks[f"{name}:matched_padding"] = math.isclose(probe["padding"]["top"], 8.0, abs_tol=0.25) and math.isclose(probe["padding"]["left"], 10.0, abs_tol=0.25)
+    checks[f"{name}:marker_at_content_left"] = math.isclose(probe["markerOffsetFromContent"], 0.0, abs_tol=0.25)
+    checks[f"{name}:details_at_content_left"] = probe["firstLineOffsetFromContent"] is not None and math.isclose(probe["firstLineOffsetFromContent"], 0.0, abs_tol=0.25)
+    checks[f"{name}:header_to_details_gap"] = probe["headerToDetailsGap"] is not None and probe["intendedHeaderToDetailsGap"] is not None and math.isclose(probe["headerToDetailsGap"], probe["intendedHeaderToDetailsGap"], abs_tol=0.25) and math.isclose(probe["intendedHeaderToDetailsGap"], 6.0, abs_tol=0.25)
+    checks[f"{name}:inter_child_gap"] = probe["interChildGap"] is not None and probe["intendedInterChildGap"] is not None and math.isclose(probe["interChildGap"], probe["intendedInterChildGap"], abs_tol=0.25) and math.isclose(probe["intendedInterChildGap"], 4.0, abs_tol=0.25)
 
 for viewport in ("phone", "desktop"):
     for state in ("busy", "idle"):
@@ -221,6 +241,12 @@ for viewport in ("phone", "desktop"):
         checks[f"{viewport}-{state}:marker_track_unchanged_by_details"] = math.isclose(short["marker"]["width"], long["marker"]["width"], abs_tol=0.25)
         checks[f"{viewport}-{state}:short_shrink_wraps"] = short["bubble"]["width"] < short["availableWidth"] - 20
 checks["phone-long:details_wrap"] = all(any(line["height"] > 14.5 for line in probes[f"phone-{state}-long"]["details"]) for state in ("busy", "idle"))
+for viewport in ("phone", "desktop"):
+    for models in ("short", "long"):
+        busy_probe = probes[f"{viewport}-busy-{models}"]
+        idle_probe = probes[f"{viewport}-idle-{models}"]
+        checks[f"{viewport}-{models}:busy_idle_padding_match"] = math.isclose(busy_probe["padding"]["top"], idle_probe["padding"]["top"], abs_tol=0.25) and math.isclose(busy_probe["padding"]["left"], idle_probe["padding"]["left"], abs_tol=0.25)
+        checks[f"{viewport}-{models}:busy_idle_gaps_match"] = math.isclose(busy_probe["headerToDetailsGap"], idle_probe["headerToDetailsGap"], abs_tol=0.25) and math.isclose(busy_probe["interChildGap"], idle_probe["interChildGap"], abs_tol=0.25)
 
 errors_raw = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8"))
 errors = errors_raw.get("data", {}).get("errors", [])

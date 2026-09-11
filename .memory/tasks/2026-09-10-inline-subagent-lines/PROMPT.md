@@ -35,3 +35,25 @@ Implement automatically visible compact per-child activity lines inside both bus
 - Do not add imperative cross-module rendering relays.
 - Do not use source-string tests.
 - Commit only explicit scoped files after staged-diff review.
+
+## Follow-up request (2026-09-11): bubble alignment/spacing refinement
+
+User: "alignment and spacing is a bit weird in the bubble. refine." — a small
+visual refinement after shared-header commit `5d62d020`. No new features,
+panels, toggles, sidebar, or counters.
+
+- One consistent shared layout for busy+idle bubbles: matched internal padding
+  and predictable left edges. Child lines align at bubble content-left (same
+  left edge as the marker group) in BOTH states; drop the idle-only hanging
+  `padding-left` indent whose 18px never matched the 22px header text indent.
+- Header dots+summary keep their tight fixed gap, vertically centered against
+  the first summary line.
+- Tighten header→detail separation (8px → `--space-2`) and add modest
+  inter-child separation (`--space-1`) so wrapped continuation visually belongs
+  to its row.
+- Existing spacing/type tokens only; no font shrinking, no label changes.
+  Shrink-wrap, long-line wrapping, provider/model suffix, `tokens` label stay.
+- Shared component CSS only — no per-theme structural patches.
+- Concurrent voice/notification edits (including other `app.css` hunks) must
+  remain untouched; stage only owned hunks; task-only git archive for browser
+  verification. Docker-only testing; no deploy.
