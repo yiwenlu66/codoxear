@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate D — Terracotta Contour</title>
+  <desc id="desc">Cream tile with a warm terracotta document contour, pale clay fold, and a small charcoal terminal prompt.</desc>
+  <rect width="512" height="512" rx="108" fill="#f6f5f1"/>
+  <path d="M160 102h142l66 66v226q0 16-16 16H160q-16 0-16-16V118q0-16 16-16z"
+        fill="#fffdf9" stroke="#c96442" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M302 102v66h66z" fill="#f4e3d8" stroke="#c96442" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M190 240l26 18-26 18M232 276h30" fill="none" stroke="#2f2b26" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

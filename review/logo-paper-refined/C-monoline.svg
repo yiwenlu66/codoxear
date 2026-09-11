@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate C — Monoline</title>
+  <desc id="desc">Cream tile with an unfilled continuous monoline contour of document, fold, and terminal prompt in carefully equalized weights.</desc>
+  <rect width="512" height="512" rx="108" fill="#f6f5f1"/>
+  <path d="M144 102h158l66 66v242H144zM302 102v66h66" fill="none" stroke="#2f2b26" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M190 240l26 18-26 18M232 276h30" fill="none" stroke="#c96442" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

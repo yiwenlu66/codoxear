@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Codoxear logo candidate E — Old, Flattened</title>
+  <desc id="desc">Flat reconstruction of the original icon: unstroked white page with soft corners and tonal fold on a warm gray tile, with a very small charcoal prompt near mid-left.</desc>
+  <rect width="512" height="512" rx="108" fill="#e4ded2"/>
+  <path d="M162 102h140l66 66v224q0 18-18 18H162q-18 0-18-18V120q0-18 18-18z" fill="#fffdf9"/>
+  <path d="M302 106v62h62z" fill="#e9e7e0"/>
+  <path d="M194 246l20 12-20 12M228 270h22" fill="none" stroke="#2f2b26" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
