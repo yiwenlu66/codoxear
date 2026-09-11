@@ -20,6 +20,9 @@ root-repo/
 
 codex-homes/
 socks/
+node_modules/
+.pi-subagents/
+docker/iso-broker-*.json
 generated_imgs/
 video_previews/
 
