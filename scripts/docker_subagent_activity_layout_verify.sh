@@ -144,6 +144,8 @@ PROBE='(() => {
     marker: mr,
     lastDot: dr,
     label: { ...lr, text:label.textContent },
+    labelFont: { family: getComputedStyle(label).fontFamily, size: getComputedStyle(label).fontSize },
+    lineFont: lines[0] ? { family: getComputedStyle(lines[0]).fontFamily, size: getComputedStyle(lines[0]).fontSize } : null,
     headerGap: lr.left - dr.right,
     intendedGap: parseFloat(getComputedStyle(header).columnGap),
     details: lines.map((line) => ({ ...rect(line), text:line.textContent, clientWidth:line.clientWidth, scrollWidth:line.scrollWidth })),
@@ -157,7 +159,7 @@ set_models() {
   if [[ "$kind" == "short" ]]; then
     payload='["dexgem-responses/gpt-5.6-sol","dexgem-responses/gpt-5.3"]'
   else
-    payload='["dexgem-responses/gpt-5.6-sol","anthropic/claude-sonnet-4-5-20250929"]'
+    payload='["dexgem-responses/gpt-5.6-sol","anthropic/claude-sonnet-4-5-20250929-xhigh-reasoning"]'
   fi
   printf '%s\n' "$payload" | "${docker[@]}" exec -i "$container" sh -c 'cat > "$HOME/subagent-layout-models.json"'
 }
@@ -232,6 +234,9 @@ for name, probe in probes.items():
     checks[f"{name}:details_at_content_left"] = probe["firstLineOffsetFromContent"] is not None and math.isclose(probe["firstLineOffsetFromContent"], 0.0, abs_tol=0.25)
     checks[f"{name}:header_to_details_gap"] = probe["headerToDetailsGap"] is not None and probe["intendedHeaderToDetailsGap"] is not None and math.isclose(probe["headerToDetailsGap"], probe["intendedHeaderToDetailsGap"], abs_tol=0.25) and math.isclose(probe["intendedHeaderToDetailsGap"], 6.0, abs_tol=0.25)
     checks[f"{name}:inter_child_gap"] = probe["interChildGap"] is not None and probe["intendedInterChildGap"] is not None and math.isclose(probe["interChildGap"], probe["intendedInterChildGap"], abs_tol=0.25) and math.isclose(probe["intendedInterChildGap"], 4.0, abs_tol=0.25)
+    # Detail lines share the summary's UI font family (narrow exception to the
+    # mono-for-data rule, pinned by user preference).
+    checks[f"{name}:detail_font_matches_summary"] = probe["lineFont"] is not None and probe["lineFont"]["family"] == probe["labelFont"]["family"]
 
 for viewport in ("phone", "desktop"):
     for state in ("busy", "idle"):

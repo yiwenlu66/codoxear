@@ -102,6 +102,26 @@ def test_child_lines_own_their_vertical_rhythm() -> None:
     assert details["gap"] == "var(--space-1)"
 
 
+def test_child_lines_use_the_ui_font_matching_their_summary() -> None:
+    """Detail telemetry renders in the shared UI font, not the data mono face.
+
+    User preference supersedes the mono-for-data rule inside these bubbles
+    only: child lines share the summary's `--font-ui` family (inherited from
+    the body by the summary labels) at their own smaller size, and no rule
+    reintroduces a monospace family or a hardcoded font stack here.
+    """
+    details = cascaded(".subagentDetails")
+    assert details["font"] == "var(--font-2xs)/1.4 var(--font-ui)"
+    assert "font-family" not in details
+    line = cascaded(".subagentDetailLine")
+    assert "font" not in line
+    assert "font-family" not in line
+    for label in (".typingStats", ".subagentActivityText"):
+        style = cascaded(label)
+        assert "font-family" not in style
+        assert "font" not in style
+
+
 def test_subagent_detail_lines_wrap_instead_of_clipping() -> None:
     line = cascaded(".subagentDetailLine")
     assert line["white-space"] == "normal"

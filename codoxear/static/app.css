@@ -1498,7 +1498,7 @@
         gap: var(--space-1);
         margin-top: var(--space-2);
         color: var(--muted);
-        font: var(--font-2xs)/1.4 var(--font-mono);
+        font: var(--font-2xs)/1.4 var(--font-ui);
       }
       .subagentDetails:empty {
         display: none;

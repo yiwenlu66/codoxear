@@ -57,3 +57,17 @@ panels, toggles, sidebar, or counters.
 - Concurrent voice/notification edits (including other `app.css` hunks) must
   remain untouched; stage only owned hunks; task-only git archive for browser
   verification. Docker-only testing; no deploy.
+
+## Follow-up request (2026-09-11, later): detail-line font
+
+User: "mono font is ugly". Change ONLY the per-child detail lines inside the
+existing busy/idle transcript activity bubbles to the regular UI font
+(`var(--font-ui)`), matching the summary's family. Explicit user preference
+supersedes the mono-for-data design rule for this bubble only — a narrow,
+documented exception (AGENTS design-language rule + Pi-subagent bullet).
+No global font changes, no other data widgets, keep ce744bbb+bb45331f spacing,
+sizing, wrapping, tokens/model formatting. Docker visual check busy/idle
+Paper+Clay phone/desktop with the existing fixture; confirm computed family
+matches the summary, wrapping/no overflow, compact sizing; capture after
+screenshots. Commit scoped CSS/docs/test changes only. No deploy (parent
+reviews combined spacing+font diff first).
