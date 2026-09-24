@@ -77,6 +77,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       codoxearViewport, codoxearDisplay, codoxearVoice, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments, codoxearTopbar,
       codoxearSettings, themeController,
       codoxearMessageFlow, codoxearInterrupt, codoxearDialogMenus,
+      codoxearDraftSync,
       codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
       codoxearFileTouch, pushPerfSample,
       resolveAppUrl, versionedShellAssetPath, storageGetItem,
@@ -182,6 +183,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         const sessionCatalog = CodoxearSessionCatalog.createSessionCatalog({ consoleError: (...args) => console.error(...args) });
         let attachmentsController = null;
         let composerController = null;
+        let draftSyncController = null;
         let messageFlowController = null;
         let sessionLifecycleController = null;
         let sessionRefreshController = null;
@@ -189,7 +191,13 @@ import * as CodoxearWiring from "./app_wiring.js";
           if (composerController) composerController.autoGrow();
         }
         function clearComposerInput() {
-          if (composerController) composerController.clearComposer();
+          if (!composerController) return;
+          composerController.clearComposer();
+          // Reached from the queue flow after the composer text was drained
+          // into the queue: that text has left the draft, so the server copy
+          // must be cleared too.
+          const sid = sessionState.get("selected");
+          if (sid && draftSyncController) draftSyncController.handleSendCleared(sid);
         }
         function saveSelectedComposerDraft(sessionId) {
           if (composerController) composerController.saveSessionDraft(sessionId);
@@ -251,6 +259,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           fileUnsavedController.hideFileUnsavedDialog("cancel");
           closeSendChoiceDialog();
           if (composerController) composerController.dispose();
+          if (draftSyncController) draftSyncController.dispose();
           sidebarController.dispose();
           while (appEventCleanups.length) {
             const cleanup = appEventCleanups.pop();
@@ -837,7 +846,11 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
 
         async function enqueueComposerText(raw, opts) {
-          return queueController.enqueueComposerText(raw, opts);
+          const sid = (opts && opts.sid) || sessionState.get("selected");
+          const ok = await queueController.enqueueComposerText(raw, opts);
+          // The queued text has left the composer, so its server draft must go too.
+          if (ok && sid && draftSyncController) draftSyncController.handleSendCleared(sid);
+          return ok;
         }
 
         async function refreshQueueViewer() {
@@ -1114,6 +1127,26 @@ import * as CodoxearWiring from "./app_wiring.js";
           setTimeout,
           clearTimeout,
         }));
+        // Server draft sync. Created before the composer so the composer's
+        // onDraftEdited seam can address it; its composer calls run only from
+        // async reconciliations, well after both controllers exist.
+        draftSyncController = codoxearDraftSync.createDraftSyncController(wiring.createDraftSyncOptions({
+          sessionState,
+          sessionCatalog,
+          api,
+          storageGetItem,
+          storageSetItem,
+          storageRemoveItem,
+          getComposerText: () => (textarea ? textarea.value : ""),
+          applyServerDraft: (sessionId, text) => {
+            if (composerController) composerController.setDraftFromServer(sessionId, text);
+          },
+          resolveAppUrl,
+          windowTarget: window,
+          setTimeout,
+          clearTimeout,
+          consoleError: (...args) => console.error(...args),
+        }));
         composerController = codoxearComposer.createComposerController(wiring.createComposerOptions({
           form,
           textarea,
@@ -1134,7 +1167,13 @@ import * as CodoxearWiring from "./app_wiring.js";
           setToast,
           setPollFastUntilMs,
           kickPoll,
-          sendText: (raw, options) => messageFlowController.sendText(raw, options),
+          sendText: async (raw, options) => {
+            const sid = (options && options.sid) || sessionState.get("selected");
+            const ok = await messageFlowController.sendText(raw, options);
+            // Send success consumed the draft: clear the server-side copy.
+            if (ok && sid && draftSyncController) draftSyncController.handleSendCleared(sid);
+            return ok;
+          },
           enqueueComposerText,
           prepareModalOpen,
           afterModalVisibilityChanged,
@@ -1142,6 +1181,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           storageGetItem,
           storageSetItem,
           storageRemoveItem,
+          onDraftEdited: (text) => {
+            if (draftSyncController) draftSyncController.noteDraftEdited(text);
+          },
           onAutoGrow: () => {
             if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
           },

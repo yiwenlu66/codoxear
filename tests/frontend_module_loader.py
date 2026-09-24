@@ -31,6 +31,7 @@ MODULE_NAMESPACES = {
     "app_diagnostics.js": ["CodoxearDiagnostics"],
     "app_dialog_menu.js": ["CodoxearDialogMenu", "CodoxearDialogMenus"],
     "app_display.js": ["CodoxearDisplay"],
+    "app_draft_sync.js": ["CodoxearDraftSync"],
     "app_file_candidate_state.js": ["CodoxearFileCandidateState"],
     "app_file_candidates.js": ["CodoxearFileCandidates"],
     "app_file_download.js": ["CodoxearFileDownload"],

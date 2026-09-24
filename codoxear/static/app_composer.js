@@ -52,6 +52,9 @@
     const now = typeof options.now === "function" ? options.now : () => Date.now();
     const consoleError = typeof options.consoleError === "function" ? options.consoleError : () => {};
     const windowTarget = options.windowTarget && typeof options.windowTarget.addEventListener === "function" ? options.windowTarget : null;
+    // Draft-sync notification seam: invoked from this module's own input
+    // listener so no second listener attaches to the composer's textarea.
+    const onDraftEdited = typeof options.onDraftEdited === "function" ? options.onDraftEdited : () => {};
 
     const cleanups = [];
     const listen = (target, type, handler, eventOptions) => {
@@ -535,6 +538,16 @@
       autoGrow();
     }
 
+    // Server-authoritative draft replacement (draft sync). Sets the textarea
+    // and the localStorage cache directly — programmatic writes fire no input
+    // event, so this never triggers a re-upload.
+    function setDraftFromServer(sessionId, text) {
+      if (!sessionId) return;
+      textarea.value = String(text || "");
+      saveSessionDraft(sessionId);
+      autoGrow();
+    }
+
     function clearSessionDraft(sessionId) {
       if (sessionId) storageRemoveItem(sessionDraftKey(sessionId));
     }
@@ -594,6 +607,7 @@
     listen(textarea, "input", () => {
       autoGrow();
       saveSessionDraft(sessionState.get("selected"));
+      onDraftEdited(textarea.value);
       modelPickerFocus = -1;
       syncModelPicker();
     });
@@ -688,6 +702,7 @@
       clearSessionDraft,
       loadSessionDraft,
       saveSessionDraft,
+      setDraftFromServer,
       sendText,
       showSendChoice,
       hideSendChoice,

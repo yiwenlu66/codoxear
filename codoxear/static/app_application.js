@@ -5,6 +5,7 @@ import * as CodoxearComposer from "./app_composer.js";
 import * as CodoxearConversationCopy from "./app_conversation_copy.js";
 import * as CodoxearDialogMenus from "./app_dialog_menu.js";
 import * as CodoxearDisplay from "./app_display.js";
+import * as CodoxearDraftSync from "./app_draft_sync.js";
 import * as CodoxearFileEditMode from "./app_file_ops.js";
 import * as CodoxearFileEditor from "./app_file_editor.js";
 import * as CodoxearFileHelpers from "./app_file_helpers.js";
@@ -596,6 +597,7 @@ const global = window;
         isTextEntryElement, updateAppHeightVar,
         codoxearViewport: CodoxearViewport, codoxearDisplay: CodoxearDisplay, codoxearVoice: CodoxearVoice, el, codoxearShell: CodoxearShell,
         codoxearSettings: CodoxearSettings, themeController, codoxearSessions: CodoxearSessions, codoxearComposer: CodoxearComposer, codoxearAttachments: CodoxearAttachments, codoxearTopbar: CodoxearTopbar,
+        codoxearDraftSync: CodoxearDraftSync,
         codoxearMessageFlow: CodoxearMessageFlow, codoxearInterrupt: CodoxearInterrupt, codoxearDialogMenus: CodoxearDialogMenus,
         codoxearFileEditMode: CodoxearFileEditMode, codoxearPendingUser: CodoxearPendingUser, codoxearNavigationPulse: CodoxearNavigationPulse,
         codoxearFileTouch: CodoxearFileTouch, pushPerfSample,
