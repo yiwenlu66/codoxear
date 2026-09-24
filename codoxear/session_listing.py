@@ -68,6 +68,7 @@ class ActiveSessionRowFacts:
     unattended_cooldown_minutes: int
     unattended_remaining_injections: int
     alias: str
+    draft_updated_ts: float
     files: list[Any]
     cwd_path: Path | None
     model_provider: str | None
@@ -287,6 +288,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "unattended_cooldown_minutes": facts.unattended_cooldown_minutes,
         "unattended_remaining_injections": facts.unattended_remaining_injections,
         "alias": facts.alias,
+        "draft_updated_ts": float(facts.draft_updated_ts),
         "files": list(facts.files),
         "_cwd_path_obj": facts.cwd_path,
         "model_provider": facts.model_provider,
@@ -383,6 +385,7 @@ def build_active_session_rows_snapshot(
         alias = aliases.get(s.session_id)
         if not isinstance(alias, str):
             alias = ""
+        draft_updated_ts = store.draft_store.updated_ts(store.drafts, s.session_id)
         files, file_history_dirty = store.file_history_for_keys(f"sid:{s.session_id}", [s.session_id])
         files_dirty = files_dirty or file_history_dirty
         log_revision = _log_revision(s.log_path)
@@ -468,6 +471,7 @@ def build_active_session_rows_snapshot(
                     unattended_cooldown_minutes=unattended_cooldown_minutes,
                     unattended_remaining_injections=unattended_remaining_injections,
                     alias=alias,
+                    draft_updated_ts=draft_updated_ts,
                     files=list(files),
                     cwd_path=cwd_path,
                     model_provider=s.model_provider,
@@ -584,6 +588,7 @@ def build_orphan_recovery_rows(
                 "unattended_cooldown_minutes": unattended_default_idle_minutes,
                 "unattended_remaining_injections": unattended_default_max_injections,
                 "alias": "Recovery needed",
+                "draft_updated_ts": 0.0,
                 "files": [],
                 "model_provider": None,
                 "preferred_auth_method": None,

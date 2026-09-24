@@ -27,6 +27,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "FILE_HISTORY_PATH",
     "VIDEO_PREVIEW_DIR",
     "QUEUE_PATH",
+    "DRAFT_PATH",
     "PENDING_ATTACHMENTS_PATH",
     "STAGED_ATTACHMENTS_PATH",
     "SESSION_UNREAD_PATH",
@@ -105,6 +106,7 @@ class ServerConfig:
     FILE_HISTORY_PATH: Path
     VIDEO_PREVIEW_DIR: Path
     QUEUE_PATH: Path
+    DRAFT_PATH: Path
     PENDING_ATTACHMENTS_PATH: Path
     STAGED_ATTACHMENTS_PATH: Path
     SESSION_UNREAD_PATH: Path
@@ -264,6 +266,7 @@ def build_server_config(
         FILE_HISTORY_PATH=app_dir / "session_files.json",
         VIDEO_PREVIEW_DIR=app_dir / "video_previews",
         QUEUE_PATH=app_dir / "session_queues.json",
+        DRAFT_PATH=app_dir / "session_drafts.json",
         PENDING_ATTACHMENTS_PATH=app_dir / "pending_attachments.json",
         STAGED_ATTACHMENTS_PATH=app_dir / "staged_attachments.json",
         SESSION_UNREAD_PATH=app_dir / "session_unread.json",

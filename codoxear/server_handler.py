@@ -11,6 +11,8 @@ from .auth_routes import handle_auth_post_route
 from .control_routes import handle_control_get_route
 from .control_routes import handle_control_post_route
 from .diagnostics_routes import handle_diagnostics_get_route
+from .draft_routes import handle_draft_get_route
+from .draft_routes import handle_draft_post_route
 from .file_routes import handle_absolute_file_preview_route
 from .file_routes import handle_file_get_route
 from .file_routes import handle_file_write_post_route
@@ -46,6 +48,7 @@ class ServerHandlerDeps:
     session_route_deps: Callable[[], Any]
     diagnostics_route_deps: Callable[[], Any]
     queue_route_deps: Callable[[], Any]
+    draft_route_deps: Callable[[], Any]
     file_get_route_deps: Callable[[], Any]
     file_write_route_deps: Callable[[], Any]
     global_file_route_deps: Callable[[], Any]
@@ -193,6 +196,14 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 match_session_route=self.deps.match_session_route,
             ):
                 return
+            if handle_draft_get_route(
+                self,
+                path=path,
+                manager=manager,
+                deps=self.deps.draft_route_deps(),
+                match_session_route=self.deps.match_session_route,
+            ):
+                return
             if handle_file_get_route(
                 self,
                 path=path,
@@ -293,6 +304,14 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 match_session_route=self.deps.match_session_route,
             ):
                 return
+            if handle_draft_post_route(
+                self,
+                path=path,
+                manager=manager,
+                deps=self.deps.draft_route_deps(),
+                match_session_route=self.deps.match_session_route,
+            ):
+                return
             if handle_hook_post_route(self, path=path, deps=self.deps.hook_route_deps()):
                 return
             self.send_error(404)
@@ -334,6 +353,7 @@ def make_server_handler(server: Any) -> type[CodoxearHandler]:
             session_route_deps=lambda: server._route_deps_factory().session_route_deps(),
             diagnostics_route_deps=lambda: server._route_deps_factory().diagnostics_route_deps(),
             queue_route_deps=lambda: server._route_deps_factory().queue_route_deps(),
+            draft_route_deps=lambda: server._route_deps_factory().draft_route_deps(),
             file_get_route_deps=lambda: server._route_deps_factory().file_get_route_deps(),
             file_write_route_deps=lambda: server._route_deps_factory().file_write_route_deps(),
             global_file_route_deps=lambda: server._route_deps_factory().global_file_route_deps(),

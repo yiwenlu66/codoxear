@@ -15,6 +15,7 @@ def session_store_paths_for_server(server: Any) -> Any:
         hidden_sessions=server.HIDDEN_SESSIONS_PATH,
         files=server.FILE_HISTORY_PATH,
         queues=server.QUEUE_PATH,
+        drafts=server.DRAFT_PATH,
         pending_attachments=server.PENDING_ATTACHMENTS_PATH,
         staged_attachments=server.STAGED_ATTACHMENTS_PATH,
         commit_unknown_sends=server.COMMIT_UNKNOWN_SENDS_PATH,
@@ -117,6 +118,10 @@ def session_store_for_manager(manager: Any, server: Any) -> Any:
 
 def queue_store_for_manager(manager: Any, server: Any) -> Any:
     return manager._session_store_for_manager().queue_store
+
+
+def draft_store_for_manager(manager: Any, server: Any) -> Any:
+    return manager._session_store_for_manager().draft_store
 
 
 def input_lock_for_session(manager: Any, server: Any, session_id: str) -> Any:

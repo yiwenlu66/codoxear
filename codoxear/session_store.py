@@ -9,6 +9,7 @@ from typing import Any, Callable, Iterable
 from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
 from .file_upload import validate_staged_attachment_file_target
+from .draft_store import DraftStore
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
 from .util import atomic_write_json
@@ -72,6 +73,7 @@ class DeletedSessionStateChanges:
     unattended: bool = False
     files: bool = False
     queues: bool = False
+    drafts: bool = False
     pending_attachments: bool = False
     staged_attachments: bool = False
     commit_unknown_sends: bool = False
@@ -90,6 +92,7 @@ class SessionStorePaths:
     unattended: Path
     staged_attachments: Path | None = None
     uploads_root: Path | None = None
+    drafts: Path | None = None
 
 
 def _file_entry_path(entry: Any) -> str:
@@ -154,6 +157,7 @@ class SessionStore:
         self.hidden_sessions: set[str] = set()
         self.files: dict[str, list[str]] = {}
         self.queues: dict[str, list[dict[str, Any]]] = {}
+        self.drafts: dict[str, dict[str, Any]] = {}
         self.pending_attachment_ids: set[str] = set()
         self.staged_attachments: dict[str, list[dict[str, Any]]] = {}
         self.commit_unknown_sends: dict[str, dict[str, Any]] = {}
@@ -164,6 +168,7 @@ class SessionStore:
             default_max_injections=unattended_default_max_injections,
         )
         self.queue_store = QueueStore(paths.queues)
+        self.draft_store = DraftStore(paths.drafts)
 
     def reset_in_memory_state(self) -> None:
         self.unattended = {}
@@ -172,6 +177,7 @@ class SessionStore:
         self.hidden_sessions = set()
         self.files = {}
         self.queues = {}
+        self.drafts = {}
         self.pending_attachment_ids = set()
         self.staged_attachments = {}
         self.commit_unknown_sends = {}
@@ -184,6 +190,7 @@ class SessionStore:
         self.hidden_sessions = self.load_hidden_sessions()
         self.files = self.load_files()
         self.queues = self.load_queues()
+        self.drafts = self.load_drafts()
         self.staged_attachments = self.load_staged_attachments()
         self.pending_attachment_ids = self.load_pending_attachments() | set(self.staged_attachments.keys())
         self.commit_unknown_sends = self.load_commit_unknown_sends()
@@ -370,6 +377,12 @@ class SessionStore:
 
     def save_queues(self, obj: dict[str, list[dict[str, Any]]]) -> None:
         self.queue_store.save(dict(obj))
+
+    def load_drafts(self) -> dict[str, dict[str, Any]]:
+        return self.draft_store.load()
+
+    def save_drafts(self, obj: dict[str, dict[str, Any]]) -> None:
+        self.draft_store.save(dict(obj))
 
     def load_pending_attachments(self) -> set[str]:
         obj = load_json_file(self.paths.pending_attachments, default=None)
@@ -587,6 +600,7 @@ class SessionStore:
         unattended_changed = False
         files_changed = False
         queues_changed = False
+        drafts_changed = False
         pending_changed = False
         staged_changed = False
         unknown_changed = False
@@ -646,6 +660,10 @@ class SessionStore:
                 self.queues.pop(session_id, None)
                 queues_changed = True
 
+        if session_id in self.drafts:
+            self.drafts.pop(session_id, None)
+            drafts_changed = True
+
         if clear_recovery and has_direct_unknown:
             self.commit_unknown_sends.pop(session_id, None)
             unknown_changed = True
@@ -657,6 +675,7 @@ class SessionStore:
             unattended=unattended_changed,
             files=files_changed,
             queues=queues_changed,
+            drafts=drafts_changed,
             pending_attachments=pending_changed,
             staged_attachments=staged_changed,
             commit_unknown_sends=unknown_changed,
@@ -698,6 +717,7 @@ class SessionStore:
         save_unattended: Callable[[], None],
         save_files: Callable[[], None],
         save_queues: Callable[[], None],
+        save_drafts: Callable[[], None] = lambda: None,
         save_pending_attachments: Callable[[], None],
         save_commit_unknown_sends: Callable[[], None],
         save_staged_attachments: Callable[[], None] = lambda: None,
@@ -720,3 +740,5 @@ class SessionStore:
             save_files()
         if changes.queues:
             save_queues()
+        if changes.drafts:
+            save_drafts()

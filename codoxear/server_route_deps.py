@@ -10,6 +10,7 @@ from .broker_launch import _read_pi_active_session_marker_state
 from .server_config import ServerConfig
 from .control_routes import ControlRouteDeps
 from .diagnostics_routes import DiagnosticsRouteDeps
+from .draft_routes import DraftRouteDeps
 from .file_routes import FileGetRouteDeps
 from .file_routes import FileWriteRouteDeps
 from .file_routes import GlobalFileRouteDeps
@@ -82,6 +83,14 @@ class ServerRouteDepsFactory:
             json_response=server._json_response,
             read_json_body=lambda handler: handler._read_json_body(),
             session_not_ready_error=server.SessionNotReadyError,
+        )
+
+    def draft_route_deps(self) -> DraftRouteDeps:
+        server = self.server
+        return DraftRouteDeps(
+            require_auth=server._require_auth,
+            json_response=server._json_response,
+            read_json_body=lambda handler: handler._read_json_body(),
         )
 
     def hook_route_deps(self) -> HookRouteDeps:

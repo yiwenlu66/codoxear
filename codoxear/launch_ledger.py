@@ -340,6 +340,7 @@ def launch_attempt_row(
         "unattended_cooldown_minutes": unattended_default_idle_minutes,
         "unattended_remaining_injections": unattended_default_max_injections,
         "alias": "",
+        "draft_updated_ts": 0.0,
         "files": [],
         "git_branch": "",
         "model_provider": provider,

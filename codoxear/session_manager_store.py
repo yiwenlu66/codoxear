@@ -17,6 +17,7 @@ def session_store_paths(
     pending_attachments: Path,
     commit_unknown_sends: Path,
     recent_cwds: Path,
+    drafts: Path | None = None,
     unattended: Path,
     staged_attachments: Path | None = None,
     uploads_root: Path | None = None,
@@ -30,6 +31,7 @@ def session_store_paths(
         pending_attachments=pending_attachments,
         commit_unknown_sends=commit_unknown_sends,
         recent_cwds=recent_cwds,
+        drafts=drafts,
         unattended=unattended,
         staged_attachments=staged_attachments,
         uploads_root=uploads_root,
@@ -72,6 +74,7 @@ def copy_session_store_state(*, source: SessionStore, target: SessionStore) -> N
     target.hidden_sessions = source.hidden_sessions
     target.files = source.files
     target.queues = source.queues
+    target.drafts = source.drafts
     target.pending_attachment_ids = source.pending_attachment_ids
     target.staged_attachments = source.staged_attachments
     target.commit_unknown_sends = source.commit_unknown_sends

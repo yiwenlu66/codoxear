@@ -278,6 +278,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         unattended_cooldown_minutes=9,
         unattended_remaining_injections=10,
         alias="Alias",
+        draft_updated_ts=33.5,
         files=files,
         cwd_path=Path("/repo"),
         model_provider="openai",
@@ -344,6 +345,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["unattended_cooldown_minutes"] == 9
     assert row["unattended_remaining_injections"] == 10
     assert row["alias"] == "Alias"
+    assert row["draft_updated_ts"] == 33.5
     assert row["files"] == ["notes.md"]
     assert row["_cwd_path_obj"] == Path("/repo")
     assert row["provider_choice"] == "openai-api"

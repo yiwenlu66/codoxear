@@ -155,6 +155,22 @@ dependencies are focused dataclass records
   `DEFAULT_VOICES[sha256(sock-stem session_id)[:8] mod 13]`. The catalog is
   male-skewed (7 male-leaning of 13); the mapping itself is uniform.
 
+### Composer-draft sync uses tombstone deletion
+
+Server-synced drafts (`session_drafts.json`, `DraftStore`) propagate every
+write — including deletion — through one last-writer-wins channel keyed on
+the server wall clock. Deleting a draft (POST empty/whitespace text) writes
+a timestamped empty-text tombstone entry; it never removes the map entry.
+Entry removal happens only in `clear_deleted_session_state` (session
+deletion). Reason: clients hold companion `server_ts > 0`; a removed entry
+reads as `updated_ts 0`, looks older than their local copy, and gets
+re-pushed (draft resurrection after a send from another client). Consequences:
+- `load`/`save` must never prune empty-text entries (whitespace-only text
+  normalizes to the canonical `{"text": "", ...}` tombstone).
+- Blank clears bypass the 256 KiB cap; only non-blank text is capped.
+- Session rows expose the tombstone ts as `draft_updated_ts`; `0.0` means
+  the session has no entry at all.
+
 ## Pi integration strategy
 
 Codoxear wraps all backends in a PTY so web and terminal share the same

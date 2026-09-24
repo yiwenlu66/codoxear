@@ -9,6 +9,7 @@ from .session_discovery import DiscoveryDeps
 from .session_cleanup import SessionCleanupCoordinator
 from .session_control import SessionControlCoordinator
 from .session_discovery_registry import SessionDiscoveryRegistryCoordinator
+from .session_draft import SessionDraftCoordinator
 from .session_files import SessionFilesCoordinator
 from .session_lifecycle import SessionLifecycleCoordinator
 from .session_list import SessionListCoordinator
@@ -127,6 +128,11 @@ class UnattendedSweepFactoryDeps:
 class QueueSweepFactoryDeps:
     queue_sweep_max_attempts: int
     queue_sweep_max_drains: int
+
+
+@dataclass(frozen=True)
+class DraftFactoryDeps:
+    now: Any
 
 
 @dataclass(frozen=True)
@@ -277,6 +283,7 @@ class SessionManagerCoordinatorDeps:
     readiness_coordinator: ReadinessFactoryDeps
     unattended_sweep_coordinator: UnattendedSweepFactoryDeps
     queue_sweep_coordinator: QueueSweepFactoryDeps
+    draft_coordinator: DraftFactoryDeps
     voice_runtime: VoiceRuntimeFactoryDeps
     log_runtime: LogRuntimeFactoryDeps
     ui_state_coordinator: UiStateFactoryDeps
@@ -366,6 +373,9 @@ def session_manager_coordinator_deps(server: Any) -> SessionManagerCoordinatorDe
         queue_sweep_coordinator=QueueSweepFactoryDeps(
             queue_sweep_max_attempts=server.QUEUE_SWEEP_MAX_ATTEMPTS,
             queue_sweep_max_drains=server.QUEUE_SWEEP_MAX_DRAINS,
+        ),
+        draft_coordinator=DraftFactoryDeps(
+            now=server.time.time,
         ),
         voice_runtime=VoiceRuntimeFactoryDeps(
             cc_pending_tool_ids_before=server._rollout_log._cc_pending_tool_ids_before,
@@ -672,6 +682,17 @@ def queue_sweep_coordinator_for_manager(manager: Any, deps: QueueSweepFactoryDep
     )
 
 
+def draft_coordinator_for_manager(manager: Any, deps: DraftFactoryDeps) -> Any:
+    return SessionDraftCoordinator(
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
+        drafts=lambda: manager._drafts,
+        draft_store=manager._draft_store_for_manager,
+        save_drafts=manager._save_drafts,
+        now=deps.now,
+    )
+
+
 def voice_runtime_for_manager(manager: Any, deps: VoiceRuntimeFactoryDeps) -> Any:
     return VoiceRuntimeCoordinator(
         lock=_registry_lock(manager),
@@ -757,6 +778,7 @@ def cleanup_coordinator_for_manager(manager: Any, deps: CleanupFactoryDeps) -> A
         save_unattended=manager._save_unattended,
         save_files=manager._save_files,
         save_queues=manager._save_queues,
+        save_drafts=manager._save_drafts,
         clear_unread=lambda session_id: getattr(manager, "_unread_store", None).clear(session_id) if getattr(manager, "_unread_store", None) is not None else None,
     )
 
@@ -931,6 +953,7 @@ def web_launch_coordinator_for_manager(manager: Any, deps: WebLaunchFactoryDeps)
 class SessionManagerCoordinatorGraph:
     discovery: DiscoveryDeps
     queue: SessionQueueCoordinator
+    draft: SessionDraftCoordinator
     control: SessionControlCoordinator
     listing: SessionListCoordinator
     refresh: SessionRefreshCoordinator
@@ -962,6 +985,7 @@ def build_session_manager_coordinator_graph(
     return SessionManagerCoordinatorGraph(
         discovery=discovery_deps_for_manager(manager, deps.discovery_deps),
         queue=queue_coordinator_for_manager(manager, deps.queue_coordinator),
+        draft=draft_coordinator_for_manager(manager, deps.draft_coordinator),
         control=control_coordinator_for_manager(manager, deps.control_coordinator),
         listing=list_coordinator_for_manager(manager, deps.list_coordinator),
         refresh=refresh_coordinator_for_manager(manager, deps.refresh_coordinator),

@@ -23,6 +23,7 @@ class SessionCleanupCoordinator:
     save_unattended: Callable[[], None]
     save_files: Callable[[], None]
     save_queues: Callable[[], None]
+    save_drafts: Callable[[], None] = lambda: None
     save_staged_attachments: Callable[[], None] = lambda: None
     clear_unread: Callable[[str], None] = lambda _session_id: None
 
@@ -51,4 +52,5 @@ class SessionCleanupCoordinator:
             save_unattended=self.save_unattended,
             save_files=self.save_files,
             save_queues=self.save_queues,
+            save_drafts=self.save_drafts,
         )

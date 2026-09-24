@@ -922,6 +922,7 @@ class SessionManager:
     _hidden_sessions = _store_backed_attr("hidden_sessions")
     _files = _store_backed_attr("files")
     _queues = _store_backed_attr("queues")
+    _drafts = _store_backed_attr("drafts")
     _pending_attachment_ids = _store_backed_attr("pending_attachment_ids")
     _staged_attachments = _store_backed_attr("staged_attachments")
     _commit_unknown_sends = _store_backed_attr("commit_unknown_sends")
@@ -938,6 +939,8 @@ class SessionManager:
     _save_files = _save_dict_store_attr("_files", "save_files")
     _load_queues = _load_store_attr("_queues", "load_queues")
     _save_queues = _save_dict_store_attr("_queues", "save_queues")
+    _load_drafts = _load_store_attr("_drafts", "load_drafts")
+    _save_drafts = _save_dict_store_attr("_drafts", "save_drafts")
     _load_pending_attachments = _load_store_attr("_pending_attachment_ids", "load_pending_attachments")
     _save_pending_attachments = _save_pending_attachment_ids_attr("_pending_attachment_ids", "save_pending_attachments")
     _load_staged_attachments = _load_store_attr("_staged_attachments", "load_staged_attachments")
@@ -976,6 +979,9 @@ class SessionManager:
 
     def _queue_store_for_manager(self) -> Any:
         return _core_methods.queue_store_for_manager(self, sys.modules[__name__])
+
+    def _draft_store_for_manager(self) -> Any:
+        return _core_methods.draft_store_for_manager(self, sys.modules[__name__])
 
     def _input_lock_for_session(self, session_id: str) -> Any:
         return _core_methods.input_lock_for_session(self, sys.modules[__name__], session_id)
@@ -1036,6 +1042,9 @@ class SessionManager:
 
     def _queue_coordinator_for_manager(self) -> Any:
         return self._coordinator_graph().queue
+
+    def _draft_coordinator_for_manager(self) -> Any:
+        return self._coordinator_graph().draft
 
     def _control_coordinator_for_manager(self) -> Any:
         return self._coordinator_graph().control
@@ -1280,6 +1289,12 @@ class SessionManager:
 
     def queue_list(self, session_id: str) -> list[dict[str, Any]]:
         return self._queue_coordinator_for_manager().list_local(session_id)
+
+    def draft_get(self, session_id: str) -> dict[str, Any]:
+        return self._draft_coordinator_for_manager().draft_get(session_id)
+
+    def draft_set(self, session_id: str, text: str) -> float:
+        return self._draft_coordinator_for_manager().draft_set(session_id, text)
 
     def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
         return self._queue_coordinator_for_manager().delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
