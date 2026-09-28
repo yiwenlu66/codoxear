@@ -17,6 +17,7 @@ from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
 from codoxear.rollout_chat_events import _build_no_response_event
 from codoxear.rollout_chat_events import _detect_codex_no_response_closes
 from codoxear.rollout_chat_events import _inject_no_response_events
+from codoxear.rollout_chat_batch import _extract_chat_events
 from codoxear.rollout_events import _INTERRUPTED_TEXT
 from codoxear.rollout_jsonl import JsonlRecord
 from codoxear.rollout_log import _extract_positioned_chat_events
@@ -1121,3 +1122,165 @@ def test_live_split_last_agent_message_close_projects_in_close_delta() -> None:
         assert events[0]["text"] == "delivered on close"
         assert events[0]["message_class"] == "final_response"
         assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
+def _paginated_user_item(*content: dict[str, object]) -> dict[str, object]:
+    return {
+        "type": "event_msg",
+        "payload": {
+            "type": "item_completed",
+            "completed_at_ms": 1500,
+            "item": {"type": "UserMessage", "content": list(content)},
+        },
+    }
+
+
+def _paginated_agent_item(
+    *content: dict[str, object], phase: str | None = None, completed_at_ms: int = 2500
+) -> dict[str, object]:
+    item: dict[str, object] = {"type": "AgentMessage", "content": list(content)}
+    if phase is not None:
+        item["phase"] = phase
+    return {
+        "type": "event_msg",
+        "payload": {"type": "item_completed", "completed_at_ms": completed_at_ms, "item": item},
+    }
+
+
+def test_paginated_items_project_ordered_text_and_timestamps() -> None:
+    records = [
+        _rec(
+            {
+                **_paginated_user_item(
+                    {"type": "text", "text": "question "},
+                    {"type": "image", "url": "ignored"},
+                    {"type": "text", "text": "continues"},
+                ),
+                "ts": 1.0,
+            },
+            start=10,
+        ),
+        _rec(
+            _paginated_agent_item(
+                {"type": "Text", "text": "thinking "},
+                {"type": "Text", "text": "aloud"},
+                phase="commentary",
+            ),
+            start=20,
+        ),
+        _rec(
+            {
+                **_paginated_agent_item(
+                    {"type": "Text", "text": "final "},
+                    {"type": "Text", "text": "answer"},
+                    phase="final_answer",
+                ),
+                "ts": 3.0,
+            },
+            start=30,
+        ),
+    ]
+
+    events = _extract_positioned_chat_events(records)
+
+    assert [event["role"] for event in events] == ["user", "assistant", "assistant"]
+    assert [event["text"] for event in events] == ["question continues", "thinking aloud", "final answer"]
+    assert [event.get("message_class") for event in events] == [None, "narration", "final_response"]
+    assert [event["ts"] for event in events] == [1.0, 2.5, 3.0]
+    assert [event["_before_byte"] for event in events] == [10, 20, 30]
+
+
+def test_paginated_agent_item_dedupes_matching_response_item() -> None:
+    records = [
+        _rec(_paginated_user_item({"type": "text", "text": "question"}), start=10),
+        _rec(
+            _paginated_agent_item({"type": "Text", "text": "same answer"}, phase="final_answer"),
+            start=20,
+        ),
+        _rec(
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "same answer"}],
+                },
+            },
+            start=30,
+        ),
+    ]
+
+    events = _extract_positioned_chat_events(records)
+
+    assert [event["role"] for event in events] == ["user", "assistant"]
+    assert [event["text"] for event in events] == ["question", "same answer"]
+    assert [event["_before_byte"] for event in events] == [10, 20]
+
+
+def test_paginated_user_item_opens_turn_and_empty_item_does_not(tmp_path: Path) -> None:
+    user = _paginated_user_item({"type": "text", "text": "request"})
+    close = {"type": "event_msg", "payload": {"type": "turn_complete", "turn_id": "turn-1"}}
+    records = [_rec(user, start=10), _rec(close, start=20)]
+
+    events = _extract_positioned_chat_events(records)
+
+    assert [event["role"] for event in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _NO_RESPONSE_TEXT
+    assert _detect_codex_no_response_closes(records) == [(10, 20, close)]
+
+    empty_records = [
+        _rec(_paginated_user_item({"type": "text", "text": "  "}, {"type": "image", "url": "ignored"}), start=30),
+        _rec(close, start=40),
+    ]
+    empty_events = _extract_positioned_chat_events(empty_records)
+    _empty_chat, _meta, empty_flags, _diag = _extract_chat_events([record.obj for record in empty_records])
+    assert _detect_codex_no_response_closes(empty_records) == []
+    assert all(event["text"] != _NO_RESPONSE_TEXT for event in empty_events)
+    assert empty_flags["turn_start"] is False
+
+    log_path = tmp_path / "paginated-empty.jsonl"
+    _write_log(log_path, [record.obj for record in empty_records])
+    from codoxear.transcript_search import search_chat_log_bounded
+
+    count, matches, _truncated = search_chat_log_bounded(log_path, "completed this turn", limit=5)
+    assert count == 0
+    assert matches == []
+
+
+def test_paginated_live_split_preserves_turn_and_prior_assistant(tmp_path: Path) -> None:
+    log_path = tmp_path / "paginated-live.jsonl"
+    user = _paginated_user_item({"type": "text", "text": "hello"})
+    assistant = _paginated_agent_item({"type": "Text", "text": "visible answer"}, phase="final_answer")
+    _write_log(log_path, [user, assistant])
+
+    first_events, cursor, _meta, first_flags, _diag, _token = _read_chat_live_delta(log_path, after_byte=0)
+    assert [event["role"] for event in first_events] == ["user", "assistant"]
+    assert first_flags["turn_start"] is True
+    prior_user_byte, prior_has_assistant = _codex_prior_open_turn_context(log_path, cursor)
+    assert prior_user_byte == first_events[0]["_before_byte"]
+    assert prior_has_assistant is True
+
+    with log_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"type": "event_msg", "payload": {"type": "turn_complete", "turn_id": "turn-1"}}) + "\n")
+    close_events, _next, _meta, _flags, _diag, _token = _read_chat_live_delta(log_path, after_byte=cursor)
+    assert close_events == []
+
+
+def test_paginated_user_turn_is_searchable_from_disk(tmp_path: Path) -> None:
+    from codoxear.transcript_search import search_chat_log_bounded
+
+    log_path = tmp_path / "paginated-search.jsonl"
+    _write_log(
+        log_path,
+        [
+            _paginated_user_item({"type": "text", "text": "find this request"}),
+            {"type": "event_msg", "payload": {"type": "turn_complete", "turn_id": "turn-1"}},
+        ],
+    )
+
+    count, matches, _truncated = search_chat_log_bounded(log_path, "completed this turn", limit=5)
+
+    assert count == 1
+    assert matches[0]["text"] == _NO_RESPONSE_TEXT
+    assert matches[0]["message_class"] == "error"
