@@ -16,6 +16,7 @@ from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_user_text
 from .rollout_chat_events import _single_chat_event
 from .rollout_events import _codex_error_affects_turn_status
+from .rollout_events import _codex_user_item_text
 from .subagent_events import is_subagent_event_id
 
 
@@ -151,6 +152,11 @@ def _extract_chat_events(
             if pt == "user_message":
                 msg = p.get("message")
                 if isinstance(msg, str):
+                    turn_start = True
+                continue
+            if pt == "item_completed":
+                user_text = _codex_user_item_text(obj)
+                if isinstance(user_text, str) and user_text.strip():
                     turn_start = True
                 continue
             if pt == "agent_reasoning":

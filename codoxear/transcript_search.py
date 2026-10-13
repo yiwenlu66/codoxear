@@ -9,6 +9,7 @@ from .agent_backend import get_agent_backend
 from .agent_backend import infer_agent_backend_from_log_path
 from . import rollout_log as _rollout_log
 from .rollout_chat_events import _build_no_response_event
+from .rollout_events import _codex_user_item_text
 
 
 TRANSCRIPT_SEARCH_MAX_LINE_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES", str(4 * 1024 * 1024)))
@@ -271,6 +272,9 @@ def _search_record_user_byte(obj: dict[str, Any], record_start: int) -> int | No
         if not isinstance(payload, dict):
             return None
         if payload.get("type") == "user_message" and isinstance(payload.get("message"), str) and payload["message"].strip():
+            return int(record_start)
+        user_text = _codex_user_item_text(obj)
+        if isinstance(user_text, str) and user_text.strip():
             return int(record_start)
         return None
     if typ == "user":

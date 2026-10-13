@@ -34,6 +34,7 @@ from .rollout_jsonl import _read_jsonl_records_from_offset
 from .rollout_jsonl import _read_jsonl_tail
 from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _codex_event_text
+from .rollout_events import _codex_user_item_text
 from .rollout_events import _event_ts
 from .rollout_events import _parse_iso8601_to_epoch
 from .rollout_events import _strip_oai_mem_citation_tail
@@ -291,6 +292,15 @@ def _codex_prior_open_turn_context(
                 else:
                     boundary_kind = "empty_user"
                 break
+            if pt == "item_completed":
+                user_text = _codex_user_item_text(obj)
+                if user_text is not None:
+                    if user_text.strip():
+                        boundary_kind = "user"
+                        boundary_user_byte = record.start
+                    else:
+                        boundary_kind = "empty_user"
+                    break
             if pt in ("task_complete", "turn_complete"):
                 boundary_kind = "close"
                 break

@@ -56,6 +56,38 @@ def _codex_event_text(payload: dict[str, Any]) -> str | None:
     return msg.strip()
 
 
+def _codex_item_completed_item(obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a turn item from a persisted Codex ``item_completed`` row."""
+    if obj.get("type") != "event_msg":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict) or payload.get("type") != "item_completed":
+        return None
+    item = payload.get("item")
+    return item if isinstance(item, dict) else None
+
+
+def _codex_user_item_text(obj: dict[str, Any]) -> str | None:
+    """Join the text chunks in a paginated Codex ``UserMessage`` item.
+
+    Non-text inputs such as image and audio items do not appear as transcript
+    text. Returning an empty string for a valid but text-empty user item lets
+    callers distinguish it from other completed turn-item types while keeping
+    it out of turn-boundary detection.
+    """
+    item = _codex_item_completed_item(obj)
+    if item is None or item.get("type") != "UserMessage":
+        return None
+    content = item.get("content")
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        part["text"]
+        for part in content
+        if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str)
+    )
+
+
 def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
     ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
     payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
