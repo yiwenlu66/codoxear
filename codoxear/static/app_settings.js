@@ -105,8 +105,9 @@ function createSettingsDialogController(options = {}) {
     class: "customCssInput",
     rows: "4",
     spellcheck: "false",
-    autocomplete: "off",
+    autocorrect: "off",
     autocapitalize: "off",
+    autocomplete: "off",
     placeholder: ":root { --accent: #c96442; }",
     "aria-describedby": "settingsCustomCssHint",
   });

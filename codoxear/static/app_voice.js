@@ -51,14 +51,17 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
     liveAudio.style.display = "none";
     const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
-    const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
+    const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off" });
     const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
     const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
     const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
     const unattendedPromptInput = el("textarea", {
       id: "unattendedPromptInput",
       rows: "6",
-      spellcheck: "true",
+      spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
+      autocomplete: "off",
       "aria-describedby": "unattendedPromptHint",
     });
     const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to built-in prompt" });

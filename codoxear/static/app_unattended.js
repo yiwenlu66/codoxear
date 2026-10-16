@@ -68,6 +68,10 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     const requestEl = el("textarea", {
       id: "unattendedRequest",
       "aria-label": "Additional request for unattended prompt",
+      spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
+      autocomplete: "off",
     });
     const unattendedMenu = el("div", {
       id: "unattendedMenu",

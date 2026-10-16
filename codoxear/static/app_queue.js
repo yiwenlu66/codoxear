@@ -414,7 +414,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
         const locked = sending || commitUnknown || orphanRecovery || queueMutationLocks.has(itemId);
         const row = el("div", { class: "queueItem" });
         const editorShell = el("div", { class: "queueEditorShell" });
-        const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
+        const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}`, spellcheck: "false", autocorrect: "off", autocapitalize: "off", autocomplete: "off" });
         ta.value = queueDraftTexts.has(itemId) ? String(queueDraftTexts.get(itemId) || "") : String(item.text || "");
         ta.disabled = locked;
         ta.oninput = () => {

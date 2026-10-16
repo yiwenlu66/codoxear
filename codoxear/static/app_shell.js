@@ -48,7 +48,7 @@ function requireFunction(value, name) {
     const bottomSentinel = el("div", { id: "bottomSentinel" });
     const jumpBtn = el("button", { class: "jumpBtn", id: "jumpBtn", title: "Jump to latest message", "aria-label": "Jump to latest message", "data-hint": "g", html: iconSvg("down-bar") });
     const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });
-    const chatSearchInput = el("input", { id: "chatSearchInput", class: "chatSearchInput", type: "search", placeholder: "Search conversation", "aria-label": "Search conversation", "data-hint-excluded": "native-text-entry", autocomplete: "off" });
+    const chatSearchInput = el("input", { id: "chatSearchInput", class: "chatSearchInput", type: "search", placeholder: "Search conversation", "aria-label": "Search conversation", "data-hint-excluded": "native-text-entry", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off" });
     const chatSearchGlyph = el("span", { class: "chatSearchGlyph", "aria-hidden": "true", html: iconSvg("search") });
     const chatSearchPrevBtn = el("button", { id: "chatSearchPrevBtn", class: "icon-btn", type: "button", title: "Previous match", "aria-label": "Previous match", "data-hint": "v", html: iconSvg("up") });
     const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", "data-hint": "k", html: iconSvg("down") });
@@ -90,7 +90,7 @@ function requireFunction(value, name) {
     const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), topActions]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
-    const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message", "data-hint": "i" });
+    const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message", "data-hint": "i", spellcheck: "false", autocorrect: "off", autocapitalize: "off", autocomplete: "off" });
     const msgPh = el("div", { class: "ph", id: "msgPh", text: "Message" });
     const modelPicker = el("div", { class: "modelPicker", id: "modelPicker", role: "listbox", "aria-label": "Available Pi models" });
     modelPicker.style.display = "none";
@@ -142,6 +142,8 @@ function requireFunction(value, name) {
       placeholder: "Choose or search files",
       autocomplete: "off",
       spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
       role: "combobox",
       "aria-autocomplete": "list",
       "aria-controls": "filePickerMenu",
@@ -487,6 +489,9 @@ function requireFunction(value, name) {
       placeholder: "Conversation title",
       maxlength: "80",
       autocomplete: "off",
+      spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
     });
     const editPriorityRange = el("input", {
       id: "editPriorityRange",

@@ -53,7 +53,34 @@ def render_shell_parents() -> dict[str, str | None]:
           resolveAppUrl: (value) => value,
           versionedShellAssetPath: (value) => value,
         }});
+        const createNode = () => new Node("div");
+        ctx.window.CodoxearQueue = {{
+          createQueueDom: () => ({{
+            queueBackdrop: createNode(), queueCloseBtn: createNode(), queueList: createNode(),
+            queueEmpty: createNode(), queueViewer: createNode(),
+          }}),
+        }};
+        ctx.window.CodoxearVoice = {{
+          createVoiceDom: () => ({{
+            announceBtn: createNode(), liveAudio: createNode(), voiceSettingsSection: createNode(),
+            voiceSettingsStatus: createNode(), voiceBaseUrlInput: createNode(), voiceApiKeyInput: createNode(),
+            voiceClearApiKeyToggle: createNode(), narrationSettingToggle: createNode(),
+            unattendedPromptInput: createNode(), unattendedPromptResetBtn: createNode(),
+            voiceSettingsCancelBtn: createNode(), voiceSettingsSaveBtn: createNode(),
+          }}),
+        }};
+        const modalElements = ctx.window.CodoxearShell.createApplicationModalDOM({{
+          root: new Node("root"),
+          el,
+          iconSvg: (name) => `<${{name}}>`,
+          windowTarget: ctx.window,
+          codoxearVoice: ctx.window.CodoxearVoice,
+          voiceHost: elements.voiceHost,
+        }});
         const parentClass = (node) => node.parent && node.parent.className;
+        const textHelperAttrs = (node) => Object.fromEntries(
+          ["spellcheck", "autocorrect", "autocapitalize", "autocomplete"].map((name) => [name, node.attrs[name]]),
+        );
         process.stdout.write(JSON.stringify({{
           chatSearch: parentClass(elements.chatSearchBtn),
           prev: parentClass(elements.prevUserBtn),
@@ -70,6 +97,11 @@ def render_shell_parents() -> dict[str, str | None]:
           searchCloseButtonClass: elements.chatSearchCloseBtn.attrs.class,
           hasComposerStop: Object.hasOwn(elements, "composerStopBtn"),
           brandLogoMarkup: root.children[0].children[0].children[0].children[0].attrs.html,
+          textHelperAttrs: {{
+            composer: textHelperAttrs(elements.textarea),
+            chatSearch: textHelperAttrs(elements.chatSearchInput),
+            filePaste: textHelperAttrs(modalElements.filePasteInput),
+          }},
         }}));
         """
     )
@@ -89,9 +121,24 @@ class TestFrontendShellDomSource(unittest.TestCase):
         self.assertEqual([child.attrib["class"] for child in logo], ["brandLogoPage", "brandLogoFold", "brandLogoTerminal"])
         self.assertEqual(result["searchPlaceholder"], "Search conversation")
 
+    def test_free_text_fields_disable_browser_text_helpers(self) -> None:
+        result = render_shell_parents()
+        expected = {
+            "spellcheck": "false",
+            "autocorrect": "off",
+            "autocapitalize": "off",
+            "autocomplete": "off",
+        }
+        self.assertEqual(result["textHelperAttrs"], {
+            "composer": expected,
+            "chatSearch": expected,
+            "filePaste": expected,
+        })
+
     def test_message_navigation_controls_mount_in_chat_nav_rail(self) -> None:
         result = render_shell_parents()
         result.pop("brandLogoMarkup")
+        result.pop("textHelperAttrs")
         self.assertEqual(
             result,
             {

@@ -823,12 +823,12 @@ function requireFunction(value, name) {
     const backdrop = el("div", { class: "modalBackdrop", id: "newSessionBackdrop" });
     const closeBtn = el("button", { id: "newSessionCloseBtn", class: "icon-btn", title: "Close", "aria-label": "Close", type: "button", html: iconSvg("x") });
     const status = el("div", { class: "muted", id: "newSessionStatus", text: "" });
-    const cwdInput = el("input", { id: "newSessionCwdInput", type: "text", placeholder: "/path/to/project", autocomplete: "off", spellcheck: "false", role: "combobox", "aria-autocomplete": "list", "aria-controls": "newSessionCwdMenu", "aria-expanded": "false" });
+    const cwdInput = el("input", { id: "newSessionCwdInput", type: "text", placeholder: "/path/to/project", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off", role: "combobox", "aria-autocomplete": "list", "aria-controls": "newSessionCwdMenu", "aria-expanded": "false" });
     const cwdMenu = el("div", { id: "newSessionCwdMenu", class: "filePickerMenu dialogPickerMenu cwdSuggestionMenu", role: "listbox" });
     const cwdField = el("div", { class: "pickerField cwdPickerField cwdComboboxField", id: "newSessionCwdField" }, [el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }), cwdInput, cwdMenu]);
     const cwdHint = el("div", { class: "fieldHint", id: "newSessionCwdHint", text: "" });
-    const nameInput = el("input", { id: "newSessionNameInput", type: "text", placeholder: "session-name", autocomplete: "off", spellcheck: "false" });
-    const modelInput = el("input", { id: "newSessionModelInput", type: "text", placeholder: "Provider/model", autocomplete: "off", spellcheck: "false", role: "combobox", "aria-autocomplete": "list", "aria-controls": "newSessionModelMenu", "aria-expanded": "false" });
+    const nameInput = el("input", { id: "newSessionNameInput", type: "text", placeholder: "session-name", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off" });
+    const modelInput = el("input", { id: "newSessionModelInput", type: "text", placeholder: "Provider/model", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off", role: "combobox", "aria-autocomplete": "list", "aria-controls": "newSessionModelMenu", "aria-expanded": "false" });
     const modelMenu = el("div", { id: "newSessionModelMenu", class: "filePickerMenu dialogPickerMenu cwdSuggestionMenu", role: "listbox" });
     const modelField = el("div", { class: "pickerField comboboxField cwdComboboxField", id: "newSessionModelField" }, [el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }), modelInput, modelMenu]);
     const modelLabel = el("span", { class: "fieldLabel", text: "Provider / model" });
@@ -844,7 +844,7 @@ function requireFunction(value, name) {
     const fastToggle = el("input", { id: "newSessionFastToggle", type: "checkbox" });
     const fastField = el("div", { class: "field compactToggleField", id: "newSessionFastField" }, [el("span", { class: "fieldLabel", text: "Speed" }), el("label", { class: "checkField" }, [fastToggle, el("span", { text: "Fast" })])]);
     const worktreeToggle = el("input", { id: "newSessionWorktreeToggle", type: "checkbox" });
-    const worktreeInput = el("input", { id: "newSessionWorktreeBranchInput", type: "text", placeholder: "feature/my-branch", autocomplete: "off", spellcheck: "false", disabled: true });
+    const worktreeInput = el("input", { id: "newSessionWorktreeBranchInput", type: "text", placeholder: "feature/my-branch", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off", disabled: true });
     const worktreeField = el("div", { class: "field", id: "newSessionWorktreeField" }, [el("span", { class: "fieldLabel", text: "Git worktree branch" }), el("label", { class: "checkField" }, [worktreeToggle, el("span", { text: "Create a new worktree for this session" })]), worktreeInput]);
     const startBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
     const cancelBtn = el("button", { id: "newSessionCancelBtn", type: "button", text: "Cancel" });
