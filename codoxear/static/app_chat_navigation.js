@@ -30,6 +30,7 @@
     const api = typeof options.api === "function" ? options.api : async () => ({ total: loadedUserMessageRows().length, matches: [] });
     const loadTranscriptWindowAtCursor = typeof options.loadTranscriptWindowAtCursor === "function" ? options.loadTranscriptWindowAtCursor : async () => null;
     const loadOlderMessages = requireFunction(options.loadOlderMessages, "loadOlderMessages");
+    const renderedMessageRows = requireFunction(options.renderedMessageRows, "renderedMessageRows");
     const loadedUserMessageRows = requireFunction(options.loadedUserMessageRows, "loadedUserMessageRows");
     const loadedCopyMessageRows = requireFunction(options.loadedCopyMessageRows, "loadedCopyMessageRows");
     const loadedUserJumpTarget = requireFunction(options.loadedUserJumpTarget, "loadedUserJumpTarget");
@@ -98,7 +99,28 @@
       return true;
     }
 
-    async function fetchNeighbor(direction, rows) {
+    function boundaryAnchorRow(direction) {
+      // The neighbor anchor is the rendered window boundary: a byte position,
+      // not the nearest user row. The server resolves the first user message
+      // strictly before/after that byte position, so any rendered row with a
+      // history cursor is a valid anchor — including windows whose loaded
+      // range contains no user rows at all (a long assistant tool-run tail).
+      const rows = renderedMessageRows();
+      if (direction < 0) {
+        for (let index = 0; index < rows.length; index++) {
+          const row = rows[index];
+          if (row && row.dataset && row.dataset.historyCursor) return row;
+        }
+        return null;
+      }
+      for (let index = rows.length - 1; index >= 0; index--) {
+        const row = rows[index];
+        if (row && row.dataset && row.dataset.historyCursor) return row;
+      }
+      return null;
+    }
+
+    async function fetchNeighbor(direction) {
       // stale means the selected session or poll generation moved on while the
       // request was in flight: the answer no longer applies, so the caller
       // stays silent. error means this navigation genuinely failed and the
@@ -106,8 +128,8 @@
       const sid = sessionState.get("selected");
       const gen = currentGeneration();
       if (!sid) return { stale: true };
-      const anchorRow = direction < 0 ? rows[0] : rows[rows.length - 1];
-      const cursor = anchorRow && anchorRow.dataset ? String(anchorRow.dataset.historyCursor || "") : "";
+      const anchorRow = boundaryAnchorRow(direction);
+      const cursor = anchorRow ? String(anchorRow.dataset.historyCursor) : "";
       if (!cursor) return { error: true };
       try {
         const data = await api(`/api/sessions/${sid}/messages/neighbor?role=user&direction=${direction < 0 ? "previous" : "next"}&cursor=${encodeURIComponent(cursor)}`);
@@ -153,7 +175,7 @@
         scrollToRow(local.target);
         return;
       }
-      const result = await fetchNeighbor(direction, rows);
+      const result = await fetchNeighbor(direction);
       if (result.stale) return;
       if (result.error) {
         setToast("Could not reach that message");

@@ -383,6 +383,7 @@ const chatNavigationController = (function instantiateChatNavigationController()
     api,
     loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
     loadOlderMessages: (...args) => getHistoryController().loadOlderMessages(...args),
+    renderedMessageRows,
     loadedUserMessageRows,
     loadedCopyMessageRows,
     loadedUserJumpTarget,

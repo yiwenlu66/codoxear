@@ -21,7 +21,7 @@ const ctx = {{ window: {{}}, document: {{}}, console }}; vm.createContext(ctx); 
 
 
 HARNESS = r'''
-const events = []; let selected = 'sid-1'; let rows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null;
+const events = []; let selected = 'sid-1'; let rows = []; let allRows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null;
 function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor: cursor }, offsetTop: top, scrollIntoView() { events.push(`scroll:${id}`); } }; }
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
 const chatNavRail = { style: {} }, chatEmptyState = { style: {} };
@@ -43,6 +43,7 @@ const deps = {
   loadTranscriptWindowAtCursor: async (cursor) => { events.push(`window:${cursor}`); if (windowMode === 'failure') return null; rows = [row('u0', 'c0', 0)]; return { jumped_window: true }; },
   loadOlderMessages: async () => { events.push('older'); if (olderMode === 'failure') return false; if (olderMode === 'success') rows = [row('u0', 'c0', 0), ...rows]; return true; },
   loadedUserMessageRows: () => rows, loadedCopyMessageRows: () => rows,
+  renderedMessageRows: () => allRows,
   loadedUserJumpTarget: (items, direction) => direction > 0 && items.length > 1 ? { target: items[1], reason: 'target' } : { target: null, reason: direction < 0 ? 'first' : 'last' },
   loadedCopyJumpTarget: () => ({ target: null, reason: 'last' }), getScrollTop: () => 0,
   pulseNavigatedRow: (item) => events.push(`pulse:${item.dataset.messageId}`), setToast: (text) => events.push(`toast:${text}`),
@@ -82,7 +83,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_boundary_fetches_server_target_and_loads_its_window(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'boundary';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'boundary';
   await controller.jumpToLoadedUserMessage(-1);
   process.stdout.write(JSON.stringify({ events }));
 })();
@@ -95,7 +96,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_backward_boundary_progressively_prepends_until_target_is_loaded(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u2', 'c2', 100)]; apiMode = 'boundary';
+  rows = [row('u2', 'c2', 100)]; allRows = rows; apiMode = 'boundary';
   await controller.jumpToLoadedUserMessage(-1);
   process.stdout.write(JSON.stringify({ events, ids: rows.map((item) => item.dataset.messageId) }));
 })();
@@ -108,7 +109,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_cross_log_previous_uses_detached_window_without_prepend(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'cross';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'cross';
   await controller.jumpToLoadedUserMessage(-1);
   process.stdout.write(JSON.stringify({ events }));
 })();
@@ -120,7 +121,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_next_boundary_uses_detached_window(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'cross';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'cross';
   await controller.jumpToLoadedUserMessage(1);
   process.stdout.write(JSON.stringify({ events }));
 })();
@@ -132,7 +133,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_same_log_prepend_exhaustion_falls_back_to_window(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u2', 'c2', 100)]; apiMode = 'boundary'; olderMode = 'failure';
+  rows = [row('u2', 'c2', 100)]; allRows = rows; apiMode = 'boundary'; olderMode = 'failure';
   await controller.jumpToLoadedUserMessage(-1);
   process.stdout.write(JSON.stringify({ events }));
 })();
@@ -144,7 +145,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_navigation_failure_toast_is_distinct_from_boundary(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'cross'; windowMode = 'failure';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'cross'; windowMode = 'failure';
   await controller.jumpToLoadedUserMessage(1);
   apiMode = 'error';
   await controller.jumpToLoadedUserMessage(-1);
@@ -158,7 +159,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
     def test_stale_session_switch_is_silent_not_a_failure_toast(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'stale';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'stale';
   await controller.jumpToLoadedUserMessage(-1);
   process.stdout.write(JSON.stringify({ events }));
 })();
@@ -168,10 +169,59 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertFalse(any(item.startswith("window:") for item in result["events"]))
         self.assertFalse(any(item.startswith("scroll:") for item in result["events"]))
 
+    def test_prev_without_user_rows_anchors_on_window_start(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = []; allRows = [row('a1', 'ca1', 0), row('a2', 'ca2', 100)]; apiMode = 'boundary';
+  await controller.jumpToLoadedUserMessage(-1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertTrue(any("/messages/neighbor" in item and "direction=previous" in item and "cursor=ca1" in item for item in result["events"]))
+        self.assertIn("older", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+        self.assertNotIn("toast:Could not reach that message", result["events"])
+
+    def test_next_without_user_rows_anchors_on_window_end(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = []; allRows = [row('a1', 'ca1', 0), row('a2', 'ca2', 100)]; apiMode = 'cross';
+  await controller.jumpToLoadedUserMessage(1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertTrue(any("/messages/neighbor" in item and "direction=next" in item and "cursor=ca2" in item for item in result["events"]))
+        self.assertIn("window:c0", result["events"])
+        self.assertIn("scroll:u0", result["events"])
+        self.assertNotIn("toast:Could not reach that message", result["events"])
+
+    def test_next_anchor_is_window_boundary_not_last_user_row(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = [row('u1', 'c1', 0)]; allRows = [row('u1', 'c1', 0), row('a1', 'ca1', 100)]; apiMode = 'cross';
+  await controller.jumpToLoadedUserMessage(1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertTrue(any("/messages/neighbor" in item and "direction=next" in item and "cursor=ca1" in item for item in result["events"]))
+        self.assertIn("scroll:u0", result["events"])
+
+    def test_no_cursor_bearing_rows_keeps_quiet_error(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  rows = []; allRows = [{ dataset: {} }];
+  await controller.jumpToLoadedUserMessage(-1);
+  await controller.jumpToLoadedUserMessage(1);
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertEqual(result["events"].count("toast:Could not reach that message"), 2)
+        self.assertFalse(any("/messages/neighbor" in item for item in result["events"]))
+
     def test_server_boundary_toasts_have_no_window_qualifier(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  rows = [row('u1', 'c1', 0)]; apiMode = 'total';
+  rows = [row('u1', 'c1', 0)]; allRows = rows; apiMode = 'total';
   await controller.jumpToLoadedUserMessage(-1);
   await controller.jumpToLoadedUserMessage(1);
   process.stdout.write(JSON.stringify({ events }));

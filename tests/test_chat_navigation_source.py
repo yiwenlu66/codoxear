@@ -32,6 +32,7 @@ def eval_navigation() -> dict:
           sessionState: {{ get: () => selected, subscribe: () => () => {{}} }},
           currentGeneration: () => 1,
           loadedUserMessageRows: () => userRows, loadedCopyMessageRows: () => copyRows,
+          renderedMessageRows: () => userRows,
           loadOlderMessages: async () => false,
           loadedUserJumpTarget: (_rows, direction) => direction < 0 ? {{ target: null, reason: "first" }} : {{ target: userRows[0] }},
           loadedCopyJumpTarget: (_rows, direction) => direction < 0 ? {{ target: null, reason: "first" }} : {{ target: copyRows[0] }},
