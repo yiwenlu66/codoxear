@@ -323,12 +323,32 @@ def _subagent_runs_root() -> Path:
     return Path(f"/tmp/pi-subagents-uid-{os.getuid()}/async-subagent-runs")
 
 
+def _pi_step_child_run_id(step: Mapping[str, Any]) -> str | None:
+    """Return the run id a step delegates to a separate run record, if any.
+
+    A lifecycle-v3 workflow step that launches a child as its own process names
+    that child in `runId`, and the child writes its own `status.json` under the
+    same root. Such a step is a mirror of the child, never a second child.
+    In-process (host) steps name no run id and exist only in the parent file.
+    """
+    run_id = step.get("runId")
+    if not isinstance(run_id, str):
+        return None
+    run_id = run_id.strip()
+    return run_id or None
+
+
 def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str, list[dict[str, Any]]]:
     """Return active pi-subagents grouped by their parent session log path.
 
     pi-subagents status files are an auxiliary, best-effort signal. A missing
     or concurrently changing run directory must therefore project as no runs,
     rather than making the session-list route fail.
+
+    One record is emitted per running child. A child that pi-subagents runs as
+    its own process owns a run record, and that record is authoritative for the
+    child's liveness and telemetry; the parent workflow's `steps[i]` entry is a
+    mirror of it, so the mirror is not projected as a second child.
     """
     global _SUBAGENT_RUNS_CACHE_AT, _SUBAGENT_RUNS_CACHE_ROOT, _SUBAGENT_RUNS_CACHE
     root = _subagent_runs_root()
@@ -342,13 +362,23 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
         status_paths = list(root.glob("*/status.json"))
     except OSError:
         status_paths = []
+    # Read every record before projecting any of them: a workflow step mirror
+    # and the child record it mirrors are separate files, and directory order
+    # says nothing about which is seen first.
+    records: list[tuple[Path, dict[str, Any]]] = []
     for status_path in sorted(status_paths):
         try:
             with status_path.open("r", encoding="utf-8") as stream:
                 payload = json.load(stream)
         except (OSError, UnicodeDecodeError, ValueError, TypeError):
             continue
-        if not isinstance(payload, dict) or str(payload.get("state", "")).strip().lower() not in _ACTIVE_SUBAGENT_STATES:
+        if isinstance(payload, dict):
+            records.append((status_path, payload))
+    # Every run whose record we could read owns its own liveness gate, whatever
+    # its state: presence decides identity, the record decides whether it runs.
+    child_run_ids = {status_path.parent.name for status_path, _ in records}
+    for status_path, payload in records:
+        if str(payload.get("state", "")).strip().lower() not in _ACTIVE_SUBAGENT_STATES:
             continue
         runner_pid = payload.get("pid")
         if not isinstance(runner_pid, int) or isinstance(runner_pid, bool) or not pid_alive(runner_pid):
@@ -371,6 +401,11 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
             (index, step)
             for index, step in status_steps
             if str(step.get("status", "")).strip().lower() == "running"
+            # A step that names a run record we already have is that child's
+            # mirror. The child's own record reports the child once, with its
+            # own pid gate and telemetry, so counting the mirror would inflate
+            # a workflow fanout to twice its real width.
+            and _pi_step_child_run_id(step) not in child_run_ids
         ]
 
         # Lifecycle-v3 Pi status files own child identity and telemetry at the
@@ -380,15 +415,21 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
         # current-step/run-level projection as a best-effort compatibility path.
         projected_steps: list[tuple[int | None, Mapping[str, Any]]] = active_steps
         if not status_steps:
-            selected_step: Mapping[str, Any] | None = None
-            if isinstance(steps, list):
-                if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps):
-                    candidate = steps[current_step]
-                    if isinstance(candidate, Mapping):
-                        selected_step = candidate
-                if selected_step is None:
-                    selected_step = next((step for step in steps if isinstance(step, Mapping)), None)
-            projected_steps = [(None, selected_step or {})]
+            if str(payload.get("mode", "")).strip().lower() == "workflow":
+                # A workflow root orchestrates the parent turn's children; it is
+                # not itself a child, so a root with no step statuses projects
+                # no activity instead of a bare run-level row.
+                projected_steps = []
+            else:
+                selected_step: Mapping[str, Any] | None = None
+                if isinstance(steps, list):
+                    if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps):
+                        candidate = steps[current_step]
+                        if isinstance(candidate, Mapping):
+                            selected_step = candidate
+                    if selected_step is None:
+                        selected_step = next((step for step in steps if isinstance(step, Mapping)), None)
+                projected_steps = [(None, selected_step or {})]
 
         for step_index, step in projected_steps:
             agent = step.get("agent")

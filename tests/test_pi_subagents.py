@@ -133,3 +133,128 @@ def test_scan_active_pi_subagents_caches_for_two_seconds_then_refreshes(tmp_path
 def test_scan_active_pi_subagents_returns_empty_for_missing_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(tmp_path / "missing"))
     assert util.scan_active_pi_subagents(now_monotonic=300.0) == {}
+
+
+def test_scan_active_pi_subagents_counts_a_workflow_child_once_from_its_own_record(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    # Real lifecycle-v3 shape: a workflow root mirrors each child it launched as
+    # a step naming the child's run id, and the child writes its own record with
+    # its own pid and telemetry. Projecting both would report the fanout twice.
+    _write_status(
+        root,
+        "workflow-a",
+        {
+            "lifecycleArtifactVersion": 3, "runId": "workflow-a", "sessionId": parent,
+            "mode": "workflow", "state": "running", "startedAt": 100, "pid": os.getpid(),
+            "steps": [
+                {"agent": "executor", "status": "completed", "async": True, "runId": "child-done"},
+                {"agent": "theorist", "status": "running", "async": True, "runId": "child-live"},
+            ],
+        },
+    )
+    _write_status(
+        root,
+        "child-done",
+        {
+            "runId": "child-done", "sessionId": parent, "mode": "single", "state": "complete",
+            "startedAt": 101, "pid": os.getpid(), "steps": [{"agent": "executor", "status": "complete"}],
+        },
+    )
+    _write_status(
+        root,
+        "child-live",
+        {
+            "runId": "child-live", "sessionId": parent, "mode": "single", "state": "running",
+            "startedAt": 102, "pid": os.getpid(),
+            "steps": [{"agent": "theorist", "status": "running", "model": "provider/model-b", "toolCount": 4, "tokens": {"total": 900}}],
+        },
+    )
+
+    runs = util.scan_active_pi_subagents(now_monotonic=600.0)[parent]
+    assert [(run["run_id"], run["detail"]) for run in runs] == [
+        ("child-live:0", {"role": "theorist", "model": "provider/model-b", "tools": 4, "tokens": 900}),
+    ]
+
+
+def test_scan_active_pi_subagents_drops_a_step_mirror_of_a_settled_child(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    # The mirror lags its child: the child's own record is the authority for the
+    # child's liveness, so a running step mirror of a settled child reports none.
+    _write_status(
+        root,
+        "workflow-a",
+        {
+            "runId": "workflow-a", "sessionId": parent, "mode": "workflow", "state": "running",
+            "startedAt": 100, "pid": os.getpid(),
+            "steps": [{"agent": "theorist", "status": "running", "async": True, "runId": "child-live"}],
+        },
+    )
+    _write_status(
+        root,
+        "child-live",
+        {
+            "runId": "child-live", "sessionId": parent, "mode": "single", "state": "failed",
+            "startedAt": 101, "pid": os.getpid(), "steps": [{"agent": "theorist", "status": "failed"}],
+        },
+    )
+
+    assert util.scan_active_pi_subagents(now_monotonic=700.0) == {}
+
+
+def test_scan_active_pi_subagents_keeps_steps_without_their_own_run_record(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    # In-process host steps have no run record of their own, so the parent file is
+    # the only evidence for them. A step whose child directories were reaped
+    # keeps its mirror rather than dropping the child entirely.
+    _write_status(
+        root,
+        "workflow-b",
+        {
+            "runId": "workflow-b", "sessionId": parent, "mode": "workflow", "state": "running",
+            "startedAt": 100, "pid": os.getpid(),
+            "steps": [
+                {"agent": "host-step", "status": "running", "model": "provider/host"},
+                {"agent": "reaped-child", "status": "running", "async": True, "runId": "absent-child"},
+            ],
+        },
+    )
+
+    runs = util.scan_active_pi_subagents(now_monotonic=800.0)[parent]
+    assert [(run["run_id"], run["detail"]["role"]) for run in runs] == [
+        ("workflow-b:0", "host-step"),
+        ("workflow-b:1", "reaped-child"),
+    ]
+
+
+def test_scan_active_pi_subagents_projects_no_row_for_a_childless_workflow_root(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    # A workflow root orchestrates the parent turn's children; it is not a child,
+    # so it never projects a run-level row of its own (no bare "Subagent" line
+    # while the workflow has not launched anything yet).
+    _write_status(
+        root,
+        "workflow-c",
+        {
+            "runId": "workflow-c", "sessionId": parent, "mode": "workflow", "state": "running",
+            "startedAt": 100, "pid": os.getpid(), "steps": [],
+        },
+    )
+    assert util.scan_active_pi_subagents(now_monotonic=900.0) == {}
+
+    _write_status(
+        root,
+        "workflow-c",
+        {
+            "runId": "workflow-c", "sessionId": parent, "mode": "workflow", "state": "running",
+            "startedAt": 100, "pid": os.getpid(), "steps": [{"agent": "executor"}],
+        },
+    )
+    assert util.scan_active_pi_subagents(now_monotonic=902.1) == {}
