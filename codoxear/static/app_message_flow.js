@@ -91,7 +91,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       !typingRowRuntime ||
       typeof typingRowRuntime.snapshot !== "function" ||
       typeof typingRowRuntime.updateTypingStats !== "function" ||
-      typeof typingRowRuntime.resetTypingStats !== "function"
+      typeof typingRowRuntime.resetTypingStats !== "function" ||
+      typeof typingRowRuntime.updateActivityPeek !== "function"
     )
       throw new TypeError("message flow dependency missing: typingRowRuntime");
 
@@ -499,6 +500,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       if (!turnOpen && (turnActivity || nowBusy) && !terminalBoundary) turnOpen = true;
       sessionState.set("turnOpen", turnOpen);
       applyTypingMetaDelta(data, { duplicate: duplicateLiveWindow });
+      // An absent field leaves the peek alone; an explicit null clears it.
+      if (!duplicateLiveWindow && Object.prototype.hasOwnProperty.call(data, "activity")) typingRowRuntime.updateActivityPeek(data.activity);
       const running = Boolean(turnOpen || nowBusy);
       const queueLen = Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
       sessionState.applyRuntime({ running, queueLen, token: data.token || null });

@@ -76,7 +76,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
         function createMessageFlow() {{
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
-            updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
+            updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog, currentGeneration: () => 1, isAppDisposed: () => false,

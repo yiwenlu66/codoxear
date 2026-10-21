@@ -43,7 +43,7 @@ def run_flow(body: str) -> dict:
           sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
           // Every server snapshot replaces the row objects, as a real refresh does.
           const publish = (row) => sessionCatalog.applySnapshot({{ latestSessions: [{{ session_id: "sid", agent_backend: "pi", ...row }}] }});
-          const typingRowRuntime = {{ snapshot: () => ({{ stats: {{}} }}), updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop }};
+          const typingRowRuntime = {{ snapshot: () => ({{ stats: {{}} }}), updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop }};
           let echoCounter = 0;
           const options = {{
             sessionState, sessionCatalog,

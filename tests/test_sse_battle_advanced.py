@@ -487,7 +487,7 @@ const options = new Proxy({{
   activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),
   resolveAppUrl: (path) => "https://phone.tailnet.example" + path,
   visibilityState: () => visibility, EventSource: FakeEventSource,
-  typingRowRuntime: {{ snapshot: () => ({{ stats: {{}} }}), updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop }},
+  typingRowRuntime: {{ snapshot: () => ({{ stats: {{}} }}), updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop }},
   setTimeout: (callback, delay) => {{ const timer = {{ callback, delay, cleared: false }}; timers.push(timer); return timer; }},
   clearTimeout: (timer) => {{ if (timer) timer.cleared = true; }}, now: () => 1000,
 }}, {{ get: (target, key) => key in target ? target[key] : noop }});

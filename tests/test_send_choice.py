@@ -74,7 +74,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
           const noop = () => {{}};
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
-            updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
+            updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
           }};
           return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
             sessionState, sessionCatalog,

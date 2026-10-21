@@ -110,7 +110,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
         const noop = () => {{}};
         const typingRowRuntime = {{
           snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, tools: 0 }} }}),
-          updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
+          updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid");

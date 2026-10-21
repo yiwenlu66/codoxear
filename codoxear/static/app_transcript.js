@@ -403,10 +403,15 @@
     let typingRow = null;
     let typingStatsNode = null;
     let typingSubagentDetailsNode = null;
+    let activityPeekNode = null;
     let typingRowVisible = false;
     let typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
     let typingSubagents = 0;
     let typingSubagentDetails = [];
+    // Ephemeral "current action" line: chrome, not transcript content. Newer
+    // activity replaces it; resetTypingStats (turn close, new human turn,
+    // reset) clears it.
+    let activityPeek = null;
     let subagentActivityRow = null;
     let subagentActivityTextNode = null;
     let subagentActivityDetailsNode = null;
@@ -467,6 +472,11 @@
       typingStatsNode.textContent = text || (typingRowVisible ? "working" : "");
     }
 
+    function renderActivityPeek() {
+      if (!activityPeekNode) return;
+      activityPeekNode.textContent = activityPeek ? `${activityPeek.label}${activityPeek.running ? "…" : ""}` : "";
+    }
+
     function ensureSubagentActivityRow() {
       if (subagentActivityRow && subagentActivityRow.isConnected) return subagentActivityRow;
       const row = el("div", { class: "msg-row assistant subagent-activity-row" });
@@ -519,13 +529,16 @@
         el("span", { class: "typingDot" }),
       ]);
       typingStatsNode = el("span", { class: "typingStats", "aria-hidden": "true" });
+      activityPeekNode = el("div", { class: "activityPeekLine" });
       typingSubagentDetailsNode = el("div", { class: "subagentDetails" });
       const header = el("div", { class: "subagentActivityHeader" }, [dots, typingStatsNode]);
       bubble.appendChild(header);
+      bubble.appendChild(activityPeekNode);
       bubble.appendChild(typingSubagentDetailsNode);
       row.appendChild(bubble);
       typingRow = row;
       renderTypingStats();
+      renderActivityPeek();
       renderSubagentDetails();
       return row;
     }
@@ -551,12 +564,26 @@
 
     function resetTypingStats({ resetGauge = false } = {}) {
       typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
+      activityPeek = null;
+      renderActivityPeek();
       if (resetGauge) {
         typingSubagents = 0;
         typingSubagentDetails = [];
       }
       renderTypingStats();
       renderSubagentDetails();
+      return snapshot();
+    }
+
+    // peek is {label, running} or null (clear). Anything that is not a
+    // non-empty string label clears, so a malformed payload cannot leave a
+    // stale action on screen.
+    function updateActivityPeek(peek) {
+      const label = peek && typeof peek === "object" && typeof peek.label === "string" ? peek.label.trim() : "";
+      const hadPeek = Boolean(activityPeek);
+      activityPeek = label ? Object.freeze({ label, running: peek.running === true }) : null;
+      renderActivityPeek();
+      if (!hadPeek && activityPeek && shouldAutoScroll()) scheduleScrollToBottom();
       return snapshot();
     }
 
@@ -606,6 +633,7 @@
       typingRow = null;
       typingStatsNode = null;
       typingSubagentDetailsNode = null;
+      activityPeekNode = null;
       subagentActivityRow = null;
       subagentActivityTextNode = null;
       subagentActivityDetailsNode = null;
@@ -616,6 +644,7 @@
       return Object.freeze({
         connected: Boolean(typingRow && typingRow.isConnected),
         stats: Object.freeze({ ...typingStats }),
+        activity: activityPeek,
       });
     }
 
@@ -626,6 +655,7 @@
       setVisible,
       setSubagentVisible,
       snapshot,
+      updateActivityPeek,
       updateSubagentDetails,
       updateSubagentGauge,
       updateTypingStats,

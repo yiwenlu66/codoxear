@@ -1555,6 +1555,19 @@
       .typingStats:empty {
         display: none;
       }
+      .activityPeekLine {
+        grid-column: 1 / -1;
+        min-width: 0;
+        margin-top: var(--space-2);
+        color: var(--muted);
+        font: var(--font-2xs)/1.4 var(--font-ui);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .activityPeekLine:empty {
+        display: none;
+      }
       .subagentDetails {
         grid-column: 1 / -1;
         min-width: 0;

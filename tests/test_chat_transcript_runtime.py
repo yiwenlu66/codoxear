@@ -32,6 +32,7 @@ function createMessageFlow(state, overrides = {}) {
     snapshot: () => ({ stats: { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 } }),
     updateTypingStats: noop,
     updateSubagentGauge: noop,
+    updateActivityPeek: noop,
     resetTypingStats: () => { state.resets = (state.resets || 0) + 1; },
   };
   const sessionState = state.sessionState || ctx.window.CodoxearSessionState.createSessionState({ consoleError: noop });
@@ -275,7 +276,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               renderSessions: () => true, hasDeferredRefresh: () => false,
               updateTypingStats: flow.updateTypingStatsFromSession, maybeSelectPendingHashSession: noop,
             }});
-            const lines = () => typingRowRuntime.anchor().children[0].children[1].children.map((line) => line.text);
+            const lines = () => typingRowRuntime.anchor().children[0].children.find((node) => node.class === "subagentDetails").children.map((line) => line.text);
             const summary = () => typingRowRuntime.anchor().children[0].children[0].children[1].textContent;
             (async () => {{
               await refresh.refreshSessions();
@@ -527,7 +528,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const projection = ctx.window.CodoxearTranscriptRender.createTypingRowStoreProjection({{ sessionState, typingRowRuntime }});
             const countActivityRows = () => root.children.filter((child) => child.class === "msg-row assistant subagent-activity-row").length;
             const typingBubble = () => typingRowRuntime.anchor().children[0];
-            const lines = () => typingBubble().children[1].children.map((line) => line.text);
+            const lines = () => typingBubble().children.find((node) => node.class === "subagentDetails").children.map((line) => line.text);
             const summary = () => typingBubble().children[0].children[1].textContent;
             const initial = {{ children: root.children.length, activityRows: countActivityRows() }};
             sessionState.applyRuntime({{
@@ -848,7 +849,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const bubble = runtime.anchor().children[0];
             const header = bubble.children[0];
             const stats = header.children[1];
-            const details = bubble.children[1];
+            const details = bubble.children.find((node) => node.class === "subagentDetails");
             const rendered = {{
               text: stats.textContent,
               ariaHidden: stats["aria-hidden"],
@@ -2737,6 +2738,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                     : {{ ...state.stats, ...next }};
                 }},
                 updateSubagentGauge: () => {{}},
+                updateActivityPeek: () => {{}},
                 resetTypingStats: () => {{ state.resets += 1; state.stats = {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }}; }},
               }},
             }});

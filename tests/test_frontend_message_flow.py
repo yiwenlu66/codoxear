@@ -71,6 +71,7 @@ def _run_node(body: str) -> dict:
               }}
             }},
             updateSubagentGauge: noop,
+            updateActivityPeek: noop,
             resetTypingStats: () => {{
               state.resets += 1;
               state.stats = {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }};

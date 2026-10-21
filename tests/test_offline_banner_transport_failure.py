@@ -58,7 +58,7 @@ def run_transport_failure_flow() -> dict:
         }};
         const typingRowRuntime = {{
           snapshot: () => ({{ stats: state.stats }}), updateTypingStats: noop,
-          updateSubagentGauge: noop, resetTypingStats: noop,
+          updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }});
         sessionState.set("selected", "sid");

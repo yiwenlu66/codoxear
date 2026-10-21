@@ -128,7 +128,7 @@ def run_voice_announcement_resume_harness() -> dict:
           }}
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, tools: 0 }} }}),
-            updateTypingStats() {{}}, updateSubagentGauge() {{}}, resetTypingStats() {{}},
+            updateTypingStats() {{}}, updateSubagentGauge() {{}}, resetTypingStats() {{}}, updateActivityPeek() {{}},
           }};
           const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
           sessionCatalog.set("latestSessions", [{{ session_id: "session-a", agent_backend: "pi" }}]);

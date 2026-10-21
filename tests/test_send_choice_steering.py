@@ -60,7 +60,7 @@ def test_send_now_steers_busy_session_via_confirmed_send_without_interrupting() 
         const noop = () => {{}};
         const typingRowRuntime = {{
           snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
-          updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
+          updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
         }};
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
         sessionState.applyRuntime({{ selected: "busy-session", running: true, turnOpen: true }});

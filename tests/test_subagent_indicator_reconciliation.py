@@ -185,6 +185,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             snapshot: concreteTypingRuntime.snapshot,
             updateTypingStats: concreteTypingRuntime.updateTypingStats,
             resetTypingStats: concreteTypingRuntime.resetTypingStats,
+            updateActivityPeek: concreteTypingRuntime.updateActivityPeek,
             setVisible: concreteTypingRuntime.setVisible,
             setSubagentVisible: concreteTypingRuntime.setSubagentVisible,
             updateSubagentGauge: (count) => {{

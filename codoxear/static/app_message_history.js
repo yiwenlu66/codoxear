@@ -290,6 +290,9 @@ function applySessionRuntimeFromTail(sessionId, data) {
   updateTypingStatsFromSession(session, { updateSubagents: false });
   const subagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
   const subagentDetails = session && Array.isArray(session.subagent_details) ? session.subagent_details.slice() : [];
+  // Applied before the runtime commit so a non-busy tail's setVisible(false)
+  // clears it. An absent field leaves the peek alone; an explicit null clears it.
+  if (data && Object.prototype.hasOwnProperty.call(data, "activity")) transcript.typingRowRuntime.updateActivityPeek(data.activity);
   sessionState.applyRuntime({ running: nowBusy, queueLen, token: data ? data.token || null : null, subagentsRunning, subagentDetails });
   if (slot.state === "bound") {
     const s = getSessionIndex().get(sessionId);

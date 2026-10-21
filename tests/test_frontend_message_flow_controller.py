@@ -38,7 +38,7 @@ def run_flow(body: str) -> dict:
           }};
           const typingRowRuntime = {{
             snapshot: () => ({{ stats: state.stats }}), updateTypingStats: noop,
-            updateSubagentGauge: noop, resetTypingStats: noop,
+            updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
           }};
           const options = {{
             sessionState: (() => {{ const store = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: () => {{}} }}); store.applyRuntime({{ selected: state.selected, turnOpen: state.turnOpen, sending: state.sending }}); return store; }})(),
