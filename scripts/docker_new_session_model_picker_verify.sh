@@ -259,7 +259,7 @@ close_dialog_if_open() {
   return 0
 }
 launch_record_count() { "${docker[@]}" exec "$container" sh -lc 'wc -l < "$HOME/.local/share/codoxear/session_launches.jsonl" 2>/dev/null || echo 0' | tr -d '[:space:]'; }
-open_dialog() { browser click '#chatEmptyNewBtn' >/dev/null 2>&1 || fail "could not open the new-session dialog"; wait_for_dialog || fail "new-session dialog never showed a committed model pair"; settle; }
+open_dialog() { browser click '#newBtn' >/dev/null 2>&1 || fail "could not open the new-session dialog"; wait_for_dialog || fail "new-session dialog never showed a committed model pair"; settle; }
 
 browser set viewport 1280 1000 >/dev/null 2>&1 || true
 browser set media light >/dev/null 2>&1 || true
