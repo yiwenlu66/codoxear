@@ -10,6 +10,7 @@ import time
 import urllib.parse
 
 from . import rollout_log as _rollout_log
+from .activity_peek import scan_window_activity
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .session_log_projection import log_revision
@@ -401,6 +402,7 @@ def _project_live_record_window(
     lifecycle remain with their handlers.
     """
     objs = [record.obj for record in records]
+    had_activity, activity = scan_window_activity(objs)
     initial_cc_pending = (
         _rollout_log._cc_pending_tool_ids_before(log_path, after_byte)
         if records and after_byte > 0 and _rollout_log._records_contain_claude_code_rows(records)
@@ -448,6 +450,7 @@ def _project_live_record_window(
         "turn_aborted": bool(flags.get("turn_aborted")),
         "turn_boundaries": pi_turn_boundaries,
         "turn_activity": pi_turn_activity,
+        **({"activity": activity} if had_activity else {}),
         "busy": bool(busy_val),
         "queue_len": int(queue_val),
         "token": token_val,
@@ -476,6 +479,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
             "turn_start": False,
             "turn_end": True,
             "turn_aborted": False,
+            "activity": None,
             "busy": False,
             "queue_len": 0,
             "token": None,
@@ -542,7 +546,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                     # No cursor means this is the first connection: send the
                     # same bounded tail a normal session open receives.
                     if offset is None:
-                        events, before_byte, next_after, has_older = _rollout_log._read_chat_tail_page(current_path, limit=80)
+                        events, before_byte, next_after, has_older, activity = _rollout_log._read_chat_tail_page_with_activity(current_path, limit=80)
                         events = manager._attach_notification_texts(events)
                         events = _attach_history_cursors_impl(events, session=session, encode_cursor=deps.encode_message_cursor)
                         _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, session)
@@ -553,6 +557,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                             "live_cursor": deps.encode_message_cursor(kind="live", session=session, pos=next_after),
                             "events": events,
                             "has_older": bool(has_older),
+                            "activity": activity,
                             "history_cursor": deps.encode_message_cursor(kind="history", session=session, pos=before_byte) if has_older and before_byte > 0 else None,
                             "meta_delta": {"thinking": 0, "thinking_tokens": 0, "tool": 0, "system": 0},
                             "turn_start": False,
@@ -606,6 +611,7 @@ def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, ma
                     _sse_write_event(handler, "message", {
                         **_message_transcript_identity(session),
                         "events": [],
+                        **({"activity": None} if offset is None else {}),
                         "live_cursor": deps.encode_message_cursor(kind="live", session=session, pos=offset) if offset is not None and session.log_path else None,
                         "busy": last_status[0],
                         "queue_len": last_status[1],
@@ -1071,7 +1077,7 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
             events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
-            deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "events": events})
+            deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "events": events, "activity": None})
             deps.record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
             return
         deps.json_response(handler, 404, {"error": "unknown session"})
@@ -1092,6 +1098,7 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
                 "live_cursor": None,
                 "history_cursor": None,
                 "events": [],
+                "activity": None,
                 "has_older": False,
                 "busy": bool(busy_val),
                 "queue_len": int(queue_val),
@@ -1100,7 +1107,7 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
         )
         deps.record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
         return
-    events, before_byte, after_byte, has_older = _rollout_log._read_chat_tail_page(s.log_path, limit=limit)
+    events, before_byte, after_byte, has_older, activity = _rollout_log._read_chat_tail_page_with_activity(s.log_path, limit=limit)
     events = manager._attach_notification_texts(events)
     events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
     live_cursor = deps.encode_message_cursor(kind="live", session=s, pos=after_byte)
@@ -1116,6 +1123,7 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
             "history_cursor": history_cursor,
             "events": events,
             "has_older": bool(has_older),
+            "activity": activity,
             "busy": bool(busy_val),
             "queue_len": int(queue_val),
             "token": token_val,

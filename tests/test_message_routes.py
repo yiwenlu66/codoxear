@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
+
 import codoxear.message_routes as message_routes_module
 
 from codoxear.launch_ledger import POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES
@@ -672,7 +674,7 @@ def test_messages_tail_missing_session_returns_launch_payload_or_404() -> None:
         manager=_MissingManager(),
         deps=deps,
     )
-    assert responses == [(200, {"transcript_state": "pending_bind", "events": []})]
+    assert responses == [(200, {"transcript_state": "pending_bind", "events": [], "activity": None})]
 
 
 def _post_log_recovery_payload(log_path: Path) -> dict[str, object]:
@@ -1325,3 +1327,157 @@ def test_streaming_search_scans_five_megabytes_with_exact_count(record_property)
         assert body["total"] == 7000
         assert len(body["matches"]) == 200
         assert body["truncated"] is True
+
+
+_ACTIVITY_CALL = {
+    "type": "message",
+    "message": {"role": "assistant", "content": [
+        {"type": "toolCall", "id": "t1", "name": "bash", "arguments": {"command": "git diff --stat"}},
+    ]},
+}
+_ACTIVITY_RESULT = {"type": "message", "message": {"role": "toolResult", "toolCallId": "t1", "content": []}}
+_ACTIVITY_THINKING = {"type": "message", "message": {"role": "assistant", "content": [
+    {"type": "thinking", "thinking": "inspect the changes"},
+]}}
+_ACTIVITY_CHAT = {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}
+
+
+@pytest.mark.parametrize("rows,present,expected", [
+    ([], False, None),
+    ([_ACTIVITY_CHAT], False, None),
+    ([_ACTIVITY_CALL], True, {"label": "bash: git diff --stat", "running": True}),
+    ([_ACTIVITY_RESULT], True, None),
+    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], True, None),
+    ([_ACTIVITY_RESULT, _ACTIVITY_CALL], True, {"label": "bash: git diff --stat", "running": True}),
+    ([_ACTIVITY_THINKING], True, {"label": "thinking: inspect the changes", "running": False}),
+])
+def test_live_window_activity_emission(tmp_path, rows, present, expected):
+    log_path = tmp_path / "activity-live.jsonl"
+    log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    deps, _responses, _metrics = _deps()
+    records, after = message_routes_module._rollout_log._read_jsonl_records_from_offset(log_path, 0, max_bytes=100_000)
+    body = message_routes_module._project_live_record_window(
+        records=records, next_after=after, log_path=log_path, after_byte=0,
+        source_revision=None, session=session, session_id="s1", manager=_LiveManager(session), deps=deps,
+    )
+    assert ("activity" in body) is present
+    if present:
+        assert body["activity"] == expected
+
+
+@pytest.mark.parametrize("rows,expected", [
+    ([], None),
+    ([_ACTIVITY_CHAT], None),
+    ([_ACTIVITY_CALL], {"label": "bash: git diff --stat", "running": True}),
+    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], None),
+    ([_ACTIVITY_THINKING], {"label": "thinking: inspect the changes", "running": False}),
+])
+def test_tail_and_sse_bootstrap_seed_same_activity(tmp_path, rows, expected):
+    log_path = tmp_path / "activity-tail.jsonl"
+    log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    deps, responses, _metrics = _deps()
+    manager = _TailManager(session)
+    handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
+    assert responses[0][0] == 200
+    assert responses[0][1]["activity"] == expected
+    handler = _SseHandler()
+    handler._attach_disconnect_flush()
+    handle_messages_live_stream(handler, session_id="s1", query="", manager=manager, deps=deps)
+    raw = handler.wfile.getvalue().decode("utf-8")
+    payload = json.loads(raw.split("data: ", 1)[1].split("\n", 1)[0])
+    assert payload["activity"] == expected
+    assert payload["live_cursor"] == responses[0][1]["live_cursor"]
+
+
+def test_tail_activity_is_bounded_to_the_returned_page(tmp_path):
+    log_path = tmp_path / "activity-bounded.jsonl"
+    # Old activity is outside the returned 20-message page and cannot seed it.
+    rows = [_ACTIVITY_CALL] + [_ACTIVITY_CHAT] * 25
+    log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    deps, responses, _metrics = _deps()
+    handle_messages_tail(_FakeHandler(), session_id="s1", query="limit=20", manager=_TailManager(session), deps=deps)
+    assert responses[0][1]["has_older"] is True
+    assert responses[0][1]["activity"] is None
+
+
+def test_tail_activity_does_not_read_appends_past_its_cursor(tmp_path):
+    log_path = tmp_path / "activity-append.jsonl"
+    log_path.write_text(json.dumps(_ACTIVITY_CALL) + "\n", encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    deps, responses, _metrics = _deps()
+    original_read = message_routes_module._rollout_log._read_chat_tail_page_with_activity
+
+    def read_then_append(path, *, limit):
+        page = original_read(path, limit=limit)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(_ACTIVITY_RESULT) + "\n")
+        return page
+
+    with mock.patch.object(message_routes_module._rollout_log, "_read_chat_tail_page_with_activity", side_effect=read_then_append):
+        handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=_TailManager(session), deps=deps)
+    body = responses[0][1]
+    assert body["activity"] == {"label": "bash: git diff --stat", "running": True}
+    after = decode_message_cursor(body["live_cursor"], kind="live", session=session, secret=_SECRET)
+    handle_messages_live(_FakeHandler(), session_id="s1", query=f"cursor={body['live_cursor']}", manager=_LiveManager(session), deps=deps)
+    assert responses[1][1]["activity"] is None
+    assert after < log_path.stat().st_size
+
+
+def test_pending_transcript_seeds_null_activity(tmp_path):
+    session = _session(str(tmp_path), None)
+    deps, responses, _metrics = _deps()
+    manager = _TailManager(session)
+    handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
+    assert responses[0][1]["activity"] is None
+    handler = _SseHandler()
+    handler._attach_disconnect_flush()
+    handle_messages_live_stream(handler, session_id="s1", query="", manager=manager, deps=deps)
+    raw = handler.wfile.getvalue().decode("utf-8")
+    assert json.loads(raw.split("data: ", 1)[1].split("\n", 1)[0])["activity"] is None
+
+
+def test_failed_launch_tail_seeds_null_activity():
+    deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: {"events": []})
+    manager = SimpleNamespace(refresh_session_meta=lambda _sid: None, get_session=lambda _sid: None)
+    handle_messages_tail(_FakeHandler(), session_id="failed", query="", manager=manager, deps=deps)
+    assert responses[0][1]["activity"] is None
+
+
+def test_sse_reconnect_without_new_records_preserves_activity(tmp_path):
+    log_path = tmp_path / "activity-reconnect.jsonl"
+    log_path.write_text(json.dumps(_ACTIVITY_CALL) + "\n", encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    cursor = encode_message_cursor(kind="live", session=session, pos=log_path.stat().st_size, secret=_SECRET)
+    deps, _responses, _metrics = _deps()
+    handler = _SseHandler()
+    handler._attach_disconnect_flush()
+    handle_messages_live_stream(handler, session_id="s1", query=f"cursor={cursor}", manager=_TailManager(session), deps=deps)
+    raw = handler.wfile.getvalue().decode("utf-8")
+    assert "activity" not in json.loads(raw.split("data: ", 1)[1].split("\n", 1)[0])
+
+
+def test_tail_caches_activity_without_an_additional_log_read(tmp_path):
+    log_path = tmp_path / "activity-cached.jsonl"
+    log_path.write_text(json.dumps(_ACTIVITY_CALL) + "\n", encoding="utf-8")
+    session = _session(str(tmp_path), log_path)
+    deps, responses, _metrics = _deps()
+    manager = _TailManager(session)
+    rollout_log = message_routes_module._rollout_log
+    with mock.patch.object(rollout_log, "_read_chat_page_reverse", wraps=rollout_log._read_chat_page_reverse) as reverse_reader, mock.patch.object(
+        rollout_log, "_read_jsonl_records_from_offset", side_effect=AssertionError("tail must not re-read its window"),
+    ):
+        handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
+        assert responses[-1][1]["activity"] == {"label": "bash: git diff --stat", "running": True}
+        # Callers must not be able to mutate the page cache's activity dict.
+        responses[-1][1]["activity"]["label"] = "caller mutation"
+        handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
+        assert responses[-1][1]["activity"] == {"label": "bash: git diff --stat", "running": True}
+        assert reverse_reader.call_count == 1
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(_ACTIVITY_RESULT) + "\n")
+        handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
+        assert responses[-1][1]["activity"] is None
+        assert reverse_reader.call_count == 2

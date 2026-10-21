@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .activity_peek import ActivityPeek, scan_window_activity
 from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
@@ -109,7 +110,7 @@ def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: 
 
 _TAIL_PAGE_MAX_SCAN_BYTES = 8 * 1024 * 1024
 _TAIL_PAGE_CACHE_MAX_ENTRIES = 64
-_TAIL_PAGE_CACHE: dict[tuple[str, int, int, int], tuple[list[dict[str, Any]], int, int, bool]] = {}
+_TAIL_PAGE_CACHE: dict[tuple[str, int, int, int], tuple[list[dict[str, Any]], int, int, bool, ActivityPeek | None]] = {}
 _TAIL_PAGE_CACHE_ORDER: list[tuple[str, int, int, int]] = []
 _TAIL_PAGE_CACHE_LOCK = threading.Lock()
 
@@ -120,7 +121,7 @@ def _read_chat_page_reverse(
     limit: int,
     before_byte: int | None = None,
     skip_events: int = 0,
-) -> tuple[list[dict[str, Any]], int, bool, int]:
+) -> tuple[list[dict[str, Any]], int, bool, int, list[JsonlRecord]]:
     size = int(log_path.stat().st_size)
     end = size if before_byte is None else max(0, min(int(before_byte), size))
     page_limit = max(0, int(limit))
@@ -128,7 +129,7 @@ def _read_chat_page_reverse(
     scan_limit = _TAIL_PAGE_MAX_SCAN_BYTES if before_byte is None else None
     lower_bound = max(0, end - scan_limit) if scan_limit is not None else 0
     if page_limit <= 0 or end <= 0:
-        return [], 0, False, size
+        return [], 0, False, size, []
 
     newest_first_records: list[JsonlRecord] = []
     skipped = 0
@@ -172,35 +173,42 @@ def _read_chat_page_reverse(
         prior_turn_has_assistant=prior_turn_has_assistant,
     )
     next_before = records[0].start if records else (lower_bound if scan_limit is not None else 0)
-    return events, next_before, has_older, size
+    return events, next_before, has_older, size, records
 
 
 def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
+    events, before_byte, after_byte, has_older, _activity = _read_chat_tail_page_with_activity(log_path, limit=limit)
+    return events, before_byte, after_byte, has_older
+
+
+def _read_chat_tail_page_with_activity(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool, ActivityPeek | None]:
     """Read a recent transcript page without replaying the whole log.
 
     The tail is bounded to the same 8 MiB scale used by the session-list
     scanner.  A cache entry is valid only for one ``(path, size, mtime_ns,
     limit)`` identity, so unchanged reopen/resume requests avoid reparsing and
-    appends naturally read only the new file identity.
+    appends naturally read only the new file identity. Activity is scanned from
+    the very same positioned records and cached with the page, never re-read.
     """
     stat = log_path.stat()
     key = (str(log_path), int(stat.st_size), int(getattr(stat, "st_mtime_ns", 0)), max(0, int(limit)))
     with _TAIL_PAGE_CACHE_LOCK:
         cached = _TAIL_PAGE_CACHE.get(key)
         if cached is not None:
-            events, before_byte, after_byte, has_older = cached
-            return [dict(event) for event in events], before_byte, after_byte, has_older
+            events, before_byte, after_byte, has_older, activity = cached
+            return [dict(event) for event in events], before_byte, after_byte, has_older, activity.copy() if activity is not None else None
 
     result = _read_chat_page_reverse(log_path, limit=limit, before_byte=None, skip_events=0)
-    events, before_byte, has_older, after_byte = result
-    frozen = ([dict(event) for event in events], before_byte, after_byte, has_older)
+    events, before_byte, has_older, after_byte, records = result
+    _relevant, activity = scan_window_activity(record.obj for record in records)
+    frozen = ([dict(event) for event in events], before_byte, after_byte, has_older, activity)
     with _TAIL_PAGE_CACHE_LOCK:
         _TAIL_PAGE_CACHE[key] = frozen
         _TAIL_PAGE_CACHE_ORDER.append(key)
         while len(_TAIL_PAGE_CACHE_ORDER) > _TAIL_PAGE_CACHE_MAX_ENTRIES:
             old_key = _TAIL_PAGE_CACHE_ORDER.pop(0)
             _TAIL_PAGE_CACHE.pop(old_key, None)
-    return [dict(event) for event in events], before_byte, after_byte, has_older
+    return [dict(event) for event in events], before_byte, after_byte, has_older, activity.copy() if activity is not None else None
 
 
 def _extract_positioned_chat_events(
@@ -229,7 +237,7 @@ def _extract_positioned_chat_events(
 
 
 def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
-    events, next_before, has_older, _after_byte = _read_chat_page_reverse(
+    events, next_before, has_older, _after_byte, _records = _read_chat_page_reverse(
         log_path,
         limit=limit,
         before_byte=before_byte,
