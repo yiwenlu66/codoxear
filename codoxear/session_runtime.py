@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Callable, Mapping, MutableMapping
@@ -574,6 +575,30 @@ def broker_runtime_state(state: Mapping[str, Any]) -> BrokerRuntimeState:
     return BrokerRuntimeState(busy=busy_raw, queue_len=int(queue_len_raw), interrupted_idle=interrupted_idle_raw)
 
 
+def broker_send_verdict(state: Mapping[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(state, Mapping):
+        raise ValueError("invalid broker send verdict")
+    if "send_verdict" not in state or state.get("send_verdict") is None:
+        return None
+    value = state.get("send_verdict")
+    if not isinstance(value, dict):
+        raise ValueError("invalid broker send verdict")
+    send_id = value.get("send_id")
+    verdict = value.get("verdict")
+    ts = value.get("ts")
+    if (
+        not isinstance(send_id, str)
+        or not 1 <= len(send_id) <= 120
+        or verdict != "undelivered"
+        or isinstance(ts, bool)
+        or not isinstance(ts, (int, float))
+        or not math.isfinite(float(ts))
+        or ts < 0
+    ):
+        raise ValueError("invalid broker send verdict")
+    return {"send_id": send_id, "verdict": "undelivered", "ts": float(ts)}
+
+
 def broker_runtime_state_with_session_idle_authority(
     state: Mapping[str, Any],
     *,
@@ -617,6 +642,10 @@ def broker_interrupted_idle(state: Mapping[str, Any]) -> bool:
 
 def broker_allows_interrupted_idle_override(state: Mapping[str, Any]) -> bool:
     return broker_runtime_state(state).allows_interrupted_idle_override
+
+
+def set_session_send_verdict(session: Session, value: dict[str, Any] | None) -> None:
+    session.send_verdict = dict(value) if value is not None else None
 
 
 def set_session_interrupted_idle(session: Session, value: bool) -> None:

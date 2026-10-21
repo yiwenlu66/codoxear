@@ -65,6 +65,7 @@ class Session:
     resume_session_id: str | None = None
     pending_attachment: bool = False
     commit_unknown_send: dict[str, Any] | None = None
+    send_verdict: dict[str, Any] | None = None
     sync_send_supported: bool = False
     key_write_errors_supported: bool = False
     interrupted_idle: bool = False

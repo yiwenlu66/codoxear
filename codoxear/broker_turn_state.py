@@ -181,6 +181,33 @@ def _clear_pi_error_probe(st: "State") -> None:
     st.pi_retry_status_active = False
 
 
+def arm_send_latch(
+    st: "State",
+    *,
+    send_id: str | None,
+    text: str,
+    prev_busy: bool,
+    prev_turn_open: bool,
+) -> None:
+    """Associate an idle-origin prompt with the broker's send-latch verdict.
+
+    The caller has already validated ``send_id`` at the control boundary. A
+    published verdict deliberately survives later sends: the browser matches
+    it by id, and a new undelivered send replaces it only when its own latch
+    settles.
+    """
+    if (
+        isinstance(send_id, str)
+        and bool(send_id)
+        and not prev_busy
+        and not prev_turn_open
+        and not text.lstrip().startswith("/")
+    ):
+        st.send_latch_id = send_id
+    else:
+        st.send_latch_id = None
+
+
 def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
     terminal_error_idle = st.turn_open and st.last_pi_error_probe_ts > 0.0 and not st.pi_retry_status_active
@@ -190,6 +217,16 @@ def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
         and st.send_latch_activity_ts is not None
         and st.last_turn_activity_ts <= st.send_latch_activity_ts
     )
+    if latch_settled_idle:
+        if isinstance(st.send_latch_id, str) and st.send_latch_id:
+            st.send_verdict = {
+                "send_id": st.send_latch_id,
+                "verdict": "undelivered",
+                "ts": now_ts,
+            }
+        # One armed latch can publish at most one verdict. This applies even
+        # to control or busy-origin sends, which intentionally have no id.
+        st.send_latch_id = None
     st.busy = False
     st.turn_open = False
     st.turn_has_completion_candidate = False
@@ -224,6 +261,7 @@ def _close_turn_state(st: "State") -> None:
     _clear_pi_error_probe(st)
     st.last_interrupted_idle_ts = 0.0
     st.last_turn_activity_ts = 0.0
+    st.send_latch_id = None
 
 
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
@@ -501,6 +539,8 @@ class State:
     log_off: int = 0
     send_latch_log_off: int | None = None
     send_latch_activity_ts: float | None = None
+    send_latch_id: str | None = None
+    send_verdict: dict[str, Any] | None = None
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
     last_interrupt_hint_ts: float = 0.0

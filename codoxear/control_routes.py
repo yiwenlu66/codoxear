@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -239,8 +240,15 @@ def _handle_send(handler: Any, *, session_id: str, manager: Any, deps: ControlRo
         deps.json_response(handler, 400, {"error": "text required"})
         return
     allow_pending_attachment = bool(obj.get("allow_pending_attachment"))
+    raw_send_id = obj.get("send_id")
+    send_id = raw_send_id.strip() if isinstance(raw_send_id, str) else None
+    if not isinstance(send_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", send_id) is None:
+        send_id = None
     try:
-        res = manager.send(session_id, text, allow_pending_attachment=allow_pending_attachment)
+        send_kwargs: dict[str, Any] = {"allow_pending_attachment": allow_pending_attachment}
+        if send_id is not None:
+            send_kwargs["send_id"] = send_id
+        res = manager.send(session_id, text, **send_kwargs)
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return

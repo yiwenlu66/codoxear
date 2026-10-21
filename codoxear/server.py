@@ -1434,12 +1434,21 @@ class SessionManager:
             resume_row=resume_row,
         )
 
-    def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False, queue_item_id: str | None = None) -> dict[str, Any]:
+    def send(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        allow_pending_attachment: bool = False,
+        queue_item_id: str | None = None,
+        send_id: str | None = None,
+    ) -> dict[str, Any]:
         return self._send_coordinator_for_manager().send(
             session_id,
             text,
             allow_pending_attachment=allow_pending_attachment,
             queue_item_id=queue_item_id,
+            send_id=send_id,
         )
 
     def sent_history(self, session_id: str, *, cursor: str | None, limit: int) -> Any:

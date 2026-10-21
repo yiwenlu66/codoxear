@@ -8,7 +8,9 @@ import sys
 from .post_log_recovery import compose_post_log_bound_failure_record
 from .post_log_recovery import log_needs_post_log_bound_recovery
 from .session_model import Session
+from .session_runtime import broker_send_verdict
 from .session_runtime import set_session_interrupted_idle
+from .session_runtime import set_session_send_verdict
 
 
 @dataclass(frozen=True)
@@ -103,9 +105,11 @@ class SessionControlCoordinator:
             if current:
                 busy_val, queue_len = self.broker_busy_queue(response)
                 interrupted_idle = self.broker_interrupted_idle(response)
+                send_verdict = broker_send_verdict(response)
                 current.busy = busy_val
                 current.queue_len = queue_len
                 set_session_interrupted_idle(current, interrupted_idle)
+                set_session_send_verdict(current, send_verdict)
                 if "token" in response:
                     token = response.get("token")
                     if isinstance(token, dict) or token is None:
@@ -141,11 +145,15 @@ class SessionControlCoordinator:
         raise_commit_unknown: Callable[[str, BaseException | None], None],
         not_ready_error: type[BaseException],
         timeout_errors: tuple[type[BaseException], ...],
+        send_id: str | None = None,
     ) -> dict[str, Any]:
+        request: dict[str, Any] = {"cmd": "send", "text": text, "sync": True}
+        if send_id is not None:
+            request["send_id"] = send_id
         try:
             return self.sock_call(
                 sock,
-                {"cmd": "send", "text": text, "sync": True},
+                request,
                 timeout_s=timeout_s,
                 track_request_sent=True,
             )

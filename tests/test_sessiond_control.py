@@ -56,6 +56,7 @@ def test_sessiond_control_state_tail_and_shutdown_handlers_are_executable() -> N
         "token": {"tokens_in_context": 12},
         "interrupted_idle": False,
         "pi_thinking_command": False,
+        "send_verdict": None,
     }
     state.busy = False
     state.last_interrupted_idle_ts = 42.0
@@ -65,9 +66,15 @@ def test_sessiond_control_state_tail_and_shutdown_handlers_are_executable() -> N
         "token": {"tokens_in_context": 12},
         "interrupted_idle": True,
         "pi_thinking_command": False,
+        "send_verdict": None,
     }
     state.pi_thinking_command = True
     assert _run_handler("state", state=state)["response"]["pi_thinking_command"] is True
+    state.send_verdict = {"send_id": "sessiond-copy", "verdict": "undelivered", "ts": 2.0}
+    response = _run_handler("state", state=state)["response"]
+    assert response["send_verdict"] == state.send_verdict
+    response["send_verdict"]["send_id"] = "changed"
+    assert state.send_verdict["send_id"] == "sessiond-copy"
     assert _run_handler("tail", state=state)["response"] == {"tail": "tail"}
     shutdown = _run_handler("shutdown", state=state)
     assert shutdown["response"] == {"ok": True}
@@ -103,11 +110,12 @@ def test_sessiond_control_async_send_ack_and_key_errors_are_executable() -> None
 
     state.last_interrupt_request_ts = 7.0
     state.last_interrupted_idle_ts = 8.0
-    response = _run_handler("send", {"text": "run"}, state=state, inject=inject)["response"]
+    response = _run_handler("send", {"text": "run", "send_id": "sessiond-1"}, state=state, inject=inject)["response"]
     assert response == {"queued": False, "queue_len": 0}
     assert calls == [(9, "run", b"\r")]
     assert state.busy is True
     assert state.turn_open is True
+    assert state.send_latch_id == "sessiond-1"
     assert state.last_interrupt_request_ts == 0.0
     assert state.last_interrupted_idle_ts == 0.0
 

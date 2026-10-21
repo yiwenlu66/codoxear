@@ -92,6 +92,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
         busy=True,
         queue_len=4,
         commit_unknown_send={"text": "direct", "created_ts": 3.0},
+        send_verdict={"send_id": "replay-1", "verdict": "undelivered", "ts": 9.5},
     )
 
     snapshot = build_active_session_rows_snapshot(
@@ -126,6 +127,10 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     assert row["queue_len"] == 1
     assert row["queue_recovery"] is True
     assert row["commit_unknown_send"] is True
+    assert row["send_verdict"] == {"send_id": "replay-1", "verdict": "undelivered", "ts": 9.5}
+    public_row = build_public_session_row(row, git_branch=None, busy=True)
+    assert public_row["send_verdict"] == {"send_id": "replay-1", "verdict": "undelivered", "ts": 9.5}
+    assert row["send_verdict"] is session.send_verdict
     assert row["unattended_enabled"] is True
     assert row["unattended_request"] == "continue with the refactor"
     assert row["unattended_cooldown_minutes"] == 7
@@ -268,6 +273,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         pending_attachment=True,
         staged_attachments=staged_attachments,
         commit_unknown_send={"text": "maybe", "created_ts": 4.0},
+        send_verdict={"send_id": "s7", "verdict": "undelivered", "ts": 5.0},
         token={"total": 5},
         thinking=6,
         thinking_tokens=1200,
@@ -335,6 +341,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["commit_unknown_send"] is True
     assert row["commit_unknown_send_text"] == "maybe"
     assert row["commit_unknown_send_ts"] == 4.0
+    assert row["send_verdict"] == {"send_id": "s7", "verdict": "undelivered", "ts": 5.0}
     assert row["token"] == {"total": 5}
     assert row["thinking"] == 6
     assert row["thinking_tokens"] == 1200

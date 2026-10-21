@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import socket
 import traceback
 from collections.abc import Callable
@@ -7,6 +8,7 @@ from typing import Any
 
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _clear_pi_error_probe
+from codoxear.broker_turn_state import arm_send_latch
 from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from codoxear.util import _send_socket_json_line
@@ -37,6 +39,7 @@ def _handle_broker_control_connection(
                 "token": st.token,
                 "interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0,
                 "pi_thinking_command": bool(st.pi_thinking_command),
+                "send_verdict": dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None,
             }, None
 
     def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
@@ -50,6 +53,10 @@ def _handle_broker_control_connection(
             return {"error": "text required"}, None
         seq_raw = req.get("enter_seq")
         seq = seq_bytes(seq_raw) if isinstance(seq_raw, str) else encode_enter()
+        raw_send_id = req.get("send_id")
+        send_id = raw_send_id.strip() if isinstance(raw_send_id, str) else None
+        if not isinstance(send_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", send_id) is None:
+            send_id = None
         sync_commit = bool(req.get("sync"))
         fd: int | None = None
         with lock:
@@ -69,6 +76,15 @@ def _handle_broker_control_connection(
             prev_last_turn_activity_ts = st.last_turn_activity_ts
             prev_send_latch_log_off = st.send_latch_log_off
             prev_send_latch_activity_ts = st.send_latch_activity_ts
+            prev_send_latch_id = st.send_latch_id
+            prev_send_verdict = dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None
+            arm_send_latch(
+                st,
+                send_id=send_id,
+                text=text,
+                prev_busy=prev_busy,
+                prev_turn_open=prev_turn_open,
+            )
             _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
@@ -99,6 +115,8 @@ def _handle_broker_control_connection(
                     st.last_turn_activity_ts = prev_last_turn_activity_ts
                     st.send_latch_log_off = prev_send_latch_log_off
                     st.send_latch_activity_ts = prev_send_latch_activity_ts
+                    st.send_latch_id = prev_send_latch_id
+                    st.send_verdict = prev_send_verdict
 
         if sync_commit:
             if fd is None:

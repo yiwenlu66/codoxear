@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from .broker_turn_state import _clear_pi_error_probe
 from .broker_turn_state import _mark_explicit_interrupt_request
+from .broker_turn_state import arm_send_latch
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                 "token": st.token,
                 "interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0,
                 "pi_thinking_command": bool(st.pi_thinking_command),
+                "send_verdict": dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None,
             }, None
 
     def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
@@ -48,6 +51,10 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             return {"error": "text required"}, None
         fd: int | None = None
         enter = deps.encode_enter()
+        raw_send_id = req.get("send_id")
+        send_id = raw_send_id.strip() if isinstance(raw_send_id, str) else None
+        if not isinstance(send_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", send_id) is None:
+            send_id = None
         sync_commit = bool(req.get("sync"))
         with deps.lock:
             st = deps.state()
@@ -65,6 +72,15 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             prev_pi_retry_status_active = st.pi_retry_status_active
             prev_pending_calls = set(st.pending_calls)
             prev_send_latch_activity_ts = st.send_latch_activity_ts
+            prev_send_latch_id = st.send_latch_id
+            prev_send_verdict = dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None
+            arm_send_latch(
+                st,
+                send_id=send_id,
+                text=text,
+                prev_busy=prev_busy,
+                prev_turn_open=prev_turn_open,
+            )
             _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
@@ -91,6 +107,8 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                     st.last_pi_retry_hint_ts = prev_last_pi_retry_hint_ts
                     st.pi_retry_status_active = prev_pi_retry_status_active
                     st.send_latch_activity_ts = prev_send_latch_activity_ts
+                    st.send_latch_id = prev_send_latch_id
+                    st.send_verdict = prev_send_verdict
                     st.pending_calls.clear()
                     st.pending_calls.update(prev_pending_calls)
 

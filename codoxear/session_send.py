@@ -103,7 +103,15 @@ class SessionSendCoordinator:
             return message
         return None
 
-    def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False, queue_item_id: str | None = None) -> dict[str, Any]:
+    def send(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        allow_pending_attachment: bool = False,
+        queue_item_id: str | None = None,
+        send_id: str | None = None,
+    ) -> dict[str, Any]:
         input_lock = self.input_lock_for_session(session_id)
         with input_lock:
             with self.lock:
@@ -169,6 +177,7 @@ class SessionSendCoordinator:
                     raise_commit_unknown=raise_commit_unknown,
                     not_ready_error=self.not_ready_error,
                     timeout_errors=self.timeout_errors,
+                    send_id=send_id,
                 )
                 parsed_send = parse_confirmed_send_response(
                     response,

@@ -22,6 +22,8 @@ class State:
     log_off: int = 0
     send_latch_log_off: int | None = None
     send_latch_activity_ts: float | None = None
+    send_latch_id: str | None = None
+    send_verdict: dict[str, Any] | None = None
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
