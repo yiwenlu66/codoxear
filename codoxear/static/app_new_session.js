@@ -322,6 +322,30 @@ function requireFunction(value, name) {
       return out;
     }
 
+    // Unfiltered browsing is a directory, not a ranked result list: every
+    // configured pair is shown (no 12-item cap), recents first and then one
+    // group per provider, so a long list does not have to repeat the provider
+    // hint on every row. Selection identity is unchanged — a group label is
+    // presentation, and selectNewSessionModel still takes one of these items.
+    function browseModelOptions() {
+      const groups = new Map();
+      for (const item of sessionModelOptions()) {
+        // Provider choices are strings; null is the recents bucket, so a
+        // provider literally named "Recent" cannot collide with it.
+        const key = item.recent ? null : item.providerChoice;
+        const bucket = groups.get(key);
+        if (bucket) bucket.push(item);
+        else groups.set(key, [item]);
+      }
+      const ordered = [];
+      for (const [key, items] of groups) {
+        const groupLabel = key === null ? "Recent" : key || "No provider";
+        for (const item of items) ordered.push({ ...item, groupLabel });
+      }
+      const recent = ordered.filter((item) => item.recent);
+      return recent.length ? [...recent, ...ordered.filter((item) => !item.recent)] : ordered;
+    }
+
     function filteredNewSessionModelOptions() {
       const rawQuery = String(modelInput.value || "").trim();
       const display = displayedNewSessionProviderModel(rawQuery, {
@@ -329,8 +353,8 @@ function requireFunction(value, name) {
         allowCustomProvider: newSessionAllowsCustomProvider(),
       });
       const query = display ? `${display.providerChoice}/${display.model}`.toLowerCase() : rawQuery.toLowerCase();
+      if (!query) return browseModelOptions();
       const options = sessionModelOptions();
-      if (!query) return options.slice(0, 12);
       const exact = options.filter((item) => String(item.model || "").toLowerCase() === query || String(item.searchText || "").toLowerCase() === query);
       const prefix = options.filter((item) => !exact.includes(item) && String(item.searchText || item.model || "").toLowerCase().startsWith(query));
       const contains = options.filter((item) => !exact.includes(item) && !prefix.includes(item) && CodoxearLaunch.modelOptionMatches(item, query));
@@ -815,6 +839,14 @@ function requireFunction(value, name) {
     let cwdMenuFocus = -1;
     let modelMenuOpen = false;
     let modelMenuFocus = -1;
+    // The model field shows either a committed pair or a query being typed, and
+    // the picker must tell them apart. browseRestoreText is the display text
+    // captured when opening the list cleared a committed value: while it is
+    // non-null the field is showing a browse-only empty, so closing without a
+    // selection puts that text back. modelQueryDirty marks content the user
+    // authored: such text is a query to keep, never a value to replace.
+    let browseRestoreText = null;
+    let modelQueryDirty = false;
     let reasoningMenuOpen = false;
     let resumeMenuOpen = false;
     let startBusy = false;
@@ -869,7 +901,7 @@ function requireFunction(value, name) {
 
     function closeMenus() {
       cwdMenuOpen = false; cwdMenuFocus = -1;
-      modelMenuOpen = false; modelMenuFocus = -1;
+      dismissModelPicker();
       reasoningMenuOpen = false;
       resumeMenuOpen = false;
     }
@@ -884,26 +916,69 @@ function requireFunction(value, name) {
       }
     }
 
+    function modelFieldHoldsCommittedSelection() {
+      return !modelQueryDirty && String(modelInput.value || "") !== "";
+    }
+
+    // Opening the list on a committed pair clears it: the displayed
+    // "model · provider" string is a selection, not a query, so leaving it in
+    // place reduced the menu to the current model plus its prefix siblings.
+    function beginModelBrowse() {
+      if (modelQueryDirty) return;
+      if (browseRestoreText === null) browseRestoreText = String(modelInput.value || "");
+      modelInput.value = "";
+      modelMenuFocus = -1;
+      controller.clearNewSessionProviderModelError();
+    }
+
+    // Restoring is conditional on the field still being empty: any edit means
+    // the user took over the field and its content is theirs to keep.
+    function restoreBrowseModelSelection() {
+      if (browseRestoreText === null) return false;
+      if (String(modelInput.value || "") === "") modelInput.value = browseRestoreText;
+      browseRestoreText = null;
+      modelQueryDirty = false;
+      return true;
+    }
+
+    function dismissModelPicker() {
+      restoreBrowseModelSelection();
+      modelMenuOpen = false;
+      modelMenuFocus = -1;
+    }
+
+    function chooseModel(item) {
+      controller.selectNewSessionModel(item);
+      browseRestoreText = null;
+      modelQueryDirty = false;
+    }
+
     function renderModelMenu() {
       modelMenu.innerHTML = "";
       const items = controller.filteredNewSessionModelOptions();
       const raw = String(modelInput.value || "").trim();
       const configured = String(CodoxearLaunch.defaultsForAgentBackend(backend, defaultsSource()).model || "").trim();
       if (modelMenuFocus < 0) {
-        const selected = raw || configured;
+        const selected = raw || browseRestoreText || configured;
         const index = selected ? items.findIndex((item) => item.displayText === selected || item.model === selected) : -1;
         if (index >= 0) modelMenuFocus = index;
       }
       if (modelMenuFocus >= items.length) modelMenuFocus = items.length ? items.length - 1 : -1;
       if (!items.length) { modelMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching models" })); modelInput.removeAttribute("aria-activedescendant"); return items; }
+      let groupLabel = "";
       for (const [index, item] of items.entries()) {
         const title = item.displayText || controller.newSessionProviderModelDisplay(item.model, item.providerChoice);
+        const label = item.groupLabel || "";
+        if (label && label !== groupLabel) {
+          modelMenu.appendChild(el("div", { class: "modelMenuGroup", role: "presentation", text: label }));
+          groupLabel = label;
+        }
         const active = modelMenuFocus === index || (modelMenuFocus < 0 && (raw === title || raw === item.model));
         const btn = el("button", { id: `newSessionModelOption-${index}`, class: "fileMenuItem" + (active ? " active" : ""), type: "button", role: "option", "aria-selected": active ? "true" : "false", "aria-label": title, title });
         btn.appendChild(el("span", { class: "fileMenuPath", text: item.model }));
         if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.providerChoice }));
         btn.onmousedown = (event) => event.preventDefault();
-        btn.onclick = () => controller.selectNewSessionModel(item);
+        btn.onclick = () => chooseModel(item);
         modelMenu.appendChild(btn);
       }
       if (modelMenuFocus >= 0) modelInput.setAttribute("aria-activedescendant", `newSessionModelOption-${modelMenuFocus}`); else modelInput.removeAttribute("aria-activedescendant");
@@ -918,7 +993,7 @@ function requireFunction(value, name) {
       assignLiteralModelInputValue: (value) => { literalModelInputValue = value; }, assignLaunchPresetProviderAbsent: (value) => { launchPresetProviderAbsent = Boolean(value); },
       modelInput, modelField, status, reasoningBtn, setPickerButtonContent, renderReasoningMenu, renderModelMenu,
       setFast: (value) => { fast = !!value; fastToggle.checked = fast; }, setBackend: (value, opts) => setBackend(value, opts), setTmuxChecked: (value) => { tmuxToggle.checked = value; }, applyDialogMenus,
-      closeModelMenu: () => { modelMenuOpen = false; modelMenuFocus = -1; }, cwdInput, cwdMenu, cwdField, cwdHint, nameInput,
+      closeModelMenu: dismissModelPicker, cwdInput, cwdMenu, cwdField, cwdHint, nameInput,
       cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, closeCwdMenu: () => { cwdMenuOpen = false; cwdMenuFocus = -1; }, el,
       resumeMenu, resumeBtn, closeResumeMenu: () => { resumeMenuOpen = false; }, fetchResumeCandidates,
       tmuxToggle, tmuxField, worktreeToggle, worktreeInput, worktreeField, startBtn,
@@ -963,6 +1038,8 @@ function requireFunction(value, name) {
         modelInput.value = controller.newSessionProviderModelDisplay(pair.model || modelDefault || "default", pair.providerAbsent ? "" : pair.providerChoice || provider);
         literalModelInputValue = pair.providerAbsent ? modelInput.value : "";
         launchPresetProviderAbsent = Boolean(pair.providerAbsent);
+        browseRestoreText = null;
+        modelQueryDirty = false;
         controller.clearNewSessionProviderModelError();
       }
       const choices = controller.currentReasoningChoices();
@@ -995,7 +1072,7 @@ function requireFunction(value, name) {
       prepareModalOpen();
       const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : like && like.cwd && like.cwd !== "?" ? like.cwd : current && current.cwd && current.cwd !== "?" ? current.cwd : "";
       const initialBackend = (like ? CodoxearLaunch.sessionAgentBackend(like) : current ? CodoxearLaunch.sessionAgentBackend(current) : "") || CodoxearLaunch.loadRememberedBackendChoice() || CodoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
-      status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false;
+      status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false; browseRestoreText = null; modelQueryDirty = false;
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
       backdrop.style.display = "block"; viewer.style.display = "flex"; afterModalVisibilityChanged(); controller.scheduleNewSessionResumeLoad(); controller.syncNewSessionTmuxUi(); controller.syncNewSessionWorktreeUi();
@@ -1006,6 +1083,9 @@ function requireFunction(value, name) {
       if (startBusy) return;
       const cwd = String(cwdInput.value || "").trim(); const agentBackend = backend; controller.setNewSessionCwdError("");
       if (!cwd) { status.textContent = ""; controller.setNewSessionCwdError("Working directory is required."); return; }
+      // A browse-only empty is a UI state, not a choice: launch the pair the
+      // field was showing before the list was opened.
+      restoreBrowseModelSelection();
       const parsed = controller.syncNewSessionProviderFromModelInput();
       if (parsed.providerError) { status.textContent = parsed.providerError; return; }
       const providerChoice = String(parsed.providerAbsent ? "" : parsed.providerChoice || provider || "").trim(); const model = String(parsed.model || "default").trim() || "default";
@@ -1018,19 +1098,37 @@ function requireFunction(value, name) {
     }
 
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();
-    resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); resumeMenuOpen = !resumeMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; modelMenuOpen = false; modelMenuFocus = -1; reasoningMenuOpen = false; applyDialogMenus(); };
-    cwdInput.onclick = () => { cwdMenuFocus = -1; controller.renderRecentCwdMenu(); cwdMenuOpen = true; modelMenuOpen = false; modelMenuFocus = -1; resumeMenuOpen = false; applyDialogMenus(); };
-    cwdInput.oninput = () => { cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; modelMenuOpen = false; modelMenuFocus = -1; controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
+    resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); dismissModelPicker(); resumeMenuOpen = !resumeMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; applyDialogMenus(); };
+    cwdInput.onclick = () => { cwdMenuFocus = -1; controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
+    cwdInput.oninput = () => { cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
     cwdInput.onblur = () => win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } });
-    cwdInput.onkeydown = (event) => { const items = controller.renderRecentCwdMenu(); if (event.key === "ArrowDown" || event.key === "ArrowUp") { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; modelMenuOpen = false; modelMenuFocus = -1; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } else if (event.key === "Tab" && cwdMenuOpen) { cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } };
-    modelInput.onclick = () => { modelMenuFocus = -1; renderModelMenu(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
-    modelInput.oninput = () => { literalModelInputValue = ""; launchPresetProviderAbsent = false; modelMenuFocus = -1; controller.syncNewSessionProviderFromModelInput(); renderModelMenu(); controller.setNewSessionReasoningEffort(reasoningEffort); renderReasoningMenu(); modelMenuOpen = true; reasoningMenuOpen = false; applyDialogMenus(); };
-    modelInput.onblur = () => win.requestAnimationFrame(() => { if (!modelField.contains(doc.activeElement)) { modelMenuOpen = false; modelMenuFocus = -1; applyDialogMenus(); } });
-    modelInput.onkeydown = (event) => { const items = renderModelMenu(); if (event.key === "ArrowDown" || event.key === "ArrowUp") { if (!items.length) return; event.preventDefault(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; modelMenuFocus = modelMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (modelMenuFocus + delta + items.length) % items.length; renderModelMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionModelOption-${modelMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && modelMenuOpen && modelMenuFocus >= 0 && items[modelMenuFocus]) { event.preventDefault(); controller.selectNewSessionModel(items[modelMenuFocus]); return; } if (event.key === "Escape" && modelMenuOpen) { event.preventDefault(); event.stopPropagation(); modelMenuOpen = false; modelMenuFocus = -1; applyDialogMenus(); } else if (event.key === "Tab" && modelMenuOpen) { modelMenuOpen = false; modelMenuFocus = -1; applyDialogMenus(); } };
+    cwdInput.onkeydown = (event) => { const items = controller.renderRecentCwdMenu(); if (event.key === "ArrowDown" || event.key === "ArrowUp") { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } else if (event.key === "Tab" && cwdMenuOpen) { cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } };
+    modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
+    // The first edit of a committed pair replaces it: clearing here means the
+    // typed character or paste lands in an empty field instead of appending to
+    // "model · provider" (which parsed to a garbage model id).
+    modelInput.onbeforeinput = (event) => {
+      const inputType = String(event && event.inputType || "");
+      if (!inputType.startsWith("insert") && !inputType.startsWith("delete")) return;
+      if (modelFieldHoldsCommittedSelection()) modelInput.value = "";
+      browseRestoreText = null;
+      modelQueryDirty = true;
+    };
+    modelInput.oninput = () => { modelQueryDirty = true; browseRestoreText = null; literalModelInputValue = ""; launchPresetProviderAbsent = false; modelMenuFocus = -1; controller.syncNewSessionProviderFromModelInput(); renderModelMenu(); controller.setNewSessionReasoningEffort(reasoningEffort); renderReasoningMenu(); modelMenuOpen = true; reasoningMenuOpen = false; applyDialogMenus(); };
+    modelInput.onblur = () => win.requestAnimationFrame(() => { if (!modelField.contains(doc.activeElement)) { dismissModelPicker(); applyDialogMenus(); } });
+    modelInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !modelMenuOpen) beginModelBrowse(); const items = renderModelMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; modelMenuFocus = modelMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (modelMenuFocus + delta + items.length) % items.length; renderModelMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionModelOption-${modelMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && modelMenuOpen && modelMenuFocus >= 0 && items[modelMenuFocus]) { event.preventDefault(); chooseModel(items[modelMenuFocus]); return; } if (event.key === "Escape" && modelMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); applyDialogMenus(); } else if (event.key === "Tab" && modelMenuOpen) { dismissModelPicker(); applyDialogMenus(); } };
     worktreeToggle.onchange = () => { controller.syncNewSessionWorktreeUi(); if (worktreeToggle.checked) worktreeInput.focus(); }; worktreeInput.oninput = () => controller.syncNewSessionWorktreeUi(); fastToggle.onchange = () => { fast = !!fastToggle.checked; };
-    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; modelMenuOpen = false; modelMenuFocus = -1; resumeMenuOpen = false; applyDialogMenus(); };
+    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; resumeMenuOpen = false; applyDialogMenus(); };
     startBtn.onclick = start;
     addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
+    // A full model list is the first menu here whose tail a keyboard opening
+    // after the tap can push out of the visual viewport; positionDialogMenu
+    // only runs from applyDialogMenus.
+    if (win.visualViewport) {
+      addEvent(win.visualViewport, "resize", () => {
+        if (modelMenuOpen || cwdMenuOpen || reasoningMenuOpen || resumeMenuOpen) applyDialogMenus();
+      });
+    }
 
     function refreshDefaults() {
       if (!isModalTargetOpen(viewer)) return;

@@ -100,6 +100,47 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         pairs = {(item["providerChoice"], item["model"]) for item in result["options"]}
         self.assertEqual(pairs, {("chatgpt", "gpt-5.4"), ("crs", "kimi-k3")})
 
+    def test_browse_with_no_query_lists_every_model_grouped_after_recents(self) -> None:
+        provider_models = {
+            "chatgpt": [f"m{index}" for index in range(20)],
+            "openai-api": [f"m{index}" for index in range(20)],
+        }
+        result = eval_model_options(
+            "",
+            provider_choices=["chatgpt", "openai-api"],
+            provider_models=provider_models,
+            latest_sessions=[
+                {"agent_backend": "codex", "model": "m3", "model_provider": "openai", "preferred_auth_method": "chatgpt"},
+            ],
+        )
+        filtered = result["filtered"]
+        pairs = [(item["providerChoice"], item["model"]) for item in filtered]
+        # Every configured pair is reachable and exactly once: no 12-item cap.
+        self.assertEqual(len(pairs), 40)
+        self.assertEqual(len(set(pairs)), 40)
+        self.assertGreater(len(pairs), 12)
+        # Recents lead, then one group per provider in first-appearance order.
+        self.assertEqual(filtered[0]["model"], "m3")
+        self.assertEqual(filtered[0]["groupLabel"], "Recent")
+        labels = []
+        for item in filtered:
+            if not labels or labels[-1] != item["groupLabel"]:
+                labels.append(item["groupLabel"])
+        self.assertEqual(labels, ["Recent", "chatgpt", "openai-api"])
+        self.assertEqual({item["groupLabel"] for item in filtered if not item["recent"]}, {"chatgpt", "openai-api"})
+
+    def test_query_results_stay_ranked_and_capped_at_twelve(self) -> None:
+        result = eval_model_options(
+            "m",
+            provider_choices=["chatgpt"],
+            provider_models={"chatgpt": [f"m{index}" for index in range(30)]},
+            latest_sessions=[],
+        )
+        filtered = result["filtered"]
+        self.assertEqual(len(filtered), 12)
+        self.assertTrue(all("groupLabel" not in item for item in filtered))
+        self.assertTrue(all(str(item["model"]).startswith("m") for item in filtered))
+
     def test_long_provider_is_shown_without_abbreviation_and_preserves_identity(self) -> None:
         result = eval_model_options("", provider_choices=["chatgpt", "openai-api", "dexgem-completions"])
         # Providers are shown in full — lossy abbreviation is non-injective and

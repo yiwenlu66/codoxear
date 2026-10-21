@@ -3365,6 +3365,19 @@ select {
       #newSessionModelMenu .fileMenuItem {
         align-items: flex-start;
       }
+      /* Browse mode lists every configured pair, so provider groups keep a long
+         list scannable. The label sticks while its rows scroll under it. */
+      #newSessionModelMenu .modelMenuGroup {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: var(--space-2) var(--space-5);
+        border-bottom: 1px solid var(--border-faint);
+        background: var(--paper);
+        color: var(--muted);
+        font-family: var(--font-mono);
+        font-size: var(--font-xs);
+      }
       #newSessionModelMenu .fileMenuPath,
       #newSessionModelMenu .fileMenuHint {
         min-width: 0;
