@@ -321,6 +321,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       sidebarSessionEntries: options.sidebarSessionEntries,
       storageRemoveItem: options.storageRemoveItem,
       storageSetItem: options.storageSetItem,
+      restoreUndeliveredDraft: options.restoreUndeliveredDraft,
       textarea: options.textarea,
       window: options.window,
       wiring: options.wiring,

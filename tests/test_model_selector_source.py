@@ -99,7 +99,7 @@ class TestComposerModelPicker(unittest.TestCase):
               getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop,
               appendEvent: noop, deleteTailCache: noop, beginTranscriptRenewal: noop,
               clearLiveCursor: noop, invalidateOlderLoad: noop, renderPendingTranscriptSlot: noop,
-              dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+              dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
               enqueueComposerText: async () => true, prepareModalOpen: noop,
               afterModalVisibilityChanged: noop, restoreModalFocus: noop,
               storageGetItem: () => "", storageSetItem: noop, storageRemoveItem: noop,

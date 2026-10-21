@@ -135,7 +135,7 @@ def test_model_command_refreshes_session_listing_again_after_backend_applies_cha
           confirmAction: async () => false, setToast: noop, isTranscriptRenewalCommand: () => false, nextLocalEchoId: () => 1,
           renderedAtLiveTail: () => true, clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
           getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop,
-          clearLiveCursor: noop, invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+          clearLiveCursor: noop, invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
           visibilityState: () => "visible", navigatorValue: () => ({{ onLine: true }}), EventSource: null, AbortController: null,
           setTimeout: (callback, delay) => {{ timers.push({{ callback, delay }}); return timers.length; }}, clearTimeout: noop,
           now: () => 1000, consoleWarn: noop, consoleError: noop,

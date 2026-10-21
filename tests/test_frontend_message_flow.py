@@ -129,7 +129,7 @@ def _run_node(body: str) -> dict:
             invalidateOlderLoad: noop,
             dropPendingUser: noop,
             removePendingUserRow: noop,
-            hasPendingForSession: () => false,
+            hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
             visibilityState: () => "visible",
             navigatorValue: () => ({{ onLine: true }}),
             EventSource: null,

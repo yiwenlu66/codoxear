@@ -66,7 +66,7 @@ function createMessageFlow(state, overrides = {}) {
     nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, clearTranscriptDom: noop,
     clearRenderedTranscriptRange: noop, setOlderState: noop, getSessionTranscriptSlot: () => ({ epoch: 0 }),
     addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
-    invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+    invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
     visibilityState: () => "visible", navigatorValue: () => ({ onLine: true }), EventSource: null,
     AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 1000,
     consoleWarn: noop, consoleError: noop,
@@ -169,7 +169,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               confirmAction: async () => false, setToast: noop, isTranscriptRenewalCommand: () => false,
               nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
               addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
-              invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+              invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
               visibilityState: () => "hidden", navigatorValue: () => ({{ onLine: true }}), EventSource: null,
               AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 0, consoleWarn: noop, consoleError: noop,
             }});

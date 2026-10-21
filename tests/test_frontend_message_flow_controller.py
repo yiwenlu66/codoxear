@@ -64,7 +64,7 @@ def run_flow(body: str) -> dict:
             nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, clearTranscriptDom: noop,
             clearRenderedTranscriptRange: noop, setOlderState: noop, getSessionTranscriptSlot: () => ({{ epoch: 1 }}),
             addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
-            invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+            invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
             visibilityState: () => "visible", navigatorValue: () => ({{ onLine: true }}),
             EventSource: null, AbortController: null, setTimeout: () => 0, clearTimeout: noop,
             now: () => 1000, consoleWarn: noop, consoleError: noop, ...overrides,

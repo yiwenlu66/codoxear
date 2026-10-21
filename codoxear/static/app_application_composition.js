@@ -202,6 +202,18 @@ import * as CodoxearWiring from "./app_wiring.js";
           const sid = sessionState.get("selected");
           if (sid && draftSyncController) draftSyncController.handleSendCleared(sid);
         }
+        // The send-verdict seam: an undelivered prompt goes back through the
+        // same single textarea writer (`setDraftFromServer`) and is persisted
+        // like a typed edit. A non-empty draft means the user already moved on;
+        // never clobber it (the prompt stays recallable from the sent journal).
+        function restoreUndeliveredDraft(sessionId, text) {
+          if (!composerController || !sessionId) return false;
+          if (sessionState.get("selected") !== sessionId) return false;
+          if (String(textarea.value || "").trim() !== "") return false;
+          composerController.setDraftFromServer(sessionId, text);
+          if (draftSyncController) draftSyncController.noteDraftEdited(text);
+          return true;
+        }
         function saveSelectedComposerDraft(sessionId) {
           if (composerController) composerController.saveSessionDraft(sessionId);
         }
@@ -601,6 +613,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionProviderChoice: sessionProviderChoice,
           queueViewer: queueViewer,
           refreshQueueViewer: refreshQueueViewer,
+          restoreUndeliveredDraft: restoreUndeliveredDraft,
           isAppDisposed: () => appDisposed,
           isFileViewerOpen: () => fileOpsController.isFileViewerOpen(),
           upgradeCandidateFileRefs: (...args) => fileOpsController.fileReferenceRuntime.upgradeCandidateRefs(...args),

@@ -86,7 +86,7 @@ def run_transport_failure_flow() -> dict:
           renderedAtLiveTail: () => true, clearTranscriptDom: noop, clearRenderedTranscriptRange: noop,
           setOlderState: noop, getSessionTranscriptSlot: () => ({{ epoch: 1 }}), addPendingUser: noop,
           deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
-          dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+          dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
           visibilityState: () => "visible", navigatorValue: () => navigatorLike,
           reportTransportSuccess: () => networkStatus.reportSuccess(), reportTransportFailure: () => networkStatus.reportFailure(),
           EventSource: FakeEventSource, AbortController: null,

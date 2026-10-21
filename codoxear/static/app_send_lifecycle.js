@@ -32,7 +32,7 @@
       confirmApp, dataTransferHasFiles, document, el,
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
       imgInput, isLikelyHeic, looksLikeImage, navigator, networkStatus,
-      resizeComposer, resolveAppUrl,
+      resizeComposer, resolveAppUrl, restoreUndeliveredDraft,
       safeAttachmentStem, sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIsOrphanRecovery, sessionLaunchFailed, setTimeout, setToast,
       textarea, window, wiring
     } = options;
@@ -129,6 +129,7 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
     else pendingEl.remove();
   },
   hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
+  restoreUndeliveredDraft,
   visibilityState: () => document.visibilityState,
   navigatorValue: () => (typeof navigator === "undefined" ? undefined : navigator),
   reportTransportSuccess: () => networkStatus.reportSuccess(),

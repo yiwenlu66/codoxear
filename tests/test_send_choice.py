@@ -99,7 +99,7 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
             clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
             getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, deleteTailCache: noop,
             beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
-            dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+            dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
             visibilityState: () => "visible", navigatorValue: () => ({{ onLine: true }}), EventSource: null,
             AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 1000,
             consoleWarn: noop, consoleError: noop,

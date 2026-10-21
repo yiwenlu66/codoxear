@@ -35,6 +35,18 @@ import * as CodoxearTranscript from "./app_transcript.js";
     return slashCommandName(raw) === "model";
   }
 
+  // Send identity: the server echoes it back inside the session row's
+  // send_verdict, which is how a verdict finds the exact send it judges.
+  // Charset/length mirror the server's send_id validation.
+  const OUTSTANDING_DELIVERY_CAP = 32;
+  const OUTSTANDING_DELIVERY_MAX_AGE_SECONDS = 15 * 60;
+  let sendIdCounter = 0;
+
+  function nextSendId(nowMs) {
+    sendIdCounter += 1;
+    return `s${sendIdCounter}-${Math.floor(nowMs).toString(36)}`;
+  }
+
   function createMessageFlowController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("message flow dependency missing: options");
 
@@ -103,6 +115,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
     const dropPendingUser = requireFunction(options.dropPendingUser, "dropPendingUser");
     const removePendingUserRow = requireFunction(options.removePendingUserRow, "removePendingUserRow");
     const hasPendingForSession = requireFunction(options.hasPendingForSession, "hasPendingForSession");
+    const restoreUndeliveredDraft = requireFunction(options.restoreUndeliveredDraft, "restoreUndeliveredDraft");
 
     const visibilityState = typeof options.visibilityState === "function" ? options.visibilityState : () => document.visibilityState;
     const navigatorValue = typeof options.navigatorValue === "function" ? options.navigatorValue : () => (typeof navigator === "undefined" ? undefined : navigator);
@@ -129,6 +142,50 @@ import * as CodoxearTranscript from "./app_transcript.js";
     let messagePollErrorStreak = 0;
     let messageTransportUnavailable = false;
     let pollFastUntilMs = 0;
+    // Plain idle-origin sends awaiting a delivery verdict, keyed by sendId.
+    // Insertion order is age order, so the first key is always the oldest.
+    const outstandingDeliveries = new Map();
+
+    function recordOutstandingDelivery(sendId, record) {
+      for (const [id, entry] of outstandingDeliveries) {
+        if (record.ts - entry.ts > OUTSTANDING_DELIVERY_MAX_AGE_SECONDS) outstandingDeliveries.delete(id);
+      }
+      outstandingDeliveries.set(sendId, record);
+      while (outstandingDeliveries.size > OUTSTANDING_DELIVERY_CAP) {
+        outstandingDeliveries.delete(outstandingDeliveries.keys().next().value);
+      }
+    }
+
+    // The optimistic echo claimed the prompt reached the backend; an
+    // `undelivered` verdict for that exact send_id says it did not (a modal
+    // startup gate in the PTY swallowed it). Retract the echo, undo the
+    // optimistic busy state as the transport-error path does, and hand the
+    // text back to the composer. Deleting the record first makes a repeated
+    // verdict (every catalog snapshot re-carries it) a no-op.
+    function reconcileUndeliveredSends() {
+      if (!outstandingDeliveries.size) return;
+      const index = sessionCatalog.get("sessionIndex");
+      for (const [sendId, record] of [...outstandingDeliveries]) {
+        const row = index && typeof index.get === "function" ? index.get(record.sessionId) : null;
+        const verdict = row && row.send_verdict;
+        if (!verdict || typeof verdict !== "object" || verdict.verdict !== "undelivered" || verdict.send_id !== sendId) continue;
+        outstandingDeliveries.delete(sendId);
+        const { sessionId, localId, text } = record;
+        dropPendingUser(sessionId, localId);
+        removePendingUserRow(localId);
+        if (!hasPendingForSession(sessionId) && sessionState.get("selected") === sessionId) {
+          sessionState.set("turnOpen", false);
+          sessionState.applyRuntime({ running: false });
+        }
+        setToast(restoreUndeliveredDraft(sessionId, text)
+          ? "prompt did not reach the backend — restored to draft"
+          : "prompt did not reach the backend — recall it with ↑ on an empty composer");
+      }
+    }
+
+    const unsubscribeSessionIndex = typeof sessionCatalog.subscribe === "function"
+      ? sessionCatalog.subscribe("sessionIndex", reconcileUndeliveredSends)
+      : () => {};
 
     function isCurrent(sessionId, generation) {
       return !isAppDisposed() && sessionState.get("selected") === sessionId && currentGeneration() === generation;
@@ -328,6 +385,8 @@ import * as CodoxearTranscript from "./app_transcript.js";
       messagePollErrorStreak = 0;
       messageTransportUnavailable = false;
       pollFastUntilMs = 0;
+      unsubscribeSessionIndex();
+      outstandingDeliveries.clear();
     }
 
     function updateTypingStatsFromSession(session, { updateRuntime = true, updateSubagents = true } = {}) {
@@ -617,6 +676,11 @@ import * as CodoxearTranscript from "./app_transcript.js";
 
       const localId = nextLocalEchoId();
       const startedAt = now() / 1000;
+      // Only a send that opens a turn can be judged undelivered: a steering
+      // send into a busy turn, or a control command, has no new turn to miss.
+      const awaitsVerdict = renderHere && !continuesOpenTurn && !isControlSlashCommand;
+      const sendId = awaitsVerdict ? nextSendId(now()) : null;
+      if (sendId) recordOutstandingDelivery(sendId, { sessionId, localId, text: raw, ts: startedAt });
       if (renderHere && !continuesOpenTurn && !isControlSlashCommand) typingRowRuntime.resetTypingStats();
       if (renderHere && !renewsTranscript && !isControlSlashCommand) {
         // NEVER clear the transcript on send. Just scroll to bottom
@@ -628,7 +692,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         sessionState.applyRuntime({ running: true });
       }
       try {
-        const response = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
+        const response = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment, ...(sendId ? { send_id: sendId } : {}) } });
         if (renderHere && renewsTranscript) {
           deleteTailCache(sessionId);
           beginTranscriptRenewal(sessionId);
@@ -667,6 +731,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
         }
         return true;
       } catch (error) {
+        // The send failed in transit and the composer keeps the text, so
+        // there is no verdict to wait for.
+        if (sendId) outstandingDeliveries.delete(sendId);
         if (error && error.status === 401) {
           handleAppAuthLoss();
           return false;
