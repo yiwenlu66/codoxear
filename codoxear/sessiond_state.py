@@ -23,6 +23,9 @@ class State:
     send_latch_log_off: int | None = None
     send_latch_activity_ts: float | None = None
     send_latch_id: str | None = None
+    # First moment the backend was observed able to read input (a bound log, or
+    # Pi's live bridge marker written from session_start). 0.0 means "never".
+    backend_ready_ts: float = 0.0
     send_verdict: dict[str, Any] | None = None
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False

@@ -228,6 +228,39 @@ def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> 
     return resolved
 
 
+def _pi_bridge_session_is_live(marker_path: Path, *, sessions_dir: Path, process_pid: int) -> bool:
+    """Return whether this Pi process has published its live session marker.
+
+    The bridge writes the marker from ``session_start``, which Pi emits after
+    its interactive UI has started and is therefore already reading stdin. A
+    marker written by another process, or one that names no session file under
+    the sessions directory, proves nothing about this process.
+    """
+    if not isinstance(process_pid, int) or process_pid <= 0:
+        return False
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict) or data.get("version") != 1:
+        return False
+    if data.get("pid") != process_pid:
+        return False
+    raw = data.get("sessionFile")
+    if not isinstance(raw, str) or not raw.strip() or not raw.endswith(".jsonl"):
+        return False
+    path = Path(raw).expanduser()
+    try:
+        resolved = path.resolve()
+    except Exception:
+        resolved = path
+    try:
+        resolved.relative_to(sessions_dir.resolve())
+    except Exception:
+        return False
+    return True
+
+
 def _read_pi_active_session_commands(
     marker_path: Path,
     *,

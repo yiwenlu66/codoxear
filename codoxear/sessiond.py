@@ -22,6 +22,7 @@ from .agent_backend import normalize_agent_backend
 from .broker_launch import _ensure_pi_approve_args
 from .broker_launch import _ensure_pi_bridge_args
 from .broker_launch import _pi_active_session_marker_path
+from .broker_launch import _pi_bridge_session_is_live
 from .broker_launch import PiActiveSessionMarkerObserver
 from .broker_launch import _read_pi_active_session_marker_state
 from .broker_launch import _read_pi_active_session_marker_capability
@@ -31,6 +32,7 @@ from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
 from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from .broker_turn_state import _update_busy_from_pty_text
+from .broker_turn_state import mark_backend_ready
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
@@ -152,6 +154,15 @@ class Sessiond:
         with self._lock:
             st = self.state
             if st is not None:
+                if st.backend_ready_ts <= 0.0 and _pi_bridge_session_is_live(
+                    self.pi_active_session_marker_path,
+                    sessions_dir=self.sessions_dir,
+                    process_pid=process_pid,
+                ):
+                    # The bridge marker proves the Pi UI is up and reading
+                    # stdin, so a send injected earlier is only now being
+                    # offered to the backend.
+                    mark_backend_ready(st, _now())
                 next_commands = slash_commands_for_backend("pi", commands, pi_bridge_capable=capable)
                 if st.pi_thinking_command != capable or st.slash_commands != next_commands:
                     st.pi_thinking_command = capable
@@ -358,6 +369,7 @@ class Sessiond:
                     st.session_id = sid
                     st.log_path = lp
                     st.log_off = 0
+                    mark_backend_ready(st, _now())
                 try:
                     if prev_lp.exists() and str(prev_lp).startswith(str(PENDING_DIR.resolve())):
                         prev_lp.unlink()

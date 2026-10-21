@@ -9,11 +9,16 @@ import pytest
 
 from codoxear.broker import BUSY_QUIET_SECONDS
 from codoxear.broker_control import _handle_broker_control_connection
+from codoxear.broker_log_binding import BrokerLogBinding
+from codoxear.broker_log_binding import BrokerLogSeed
+from codoxear.broker_log_binding import _apply_broker_log_binding_to_state
 from codoxear.broker_log_watcher import _apply_log_objects_to_state
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _close_turn_state
 from codoxear.broker_turn_state import _mark_busy_state_idle
 from codoxear.broker_turn_state import _should_clear_busy_state
+from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.broker_turn_state import mark_backend_ready
 
 
 def _state() -> State:
@@ -188,3 +193,114 @@ def test_inject_failure_restores_previous_latch_and_verdict() -> None:
     assert result["response"] == {"error": "write failed", "commit_unknown": True}
     assert state.send_latch_id == "previous-latch"
     assert state.send_verdict == {"send_id": "previous-send", "verdict": "undelivered", "ts": 4.0}
+
+
+# --- first-turn judgement: what counts as evidence the backend did not act ---
+
+QUIET = BUSY_QUIET_SECONDS
+
+
+def _can_settle(state: State, now_ts: float) -> bool:
+    return _should_clear_busy_state(
+        state,
+        now_ts,
+        busy_quiet_seconds=BUSY_QUIET_SECONDS,
+        busy_interrupt_grace_seconds=BUSY_QUIET_SECONDS,
+    )
+
+
+def test_pi_working_indicator_prevents_undelivered_verdict_for_first_prompt() -> None:
+    """A fresh Pi session persists nothing until its first assistant row.
+
+    Pi buffers the whole session (header + user message) in memory and creates
+    the session file only when the first assistant message arrives, so the
+    broker has no bound log and no row to observe while the request is in
+    flight. The TUI's working indicator is then the only proof that Pi read and
+    accepted the submitted prompt, and a working backend is not an undelivered
+    prompt.
+    """
+    state = _state()
+    _run_handler(state, "send", {"text": "first prompt of a fresh session", "send_id": "fresh-1"})
+    assert state.log_path is None
+
+    _update_busy_from_pty_text(state, "\x1b]9;4;3\x07", 10.2)
+
+    assert not _can_settle(state, 10.2 + 10 * QUIET)
+
+    _apply_log_objects_to_state(
+        state,
+        [{"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "first prompt of a fresh session"}]}}],
+        now=lambda: 16.0,
+    )
+    _close_turn_state(state)
+
+    assert state.send_verdict is None
+
+
+def test_working_indicator_message_alone_also_counts_as_backend_activity() -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "prompt", "send_id": "fresh-2"})
+
+    _update_busy_from_pty_text(state, "Working...", 10.4)
+
+    assert state.last_turn_activity_ts == 10.4
+    assert not _can_settle(state, 10.4 + 10 * QUIET)
+
+
+def test_send_injected_before_readiness_waits_for_the_readiness_marker() -> None:
+    """A send typed while Pi is still booting has not been offered to it yet."""
+    state = _state()
+    _run_handler(state, "send", {"text": "typed during boot", "send_id": "boot-1"})
+
+    mark_backend_ready(state, 12.0)
+
+    assert not _can_settle(state, 12.0 + QUIET - 0.25)
+    # Pi's UI consumed the buffered prompt as it came up.
+    _update_busy_from_pty_text(state, "Working...", 12.05)
+    assert not _can_settle(state, 12.05 + 10 * QUIET)
+
+
+def test_readiness_marker_does_not_postpone_a_swallowed_prompt() -> None:
+    """The startup gate eats the prompt; the TUI then starts with no work."""
+
+    state = _state()
+    _run_handler(state, "send", {"text": "eaten by the startup gate", "send_id": "gate-1"})
+
+    mark_backend_ready(state, 11.0)
+
+    assert not _can_settle(state, 11.0 + QUIET - 0.25)
+    _settle_latch(state, now_ts=11.0 + QUIET)
+
+    assert state.send_verdict == {"send_id": "gate-1", "verdict": "undelivered", "ts": 11.0 + QUIET}
+
+
+def test_readiness_before_the_send_does_not_delay_the_verdict() -> None:
+    state = _state()
+    mark_backend_ready(state, 5.0)
+
+    _run_handler(state, "send", {"text": "swallowed", "send_id": "ready-1"})
+    _settle_latch(state, now_ts=10.5 + QUIET)
+
+    assert state.send_verdict == {"send_id": "ready-1", "verdict": "undelivered", "ts": 10.5 + QUIET}
+
+
+def test_backend_readiness_keeps_the_first_observation() -> None:
+    state = _state()
+
+    mark_backend_ready(state, 4.0)
+    mark_backend_ready(state, 9.0)
+
+    assert state.backend_ready_ts == 4.0
+
+
+def test_bound_log_marks_backend_ready() -> None:
+    state = _state()
+
+    _apply_broker_log_binding_to_state(
+        state,
+        binding=BrokerLogBinding(log_path=Path("/tmp/pi-session.jsonl"), session_id="sess-1"),
+        seed=BrokerLogSeed(log_offset=120, pending_calls=set(), idle=True),
+        now_ts=3.0,
+    )
+
+    assert state.backend_ready_ts == 3.0

@@ -32,6 +32,7 @@ from codoxear.broker_launch import _ensure_pi_bridge_args as _ensure_pi_bridge_a
 from codoxear.broker_launch import _ensure_pi_session_arg as _ensure_pi_session_arg_impl
 from codoxear.broker_launch import _expand_cwd
 from codoxear.broker_launch import _pi_active_session_marker_path
+from codoxear.broker_launch import _pi_bridge_session_is_live
 from codoxear.broker_launch import _pi_bridge_extension_path
 from codoxear.broker_launch import _pi_new_session_log_path
 from codoxear.broker_launch import _pi_session_dir_from_args
@@ -84,6 +85,7 @@ from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from codoxear.broker_turn_state import _strip_ansi
 from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.broker_turn_state import mark_backend_ready
 from codoxear.cc_live_settings import cc_settings_mtime_ns
 from codoxear.cc_live_settings import changed_cc_settings_reasoning_effort
 from codoxear.util import default_app_dir as _default_app_dir
@@ -497,6 +499,17 @@ class Broker:
         for message in self._pi_active_session_marker_observer.observe(state):
             sys.stderr.write(f"info: {message}\n")
             sys.stderr.flush()
+        if _pi_bridge_session_is_live(
+            self.pi_active_session_marker_path,
+            sessions_dir=self.sessions_dir,
+            process_pid=process_pid,
+        ):
+            # The bridge marker proves the Pi UI is up and reading stdin, so a
+            # send injected earlier is only now being offered to the backend.
+            with self._lock:
+                st = self.state
+                if st is not None:
+                    mark_backend_ready(st, _now())
 
     def _discover_log_watcher(self) -> None:
         try:

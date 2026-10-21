@@ -89,6 +89,16 @@ def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
         # A retry attempt has left backoff and started a new request. Retire the
         # prior error probe; a failing attempt will persist a fresh error row.
         _clear_pi_error_probe(st)
+        # Pi renders its working indicator only while it is processing a
+        # request, so the indicator is positive evidence that the backend read
+        # and accepted the submitted prompt. The log cannot supply that evidence
+        # for a fresh session: Pi buffers every entry until its first assistant
+        # message and only then writes the session file, so a first prompt whose
+        # first assistant row takes longer than the quiet window would otherwise
+        # be judged undelivered while Pi is demonstrably at work.
+        st.busy = True
+        if now_ts > st.last_turn_activity_ts:
+            st.last_turn_activity_ts = now_ts
     if not cleaned:
         return
     st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
@@ -126,6 +136,26 @@ def _response_call_finished(payload: dict[str, Any]) -> str | None:
     return call_id if isinstance(call_id, str) and call_id else None
 
 
+def send_latch_window_start_ts(st: "State") -> float | None:
+    """Return when the armed send latch's quiet window starts, or None.
+
+    A send injected before the backend is ready to read input has not been
+    offered to the backend at all: it waits in the PTY's input buffer (or is
+    consumed by a pre-startup gate) while the process boots. Silence before
+    readiness therefore says nothing about that prompt, so the window starts no
+    earlier than the first observed readiness.
+    """
+    if st.send_latch_activity_ts is None:
+        return None
+    return max(st.send_latch_activity_ts, st.backend_ready_ts)
+
+
+def mark_backend_ready(st: "State", now_ts: float) -> None:
+    """Record the first moment the backend was observed able to read input."""
+    if st.backend_ready_ts <= 0.0:
+        st.backend_ready_ts = now_ts
+
+
 def _should_clear_busy_state(
     st: "State",
     now_ts: float,
@@ -144,15 +174,21 @@ def _should_clear_busy_state(
         return (now_ts - st.last_pi_error_probe_ts) >= busy_quiet_seconds
     if st.pending_calls:
         return False
+    latch_start_ts = send_latch_window_start_ts(st)
+    quiet_since_ts = st.last_turn_activity_ts
+    if latch_start_ts is not None and latch_start_ts > quiet_since_ts:
+        # The submission predates backend readiness, so the pre-readiness quiet
+        # spell carries no information about it.
+        quiet_since_ts = latch_start_ts
     if st.turn_open and (not st.turn_has_completion_candidate):
         if st.last_interrupt_request_ts <= 0.0:
-            if st.send_latch_activity_ts is not None:
+            if latch_start_ts is not None:
                 # Turn-aware latch: only rows the reducer treats as turn
                 # activity (they bump last_turn_activity_ts) prove the
                 # predicted turn exists. Non-turn rows such as Pi
                 # model_change / thinking_level_change grow the log without
                 # opening a turn and must not hold the latch forever.
-                if st.last_turn_activity_ts > st.send_latch_activity_ts:
+                if st.last_turn_activity_ts > latch_start_ts:
                     return False
             elif st.send_latch_log_off is None or st.log_off != st.send_latch_log_off:
                 return False
@@ -160,9 +196,9 @@ def _should_clear_busy_state(
             return False
     if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < busy_interrupt_grace_seconds:
         return False
-    if st.last_turn_activity_ts <= 0.0:
+    if quiet_since_ts <= 0.0:
         return False
-    return (now_ts - st.last_turn_activity_ts) >= busy_quiet_seconds
+    return (now_ts - quiet_since_ts) >= busy_quiet_seconds
 
 
 def _mark_explicit_interrupt_request(st: "State", now_ts: float) -> None:
@@ -211,11 +247,12 @@ def arm_send_latch(
 def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
     terminal_error_idle = st.turn_open and st.last_pi_error_probe_ts > 0.0 and not st.pi_retry_status_active
+    latch_start_ts = send_latch_window_start_ts(st)
     latch_settled_idle = (
         st.turn_open
         and not st.turn_has_completion_candidate
-        and st.send_latch_activity_ts is not None
-        and st.last_turn_activity_ts <= st.send_latch_activity_ts
+        and latch_start_ts is not None
+        and st.last_turn_activity_ts <= latch_start_ts
     )
     if latch_settled_idle:
         if isinstance(st.send_latch_id, str) and st.send_latch_id:
@@ -540,6 +577,9 @@ class State:
     send_latch_log_off: int | None = None
     send_latch_activity_ts: float | None = None
     send_latch_id: str | None = None
+    # First moment the backend was observed able to read input (a bound log, or
+    # Pi's live bridge marker written from session_start). 0.0 means "never".
+    backend_ready_ts: float = 0.0
     send_verdict: dict[str, Any] | None = None
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0

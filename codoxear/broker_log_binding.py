@@ -9,6 +9,7 @@ from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _clear_pi_error_probe
 from codoxear.broker_turn_state import _close_turn_state
 from codoxear.broker_turn_state import _hint_seen_in_new_text
+from codoxear.broker_turn_state import mark_backend_ready
 from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.pi_log import PiPendingToolCallId as _PiPendingToolCallId
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
@@ -210,6 +211,9 @@ def _apply_broker_log_binding_to_state(
     st.log_path = lp
     st.known_rollout_paths.add(lp)
     st.log_off = seed.log_offset
+    # A bound log is the backend's own transcript surface; from here on its
+    # turn rows are observable.
+    mark_backend_ready(st, now_ts)
     st.send_latch_log_off = None
     st.send_latch_activity_ts = None
     st.pending_calls = set(seed.pending_calls)
