@@ -68,11 +68,15 @@ def test_sessiond_sweep_settles_send_latch_with_settings_only_growth(tmp_path: P
         last_turn_activity_ts=10.0,
         send_latch_log_off=42,
         send_latch_activity_ts=10.0,
+        send_latch_id="sessiond-send",
     )
     state.log_off = 43
 
     assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS - 0.01) is False
     assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS + 0.01) is True
-    _mark_busy_state_idle(state, 10.0 + BUSY_QUIET_SECONDS + 0.01)
+    settled_at = 10.0 + BUSY_QUIET_SECONDS + 0.01
+    _mark_busy_state_idle(state, settled_at)
     assert state.busy is False
     assert state.last_interrupted_idle_ts > 0.0
+    assert state.send_latch_id is None
+    assert state.send_verdict == {"send_id": "sessiond-send", "verdict": "undelivered", "ts": settled_at}

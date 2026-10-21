@@ -97,7 +97,7 @@ def test_composer_draft_is_session_scoped_across_controller_recreation() -> None
             nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, clearTranscriptDom: noop,
             clearRenderedTranscriptRange: noop, setOlderState: noop, getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
             addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
-            invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+            invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
             visibilityState: () => "visible", navigatorValue: () => ({{ onLine: true }}), EventSource: null,
             AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 1,
             consoleWarn: noop, consoleError: noop,

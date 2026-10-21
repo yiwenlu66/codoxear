@@ -188,6 +188,39 @@ def test_send_route_preserves_allow_pending_and_commit_unknown_status() -> None:
     assert responses == [(504, {"error": "maybe sent", "commit_unknown": True})]
 
 
+def test_send_route_forwards_only_valid_optional_send_id() -> None:
+    class CaptureManager:
+        def __init__(self):
+            self.calls = []
+
+        def send(self, session_id, text, *, allow_pending_attachment=False, send_id=None):
+            self.calls.append((session_id, text, allow_pending_attachment, send_id))
+            return {"queued": False, "queue_len": 0}
+
+    responses = []
+    manager = CaptureManager()
+    assert handle_control_post_route(
+        Handler({"text": "go", "allow_pending_attachment": True, "send_id": " send-4 "}),
+        path="/api/sessions/s1/send",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls == [("s1", "go", True, "send-4")]
+    assert responses == [(200, {"queued": False, "queue_len": 0})]
+
+    responses.clear()
+    assert handle_control_post_route(
+        Handler({"text": "go", "send_id": "invalid id"}),
+        path="/api/sessions/s1/send",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls[-1] == ("s1", "go", False, None)
+    assert responses == [(200, {"queued": False, "queue_len": 0})]
+
+
 def test_send_route_returns_200_when_confirmed_send_reports_attachment_cleanup_error() -> None:
     class CleanupWarningManager(Manager):
         def send(self, session_id, text, *, allow_pending_attachment=False):
