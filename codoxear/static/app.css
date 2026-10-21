@@ -3392,6 +3392,13 @@ select {
         flex: 0 1 40%;
         text-align: right;
       }
+      /* The committed pair is highlighted on every browse open, so its provider
+         hint must stay legible on the inverted row instead of keeping the muted
+         ink that only works on paper. */
+      #newSessionModelMenu .fileMenuItem.active .fileMenuHint {
+        color: inherit;
+        opacity: 0.72;
+      }
       .pickerButtonChevron {
         flex: 0 0 auto;
         display: inline-flex;
