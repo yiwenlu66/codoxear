@@ -189,6 +189,7 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
           cwdMenuFocus: () => -1,
           assignCwdMenuFocus: () => {{}},
           closeCwdMenu: () => {{}},
+          cwdBrowseAnchor: () => null,
           el: () => ({{ appendChild() {{}} }}),
           resumeMenu: {{ innerHTML: "" }},
           resumeBtn: {{}},

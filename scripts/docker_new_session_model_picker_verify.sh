@@ -108,14 +108,49 @@ npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
 "${docker[@]}" run --detach --name "$container" --publish "127.0.0.1:${port}:${port}" \
   --env HOME=/home/tester --env CODEX_WEB_PASSWORD="$password" --env CODEX_WEB_HOST=0.0.0.0 --env CODEX_WEB_PORT="$port" \
   --env CODEX_WEB_DEFAULT_AGENT_BACKEND=pi --env PYTHONPATH=/workspace --env PYTHONDONTWRITEBYTECODE=1 \
-  --mount "type=bind,src=$home_dir,dst=/home/tester" --workdir /workspace "$image" \
-  python3 -m codoxear.server > "$artifacts/container-id.txt" || fail "container start failed"
+  --mount "type=bind,src=$home_dir,dst=/home/tester" --workdir /workspace "$image" bash -c '
+    set -eu
+    cd /workspace
+    export PYTHONPATH=/workspace
+    # Two idle sessions in different directories seed recent_cwds, so the cwd
+    # picker has a history to browse and a selected session to prefill from.
+    for pair in docker-combobox-ws:/workspace docker-combobox-tmp:/tmp; do
+      sid="${pair%%:*}"; dir="${pair#*:}"
+      pi --offline --no-extensions --no-skills --no-prompt-templates --no-context-files --session-id "$sid" -p "Initialize isolated combobox verification session." >"$HOME/pi-bootstrap-$sid.log" 2>&1 || true
+      session_log="$(find "$HOME/.pi/agent/sessions" -type f -name "*${sid}.jsonl" -print -quit)"
+      test -n "$session_log"
+      CODEX_WEB_AGENT_BACKEND=pi CODEX_WEB_OWNER=web PI_BIN=pi PI_OFFLINE=1 codoxear-broker --cwd "$dir" -- --offline --no-extensions --no-skills --no-prompt-templates --no-context-files --session "$session_log" >"$HOME/sessiond-$sid.log" 2>&1 &
+    done
+    for _ in $(seq 1 120); do
+      n=0
+      for meta in "$HOME"/.local/share/codoxear/socks/*.json; do test -f "$meta" && grep -q session_id "$meta" && n=$((n + 1)); done
+      test "$n" -ge 2 && break
+      sleep 1
+    done
+    exec python3 -m codoxear.server
+  ' > "$artifacts/container-id.txt" || fail "container start failed"
 wait_for_server || fail "server readiness check failed"
 
-# Configured Pi pairs, straight from the API the dialog builds its list from.
+# Configured Pi pairs and the seeded session ids, straight from the API.
 curl -fsS -c "$root/cookies.txt" -H 'Content-Type: application/json' \
   --data "{\"password\":\"${password}\"}" "http://127.0.0.1:${port}/api/login" > "$artifacts/login.json"
-curl -fsS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions.json" || fail "could not read /api/sessions"
+wait_for_seeded_sessions() {
+  local have
+  for _ in $(seq 1 60); do
+    curl -sS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions.json" 2>/dev/null || true
+    have="$(python3 - "$artifacts/sessions.json" <<'PY' 2>/dev/null || true
+import json, sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+cwds = {str(s.get("cwd") or "") for s in payload.get("sessions", []) if isinstance(s, dict)}
+print(1 if {"/workspace", "/tmp"} <= cwds else 0)
+PY
+)"
+    [[ "$have" == 1 ]] && return 0
+    sleep 1
+  done
+  return 1
+}
+wait_for_seeded_sessions || fail "seeded sessions never appeared"
 python3 - "$artifacts/sessions.json" > "$artifacts/expected-counts.json" <<'PY'
 import json, sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -124,20 +159,28 @@ defaults = (payload.get("new_session_defaults") or {}).get("backends") or {}
 def counts(backend):
     entry = defaults.get(backend) or {}
     provider_models = entry.get("provider_models") or {}
-    pairs = {(provider, model) for provider, models in provider_models.items() if isinstance(models, list) for model in models}
-    if not pairs and not provider_models:
-        return {"pairs": 0, "fallback": True}
-    return {"pairs": len(pairs), "fallback": False}
+    pairs = [{"model": model, "provider": provider} for provider, models in provider_models.items() if isinstance(models, list) for model in models]
+    return {"pairs": pairs}
 
-print(json.dumps({"pi": counts("pi"), "codex": counts("codex"), "default_backend": payload.get("default_backend")}, indent=2))
+sessions = [s for s in payload.get("sessions", []) if isinstance(s, dict)]
+print(json.dumps({
+    "pi": counts("pi"),
+    "codex": counts("codex"),
+    "recent_cwds": [str(c) for c in (payload.get("recent_cwds") or [])],
+    "session_cwds": {str(s.get("cwd") or ""): str(s.get("session_id") or "") for s in sessions},
+}, indent=2))
 PY
 
 PROBE='(() => {
   const q = (s) => document.querySelector(s);
   const input = q("#newSessionModelInput"), menu = q("#newSessionModelMenu"), viewer = q("#newSessionViewer");
+  const cwdInput = q("#newSessionCwdInput"), cwdMenu = q("#newSessionCwdMenu");
   const options = menu ? [...menu.querySelectorAll("[role=option]")] : [];
   const activeId = input ? input.getAttribute("aria-activedescendant") : null;
   const activeEl = activeId ? document.getElementById(activeId) : null;
+  const cwdOptions = cwdMenu ? [...cwdMenu.querySelectorAll("[role=option]")] : [];
+  const cwdActiveId = cwdInput ? cwdInput.getAttribute("aria-activedescendant") : null;
+  const cwdActiveEl = cwdActiveId ? document.getElementById(cwdActiveId) : null;
   return {
     dialogOpen: Boolean(viewer && getComputedStyle(viewer).display !== "none"),
     value: input ? input.value : null,
@@ -148,6 +191,11 @@ PROBE='(() => {
     groups: menu ? [...menu.querySelectorAll(".modelMenuGroup")].map((n) => n.textContent) : [],
     groupHeaderCount: menu ? menu.querySelectorAll(".modelMenuGroup").length : 0,
     active: activeEl ? activeEl.getAttribute("aria-label") : null,
+    cwdValue: cwdInput ? cwdInput.value : null,
+    cwdMenuDisplay: cwdMenu ? getComputedStyle(cwdMenu).display : null,
+    cwdOptionCount: cwdOptions.length,
+    cwdOptions: cwdOptions.map((n) => n.getAttribute("title")),
+    cwdActive: cwdActiveEl ? cwdActiveEl.getAttribute("title") : null,
     reasoning: (q("#newSessionReasoningBtn") || {}).textContent || null,
     inlineMaxHeight: menu ? menu.style.maxHeight : null,
     renderedHeight: menu ? Math.round(menu.getBoundingClientRect().height) : null,
@@ -178,6 +226,39 @@ wait_for_menu() {
   done
   return 1
 }
+wait_for_cwd_menu() {
+  local seen
+  for _ in $(seq 1 40); do
+    seen="$(evalv '(() => { const m=document.getElementById("newSessionCwdMenu"); return Boolean(m && getComputedStyle(m).display === "block"); })()')"
+    [[ "$seen" == True ]] && return 0
+    sleep 0.15
+  done
+  return 1
+}
+wait_for_dialog_cwd() {
+  local seen
+  for _ in $(seq 1 40); do
+    seen="$(evalv '(() => { const i=document.getElementById("newSessionCwdInput"); const v=document.getElementById("newSessionViewer"); return Boolean(i && v && getComputedStyle(v).display !== "none" && String(i.value||"").trim().length > 0); })()')"
+    [[ "$seen" == True ]] && return 0
+    sleep 0.15
+  done
+  return 1
+}
+select_session() { browser click "#sessions .session[data-session-id=\"$1\"]" >/dev/null 2>&1 || fail "session selection failed"; settle 1200; }
+wait_for_start_enabled() {
+  for _ in $(seq 1 60); do
+    [[ "$(evalv 'document.getElementById("newSessionStartBtn").disabled === false')" == True ]] && return 0
+    sleep 0.5
+  done
+  return 1
+}
+close_dialog_if_open() {
+  local open
+  open="$(evalv '(() => { const v=document.getElementById("newSessionViewer"); return Boolean(v && getComputedStyle(v).display !== "none"); })()')"
+  [[ "$open" == True ]] && { browser click '#newSessionCloseBtn' >/dev/null 2>&1 || fail "could not close the dialog"; settle; }
+  return 0
+}
+launch_record_count() { "${docker[@]}" exec "$container" sh -lc 'wc -l < "$HOME/.local/share/codoxear/session_launches.jsonl" 2>/dev/null || echo 0' | tr -d '[:space:]'; }
 open_dialog() { browser click '#chatEmptyNewBtn' >/dev/null 2>&1 || fail "could not open the new-session dialog"; wait_for_dialog || fail "new-session dialog never showed a committed model pair"; settle; }
 
 browser set viewport 1280 1000 >/dev/null 2>&1 || true
@@ -261,11 +342,65 @@ browser fill '#newSessionCwdInput' '/workspace' >/dev/null 2>&1 || fail "could n
 settle 400
 browser click '#newSessionStartBtn' >/dev/null 2>&1 || fail "could not click Start"
 for _ in $(seq 1 90); do
-  if "${docker[@]}" exec "$container" sh -lc 'test -s "$HOME/.local/share/codoxear/session_launches.jsonl"' >/dev/null 2>&1; then break; fi
+  [[ "$(launch_record_count)" -ge 1 ]] && break
   sleep 1
 done
 settle 600
 probe 14-after-start
+
+# 10. The cwd picker: opening it on a committed path browses the whole recent
+#     history instead of filtering it down to the shown directory.
+close_dialog_if_open
+curl -fsS -b "$root/cookies.txt" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions-cwd.json" || fail "could not re-read /api/sessions"
+SID_TMP="$(python3 - "$artifacts/sessions-cwd.json" <<'PY'
+import json, sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+for session in payload.get("sessions", []):
+    if isinstance(session, dict) and str(session.get("cwd") or "") == "/tmp":
+        print(session.get("session_id") or "")
+        break
+PY
+)"
+[[ -n "$SID_TMP" ]] || fail "no seeded /tmp session to select"
+select_session "$SID_TMP"
+browser click '#newBtn' >/dev/null 2>&1 || fail "could not open the new-session dialog from the topbar"
+wait_for_dialog_cwd || fail "dialog did not prefill the selected session's path"
+settle 400
+probe 15-cwd-initial
+browser click '#newSessionCwdInput' >/dev/null 2>&1 || fail "could not click the cwd field"
+wait_for_cwd_menu || fail "cwd menu did not open on click"
+settle 500
+probe 16-cwd-browse
+shot 02-cwd-browse
+browser press Escape >/dev/null 2>&1 || fail "Escape failed on the cwd list"
+settle 400
+probe 17-cwd-dismiss-restored
+
+# 11. Typing a path still browses the filesystem (the picker only cleared it).
+browser fill '#newSessionCwdInput' '/us' >/dev/null 2>&1 || fail "could not type a cwd prefix"
+settle 1200
+probe 18-cwd-typed-filesystem
+
+# 12. Start while the cwd field is browse-cleared must launch the restored path.
+#     The button is activated programmatically so no mousedown closes the list
+#     first: this exercises start()'s own restore, not the outside-click path.
+browser click '#newSessionCloseBtn' >/dev/null 2>&1 || fail "could not close the dialog"
+settle
+browser click '#newBtn' >/dev/null 2>&1 || fail "could not reopen the dialog"
+wait_for_dialog_cwd || fail "dialog did not prefill the path on reopen"
+settle 400
+browser click '#newSessionCwdInput' >/dev/null 2>&1 || fail "could not clear the cwd before Start"
+wait_for_cwd_menu || fail "cwd menu did not open before Start"
+settle 300
+probe 19-cwd-before-start
+wait_for_start_enabled || fail "Start never became available"
+browser eval 'document.getElementById("newSessionStartBtn").click(); true' --json >/dev/null 2>&1 || fail "could not activate Start"
+for _ in $(seq 1 90); do
+  [[ "$(launch_record_count)" -ge 2 ]] && break
+  sleep 1
+done
+settle 600
+probe 20-cwd-after-start
 
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
 browser console --json > "$artifacts/browser-console.json" 2>&1 || true
@@ -289,6 +424,8 @@ names = [
     "05-query-kept", "06-reopened", "07-browse-again", "08-selected",
     "09-outside-click-restored", "10-codex-committed", "11-codex-browse",
     "12-pi-restored", "13-before-start", "14-after-start",
+    "15-cwd-initial", "16-cwd-browse", "17-cwd-dismiss-restored",
+    "18-cwd-typed-filesystem", "19-cwd-before-start", "20-cwd-after-start",
 ]
 p = {name: load(name) for name in names}
 
@@ -308,6 +445,15 @@ before_start = p["13-before-start"]
 chosen = (selected["value"] or "").strip()
 second_option = browse_again["options"][1]["label"] if len(browse_again["options"]) > 1 else None
 pi_pairs = expected["pi"]["pairs"]
+configured_labels = {f"{pair['model']} · {pair['provider']}" for pair in pi_pairs}
+browse_labels = [item["label"] for item in browse["options"]]
+
+cwd_initial = p["15-cwd-initial"]
+cwd_browse = p["16-cwd-browse"]
+cwd_restored = p["17-cwd-dismiss-restored"]
+cwd_typed = p["18-cwd-typed-filesystem"]
+cwd_before_start = p["19-cwd-before-start"]
+recent_cwds = {str(cwd) for cwd in (expected.get("recent_cwds") or [])}
 
 # The launch request the app recorded for the browse-cleared Start.
 records = []
@@ -322,6 +468,7 @@ for record in records:
     launch_id = record.get("launch_id")
     if launch_id: models_by_launch[launch_id] = record
 last_record = records[-1] if records else {}
+last_cwd_record = next((r for r in reversed(records) if str(r.get("cwd") or r.get("requested_cwd") or "").strip()), {})
 
 def model_of(display):
     return (display or "").split(" · ", 1)[0].strip()
@@ -334,8 +481,8 @@ checks = {
     "dialog_opens_on_a_committed_pair": p["01-initial"]["dialogOpen"] and bool(initial) and p["01-initial"]["menuDisplay"] == "none",
     "click_clears_the_committed_pair": browse["value"] == "",
     "click_opens_the_listbox": browse["menuDisplay"] == "block" and browse["expanded"] == "true",
-    "browse_lists_every_configured_model": pi_pairs > 0 and browse["optionCount"] == pi_pairs,
-    "browse_is_not_capped_at_twelve": browse["optionCount"] > 12 if pi_pairs > 12 else browse["optionCount"] == pi_pairs,
+    "browse_lists_every_configured_model": bool(configured_labels) and configured_labels <= set(browse_labels) and len(set(browse_labels)) == len(browse_labels),
+    "browse_is_not_capped_at_twelve": browse["optionCount"] > 12 if len(configured_labels) > 12 else len(configured_labels) <= browse["optionCount"],
     "browse_groups_models_by_provider": browse["groupHeaderCount"] >= 1 and bool(browse["groups"]),
     "browse_highlights_the_committed_pair": browse["active"] == initial,
     "browse_scrolls_within_the_menu": browse["clipping"] == "auto" and bool(browse["inlineMaxHeight"]),
@@ -352,6 +499,18 @@ checks = {
     "start_launched_the_committed_pair": bool(last_record)
         and last_record.get("model") == model_of(chosen)
         and (last_record.get("model_provider") or last_record.get("provider_choice") or "") == provider_of(chosen),
+    "cwd_dialog_prefills_the_selected_session_path": (cwd_initial["cwdValue"] or "").strip() == "/tmp",
+    "cwd_click_clears_the_committed_path": cwd_browse["cwdValue"] == "",
+    "cwd_click_opens_the_listbox": cwd_browse["cwdMenuDisplay"] == "block",
+    "cwd_browse_lists_the_recent_history": cwd_browse["cwdOptionCount"] >= 2
+        and set(cwd_browse["cwdOptions"]) <= recent_cwds,
+    "cwd_browse_does_not_scrape_the_filesystem_root": "/usr" not in (cwd_browse["cwdOptions"] or []),
+    "cwd_browse_highlights_the_committed_path": (cwd_browse["cwdActive"] or "").strip() == "/tmp",
+    "cwd_dismiss_restores_the_committed_path": (cwd_restored["cwdValue"] or "").strip() == "/tmp"
+        and cwd_restored["cwdMenuDisplay"] == "none",
+    "cwd_typing_still_browses_the_filesystem": "/usr" in (cwd_typed["cwdOptions"] or []),
+    "cwd_start_field_was_browse_cleared": cwd_before_start["cwdValue"] == "",
+    "cwd_start_launched_the_restored_path": (last_cwd_record.get("cwd") or last_cwd_record.get("requested_cwd") or "").strip() == "/tmp",
 }
 
 report = {
@@ -367,6 +526,11 @@ report = {
         "chosen": chosen,
         "launch_records": len(records),
         "last_launch": {k: last_record.get(k) for k in ("launch_id", "state", "model", "model_provider", "provider_choice", "agent_backend")},
+        "cwd_recent_cwds": sorted(recent_cwds),
+        "cwd_initial": cwd_initial["cwdValue"],
+        "cwd_browse_options": cwd_browse["cwdOptions"],
+        "cwd_typed_options": cwd_typed["cwdOptions"],
+        "cwd_last_launch": {k: last_cwd_record.get(k) for k in ("launch_id", "state", "cwd", "requested_cwd")},
         "after_start_dialog_open": p["14-after-start"]["dialogOpen"],
     },
 }

@@ -77,6 +77,9 @@ function requireFunction(value, name) {
     const cwdMenuFocus = requireFunction(options.cwdMenuFocus, "cwdMenuFocus");
     const assignCwdMenuFocus = requireFunction(options.assignCwdMenuFocus, "assignCwdMenuFocus");
     const closeCwdMenu = requireFunction(options.closeCwdMenu, "closeCwdMenu");
+    // The committed path cleared by opening the list, or null. Owned by the
+    // dialog; injected so the menu can switch to the history-only browse view.
+    const cwdBrowseAnchor = requireFunction(options.cwdBrowseAnchor, "cwdBrowseAnchor");
     const el = requireFunction(options.el, "el");
 
     // Resume-conversation menu dependencies.
@@ -472,7 +475,13 @@ function requireFunction(value, name) {
     function filteredRecentCwdOptions() {
       const items = renderRecentCwdOptions();
       const query = String(cwdInput.value || "").trim();
-      if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
+      if (!query) {
+        // Opening the picker on a committed path browses the whole history;
+        // the plain empty field keeps its bounded list, because filesystem
+        // entries are listed alongside it there.
+        const listed = cwdBrowseAnchor() ? items : items.slice(0, 10);
+        return listed.map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
+      }
       return items
         .map((cwd, idx) => ({ cwd, idx, score: CodoxearDisplay.fuzzyRecentCwdScore(cwd, query) }))
         .filter((item) => item.score >= 0)
@@ -563,6 +572,9 @@ function requireFunction(value, name) {
 
     function cwdMenuOptions(raw) {
       const recent = filteredRecentCwdOptions().map((item) => ({ cwd: item.cwd, source: "recent" }));
+      // A picker-cleared field means "show me the directories I have used": an
+      // empty path would otherwise add the filesystem root next to the recents.
+      if (cwdBrowseAnchor()) return recent;
       const seen = new Set(recent.map((item) => item.cwd));
       const prefix = cwdSuggestionQuery(raw).prefix.toLocaleLowerCase();
       for (const item of filesystemCwdOptions) {
@@ -578,9 +590,14 @@ function requireFunction(value, name) {
     function renderRecentCwdMenu() {
       cwdMenu.innerHTML = "";
       const raw = String(cwdInput.value || "").trim();
-      scheduleFilesystemCwdLoad();
+      const anchor = String(cwdBrowseAnchor() || "").trim();
+      if (!anchor) scheduleFilesystemCwdLoad();
       const items = cwdMenuOptions(raw);
       let focus = cwdMenuFocus();
+      if (focus < 0 && anchor) {
+        const index = items.findIndex((item) => item.cwd === anchor);
+        if (index >= 0) { focus = index; assignCwdMenuFocus(index); }
+      }
       if (focus >= items.length) {
         focus = items.length ? items.length - 1 : -1;
         assignCwdMenuFocus(focus);
@@ -782,6 +799,7 @@ function requireFunction(value, name) {
       applyNewSessionLaunchPreset,
       renderRecentCwdOptions,
       filteredRecentCwdOptions,
+      cwdMenuOptions,
       syncNewSessionNamePlaceholder,
       syncNewSessionCwdHint,
       setNewSessionCwdError,
@@ -837,6 +855,11 @@ function requireFunction(value, name) {
     let launchPresetProviderAbsent = false;
     let cwdMenuOpen = false;
     let cwdMenuFocus = -1;
+    // Same two states as the model field: cwdBrowseRestore is the committed path
+    // captured when opening the list cleared it, cwdQueryDirty marks text the
+    // user typed (a path to keep, never a value to restore over).
+    let cwdBrowseRestore = null;
+    let cwdQueryDirty = false;
     let modelMenuOpen = false;
     let modelMenuFocus = -1;
     // The model field shows either a committed pair or a query being typed, and
@@ -900,7 +923,7 @@ function requireFunction(value, name) {
     viewer.appendChild(resumeMenu);
 
     function closeMenus() {
-      cwdMenuOpen = false; cwdMenuFocus = -1;
+      dismissCwdPicker();
       dismissModelPicker();
       reasoningMenuOpen = false;
       resumeMenuOpen = false;
@@ -953,6 +976,43 @@ function requireFunction(value, name) {
       modelQueryDirty = false;
     }
 
+    // The cwd field is a picker for a required path. Opening the list clears a
+    // committed path so the whole history is reachable, but typing still edits
+    // the path in place: a path prefix is a meaningful query ("/src" drills
+    // into the shown directory), so unlike the model pair there is no
+    // replace-on-first-edit here.
+    function beginCwdBrowse() {
+      if (cwdQueryDirty) return;
+      const current = String(cwdInput.value || "");
+      if (current.trim() === "") return;
+      if (cwdBrowseRestore === null) cwdBrowseRestore = current;
+      cwdInput.value = "";
+      cwdMenuFocus = -1;
+      controller.setNewSessionCwdError("");
+    }
+
+    function restoreBrowseCwdSelection() {
+      if (cwdBrowseRestore === null) return false;
+      if (String(cwdInput.value || "").trim() === "") cwdInput.value = cwdBrowseRestore;
+      cwdBrowseRestore = null;
+      cwdQueryDirty = false;
+      return true;
+    }
+
+    function dismissCwdPicker() {
+      restoreBrowseCwdSelection();
+      cwdMenuOpen = false;
+      cwdMenuFocus = -1;
+    }
+
+    // applyNewSessionCwdSuggestion writes the field and then closes the menu
+    // through this hook, so a chosen path is a committed value, not a query.
+    function commitCwdSelection() {
+      cwdBrowseRestore = null;
+      cwdQueryDirty = false;
+      dismissCwdPicker();
+    }
+
     function renderModelMenu() {
       modelMenu.innerHTML = "";
       const items = controller.filteredNewSessionModelOptions();
@@ -994,7 +1054,7 @@ function requireFunction(value, name) {
       modelInput, modelField, status, reasoningBtn, setPickerButtonContent, renderReasoningMenu, renderModelMenu,
       setFast: (value) => { fast = !!value; fastToggle.checked = fast; }, setBackend: (value, opts) => setBackend(value, opts), setTmuxChecked: (value) => { tmuxToggle.checked = value; }, applyDialogMenus,
       closeModelMenu: dismissModelPicker, cwdInput, cwdMenu, cwdField, cwdHint, nameInput,
-      cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, closeCwdMenu: () => { cwdMenuOpen = false; cwdMenuFocus = -1; }, el,
+      cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, closeCwdMenu: commitCwdSelection, cwdBrowseAnchor: () => (String(cwdInput.value || "").trim() === "" ? cwdBrowseRestore : null), el,
       resumeMenu, resumeBtn, closeResumeMenu: () => { resumeMenuOpen = false; }, fetchResumeCandidates,
       tmuxToggle, tmuxField, worktreeToggle, worktreeInput, worktreeField, startBtn,
     });
@@ -1072,7 +1132,7 @@ function requireFunction(value, name) {
       prepareModalOpen();
       const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : like && like.cwd && like.cwd !== "?" ? like.cwd : current && current.cwd && current.cwd !== "?" ? current.cwd : "";
       const initialBackend = (like ? CodoxearLaunch.sessionAgentBackend(like) : current ? CodoxearLaunch.sessionAgentBackend(current) : "") || CodoxearLaunch.loadRememberedBackendChoice() || CodoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
-      status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false; browseRestoreText = null; modelQueryDirty = false;
+      status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false; browseRestoreText = null; modelQueryDirty = false; cwdBrowseRestore = null; cwdQueryDirty = false;
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
       backdrop.style.display = "block"; viewer.style.display = "flex"; afterModalVisibilityChanged(); controller.scheduleNewSessionResumeLoad(); controller.syncNewSessionTmuxUi(); controller.syncNewSessionWorktreeUi();
@@ -1081,6 +1141,9 @@ function requireFunction(value, name) {
 
     function start() {
       if (startBusy) return;
+      // A browse-only empty is a UI state, not a choice: start in the directory
+      // the field was showing before the list was opened.
+      restoreBrowseCwdSelection();
       const cwd = String(cwdInput.value || "").trim(); const agentBackend = backend; controller.setNewSessionCwdError("");
       if (!cwd) { status.textContent = ""; controller.setNewSessionCwdError("Working directory is required."); return; }
       // A browse-only empty is a UI state, not a choice: launch the pair the
@@ -1098,12 +1161,12 @@ function requireFunction(value, name) {
     }
 
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();
-    resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); dismissModelPicker(); resumeMenuOpen = !resumeMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; applyDialogMenus(); };
-    cwdInput.onclick = () => { cwdMenuFocus = -1; controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
-    cwdInput.oninput = () => { cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
-    cwdInput.onblur = () => win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } });
-    cwdInput.onkeydown = (event) => { const items = controller.renderRecentCwdMenu(); if (event.key === "ArrowDown" || event.key === "ArrowUp") { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } else if (event.key === "Tab" && cwdMenuOpen) { cwdMenuOpen = false; cwdMenuFocus = -1; applyDialogMenus(); } };
-    modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
+    resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); dismissModelPicker(); dismissCwdPicker(); resumeMenuOpen = !resumeMenuOpen; reasoningMenuOpen = false; applyDialogMenus(); };
+    cwdInput.onclick = () => { beginCwdBrowse(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
+    cwdInput.oninput = () => { cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
+    cwdInput.onblur = () => win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { dismissCwdPicker(); applyDialogMenus(); } });
+    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } else if (event.key === "Tab" && cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } };
+    modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
     // The first edit of a committed pair replaces it: clearing here means the
     // typed character or paste lands in an empty field instead of appending to
     // "model · provider" (which parsed to a garbage model id).
@@ -1116,9 +1179,9 @@ function requireFunction(value, name) {
     };
     modelInput.oninput = () => { modelQueryDirty = true; browseRestoreText = null; literalModelInputValue = ""; launchPresetProviderAbsent = false; modelMenuFocus = -1; controller.syncNewSessionProviderFromModelInput(); renderModelMenu(); controller.setNewSessionReasoningEffort(reasoningEffort); renderReasoningMenu(); modelMenuOpen = true; reasoningMenuOpen = false; applyDialogMenus(); };
     modelInput.onblur = () => win.requestAnimationFrame(() => { if (!modelField.contains(doc.activeElement)) { dismissModelPicker(); applyDialogMenus(); } });
-    modelInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !modelMenuOpen) beginModelBrowse(); const items = renderModelMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); modelMenuOpen = true; cwdMenuOpen = false; cwdMenuFocus = -1; reasoningMenuOpen = false; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; modelMenuFocus = modelMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (modelMenuFocus + delta + items.length) % items.length; renderModelMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionModelOption-${modelMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && modelMenuOpen && modelMenuFocus >= 0 && items[modelMenuFocus]) { event.preventDefault(); chooseModel(items[modelMenuFocus]); return; } if (event.key === "Escape" && modelMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); applyDialogMenus(); } else if (event.key === "Tab" && modelMenuOpen) { dismissModelPicker(); applyDialogMenus(); } };
+    modelInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !modelMenuOpen) beginModelBrowse(); const items = renderModelMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; modelMenuFocus = modelMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (modelMenuFocus + delta + items.length) % items.length; renderModelMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionModelOption-${modelMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && modelMenuOpen && modelMenuFocus >= 0 && items[modelMenuFocus]) { event.preventDefault(); chooseModel(items[modelMenuFocus]); return; } if (event.key === "Escape" && modelMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); applyDialogMenus(); } else if (event.key === "Tab" && modelMenuOpen) { dismissModelPicker(); applyDialogMenus(); } };
     worktreeToggle.onchange = () => { controller.syncNewSessionWorktreeUi(); if (worktreeToggle.checked) worktreeInput.focus(); }; worktreeInput.oninput = () => controller.syncNewSessionWorktreeUi(); fastToggle.onchange = () => { fast = !!fastToggle.checked; };
-    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; cwdMenuOpen = false; cwdMenuFocus = -1; resumeMenuOpen = false; applyDialogMenus(); };
+    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); dismissCwdPicker(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; resumeMenuOpen = false; applyDialogMenus(); };
     startBtn.onclick = start;
     addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
     // A full model list is the first menu here whose tail a keyboard opening

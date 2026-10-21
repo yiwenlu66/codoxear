@@ -44,7 +44,7 @@ def eval_model_options(
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
           sessionCatalog,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         const options=c.sessionModelOptions(); const filtered=c.filteredNewSessionModelOptions(); const parsed=c.parseNewSessionProviderModelInput(); if (filtered[0] || options[0]) c.selectNewSessionModel(filtered[0] || options[0]);
         const selectedInput = modelInput.value;
@@ -52,6 +52,37 @@ def eval_model_options(
         modelInput.value = longDisplay;
         const longParsed = c.parseNewSessionProviderModelInput();
         process.stdout.write(JSON.stringify({{options,filtered,parsed,input:selectedInput,provider,literal,absent,longDisplay,longParsed}}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    return json.loads(proc.stdout)
+
+
+def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None, cwd_value: str = "") -> dict:
+    """Build the real controller and ask it for the cwd picker options.
+
+    ``browse_anchor`` is what the dialog reports when the picker cleared a
+    committed path (see ``cwdBrowseAnchor``); null is the plain empty-field menu.
+    """
+    sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, SESSION_CATALOG, NEW_SESSION)]
+    script = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const storage = {{ data:new Map(), getItem(k) {{ return this.data.get(k)||null; }}, setItem(k,v) {{this.data.set(k,String(v));}}, removeItem(k) {{this.data.delete(k);}} }};
+        const ctx = {{ URL, window: {{ CodoxearUrls: {{resolveAppUrl:(p)=>String(p)}}, CodoxearStorage:storage }} }};
+        vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);
+        const noop=()=>{{}}, cls={{toggle(){{}},remove(){{}}}}, node={{innerHTML:"",appendChild(){{}}}};
+        const cwdInput={{value:{json.dumps(cwd_value)},focus(){{}},setSelectionRange(){{}}}};
+        const sessionCatalog=ctx.window.CodoxearSessionCatalog.createSessionCatalog({{consoleError:()=>{{}}}});
+        sessionCatalog.set("newSessionDefaults",{{model:"gpt-5.4-mini",models:[],provider_choices:["chatgpt"],model_providers:["chatgpt"],provider_models:{{}},reasoning_efforts:["high"],reasoning_efforts_by_model:{{}}}});
+        sessionCatalog.set("latestSessions",[]); sessionCatalog.set("recentCwds",{json.dumps(recent_cwds)}); sessionCatalog.set("tmuxAvailable",true);
+        const c=ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
+          sessionCatalog,
+          assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
+          cwdInput,cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+        }});
+        process.stdout.write(JSON.stringify({{recent:c.filteredRecentCwdOptions(),menu:c.cwdMenuOptions("")}}));
         """
     )
     proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
@@ -148,6 +179,23 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         self.assertEqual(result["longDisplay"], "glm-5.2 · dexgem-completions")
         self.assertEqual(result["longParsed"]["model"], "glm-5.2")
         self.assertEqual(result["longParsed"]["providerChoice"], "dexgem-completions")
+
+
+class TestNewSessionCwdOptionsBehavior(unittest.TestCase):
+    def test_browse_lists_the_whole_recent_history_without_the_ten_item_cap(self) -> None:
+        recents = [f"/srv/project-{index:02d}" for index in range(15)]
+        result = eval_cwd_options(recents, browse_anchor=recents[3])
+        listed = [item["cwd"] for item in result["recent"]]
+        self.assertEqual(listed, recents)
+        # Browse shows history only: an empty path must not add filesystem root
+        # entries next to the recents.
+        self.assertEqual([item["cwd"] for item in result["menu"]], recents)
+        self.assertTrue(all(item["source"] == "recent" for item in result["menu"]))
+
+    def test_plain_empty_field_keeps_the_bounded_recent_list(self) -> None:
+        recents = [f"/srv/project-{index:02d}" for index in range(15)]
+        result = eval_cwd_options(recents, browse_anchor=None)
+        self.assertEqual([item["cwd"] for item in result["recent"]], recents[:10])
 
 
 if __name__ == "__main__":
