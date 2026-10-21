@@ -35,13 +35,15 @@ cleanup() {
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# The "slow" provider points at a tiny in-container streaming server (started by
+# the Python driver for scenario 5) that delays its first response by seconds.
 # The legacy file intentionally triggers Pi 0.82's unconditional interactive
 # deprecation gate. There is deliberately no .agents/skills directory: this
 # test is about the tools migration warning, not the project-trust dialog.
 mkdir -p "$home_dir/.pi/agent/tools" "$home_dir/proj"
 printf '%s\n' '// test-only legacy custom tool' > "$home_dir/.pi/agent/tools/legacy-custom-tool.js"
 cat > "$home_dir/.pi/agent/models.json" <<'JSON'
-{"providers":{"fake":{"baseUrl":"http://127.0.0.1:9/v1","apiKey":"fake-key","api":"openai-completions","models":[{"id":"fake-1","reasoning":false,"contextWindow":100000,"maxTokens":4096,"input":["text"]}]}}}
+{"providers":{"fake":{"baseUrl":"http://127.0.0.1:9/v1","apiKey":"fake-key","api":"openai-completions","models":[{"id":"fake-1","reasoning":false,"contextWindow":100000,"maxTokens":4096,"input":["text"]}]},"slow":{"baseUrl":"http://127.0.0.1:19694/v1","apiKey":"fake-key","api":"openai-completions","models":[{"id":"slow-1","reasoning":false,"contextWindow":100000,"maxTokens":4096,"input":["text"]}]}}}
 JSON
 cat > "$home_dir/.pi/agent/settings.json" <<'JSON'
 {"defaultProvider":"fake","defaultModel":"fake-1","retry":{"enabled":false},"quietStartup":true}

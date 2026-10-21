@@ -38,6 +38,7 @@ report: dict = {
         "2_server_publishes_undelivered_verdict": {"pass": False},
         "3_browser_restores_composer_and_toasts": {"pass": False},
         "4_second_send_delivers_without_new_verdict": {"pass": False},
+        "5_slow_first_reply_of_fresh_session_is_not_undelivered": {"pass": False},
     },
     "evidence": {"artifacts": {}},
 }
@@ -431,11 +432,264 @@ def main() -> None:
     }
 
 
+SLOW_PROVIDER_PORT = 19694
+SLOW_PROVIDER_DELAY_SECONDS = 6.0
+SLOW_PROVIDER_SOURCE = r"""
+import json, sys, threading, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+DELAY = float(sys.argv[2])
+LOG = open(sys.argv[3], "a", buffering=1)
+def note(event, **extra):
+    LOG.write(json.dumps({"ts": time.time(), "event": event, **extra}) + "\n")
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    def log_message(self, *a): pass
+    def do_GET(self):
+        body = b'{"ok":true}'
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def do_POST(self):
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        note("request", path=self.path, bytes=len(raw))
+        time.sleep(DELAY)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream"); self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close"); self.end_headers()
+        def chunk(delta, finish=None, usage=None, choices=True):
+            obj = {"id": "chatcmpl-slow", "object": "chat.completion.chunk", "created": int(time.time()), "model": "slow-1",
+                   "choices": [{"index": 0, "delta": delta, "finish_reason": finish}] if choices else []}
+            if usage: obj["usage"] = usage
+            self.wfile.write(("data: " + json.dumps(obj) + "\n\n").encode()); self.wfile.flush()
+        chunk({"role": "assistant", "content": ""})
+        chunk({"content": "slow-reply-ok"})
+        chunk({}, finish="stop")
+        chunk({}, usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}, choices=False)
+        self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush()
+        note("response_sent")
+        self.close_connection = True
+ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
+
+
+def jsonl_snapshot(mark: str) -> dict:
+    """One docker exec: every Pi jsonl (path, birth, mtime, size) and the files containing mark."""
+    raw = dx(
+        "d=/home/tester/.pi/agent/sessions; "
+        "find $d -type f -name '*.jsonl' -printf '%p\\t%B@\\t%T@\\t%s\\n' 2>/dev/null; echo ---; "
+        f"grep -rlF -- {shlex.quote(mark)} $d 2>/dev/null; true"
+    )
+    files_part, _, marked_part = raw.partition("\n---\n")
+    files = {}
+    for line in files_part.splitlines():
+        cols = line.split("\t")
+        if len(cols) == 4 and cols[0].startswith("/"):
+            files[cols[0]] = {"birth": cols[1], "mtime": float(cols[2]), "size": int(cols[3])}
+    return {"files": files, "marked": [l for l in marked_part.splitlines() if l.startswith("/")]}
+
+
+def scenario5() -> None:
+    """First prompt of a FRESH Pi session whose first assistant reply takes > 3 s.
+
+    Desired behaviour (asserted): the broker never publishes an `undelivered`
+    verdict for that send, the composer keeps no restored draft, and the prompt
+    is a user row in the Pi jsonl. Timings are reported either way.
+    """
+    result: dict = {"pass": False}
+    report["scenarios"]["5_slow_first_reply_of_fresh_session_is_not_undelivered"] = result
+    evidence: dict = {"slow_provider_delay_seconds": SLOW_PROVIDER_DELAY_SECONDS}
+    report["evidence"]["fresh_session_first_send"] = evidence
+
+    if http("GET", "/api/me")[0] != 200:
+        status, login = http("POST", "/api/login", {"password": args.password})
+        if status != 200:
+            fail(f"scenario 5: API login failed: {status} {login}")
+
+    # Start the delayed OpenAI-compatible provider inside the container.
+    dx("cat > /home/tester/slow_provider.py <<'PYEOF'\n" + SLOW_PROVIDER_SOURCE + "\nPYEOF")
+    dx(f"setsid nohup python3 /home/tester/slow_provider.py {SLOW_PROVIDER_PORT} {SLOW_PROVIDER_DELAY_SECONDS} /home/tester/slow_provider.log "
+       ">/home/tester/slow_provider.out 2>&1 < /dev/null &")
+    probe = wait_for(lambda: '"ok"' in dx(f"python3 -c \"import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:{SLOW_PROVIDER_PORT}/v1/health',timeout=2).read())\" 2>&1"), 15, 0.5, "slow provider up")
+    if not probe:
+        fail("slow provider did not start: " + dx("cat /home/tester/slow_provider.out"))
+
+    # "Fresh" and "no gate": the legacy tool file that seeds Pi's startup
+    # deprecation gate is global to ~/.pi/agent, so remove it before launching.
+    dx("rm -f /home/tester/.pi/agent/tools/legacy-custom-tool.js; mkdir -p /home/tester/proj2")
+    proj2 = "/home/tester/proj2"
+    known = {r.get("session_id") for r in (http("GET", "/api/sessions")[1] or {}).get("sessions", [])}
+    status, launch = http("POST", "/api/sessions", {
+        "cwd": proj2, "agent_backend": "pi", "model_provider": "slow", "model": "slow-1", "create_in_tmux": True,
+    })
+    evidence["launch_response"] = {"status": status, "response": launch}
+    if status != 200:
+        fail(f"scenario 5: session launch failed: {status} {launch}")
+
+    def fresh_row():
+        status, data = http("GET", "/api/sessions")
+        if status != 200:
+            return None
+        return next((r for r in data.get("sessions", []) if r.get("cwd") == proj2 and r.get("session_id") not in known), None)
+
+    row = wait_for(fresh_row, 90, 0.25, "scenario 5 session listed")
+    if not row:
+        fail("scenario 5 session never appeared")
+    sid5 = row["session_id"]
+    target5 = f"{row.get('tmux_session')}:{row.get('tmux_window')}"
+    evidence.update(session_id=sid5, tmux_target=target5)
+
+    # Wait until Pi's TUI is up and no gate is present.
+    def tui_ready():
+        text = pane(target5)
+        return text if text.strip() and "Press any key to continue" not in text else None
+    first_pane = wait_for(tui_ready, 40, 0.5, "scenario 5 TUI ready")
+    time.sleep(4)
+    pane_before = pane(target5)
+    (ART / "scenario5-pane-before-send.txt").write_text(pane_before)
+    evidence["gate_absent"] = "Press any key to continue" not in pane_before
+    if not evidence["gate_absent"]:
+        fail("scenario 5: deprecation gate still present; not a clean fresh-session test")
+    row_before = session_row(sid5)
+    dump_json("scenario5-session-row-before-send.json", row_before)
+    evidence["row_before_send"] = {k: row_before.get(k) for k in ("log_path", "thread_id", "busy", "send_verdict", "bound", "agent_backend")} if row_before else None
+
+    mark5 = f"UDV-fresh-slow-{int(time.time() * 1000)}"
+    evidence["prompt"] = mark5
+    baseline = jsonl_snapshot(mark5)
+    evidence["jsonl_files_before_send"] = baseline["files"]
+
+    # Real browser: select the fresh session, type, click Send.
+    ab("open", BASE + "/")
+    if wait_for(lambda: ab_eval('Boolean(document.querySelector("#pw"))') or ab_eval('Boolean(document.querySelector("#sessions"))'), 20, 0.25, "browser landing"):
+        if ab_eval('Boolean(document.querySelector("#pw"))'):
+            ab("fill", "#pw", args.password)
+            ab("click", "#loginBtn")
+    selector = f'#sessions .session[data-session-id="{sid5}"]'
+    if not wait_for(lambda: ab_eval(f'Boolean(document.querySelector({json.dumps(selector)}))'), 30, 0.25, "scenario 5 session card"):
+        fail("browser did not render the fresh session card")
+    ab("click", selector)
+    if not wait_for(lambda: ab_eval('!document.querySelector("#msg").disabled'), 25, 0.25, "scenario 5 composer enabled"):
+        fail("scenario 5 composer did not become enabled")
+    ab("click", "#msg")
+    ab("press", "Control+a")
+    ab("press", "Delete")
+    if not wait_for(lambda: ab_eval('document.querySelector("#msg").value') == "", 5, 0.1, "scenario 5 composer cleared"):
+        fail("scenario 5: could not clear composer")
+    ab("type", "#msg", mark5)
+    if ab_eval('document.querySelector("#msg").value') != mark5:
+        fail("scenario 5: composer does not hold the prompt before send")
+
+    send_started = time.time()
+    ab("click", "#sendBtn")
+    evidence["send_started_at"] = send_started
+
+    timeline = []
+    first = {"jsonl_file_seen": None, "verdict_seen": None, "user_row_seen": None, "composer_restored": None, "toast_seen": None,
+             "slow_request_seen": None, "slow_response_sent": None}
+    verdict_payload = None
+    send_id = None
+    composer = None
+    deadline = send_started + 25
+    while time.time() < deadline:
+        t = time.time()
+        rel = lambda: round(time.time() - send_started, 3)
+        current = session_row(sid5)
+        verdict = current.get("send_verdict") if current else None
+        t_row = rel()
+        snap = jsonl_snapshot(mark5)
+        t_fs = rel()
+        browser_state = ab_eval('(() => { const m = document.querySelector("#msg"); const t = document.querySelector("#toast"); return { composer: m ? m.value : null, toast: t ? t.textContent : null }; })()')
+        t_br = rel()
+        composer = browser_state.get("composer")
+        new_files = [p for p in snap["files"] if p not in baseline["files"]]
+        timeline.append({"t_row": t_row, "t_fs": t_fs, "t_browser": t_br, "log_path": current.get("log_path") if current else None,
+                         "busy": current.get("busy") if current else None, "send_verdict": verdict, "new_jsonl_files": new_files,
+                         "marked_files": snap["marked"], "composer": composer, "toast": browser_state.get("toast")})
+        if new_files and first["jsonl_file_seen"] is None:
+            first["jsonl_file_seen"] = {"sample_t": t_fs, "files": {p: snap["files"][p] for p in new_files}}
+        if verdict and first["verdict_seen"] is None:
+            first["verdict_seen"] = {"sample_t": t_row, "verdict_ts_relative": round(float(verdict["ts"]) - send_started, 3) if isinstance(verdict.get("ts"), (int, float)) else None}
+            verdict_payload = verdict
+        if snap["marked"] and first["user_row_seen"] is None:
+            first["user_row_seen"] = {"sample_t": t_fs, "files": snap["marked"]}
+        if composer == mark5 and first["composer_restored"] is None:
+            first["composer_restored"] = {"sample_t": t_br}
+        toast = browser_state.get("toast")
+        if isinstance(toast, str) and "did not reach the backend" in toast and first["toast_seen"] is None:
+            first["toast_seen"] = {"sample_t": t_br, "text": toast}
+        time.sleep(0.1)
+    dump_json("scenario5-timeline.json", timeline)
+    ab("screenshot", "--full", str(ART / "scenario5-browser-after-20s.png"))
+
+    slow_log = [json.loads(l) for l in dx("cat /home/tester/slow_provider.log 2>/dev/null").splitlines() if l.startswith("{")]
+    for entry in slow_log:
+        entry["relative_to_send"] = round(entry["ts"] - send_started, 3)
+        if entry["event"] == "request" and first["slow_request_seen"] is None:
+            first["slow_request_seen"] = entry["relative_to_send"]
+        if entry["event"] == "response_sent" and first["slow_response_sent"] is None:
+            first["slow_response_sent"] = entry["relative_to_send"]
+
+    journal = journal_rows(sid5)
+    submit = next((e for e in journal if e.get("type") == "submit" and e.get("display_text") == mark5), None)
+    send_id = submit.get("id") if submit else None
+    final_row = session_row(sid5)
+    dump_json("scenario5-session-row-final.json", final_row)
+    final_snap = jsonl_snapshot(mark5)
+    user_row = pi_user_row(mark5)
+    pane_after = pane(target5)
+    (ART / "scenario5-pane-after.txt").write_text(pane_after)
+    log_grep = dx("grep -rniE 'send_verdict|undelivered' /home/tester/server.log /home/tester/.local/share/codoxear --include='*.log' --include='server.log' 2>/dev/null | grep -v '/send_journal/' | head -50")
+    tmux_log_grep = dx(f"tmux capture-pane -p -t {shlex.quote(target5)} -S -2000 | grep -niE 'send_verdict|undelivered' | head -20")
+    final_composer = ab_eval('document.querySelector("#msg").value')
+
+    # The browser's client send_id (verdict.send_id, "s1-...") differs from the
+    # server journal id, so correlate by session: this session is fresh, had no
+    # verdict before the send, and receives exactly one send.
+    verdict_for_send = bool(verdict_payload) and not (row_before or {}).get("send_verdict")
+    session_dir_marker = proj2.replace("/", "-")
+    jsonl_for_session_at_send = [p for p in baseline["files"] if f"-{session_dir_marker.strip('-')}--" in p]
+    evidence.update(
+        send_id=send_id, journal_rows=journal, first_events=first, verdict_payload=verdict_payload,
+        final_composer_value=final_composer, jsonl_files_after=final_snap["files"], jsonl_files_containing_prompt=final_snap["marked"],
+        pi_user_row=user_row, slow_provider_log=slow_log, server_and_broker_log_matches=log_grep, pane_log_matches=tmux_log_grep,
+        pane_after=pane_after[-2500:],
+    )
+    summary = {
+        "send_started_at": send_started,
+        "row_log_path_at_send_time": row_before.get("log_path") if row_before else None,
+        "pi_jsonl_for_this_session_existed_at_send_time": bool(jsonl_for_session_at_send),
+        "jsonl_files_before_send_count": len(baseline["files"]),
+        "new_jsonl_file_first_seen_s": (first["jsonl_file_seen"] or {}).get("sample_t"),
+        "verdict_first_seen_in_row_s": (first["verdict_seen"] or {}).get("sample_t"),
+        "verdict_ts_relative_s": (first["verdict_seen"] or {}).get("verdict_ts_relative"),
+        "user_row_first_seen_s": (first["user_row_seen"] or {}).get("sample_t"),
+        "slow_provider_request_s": first["slow_request_seen"],
+        "slow_provider_response_s": first["slow_response_sent"],
+        "composer_restored_at_s": (first["composer_restored"] or {}).get("sample_t"),
+        "final_composer_value": final_composer,
+        "verdict_payload": verdict_payload,
+    }
+    result.update(
+        timings=summary,
+        asserts={
+            "no_verdict_published_for_send": not verdict_for_send,
+            "composer_not_restored": final_composer != mark5 and first["composer_restored"] is None,
+            "user_row_in_pi_jsonl": bool(user_row),
+        },
+    )
+    result["pass"] = all(result["asserts"].values())
+
+
+
 try:
     main()
 except Exception as error:
     report["fatal_error"] = str(error)
     log(f"FAIL: {error}")
+try:
+    scenario5()
+except Exception as error:
+    report["fatal_error_scenario5"] = str(error)
+    log(f"FAIL scenario 5: {error}")
 finally:
     write_report()
     atexit.unregister(write_report)
@@ -446,4 +700,4 @@ finally:
 
 flags = {name: value.get("pass", False) for name, value in report["scenarios"].items()}
 print(json.dumps(flags, indent=2))
-sys.exit(0 if all(flags.values()) and "fatal_error" not in report else 1)
+sys.exit(0 if all(flags.values()) and "fatal_error" not in report and "fatal_error_scenario5" not in report else 1)
