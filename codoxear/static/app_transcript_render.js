@@ -399,6 +399,10 @@ const chatNavigationController = (function instantiateChatNavigationController()
     isSidebarOpen: () => Boolean(document.body && document.body.classList && document.body.classList.contains("sidebar-open")),
     addAppEvent,
     documentTarget: document,
+    chat,
+    renderedAtLiveTail: () => transcriptView().state().renderedAtLiveTail,
+    iconSvg,
+    requestAnimationFrame: (callback) => requestAnimationFrame(callback),
   }));
 })();
 

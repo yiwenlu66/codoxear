@@ -21,8 +21,9 @@ const ctx = {{ window: {{}}, document: {{}}, console }}; vm.createContext(ctx); 
 
 
 HARNESS = r'''
-const events = []; let selected = 'sid-1'; let rows = []; let allRows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null;
+const events = []; let selected = 'sid-1'; let rows = []; let allRows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null; let liveTail = false;
 function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor: cursor }, offsetTop: top, scrollIntoView() { events.push(`scroll:${id}`); } }; }
+function arow(id, top) { const item = row(id, `c-${id}`, top); item.dataset.role = 'assistant'; return item; }
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
 const chatNavRail = { style: {} }, chatEmptyState = { style: {} };
 const sessionState = { get: () => selected, subscribe: () => () => {} };
@@ -51,22 +52,122 @@ const deps = {
   modalIsolationTargets: [], isModalTargetOpen: () => false,
   addAppEvent: (_target, type, handler) => { if (type === 'keydown') keyHandler = handler; },
   documentTarget: { body: { classList: { contains: () => false } } }, isSidebarOpen: () => false,
+  renderedAtLiveTail: () => liveTail,
 };
 const controller = ctx.window.CodoxearChatNavigation.createChatNavigationController(deps);
 '''
 
 
 class TestFrontendChatNavigationModuleSource(unittest.TestCase):
-    def test_buttons_disable_only_after_server_reports_zero_users(self) -> None:
+    def test_buttons_follow_selection_without_any_total_fetch(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
-  apiMode = 'zero'; controller.syncButtons(); const immediate = [prev.disabled, next.disabled];
+  controller.syncButtons();
   await new Promise((resolve) => setImmediate(resolve));
-  process.stdout.write(JSON.stringify({ immediate, final: [prev.disabled, next.disabled] }));
+  const enabled = [prev.disabled, next.disabled];
+  selected = null; controller.syncButtons();
+  process.stdout.write(JSON.stringify({ enabled, disabled: [prev.disabled, next.disabled], apiCalls: events.filter((item) => item.startsWith('api:')) }));
 })();
 ''')
-        self.assertEqual(result["immediate"], [False, False])
-        self.assertEqual(result["final"], [True, True])
+        self.assertEqual(result["enabled"], [False, False])
+        self.assertEqual(result["disabled"], [True, True])
+        self.assertEqual(result["apiCalls"], [])
+
+    def test_next_mode_swaps_to_assistant_top_past_last_user_message(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', 0)];
+  allRows = [rows[0], arow('a1', -500)];
+  controller.syncButtons();
+  const title = next.title;
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  process.stdout.write(JSON.stringify({ title, events }));
+})();
+''')
+        self.assertEqual(result["title"], "Go to top of current assistant message")
+        self.assertIn("scroll:a1", result["events"])
+        self.assertIn("pulse:a1", result["events"])
+        self.assertFalse(any(item.startswith("api:") for item in result["events"]))
+
+    def test_assistant_top_walks_to_previous_message_when_already_at_top(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', 0)];
+  allRows = [rows[0], arow('a1', -300), arow('a2', 24)];
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("scroll:a1", result["events"])
+        self.assertNotIn("scroll:a2", result["events"])
+
+    def test_assistant_top_targets_reply_below_viewport(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', 0)];
+  allRows = [rows[0], arow('a1', 500)];
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("scroll:a1", result["events"])
+
+    def test_assistant_top_mode_reports_first_assistant_boundary(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [];
+  allRows = [arow('a1', 24)];
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("toast:At first assistant message", result["events"])
+        self.assertFalse(any(item.startswith("scroll:") for item in result["events"]))
+
+    def test_assistant_top_mode_falls_back_to_user_navigation_without_assistant_rows(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', 0)];
+  allRows = rows;
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  await new Promise((resolve) => setImmediate(resolve));
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("toast:At last user message", result["events"])
+
+    def test_next_mode_stays_user_when_user_row_below_viewport(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', 0), row('u2', 'c2', 300)];
+  allRows = rows;
+  controller.syncButtons();
+  process.stdout.write(JSON.stringify({ title: next.title }));
+})();
+''')
+        self.assertEqual(result["title"], "Next user message")
+
+    def test_next_mode_stays_user_in_detached_window(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = false;
+  rows = [row('u1', 'c1', 0)];
+  allRows = rows;
+  controller.syncButtons();
+  process.stdout.write(JSON.stringify({ title: next.title }));
+})();
+''')
+        self.assertEqual(result["title"], "Next user message")
 
     def test_local_user_target_scrolls_without_window_fetch(self) -> None:
         result = run_node(HARNESS + r'''

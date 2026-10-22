@@ -49,8 +49,111 @@
     const isSidebarOpen = typeof options.isSidebarOpen === "function"
       ? options.isSidebarOpen
       : () => Boolean(documentTarget.body && documentTarget.body.classList && documentTarget.body.classList.contains("sidebar-open"));
-    const userTotals = new Map();
-    const totalRequests = new Map();
+    // Optional live-tail/icon/timing hooks. Without them the controller
+    // degrades to plain user-message navigation (the next-mode affordance
+    // never leaves next-user), which keeps older test harnesses valid.
+    const chatEl = options.chat && typeof options.chat === "object" ? options.chat : null;
+    const renderedAtLiveTail = typeof options.renderedAtLiveTail === "function" ? options.renderedAtLiveTail : () => false;
+    const iconSvg = typeof options.iconSvg === "function" ? options.iconSvg : null;
+    const requestAnimationFrameFn = typeof options.requestAnimationFrame === "function" ? options.requestAnimationFrame : null;
+
+    // Next-button modes. Past the last user message of a live-tail
+    // transcript there is no "next user message"; the button then means
+    // "top of the assistant message I am reading" and walks assistant
+    // message tops on repeated presses.
+    const NEXT_MODE_USER = "next-user";
+    const NEXT_MODE_ASSISTANT_TOP = "assistant-top";
+    let nextMode = null;
+
+    function chatViewportTop() {
+      // Same coordinate space as loadedUserJumpTarget: the chat scroller's
+      // top edge + 1, so a row aligned to the top counts as at the top.
+      if (chatEl && typeof chatEl.getBoundingClientRect === "function") return chatEl.getBoundingClientRect().top + 1;
+      return getScrollTop() + 24;
+    }
+
+    function rowTop(row) {
+      const rect = row && row.getBoundingClientRect ? row.getBoundingClientRect() : null;
+      return rect ? rect.top : Number(row && row.offsetTop) || 0;
+    }
+
+    function computeNextMode() {
+      if (!sessionState.get("selected")) return NEXT_MODE_USER;
+      // Only a transcript anchored at the live tail makes "no rendered user
+      // row below the viewport" proof that no later user message exists;
+      // detached windows keep plain next-user navigation.
+      if (!renderedAtLiveTail()) return NEXT_MODE_USER;
+      const top = chatViewportTop();
+      for (const row of loadedUserMessageRows()) {
+        if (rowTop(row) > top + 2) return NEXT_MODE_USER;
+      }
+      return NEXT_MODE_ASSISTANT_TOP;
+    }
+
+    function writeNextButton(mode) {
+      if (iconSvg) nextUserBtn.innerHTML = iconSvg(mode === NEXT_MODE_ASSISTANT_TOP ? "up-bar" : "down");
+      const label = mode === NEXT_MODE_ASSISTANT_TOP ? "Go to top of current assistant message" : "Next user message";
+      nextUserBtn.title = label;
+      if (typeof nextUserBtn.setAttribute === "function") nextUserBtn.setAttribute("aria-label", label);
+    }
+
+    function syncNextMode() {
+      const mode = computeNextMode();
+      if (mode === nextMode) return;
+      nextMode = mode;
+      writeNextButton(mode);
+    }
+
+    let modeSyncScheduled = false;
+    function scheduleNextModeSync() {
+      if (!requestAnimationFrameFn) {
+        syncNextMode();
+        return;
+      }
+      if (modeSyncScheduled) return;
+      modeSyncScheduled = true;
+      requestAnimationFrameFn(() => {
+        modeSyncScheduled = false;
+        syncNextMode();
+      });
+    }
+
+    function assistantTopTarget() {
+      const top = chatViewportTop();
+      const assistants = renderedMessageRows().filter((row) => row && row.dataset && row.dataset.role === "assistant");
+      if (!assistants.length) return { target: null, reason: "none" };
+      let current = null;
+      for (const row of assistants) {
+        if (rowTop(row) <= top + 2) current = row;
+        else break;
+      }
+      // Mid-message: the current assistant row's top sits above the viewport
+      // edge — jump back to it. Already at its top: walk to the previous
+      // assistant message's top.
+      if (current && rowTop(current) < top - 2) return { target: current, reason: "current" };
+      if (current) {
+        const index = assistants.indexOf(current);
+        if (index > 0) return { target: assistants[index - 1], reason: "previous" };
+        return { target: null, reason: "first" };
+      }
+      // Every assistant row is below the viewport: the user sits between the
+      // last user message and its (streaming or unread) reply — take that
+      // reply's top.
+      return { target: assistants[0], reason: "next" };
+    }
+
+    function jumpToAssistantTop() {
+      const { target, reason } = assistantTopTarget();
+      if (!target) {
+        if (reason === "first") {
+          setToast("At first assistant message");
+          return true;
+        }
+        return false;
+      }
+      scrollToRow(target);
+      return true;
+    }
 
     function rowForMatch(match) {
       if (!match) return null;
@@ -59,37 +162,17 @@
       return loadedUserMessageRows().find((row) => (id && row.dataset && row.dataset.messageId === id) || (cursor && row.dataset && row.dataset.historyCursor === cursor)) || null;
     }
 
-    async function refreshUserTotal(sessionId) {
-      if (!sessionId || totalRequests.has(sessionId)) return;
-      const gen = currentGeneration();
-      const request = api(`/api/sessions/${sessionId}/search?q=*&role=user&limit=1`);
-      totalRequests.set(sessionId, request);
-      try {
-        const data = await request;
-        if (sessionState.get("selected") !== sessionId || currentGeneration() !== gen) return;
-        userTotals.set(sessionId, Math.max(0, Number(data.total) || 0));
-      } catch (error) {
-        if (error && error.status === 401) handleAppAuthLoss();
-      } finally {
-        if (totalRequests.get(sessionId) === request) totalRequests.delete(sessionId);
-        syncButtons();
-      }
-    }
-
     function syncButtons() {
+      // Enabled state is exactly "a session is selected". Boundary feedback
+      // lives at click time (neighbor fetch + toasts); a cached pre-disable
+      // count once permanently disabled the buttons whenever the first count
+      // fetch raced session startup (e.g. a Pi session before its log bound).
       const sid = sessionState.get("selected");
       chatNavRail.style.display = sid ? "flex" : "none";
       chatEmptyState.style.display = sid ? "none" : "flex";
-      if (!sid) {
-        prevUserBtn.disabled = true;
-        nextUserBtn.disabled = true;
-        return;
-      }
-      const knownTotal = userTotals.get(sid);
-      const disabled = knownTotal === 0;
-      prevUserBtn.disabled = disabled;
-      nextUserBtn.disabled = disabled;
-      if (knownTotal === undefined) void refreshUserTotal(sid);
+      prevUserBtn.disabled = !sid;
+      nextUserBtn.disabled = !sid;
+      syncNextMode();
     }
 
     function scrollToRow(row) {
@@ -210,6 +293,7 @@
     nextUserBtn.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (nextMode === NEXT_MODE_ASSISTANT_TOP && jumpToAssistantTop()) return;
       void jumpToLoadedUserMessage(1);
     };
 
@@ -223,6 +307,8 @@
     function chatSearchShortcutBlocked(target) {
       return chatNavigationShortcutBlocked(target);
     }
+
+    if (chatEl) addAppEvent(chatEl, "scroll", scheduleNextModeSync, { passive: true });
 
     addAppEvent(documentTarget, "keydown", (event) => {
       if (event.defaultPrevented) return;
@@ -244,7 +330,9 @@
 
     return Object.freeze({
       syncButtons,
+      syncNextMode,
       jumpToLoadedUserMessage,
+      jumpToAssistantTop,
       jumpToLoadedMessage,
       chatNavigationShortcutBlocked,
       chatSearchShortcutBlocked,

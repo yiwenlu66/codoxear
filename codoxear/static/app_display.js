@@ -210,6 +210,8 @@
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v11"/><path d="M18 10l-6 6-6-6"/><path d="M5 21h14"/></svg>`;
     if (name === "up")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>`;
+    if (name === "up-bar")
+      return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V10"/><path d="m6 14 6-6 6 6"/><path d="M5 3h14"/></svg>`;
     if (name === "left")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="M12 5 5 12l7 7"/></svg>`;
     if (name === "right")
