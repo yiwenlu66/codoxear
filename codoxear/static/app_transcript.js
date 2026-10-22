@@ -575,10 +575,18 @@
       return snapshot();
     }
 
-    // peek is {label, running} or null (clear). Anything that is not a
-    // non-empty string label clears, so a malformed payload cannot leave a
-    // stale action on screen.
+    // peek is {label, running}, the flip-only signal {label: null,
+    // running: false} ("the shown call finished; keep the text, drop the
+    // marker"), or null (clear). Anything else malformed clears, so a bad
+    // payload cannot leave a stale action on screen.
     function updateActivityPeek(peek) {
+      if (peek && typeof peek === "object" && peek.label === null && peek.running === false) {
+        if (activityPeek) {
+          activityPeek = Object.freeze({ label: activityPeek.label, running: false });
+          renderActivityPeek();
+        }
+        return snapshot();
+      }
       const label = peek && typeof peek === "object" && typeof peek.label === "string" ? peek.label.trim() : "";
       const hadPeek = Boolean(activityPeek);
       activityPeek = label ? Object.freeze({ label, running: peek.running === true }) : null;

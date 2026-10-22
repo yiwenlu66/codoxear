@@ -9,7 +9,9 @@ from .rollout_events import _codex_event_text
 
 
 class ActivityPeek(TypedDict):
-    label: str
+    # label is None only in the flip-only signal {label: None, running: False}:
+    # "the call you are showing finished; keep the text, drop the marker".
+    label: str | None
     running: bool
 
 
@@ -122,13 +124,17 @@ def _row_updates(obj: dict[str, Any]) -> Iterable[tuple[str, str | None, str]]:
 def scan_window_activity(objs: Iterable[Any]) -> tuple[bool, ActivityPeek | None]:
     """Project ephemeral activity from exactly this window, without carried state.
 
-    A known older call's result cannot erase a newer call. A result whose call
-    is outside the window still clears the client's cross-window hint.
+    A tool result never hides its call: fast tools execute inside one read
+    window, so clearing on the result would erase the call before it is ever
+    displayed. Instead a matching result flips the call to not-running, and a
+    result whose call is outside the window emits a flip-only signal
+    (``label=None``) telling the client to drop the running marker from the
+    call it is already showing. A result for an older parallel call changes
+    nothing.
     """
     relevant = False
     activity: ActivityPeek | None = None
     latest_call: str | None = None
-    seen_calls: set[str] = set()
     for obj in objs:
         if not isinstance(obj, dict):
             continue
@@ -140,11 +146,11 @@ def scan_window_activity(objs: Iterable[Any]) -> tuple[bool, ActivityPeek | None
             relevant = True
             if kind == "call":
                 latest_call = call_id
-                if call_id is not None:
-                    seen_calls.add(call_id)
                 activity = {"label": label, "running": True}
             elif kind == "thinking":
                 activity = {"label": label, "running": False}
-            elif call_id is None or call_id == latest_call or call_id not in seen_calls:
-                activity = None
+            elif activity is not None and activity.get("running") and (call_id is None or call_id == latest_call):
+                activity = {"label": activity["label"], "running": False}
+            elif activity is None:
+                activity = {"label": None, "running": False}
     return relevant, activity

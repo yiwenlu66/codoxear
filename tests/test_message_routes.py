@@ -1346,8 +1346,9 @@ _ACTIVITY_CHAT = {"type": "event_msg", "payload": {"type": "user_message", "mess
     ([], False, None),
     ([_ACTIVITY_CHAT], False, None),
     ([_ACTIVITY_CALL], True, {"label": "bash: git diff --stat", "running": True}),
-    ([_ACTIVITY_RESULT], True, None),
-    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], True, None),
+    # A fast tool finishes inside one read window: flip to not-running, never erase.
+    ([_ACTIVITY_RESULT], True, {"label": None, "running": False}),
+    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], True, {"label": "bash: git diff --stat", "running": False}),
     ([_ACTIVITY_RESULT, _ACTIVITY_CALL], True, {"label": "bash: git diff --stat", "running": True}),
     ([_ACTIVITY_THINKING], True, {"label": "thinking: inspect the changes", "running": False}),
 ])
@@ -1370,7 +1371,7 @@ def test_live_window_activity_emission(tmp_path, rows, present, expected):
     ([], None),
     ([_ACTIVITY_CHAT], None),
     ([_ACTIVITY_CALL], {"label": "bash: git diff --stat", "running": True}),
-    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], None),
+    ([_ACTIVITY_CALL, _ACTIVITY_RESULT], {"label": "bash: git diff --stat", "running": False}),
     ([_ACTIVITY_THINKING], {"label": "thinking: inspect the changes", "running": False}),
 ])
 def test_tail_and_sse_bootstrap_seed_same_activity(tmp_path, rows, expected):
@@ -1422,7 +1423,7 @@ def test_tail_activity_does_not_read_appends_past_its_cursor(tmp_path):
     assert body["activity"] == {"label": "bash: git diff --stat", "running": True}
     after = decode_message_cursor(body["live_cursor"], kind="live", session=session, secret=_SECRET)
     handle_messages_live(_FakeHandler(), session_id="s1", query=f"cursor={body['live_cursor']}", manager=_LiveManager(session), deps=deps)
-    assert responses[1][1]["activity"] is None
+    assert responses[1][1]["activity"] == {"label": None, "running": False}
     assert after < log_path.stat().st_size
 
 
@@ -1479,5 +1480,5 @@ def test_tail_caches_activity_without_an_additional_log_read(tmp_path):
         with log_path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(_ACTIVITY_RESULT) + "\n")
         handle_messages_tail(_FakeHandler(), session_id="s1", query="", manager=manager, deps=deps)
-        assert responses[-1][1]["activity"] is None
+        assert responses[-1][1]["activity"] == {"label": "bash: git diff --stat", "running": False}
         assert reverse_reader.call_count == 2

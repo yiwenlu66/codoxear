@@ -47,8 +47,12 @@ def _codex(kind, **values):
 ])
 def test_backend_calls_and_results(call, result):
     assert scan_window_activity([call]) == (True, {"label": "bash: git diff --stat", "running": True})
-    assert scan_window_activity([call, result]) == (True, None)
-    assert scan_window_activity([result]) == (True, None)
+    # A fast tool finishes inside one read window: the result flips the call
+    # to not-running instead of erasing it before it is ever displayed.
+    assert scan_window_activity([call, result]) == (True, {"label": "bash: git diff --stat", "running": False})
+    # A result whose call is outside the window emits the flip-only signal so
+    # the client drops the running marker from the call it is already showing.
+    assert scan_window_activity([result]) == (True, {"label": None, "running": False})
     assert scan_window_activity([result, call]) == (True, {"label": "bash: git diff --stat", "running": True})
 
 
@@ -58,8 +62,10 @@ def test_last_call_wins_and_older_results_do_not_erase_it():
     old_result = _codex("function_call_output", call_id="old")
     new_result = _codex("function_call_output", call_id="new")
     assert scan_window_activity([older, newer, old_result]) == (True, {"label": "read: new.py", "running": True})
-    assert scan_window_activity([older, newer, old_result, new_result]) == (True, None)
-    assert scan_window_activity([newer, old_result]) == (True, None)
+    # The newer call's own result flips it; an older parallel call's result
+    # leaves the running newer call untouched.
+    assert scan_window_activity([older, newer, old_result, new_result]) == (True, {"label": "read: new.py", "running": False})
+    assert scan_window_activity([newer, old_result]) == (True, {"label": "read: new.py", "running": True})
 
 
 def test_order_with_multiple_parts_and_results():
@@ -71,11 +77,13 @@ def test_order_with_multiple_parts_and_results():
     assert scan_window_activity([row]) == (True, {"label": "write: b.py", "running": True})
 
 
-def test_matching_result_clears_thinking_after_its_call():
+def test_result_after_intervening_thinking_keeps_the_thinking_label():
     call = _codex("function_call", call_id="t1", name="read", arguments='{"path": "a.py"}')
     thinking = _pi({"type": "thinking", "thinking": "waiting"})
     result = _codex("function_call_output", call_id="t1")
-    assert scan_window_activity([call, thinking, result]) == (True, None)
+    # The thinking row is newer than the call; the result only flips a line
+    # that is still marked running, it never resurrects the older call.
+    assert scan_window_activity([call, thinking, result]) == (True, {"label": "thinking: waiting", "running": False})
 
 
 @pytest.mark.parametrize("row,text", [

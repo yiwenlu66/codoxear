@@ -4,7 +4,7 @@
 # Scenario, all through the real server and the real browser:
 #   1. open turn with an in-flight `bash: sleep 30` call -> tail payload and
 #      the busy bubble both show the peek
-#   2. toolResult appended -> peek clears
+#   2. toolResult appended -> peek flips to not-running, label kept
 #   3. second call appended -> peek replaced with `read: app.css`
 #   4. result + final text appended and the fixture goes idle -> bubble gone
 set -euo pipefail
@@ -190,11 +190,11 @@ probe_until step1 'p["typing"] and p["peek"] == "bash: sleep 30…"' \
   || fail "busy bubble did not show the running peek"
 browser screenshot "$artifacts/step1-peek.png" >/dev/null 2>&1 || true
 
-# --- Step 2: the tool result clears the peek. -------------------------------
+# --- Step 2: the tool result flips the peek to not-running (never erases). --
 append_rows '{"type":"message","id":"r1","parentId":"a1","timestamp":"2026-10-21T06:00:30.000Z","message":{"role":"toolResult","toolCallId":"tool-1","content":[{"type":"text","text":"done"}]}}'
-probe_until step2 'p["typing"] and (p["peek"] is None or p["peekEmpty"])' \
-  || fail "tool result did not clear the peek"
-browser screenshot "$artifacts/step2-cleared.png" >/dev/null 2>&1 || true
+probe_until step2 'p["typing"] and p["peek"] == "bash: sleep 30"' \
+  || fail "tool result did not flip the peek to not-running"
+browser screenshot "$artifacts/step2-finished.png" >/dev/null 2>&1 || true
 
 # --- Step 3: a second call replaces the line. -------------------------------
 append_rows '{"type":"message","id":"a2","parentId":"r1","timestamp":"2026-10-21T06:00:31.000Z","message":{"role":"assistant","model":"provider/parent-model","stopReason":"toolUse","content":[{"type":"toolCall","id":"tool-2","name":"read","arguments":{"path":"app.css"}}]}}'

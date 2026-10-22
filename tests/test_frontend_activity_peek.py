@@ -127,6 +127,31 @@ def test_newer_activity_replaces_and_null_or_malformed_clears() -> None:
     assert out == {"replaced": "edit: b.py…", "lineCount": 1, "nulled": "", "snapshotAfterNull": None, "malformed": ""}
 
 
+def test_flip_only_signal_drops_the_running_marker_and_keeps_the_label() -> None:
+    out = _run_runtime(
+        """
+        const { runtime, peekNode } = createTyping();
+        runtime.setVisible(true);
+        runtime.updateActivityPeek({ label: "bash: npm test", running: true });
+        const whileRunning = peekNode().textContent;
+        runtime.updateActivityPeek({ label: null, running: false });
+        const afterFlip = peekNode().textContent;
+        const snapshotAfterFlip = runtime.snapshot().activity;
+        // A flip with nothing shown is a no-op, not a malformed clear.
+        runtime.updateActivityPeek(null);
+        runtime.updateActivityPeek({ label: null, running: false });
+        const flipWithoutPeek = peekNode().textContent;
+        process.stdout.write(JSON.stringify({ whileRunning, afterFlip, snapshotAfterFlip, flipWithoutPeek }));
+        """
+    )
+    assert out == {
+        "whileRunning": "bash: npm test…",
+        "afterFlip": "bash: npm test",
+        "snapshotAfterFlip": {"label": "bash: npm test", "running": False},
+        "flipWithoutPeek": "",
+    }
+
+
 def test_peek_set_before_row_exists_renders_at_construction() -> None:
     out = _run_runtime(
         """
