@@ -150,7 +150,7 @@ class TestFrontendShellDomSource(unittest.TestCase):
                 "stagedTrayParentTag": "form",
                 "composerInput": "inputWrap",
                 "searchPlaceholder": "Search conversation",
-                "searchStatus": "Search conversation",
+                "searchStatus": "",
                 "searchButtonClass": "icon-btn",
                 "searchPrevButtonClass": "icon-btn",
                 "searchNextButtonClass": "icon-btn",

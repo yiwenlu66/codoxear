@@ -53,7 +53,7 @@ function requireFunction(value, name) {
     const chatSearchPrevBtn = el("button", { id: "chatSearchPrevBtn", class: "icon-btn", type: "button", title: "Previous match", "aria-label": "Previous match", "data-hint": "v", html: iconSvg("up") });
     const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", "data-hint": "k", html: iconSvg("down") });
     const chatSearchCloseBtn = el("button", { id: "chatSearchCloseBtn", class: "icon-btn", type: "button", title: "Close search", "aria-label": "Close search", "data-hint": "x", html: iconSvg("x") });
-    const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Search conversation" });
+    const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "" });
     const chatSearchAllHintEl = el("span", { id: "chatSearchAllHint", class: "chatSearchAllHint", text: "" });
     const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search conversation" }, [chatSearchGlyph, chatSearchInput, chatSearchStatus, chatSearchAllHintEl, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn]);
     chatSearchBar.style.display = "none";

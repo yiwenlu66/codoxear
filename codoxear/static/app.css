@@ -4030,9 +4030,6 @@ select {
           padding: 2px var(--space-1);
         }
         .chatSearchStatus {
-          max-width: var(--ctl-chrome);
-          overflow: hidden;
-          text-overflow: ellipsis;
           font-size: var(--font-2xs);
         }
         .chatSearchBar .icon-btn {

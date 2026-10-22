@@ -287,7 +287,11 @@
 
     function syncStatus() {
       const query = currentQuery();
-      let text = "Search conversation";
+      // Idle shows nothing: the input's own placeholder is the label, and a
+      // duplicate status text only gets truncated into a broken-looking
+      // sliver on narrow viewports. The span collapses when empty so the
+      // input reclaims the width.
+      let text = "";
       if (query) {
         if (!Number.isFinite(serverTotal)) text = "Searching…";
         else if (serverTotal <= 0) text = "no matches";
@@ -298,6 +302,7 @@
       }
       chatSearchStatus.textContent = text;
       chatSearchStatus.title = text;
+      chatSearchStatus.style.display = text ? "" : "none";
       chatSearchAllHintEl.textContent = "";
       chatSearchAllHintEl.style.display = "none";
       const hasMatches = Boolean(query && Number.isFinite(serverTotal) && serverTotal > 0 && serverMatches.length);
