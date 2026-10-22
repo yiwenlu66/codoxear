@@ -23,7 +23,7 @@ const ctx = {{ window: {{}}, document: {{}}, console }}; vm.createContext(ctx); 
 HARNESS = r'''
 const events = []; let selected = 'sid-1'; let rows = []; let allRows = []; let apiMode = 'total'; let windowMode = 'success'; let olderMode = 'success'; let keyHandler = null; let liveTail = false;
 function row(id, cursor, top) { return { dataset: { messageId: id, historyCursor: cursor }, offsetTop: top, scrollIntoView() { events.push(`scroll:${id}`); } }; }
-function arow(id, top) { const item = row(id, `c-${id}`, top); item.dataset.role = 'assistant'; return item; }
+function arow(id, top, height) { const item = row(id, `c-${id}`, top); item.dataset.role = 'assistant'; item.offsetHeight = Number(height) || 0; return item; }
 const prev = { style: {}, disabled: false }, next = { style: {}, disabled: false };
 const chatNavRail = { style: {} }, chatEmptyState = { style: {} };
 const sessionState = { get: () => selected, subscribe: () => () => {} };
@@ -78,14 +78,14 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
 (async () => {
   liveTail = true;
   rows = [row('u1', 'c1', 0)];
-  allRows = [rows[0], arow('a1', -500)];
+  allRows = [rows[0], arow('a1', -500, 1000)];
   controller.syncButtons();
   const title = next.title;
   next.onclick({ preventDefault() {}, stopPropagation() {} });
   process.stdout.write(JSON.stringify({ title, events }));
 })();
 ''')
-        self.assertEqual(result["title"], "Go to top of current assistant message")
+        self.assertEqual(result["title"], "Go to top of the current assistant message")
         self.assertIn("scroll:a1", result["events"])
         self.assertIn("pulse:a1", result["events"])
         self.assertFalse(any(item.startswith("api:") for item in result["events"]))
@@ -95,7 +95,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
 (async () => {
   liveTail = true;
   rows = [row('u1', 'c1', 0)];
-  allRows = [rows[0], arow('a1', -300), arow('a2', 24)];
+  allRows = [rows[0], arow('a1', -300, 200), arow('a2', 24, 200)];
   controller.syncButtons();
   next.onclick({ preventDefault() {}, stopPropagation() {} });
   process.stdout.write(JSON.stringify({ events }));
@@ -109,7 +109,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
 (async () => {
   liveTail = true;
   rows = [row('u1', 'c1', 0)];
-  allRows = [rows[0], arow('a1', 500)];
+  allRows = [rows[0], arow('a1', 500, 100)];
   controller.syncButtons();
   next.onclick({ preventDefault() {}, stopPropagation() {} });
   process.stdout.write(JSON.stringify({ events }));
@@ -122,7 +122,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
 (async () => {
   liveTail = true;
   rows = [];
-  allRows = [arow('a1', 24)];
+  allRows = [arow('a1', 24, 100)];
   controller.syncButtons();
   next.onclick({ preventDefault() {}, stopPropagation() {} });
   process.stdout.write(JSON.stringify({ events }));
@@ -131,19 +131,48 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertIn("toast:At first assistant message", result["events"])
         self.assertFalse(any(item.startswith("scroll:") for item in result["events"]))
 
-    def test_assistant_top_mode_falls_back_to_user_navigation_without_assistant_rows(self) -> None:
+    def test_next_mode_stays_user_without_any_assistant_row(self) -> None:
         result = run_node(HARNESS + r'''
 (async () => {
   liveTail = true;
   rows = [row('u1', 'c1', 0)];
   allRows = rows;
   controller.syncButtons();
+  const title = next.title;
   next.onclick({ preventDefault() {}, stopPropagation() {} });
   await new Promise((resolve) => setImmediate(resolve));
+  process.stdout.write(JSON.stringify({ title, events }));
+})();
+''')
+        self.assertEqual(result["title"], "Next user message")
+        self.assertIn("toast:At last user message", result["events"])
+
+    def test_assistant_top_targets_reply_below_while_reading_last_user_message(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', -40)];
+  allRows = [arow('a1', -600, 300), rows[0], arow('a2', 500, 400)];
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
   process.stdout.write(JSON.stringify({ events }));
 })();
 ''')
-        self.assertIn("toast:At last user message", result["events"])
+        self.assertIn("scroll:a2", result["events"])
+        self.assertNotIn("scroll:a1", result["events"])
+
+    def test_assistant_top_jumps_to_last_assistant_when_transcript_ends_unanswered(self) -> None:
+        result = run_node(HARNESS + r'''
+(async () => {
+  liveTail = true;
+  rows = [row('u1', 'c1', -10)];
+  allRows = [arow('a1', -500, 300), rows[0]];
+  controller.syncButtons();
+  next.onclick({ preventDefault() {}, stopPropagation() {} });
+  process.stdout.write(JSON.stringify({ events }));
+})();
+''')
+        self.assertIn("scroll:a1", result["events"])
 
     def test_next_mode_stays_user_when_user_row_below_viewport(self) -> None:
         result = run_node(HARNESS + r'''

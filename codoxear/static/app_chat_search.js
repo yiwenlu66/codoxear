@@ -225,6 +225,11 @@
     const chatSearchStatus = requireNode(options.chatSearchStatus, "chatSearchStatus");
     const chatSearchAllHintEl = requireNode(options.chatSearchAllHintEl, "chatSearchAllHintEl");
     const chatSearchBar = requireNode(options.chatSearchBar, "chatSearchBar");
+    // While the bar is open it replaces the chat header row (nav rail + time
+    // chip) so the transcript keeps one row of chrome instead of stacking two
+    // rows of up/down arrows. Derived from the toggle button to keep the
+    // wiring surface unchanged; the shell structure pins this ancestor.
+    const chatHeader = typeof chatSearchBtn.closest === "function" ? chatSearchBtn.closest(".chatHeader") : null;
 
     const sessionState = options.sessionState;
     if (!sessionState || typeof sessionState.get !== "function" || typeof sessionState.subscribe !== "function") throw new TypeError("chat search controller dependency missing: sessionState");
@@ -467,6 +472,7 @@
       if (!sessionState.get("selected")) return;
       loadedRuntime.setOpen(true);
       chatSearchBar.style.display = "flex";
+      if (chatHeader) chatHeader.style.display = "none";
       syncVisibleTimeIndicator();
       refreshLoaded({ jump: false, refreshAllCount: true });
       chatSearchInput.focus({ preventScroll: true });
@@ -477,6 +483,7 @@
       clearHighlightTimer();
       loadedRuntime.setOpen(false);
       chatSearchBar.style.display = "none";
+      if (chatHeader) chatHeader.style.display = "";
       clearChatSearchMarks();
       resetServerResults();
       syncVisibleTimeIndicator();

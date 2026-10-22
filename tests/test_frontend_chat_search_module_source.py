@@ -25,6 +25,8 @@ HARNESS = r'''
 const events = [];
 const makeNode = () => ({ style: {}, disabled: false, textContent: '', title: '', value: '', clientWidth: 390, focus() {}, select() {} });
 const nodes = { chatSearchBtn: makeNode(), chatSearchInput: makeNode(), chatSearchPrevBtn: makeNode(), chatSearchNextBtn: makeNode(), chatSearchCloseBtn: makeNode(), chatSearchStatus: makeNode(), chatSearchAllHintEl: makeNode(), chatSearchBar: makeNode() };
+const headerNode = { style: {} };
+nodes.chatSearchBtn.closest = (selector) => selector === '.chatHeader' ? headerNode : null;
 let rows = [{ dataset: { messageId: 'm2', historyCursor: 'c2' }, text: 'second needle', scrollIntoView() { events.push('scroll:m2'); } }];
 const matches = [
   { message_id: 'm1', before_byte: 'c1', role: 'assistant', snippet: 'first needle' },
@@ -45,6 +47,16 @@ const controller = ctx.window.CodoxearChatSearch.createChatSearchController({
 
 
 class TestFrontendChatSearchModuleBehavior(unittest.TestCase):
+    def test_open_replaces_chat_header_row_and_close_restores_it(self) -> None:
+        result = run_chat(HARNESS + r'''
+controller.open();
+const hidden = [headerNode.style.display, nodes.chatSearchBar.style.display];
+controller.close();
+process.stdout.write(JSON.stringify({ hidden, restored: [headerNode.style.display, nodes.chatSearchBar.style.display] }));
+''')
+        self.assertEqual(result["hidden"], ["none", "flex"])
+        self.assertEqual(result["restored"], ["", "none"])
+
     def test_controller_fails_loudly_when_dom_dependencies_are_missing(self) -> None:
         result = run_chat("""
 let error = ''; try { ctx.window.CodoxearChatSearch.createChatSearchController({}); } catch (e) { error = e.message; }

@@ -77,22 +77,30 @@
       return rect ? rect.top : Number(row && row.offsetTop) || 0;
     }
 
+    function rowBottom(row) {
+      const rect = row && row.getBoundingClientRect ? row.getBoundingClientRect() : null;
+      return rect ? rect.bottom : (Number(row && row.offsetTop) || 0) + (Number(row && row.offsetHeight) || 0);
+    }
+
     function computeNextMode() {
       if (!sessionState.get("selected")) return NEXT_MODE_USER;
       // Only a transcript anchored at the live tail makes "no rendered user
       // row below the viewport" proof that no later user message exists;
-      // detached windows keep plain next-user navigation.
+      // detached windows keep plain next-user navigation. Without any
+      // assistant row the swap would advertise a target that cannot exist,
+      // so plain navigation (and its click-time fallback) keeps the button.
       if (!renderedAtLiveTail()) return NEXT_MODE_USER;
       const top = chatViewportTop();
       for (const row of loadedUserMessageRows()) {
         if (rowTop(row) > top + 2) return NEXT_MODE_USER;
       }
+      if (!assistantRows().length) return NEXT_MODE_USER;
       return NEXT_MODE_ASSISTANT_TOP;
     }
 
     function writeNextButton(mode) {
       if (iconSvg) nextUserBtn.innerHTML = iconSvg(mode === NEXT_MODE_ASSISTANT_TOP ? "up-bar" : "down");
-      const label = mode === NEXT_MODE_ASSISTANT_TOP ? "Go to top of current assistant message" : "Next user message";
+      const label = mode === NEXT_MODE_ASSISTANT_TOP ? "Go to top of the current assistant message" : "Next user message";
       nextUserBtn.title = label;
       if (typeof nextUserBtn.setAttribute === "function") nextUserBtn.setAttribute("aria-label", label);
     }
@@ -118,28 +126,39 @@
       });
     }
 
+    function assistantRows() {
+      return renderedMessageRows().filter((row) => row && row.dataset && row.dataset.role === "assistant");
+    }
+
     function assistantTopTarget() {
       const top = chatViewportTop();
-      const assistants = renderedMessageRows().filter((row) => row && row.dataset && row.dataset.role === "assistant");
+      const assistants = assistantRows();
       if (!assistants.length) return { target: null, reason: "none" };
-      let current = null;
-      for (const row of assistants) {
-        if (rowTop(row) <= top + 2) current = row;
-        else break;
+      // Anchor on the first assistant row not fully above the viewport edge.
+      // That row is either being read (its top above, its bottom below the
+      // edge) or it is the next assistant content below — e.g. the reply to
+      // the last user message while that user message is being read. Picking
+      // by preceding tops alone misidentifies the previous turn's answer as
+      // "current" in exactly that case and jumps backward.
+      let index = -1;
+      for (let i = 0; i < assistants.length; i++) {
+        if (rowBottom(assistants[i]) > top + 2) {
+          index = i;
+          break;
+        }
       }
-      // Mid-message: the current assistant row's top sits above the viewport
-      // edge — jump back to it. Already at its top: walk to the previous
-      // assistant message's top.
-      if (current && rowTop(current) < top - 2) return { target: current, reason: "current" };
-      if (current) {
-        const index = assistants.indexOf(current);
-        if (index > 0) return { target: assistants[index - 1], reason: "previous" };
-        return { target: null, reason: "first" };
-      }
-      // Every assistant row is below the viewport: the user sits between the
-      // last user message and its (streaming or unread) reply — take that
-      // reply's top.
-      return { target: assistants[0], reason: "next" };
+      // Every assistant row sits fully above the edge (the transcript ends in
+      // an unanswered user message): the last assistant message is the
+      // current one — jump back up to its top.
+      if (index < 0) return { target: assistants[assistants.length - 1], reason: "current" };
+      const current = assistants[index];
+      const currentTop = rowTop(current);
+      if (currentTop < top - 2) return { target: current, reason: "current" };
+      if (currentTop > top + 2) return { target: current, reason: "next" };
+      // Already at the current message's top: walk to the previous assistant
+      // message's top.
+      if (index > 0) return { target: assistants[index - 1], reason: "previous" };
+      return { target: null, reason: "first" };
     }
 
     function jumpToAssistantTop() {
