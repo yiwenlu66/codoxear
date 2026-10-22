@@ -4020,7 +4020,6 @@ select {
           flex-basis: 36px;
           height: var(--ctl-chrome);
           padding: var(--space-1) var(--space-4);
-          gap: 2px;
         }
         .chatSearchGlyph {
           display: none;
@@ -4038,14 +4037,6 @@ select {
           height: var(--ctl-chrome);
           min-width: var(--ctl-chrome);
           min-height: var(--ctl-chrome);
-        }
-        .chatSearchBar .icon-btn::after {
-          inset: -8px;
-        }
-        /* Compact chrome keeps distinct 44px touch zones for the adjacent
-           previous, next, and close actions. */
-        .chatSearchBar .icon-btn + .icon-btn {
-          margin-left: var(--space-7);
         }
         .topbar {
           padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3) var(--space-4);
