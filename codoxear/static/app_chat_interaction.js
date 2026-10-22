@@ -230,6 +230,7 @@ import * as CodoxearTranscriptRender from "./app_transcript_render.js";
       agentBackendDisplayName: options.agentBackendDisplayName,
       agentBackendLogoPath: options.agentBackendLogoPath,
       api: options.api,
+      apiResponseStale: options.apiResponseStale,
       appConfirm: options.appConfirm,
       attachBtn: options.attachBtn,
       b64FromBytes: options.b64FromBytes,

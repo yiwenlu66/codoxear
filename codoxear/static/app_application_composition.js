@@ -83,7 +83,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       codoxearFileTouch, pushPerfSample,
       resolveAppUrl, versionedShellAssetPath, storageGetItem,
       storageSetItem, storageRemoveItem, codoxearLaunch, codoxearNewSession,
-      apiResponseNotModified, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers,
+      apiResponseNotModified, apiResponseStale, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers,
       listFromFilesField, listFromFileRecords, baseName,
       sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash, sessionLaunchIcon, sessionLaunchFailed,
       sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
@@ -320,15 +320,22 @@ import * as CodoxearWiring from "./app_wiring.js";
         }
         function markSessionsPollSuccess() {
           pollingRuntime.markSessionsPollSuccess();
-          networkStatus.reportSuccess();
+          // Data arrived, but if the service worker served it from its
+          // offline cache the server is still unreachable: say so.
+          if (sessionRefreshController.lastRefreshStale()) networkStatus.reportStale();
+          else networkStatus.reportSuccess();
         }
         function markSessionsPollFailure(transportFailed = true) {
           pollingRuntime.markSessionsPollFailure();
           if (transportFailed) networkStatus.reportFailure();
         }
-        function markSecondaryPollSuccess() {
+        function markSecondaryPollSuccess(requestMade = true) {
           pollingRuntime.markSecondaryPollSuccess();
-          networkStatus.reportSuccess();
+          // A skipped background refresh made no request: it carries no
+          // transport evidence and must not clear a degraded state.
+          if (!requestMade) return;
+          if (voiceController.lastBackgroundFetchStale()) networkStatus.reportStale();
+          else networkStatus.reportSuccess();
         }
         function markSecondaryPollFailure(transportFailed = true) {
           pollingRuntime.markSecondaryPollFailure();
@@ -353,8 +360,8 @@ import * as CodoxearWiring from "./app_wiring.js";
         async function runSecondaryPollTick() {
           if (appDisposed) return;
           try {
-            await refreshVoiceBackgroundState();
-            markSecondaryPollSuccess();
+            const requestMade = await refreshVoiceBackgroundState();
+            markSecondaryPollSuccess(Boolean(requestMade));
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
@@ -609,6 +616,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionLaunchLabel: sessionLaunchLabel,
           confirmApp: confirmApp,
           api: api,
+          apiResponseStale: apiResponseStale,
           setToast: setToast,
           sessionProviderChoice: sessionProviderChoice,
           queueViewer: queueViewer,
@@ -792,6 +800,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             eventBindings,
             isAppDisposed: () => appDisposed,
             api,
+            apiResponseStale,
             setToast,
             handleAppAuthLoss,
             openSettings: () => settingsDialogController.show(),
@@ -1052,6 +1061,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           api,
           isDisposed: () => appDisposed,
           apiResponseNotModified,
+          apiResponseStale,
           sessionCatalog,
           emptyDefaults: () => ({
             default_backend: "pi",

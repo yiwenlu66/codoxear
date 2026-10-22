@@ -58,7 +58,7 @@ async function advance(ms) {
   await flush();
 }
 class FakeDate extends Date { static now() { return clock; } }
-const ctx = { self, clients, caches, URL, Request, Response, Date: FakeDate, setTimeout, clearTimeout, console: { warn: (...args) => warnings.push(args) }, fetch: async request => { fetches.push(request.url); return network(request); } };
+const ctx = { self, clients, caches, URL, Request, Response, Headers, Date: FakeDate, setTimeout, clearTimeout, console: { warn: (...args) => warnings.push(args) }, fetch: async request => { fetches.push(request.url); return network(request); } };
 vm.createContext(ctx);
 vm.runInContext(WORKER_SOURCE, ctx);
 function dispatch(type, extra = {}) {
@@ -154,6 +154,42 @@ def test_api_200_snapshots_survive_offline_with_exact_query_keys() -> None:
       network = async () => new Response('new sessions');
       await get('/api/sessions'); // Cached delivery plus successful background recovery.
       assert.equal(await (await get('/api/sessions')).text(), 'new sessions');
+    """)
+
+
+def test_cache_fallback_responses_are_marked_stale() -> None:
+    run_worker("""
+      network = async () => new Response('payload', { headers: { 'ETag': 'v1' } });
+      const live = await get('/api/sessions');
+      assert.equal(live.headers.get('X-Codoxear-Stale'), null);
+      assert.equal(await live.text(), 'payload');
+
+      // Network rejection -> cached fallback: marked stale, headers and body preserved.
+      offline();
+      const rejected = await get('/api/sessions');
+      assert.equal(rejected.status, 200);
+      assert.equal(rejected.headers.get('X-Codoxear-Stale'), '1');
+      assert.equal(rejected.headers.get('ETag'), 'v1');
+      assert.equal(await rejected.text(), 'payload');
+
+      // networkSuspect window: cache served immediately, still marked.
+      const suspect = await get('/api/sessions');
+      assert.equal(suspect.headers.get('X-Codoxear-Stale'), '1');
+
+      // Browser-offline fast path: also marked.
+      self.navigator.onLine = false;
+      const offlineHit = await get('/api/sessions');
+      assert.equal(offlineHit.headers.get('X-Codoxear-Stale'), '1');
+      self.navigator.onLine = true;
+
+      // Recovery: the suspect-window request still serves marked cache while its
+      // background revalidation clears the latch; the next request is live again.
+      network = async () => new Response('fresh');
+      const revalidating = await get('/api/sessions');
+      assert.equal(revalidating.headers.get('X-Codoxear-Stale'), '1');
+      const recovered = await get('/api/sessions');
+      assert.equal(recovered.headers.get('X-Codoxear-Stale'), null);
+      assert.equal(await recovered.text(), 'fresh');
     """)
 
 

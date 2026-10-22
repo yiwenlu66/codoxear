@@ -28,7 +28,7 @@
     const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
     const upgradeCandidateFileRefs = requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
     const {
-      ATTACH_UPLOAD_MAX_BYTES, AbortController, EventSource, $, addAppEvent, api, attachBtn, b64FromBytes, chatInner, codoxearAttachments, codoxearMessageFlow, composer,
+      ATTACH_UPLOAD_MAX_BYTES, AbortController, EventSource, $, addAppEvent, api, apiResponseStale, attachBtn, b64FromBytes, chatInner, codoxearAttachments, codoxearMessageFlow, composer,
       confirmApp, dataTransferHasFiles, document, el,
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, handleAppAuthLoss,
       imgInput, isLikelyHeic, looksLikeImage, navigator, networkStatus,
@@ -134,6 +134,8 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   navigatorValue: () => (typeof navigator === "undefined" ? undefined : navigator),
   reportTransportSuccess: () => networkStatus.reportSuccess(),
   reportTransportFailure: () => networkStatus.reportFailure(),
+  reportTransportStale: () => networkStatus.reportStale(),
+  apiResponseStale,
   EventSource: typeof EventSource === "function" ? EventSource : null,
   AbortController: typeof AbortController === "function" ? AbortController : null,
   setTimeout: window.setTimeout.bind(window),

@@ -5,6 +5,10 @@ const SW_META_CACHE = "codoxear-sw-meta-v1";
 const APP_CACHES = new Set([HTML_CACHE, STATIC_CACHE, API_CACHE, SW_META_CACHE]);
 const NETWORK_FIRST_TIMEOUT_MS = 3000;
 const NETWORK_SUSPECT_WINDOW_MS = 30000;
+// Marks a cache-served fallback so the page can tell "server answered" from
+// "service worker served stale data": behind a cache-serving worker, a
+// resolved 200 is evidence about the cache, not the network.
+const STALE_HEADER = "X-Codoxear-Stale";
 let networkSuspectUntil = 0;
 
 self.addEventListener("install", (event) => {
@@ -80,6 +84,16 @@ async function fetchAndCache(request, cache, { pruneVersions = false } = {}) {
   return response;
 }
 
+function markStale(response) {
+  const headers = new Headers(response.headers);
+  headers.set(STALE_HEADER, "1");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function networkFirst(event, cacheName, matchOptions, onFallback) {
   const request = event.request;
   const cache = await caches.open(cacheName);
@@ -87,7 +101,7 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     const cached = await cache.match(request, matchOptions);
     if (cached) {
       onFallback?.();
-      return cached;
+      return markStale(cached);
     }
   }
   if (Date.now() < networkSuspectUntil) {
@@ -97,7 +111,7 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
       event.waitUntil(fetchAndCache(request, cache).then(() => {
         networkSuspectUntil = 0;
       }).catch(() => {}));
-      return cached;
+      return markStale(cached);
     }
   }
   // Airplane + VPN tails and captive portals can hang instead of rejecting.
@@ -119,7 +133,7 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     networkSuspectUntil = Date.now() + NETWORK_SUSPECT_WINDOW_MS;
     onFallback?.();
     const cached = await cache.match(request, matchOptions);
-    if (cached) return cached;
+    if (cached) return markStale(cached);
     throw error;
   } finally {
     clearTimeout(timer);

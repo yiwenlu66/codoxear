@@ -204,6 +204,9 @@ const global = window;
       function apiResponseNotModified(obj) {
         return CodoxearApi.apiResponseNotModified(obj);
       }
+      function apiResponseStale(obj) {
+        return CodoxearApi.apiResponseStale(obj);
+      }
       function clearApiCache() {
         return CodoxearApi.clearApiCache();
       }
@@ -607,7 +610,7 @@ const global = window;
         codoxearFileTouch: CodoxearFileTouch, pushPerfSample,
         resolveAppUrl, versionedShellAssetPath, storageGetItem,
         storageSetItem, storageRemoveItem, codoxearLaunch: CodoxearLaunch, codoxearNewSession: CodoxearNewSession,
-        apiResponseNotModified, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers: CodoxearFileHelpers,
+        apiResponseNotModified, apiResponseStale, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers: CodoxearFileHelpers,
         listFromFilesField, listFromFileRecords, baseName,
         sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash, sessionLaunchIcon, sessionLaunchFailed,
         sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,

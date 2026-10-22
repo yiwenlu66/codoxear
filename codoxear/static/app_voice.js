@@ -132,6 +132,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
     // App-level runtime state accessors and effects.
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
     const api = requireFunction(options.api, "api");
+    const apiResponseStale = typeof options.apiResponseStale === "function" ? options.apiResponseStale : () => false;
     const setToast = requireFunction(options.setToast, "setToast");
     const handleAppAuthLoss = requireFunction(options.handleAppAuthLoss, "handleAppAuthLoss");
     // Settings dialog visibility is owned by app_settings.js.
@@ -171,6 +172,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       has_tts_api_key: false,
     };
     let localAnnouncementEnabled = storageGetItem("codoxear.announcementEnabled") === "1";
+    let lastVoiceFetchStale = false;
     const announcementClientId = (() => {
       const key = "codoxear.announcementClientId";
       const current = storageGetItem(key);
@@ -550,6 +552,9 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
 
     async function loadVoiceSettings() {
       const data = await api("/api/settings/voice");
+      // Served from the service worker's offline cache: usable data, but no
+      // server answered. The secondary poll reports this as transport state.
+      lastVoiceFetchStale = apiResponseStale(data);
       if (isAppDisposed()) return data;
       if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
       voiceSettings = {
@@ -777,6 +782,7 @@ import * as CodoxearVoiceHelpers from "./app_voice_helpers.js";
       isSettingsOpen,
       loadVoiceSettings,
       refreshBackgroundState,
+      lastBackgroundFetchStale: () => lastVoiceFetchStale,
       resumeAnnouncementRuntime,
       activateSettingsSection,
       deactivateSettingsSection,

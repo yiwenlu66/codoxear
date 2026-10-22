@@ -9,6 +9,7 @@
     const api = requireFunction(options.api, "api");
     const isDisposed = requireFunction(options.isDisposed, "isDisposed");
     const apiResponseNotModified = requireFunction(options.apiResponseNotModified, "apiResponseNotModified");
+    const apiResponseStale = typeof options.apiResponseStale === "function" ? options.apiResponseStale : () => false;
     const sessionCatalog = options.sessionCatalog;
     if (!sessionCatalog || typeof sessionCatalog.get !== "function" || typeof sessionCatalog.applySnapshot !== "function") {
       throw new TypeError("session refresh dependency missing: sessionCatalog");
@@ -28,6 +29,9 @@
 
     let refreshInFlight = null;
     let refreshQueued = false;
+    // True when the latest /api/sessions response was served from the service
+    // worker's offline cache: usable data, but no server answered.
+    let lastRefreshStale = false;
 
     async function refreshSessions() {
       if (refreshInFlight) {
@@ -51,6 +55,7 @@
 
     async function refreshSessionsOnce() {
       const data = await api("/api/sessions");
+      lastRefreshStale = apiResponseStale(data);
       let latestSessions = sessionCatalog.get("latestSessions");
       if (isDisposed()) return latestSessions;
       const notModified = apiResponseNotModified(data);
@@ -100,7 +105,7 @@
       return sessions;
     }
 
-    return Object.freeze({ refreshSessions });
+    return Object.freeze({ refreshSessions, lastRefreshStale: () => lastRefreshStale });
   }
 
 export { createSessionRefreshController };

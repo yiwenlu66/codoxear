@@ -40,9 +40,17 @@ const perfWindow = 200;
 
   const apiEtags = new Map();
   const API_NOT_MODIFIED = Symbol("api.notModified");
+  const API_RESPONSE_STALE = Symbol("api.responseStale");
 
   function apiResponseNotModified(obj) {
     return !!(obj && obj[API_NOT_MODIFIED]);
+  }
+
+  // True when the service worker answered from its offline cache instead of
+  // the server (marked with X-Codoxear-Stale). The payload is usable but the
+  // server is unreachable; callers must not treat this as transport health.
+  function apiResponseStale(obj) {
+    return !!(obj && obj[API_RESPONSE_STALE]);
   }
 
   function clearApiCache() {
@@ -83,9 +91,10 @@ const perfWindow = 200;
       throw e;
     }
     if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
+    if (res.headers.get("X-Codoxear-Stale")) Object.defineProperty(obj, API_RESPONSE_STALE, { value: true });
     const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;
     if (etag) apiEtags.set(rawPath, { etag, text: txt });
     return obj;
   }
 
-export { pushSample, summarize, api, apiResponseNotModified, clearApiCache };
+export { pushSample, summarize, api, apiResponseNotModified, apiResponseStale, clearApiCache };

@@ -1,6 +1,7 @@
 from frontend_module_loader import module_path
 import json
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -146,7 +147,15 @@ def run_transport_failure_flow() -> dict:
         }}).catch((error) => {{ console.error(error); process.exit(1); }});
         """
     )
-    completed = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    # The embedded sources approach the kernel's MAX_ARG_STRLEN (128 KiB) for a
+    # single argv entry, so run the program from a file instead of `node -e`.
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+        handle.write(script)
+        program_path = handle.name
+    try:
+        completed = subprocess.run(["node", program_path], check=True, capture_output=True, text=True)
+    finally:
+        Path(program_path).unlink(missing_ok=True)
     return json.loads(completed.stdout)
 
 
