@@ -338,6 +338,41 @@ def _pi_step_child_run_id(step: Mapping[str, Any]) -> str | None:
     return run_id or None
 
 
+_JEV_ROUTED_MARKER = "jev-auto-model:routed:v1"
+
+
+def _resolve_jev_routed_model(run_dir: Path, model: Any) -> Any:
+    """Resolve a jev-auto placeholder to the model the child actually selected.
+
+    pi-subagents records the launch-time model in status.json; children launched
+    on a jev-auto placeholder (pi-jev-auto-model) route themselves after launch
+    and append a routing marker to the run's events.jsonl. Best-effort: any
+    failure returns the recorded model unchanged."""
+    if not isinstance(model, str) or not model.strip():
+        return model
+    bare = model.strip().split("/")[-1].split(":")[0]
+    if bare not in ("auto-jev-main", "auto-jev-subagent"):
+        return model
+    try:
+        lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return model
+    for line in reversed(lines):
+        if _JEV_ROUTED_MARKER not in line:
+            continue
+        try:
+            data = json.loads(line).get("entry", {}).get("data", {})
+        except ValueError:
+            continue
+        provider = data.get("provider")
+        model_id = data.get("modelId")
+        if isinstance(provider, str) and provider and isinstance(model_id, str) and model_id:
+            level = data.get("level")
+            suffix = f":{level}" if isinstance(level, str) and level else ""
+            return f"{provider}/{model_id}{suffix}"
+    return model
+
+
 def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str, list[dict[str, Any]]]:
     """Return active pi-subagents grouped by their parent session log path.
 
@@ -439,7 +474,7 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
             total_tokens = payload.get("totalTokens")
             tokens = step_tokens.get("total") if isinstance(step_tokens, Mapping) else total_tokens.get("total") if isinstance(total_tokens, Mapping) else None
             tools = step.get("toolCount") if step_index is not None or step else payload.get("toolCount")
-            model = step.get("model")
+            model = _resolve_jev_routed_model(status_path.parent, step.get("model"))
             step_started_at = step.get("startedAt")
             child_started_at = (
                 step_started_at
