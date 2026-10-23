@@ -34,7 +34,7 @@ def run_controller_harness() -> dict[str, Any]:
           Event: function Event(type, options) {{ this.type = type; this.options = options; }},
           Uint8Array,
           console,
-          document: {{ activeElement: null, querySelector: () => null, documentElement: {{}}, body: {{}} }},
+          document: {{ activeElement: null, querySelector: () => null, documentElement: {{}}, body: {{}}, createElement: (tag) => node({{ tagName: String(tag).toUpperCase() }}) }},
           window: {{ innerWidth: 1200, innerHeight: 800, addEventListener() {{}}, removeEventListener() {{}} }},
         }};
         vm.createContext(ctx);
@@ -72,16 +72,20 @@ def run_controller_harness() -> dict[str, Any]:
         }}
         const noop = () => {{}};
 
-        function composerHarness({{ running = false, attachments = [] }} = {{}}) {{
-          const form = node({{ requestSubmit: noop }});
+        function composerHarness({{ running = false, attachments = [], slashCommands = null }} = {{}}) {{
+          let submitCount = 0;
+          const form = node({{ requestSubmit: () => {{ submitCount += 1; }} }});
           const textarea = node();
           const sendBtn = node();
           const sendChoiceLaterBtn = node();
+          const modelPicker = node();
           const calls = [];
           const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
           sessionState.applyRuntime({{ selected: "sid", running }});
           const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
-          sessionCatalog.set("latestSessions", [{{ session_id: "sid", launch_state: "ready" }}]);
+          const sessionRow = {{ session_id: "sid", launch_state: "ready" }};
+          if (slashCommands) sessionRow.slash_commands = slashCommands;
+          sessionCatalog.set("latestSessions", [sessionRow]);
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh: node(), sendBtn, sendChoice: node(), sendChoiceBackdrop: node(),
             sendChoiceNowBtn: node(), sendChoiceLaterBtn, sendChoiceCancelBtn: node(),
@@ -95,8 +99,9 @@ def run_controller_harness() -> dict[str, Any]:
             storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
             requestFrame: (callback) => callback(), getComputedStyle: () => ({{ minHeight: "32px" }}),
             activeElement: () => null, isHTMLElement: () => false,
+            modelPicker,
           }});
-          return {{ form, textarea, sendBtn, sendChoiceLaterBtn, calls, controller }};
+          return {{ form, textarea, sendBtn, sendChoiceLaterBtn, calls, controller, modelPicker, submitCount: () => submitCount }};
         }}
 
         const empty = composerHarness();
@@ -147,12 +152,46 @@ def run_controller_harness() -> dict[str, Any]:
         }});
         queueController.syncQueueSubmitState();
 
+        const slash = composerHarness({{ slashCommands: [
+          {{ name: "reload", description: "Reload the session" }},
+          {{ name: "new", description: "Start a new session" }},
+        ] }});
+        slash.textarea.value = "/reload";
+        slash.textarea.emit("input");
+        const slashPickerOpen = slash.modelPicker.style.display === "block";
+        const keyEvent = (init) => ({{
+          key: "Enter", isComposing: false, prevented: false,
+          preventDefault() {{ this.prevented = true; }},
+          ...init,
+        }});
+        const metaEnter = keyEvent({{ metaKey: true }});
+        slash.textarea.emit("keydown", metaEnter);
+        const metaEnterSubmitted = slash.submitCount();
+        const metaEnterValue = slash.textarea.value;
+        const ctrlEnter = keyEvent({{ ctrlKey: true }});
+        slash.textarea.emit("keydown", ctrlEnter);
+        const ctrlEnterSubmitted = slash.submitCount();
+        const shiftEnter = keyEvent({{ shiftKey: true }});
+        slash.textarea.emit("keydown", shiftEnter);
+        const shiftEnterSubmitted = slash.submitCount();
+        const bareEnter = keyEvent({{}});
+        slash.textarea.emit("keydown", bareEnter);
+        const bareEnterValue = slash.textarea.value;
+        const bareEnterPickerClosed = slash.modelPicker.style.display === "none";
+
         process.stdout.write(JSON.stringify({{
           empty: {{ disabled: empty.sendBtn.disabled, calls: empty.calls }},
           text: {{ disabled: text.sendBtn.disabled, calls: text.calls }},
           queuedWithAttachment: {{ queueDisabled: queuedWithAttachment.sendChoiceLaterBtn.disabled }},
           stagedAttachment: {{ attachDisabled: attachBtn.disabled }},
           emptyQueue: {{ disabled: queueBtn.disabled }},
+          slashPicker: {{
+            openAfterTyping: slashPickerOpen,
+            metaEnter: {{ prevented: metaEnter.prevented, submitted: metaEnterSubmitted, value: metaEnterValue }},
+            ctrlEnterSubmitted,
+            shiftEnter: {{ prevented: shiftEnter.prevented, submitted: shiftEnterSubmitted }},
+            bareEnter: {{ prevented: bareEnter.prevented, value: bareEnterValue, pickerClosed: bareEnterPickerClosed }},
+          }},
         }}));
         """
     ) + "\n})().catch((error) => { console.error(error); process.exit(1); });\n"
@@ -189,6 +228,31 @@ def test_empty_queue_remains_openable_and_staged_attachment_allows_more_files() 
 
     assert result["emptyQueue"] == {"disabled": False}
     assert result["stagedAttachment"] == {"attachDisabled": False}
+
+
+def test_open_slash_picker_never_blocks_cmd_or_ctrl_enter_send() -> None:
+    result = run_controller_harness()
+
+    picker = result["slashPicker"]
+    assert picker["openAfterTyping"] is True
+    assert picker["metaEnter"] == {"prevented": True, "submitted": 1, "value": "/reload"}
+    assert picker["ctrlEnterSubmitted"] == 2
+
+
+def test_open_slash_picker_leaves_shift_enter_as_a_plain_newline() -> None:
+    result = run_controller_harness()
+
+    assert result["slashPicker"]["shiftEnter"] == {"prevented": False, "submitted": 2}
+
+
+def test_bare_enter_still_accepts_the_highlighted_slash_command() -> None:
+    result = run_controller_harness()
+
+    assert result["slashPicker"]["bareEnter"] == {
+        "prevented": True,
+        "value": "/reload ",
+        "pickerClosed": True,
+    }
 
 
 if __name__ == "__main__":

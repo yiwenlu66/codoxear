@@ -959,7 +959,11 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
           syncModelPickerSelection({ scroll: true });
           return;
         }
-        if ((event.key === "Enter" || (event.key === "Tab" && modelPickerKind === "path")) && !event.isComposing) {
+        // Only unmodified keys commit the picker: Ctrl/Cmd+Enter must fall through
+        // to send (popup must never block sending), Shift+Enter must insert a newline.
+        const isPickerAccept = (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey)
+          || (event.key === "Tab" && modelPickerKind === "path");
+        if (isPickerAccept && !event.isComposing) {
           event.preventDefault();
           selectPickerOption(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
           return;
