@@ -1722,8 +1722,8 @@
         -webkit-overflow-scrolling: touch;
         width: 100%;
         box-sizing: border-box;
-        white-space: pre;
-        overflow-wrap: normal;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
         background: var(--surface-subtle);
         color: var(--text);
         border: 1px solid var(--border-subtle);

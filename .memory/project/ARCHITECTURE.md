@@ -85,6 +85,12 @@ it does not replace it.
 
 ### Transcript view
 
+Markdown code blocks always visually wrap via `.md pre` in `app.css`
+(`white-space: pre-wrap; overflow-wrap: anywhere`); nested code inherits whitespace.
+Code text/copy payloads remain unchanged. Parsed-CSS regression coverage is in
+`tests/test_markdown_codeblock_wrap_css.py`; Docker browser/copy acceptance is in
+`scripts/docker_markdown_codeblock_wrap_verify.py`.
+
 `app_transcript_view.js` owns the rendered DOM range and history cursor.
 State machine: LIVE / BROWSING / LOADING_OLDER / REPLACING. Only
 REPLACING may clear the DOM.
