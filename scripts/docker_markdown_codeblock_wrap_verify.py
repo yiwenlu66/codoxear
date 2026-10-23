@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Docker-only real transcript wrap/copy regression; no backend credentials needed.
 
-Runs the working tree read-only. Retains geometry, clipboard round trips and
+Builds and mounts a clean git archive HEAD snapshot read-only (ignoring local edits).
+Retains geometry, clipboard round trips and
 screenshots in /tmp/codoxear-codeblock-wrap-results.*. Optional environment
 CODOXEAR_CODEBLOCK_WRAP_BASELINE_REF compares the exact Git stylesheet from that
 revision, not an approximation of its declarations.
@@ -14,20 +15,31 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
 import urllib.request
 
+if not __debug__:
+    raise SystemExit("Refusing optimized Python: verification requires enabled assertions")
 ROOT = Path(__file__).resolve().parents[1]
-PORT = int(os.environ.get("CODOXEAR_CODEBLOCK_WRAP_PORT", "19673"))
-assert 1 <= PORT <= 65535 and PORT != 8743, "refusing invalid/live port"
-assert not (os.environ.get("CODEXEAR_APP_DIR") or os.environ.get("CODEX_WEB_APP_DIR")), "refusing host app-dir"
+try:
+    PORT = int(os.environ.get("CODOXEAR_CODEBLOCK_WRAP_PORT", "19673"))
+except ValueError:
+    raise SystemExit("CODOXEAR_CODEBLOCK_WRAP_PORT must be an integer") from None
+if not 1 <= PORT <= 65535 or PORT == 8743:
+    raise SystemExit("Refusing invalid/live port (8743)")
+if os.environ.get("CODEXEAR_APP_DIR") or os.environ.get("CODEX_WEB_APP_DIR"):
+    raise SystemExit("Refusing host app-dir override")
+missing = [name for name in ("git", "tar", "sudo", "docker", "agent-browser") if not shutil.which(name)]
+if missing:
+    raise SystemExit("Missing required binaries: " + ", ".join(missing))
 ARTIFACTS = Path(tempfile.mkdtemp(prefix="codoxear-codeblock-wrap-results."))
 TEMP = Path(tempfile.mkdtemp(prefix="codoxear-codeblock-wrap-build."))
 CONTAINER = f"codoxear-codeblock-wrap-{os.getpid()}"
 SESSION = CONTAINER
-IMAGE = "codoxear-codeblock-wrap:working-tree"
+IMAGE = "codoxear-codeblock-wrap:head-snapshot"
 BASE = f"http://127.0.0.1:{PORT}"
 PASSWORD = "codeblock-wrap-password"
 BASELINE_REF = os.environ.get("CODOXEAR_CODEBLOCK_WRAP_BASELINE_REF")
@@ -90,12 +102,12 @@ PROBE = r'''(() => {
 })()'''
 
 
-def run(args, *, check=True):
-    return subprocess.run([str(a) for a in args], check=check, capture_output=True, text=True)
+def run(args, *, check=True, timeout=120):
+    return subprocess.run([str(a) for a in args], check=check, capture_output=True, text=True, timeout=timeout)
 
 
-def docker(*args, check=True):
-    return run(["sudo", "docker", *args], check=check)
+def docker(*args, check=True, timeout=120):
+    return run(["sudo", "-n", "docker", *args], check=check, timeout=timeout)
 
 
 def browser(*args):
@@ -113,12 +125,19 @@ def grant_clipboard():
     # agent-browser's daemon supports permissions, but its CLI has no command.
     app_dir = Path(os.environ["XDG_RUNTIME_DIR"]) / "agent-browser" if os.environ.get("XDG_RUNTIME_DIR") else Path.home() / ".agent-browser"
     socket_dir = Path(os.environ.get("AGENT_BROWSER_SOCKET_DIR", app_dir))
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.connect(str(socket_dir / f"{SESSION}.sock"))
-        connection.sendall(json.dumps({"id": "clipboard-permission", "action": "permissions",
-                                      "permissions": ["clipboard-read", "clipboard-write"], "grant": True}).encode() + b"\n")
-        response = json.loads(connection.makefile().readline())
-        assert response["success"], response
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(15)
+            connection.connect(str(socket_dir / f"{SESSION}.sock"))
+            connection.sendall(json.dumps({"id": "clipboard-permission", "action": "permissions",
+                                          "permissions": ["clipboard-read", "clipboard-write"], "grant": True}).encode() + b"\n")
+            with connection.makefile() as stream:
+                response = json.loads(stream.readline())
+            if not response.get("success"):
+                raise RuntimeError(str(response))
+    except (OSError, ValueError, RuntimeError) as err:
+        raise RuntimeError("Clipboard permission setup failed; this verifier requires an agent-browser daemon "
+                           "supporting the permissions action and clipboard-read/clipboard-write grants") from err
 
 
 def save(name, value):
@@ -130,14 +149,20 @@ def main():
     TEMP.chmod(0o755)
     (TEMP / "fixture.py").write_text(FIXTURE)
     (TEMP / "markdown.json").write_text(json.dumps(MARKDOWN))
+    snapshot = TEMP / "snapshot"
+    snapshot.mkdir()
+    archive = TEMP / "head.tar"
+    run(["git", "-C", ROOT, "archive", "--format=tar", f"--output={archive}", "HEAD"])
+    run(["tar", "-xf", archive, "-C", snapshot])
+    archive.unlink()
     old_css = run(["git", "-C", ROOT, "show", f"{BASELINE_REF}:codoxear/static/app.css"]).stdout if BASELINE_REF else None
-    build = docker("build", "-f", ROOT / "docker/sandbox.Dockerfile", "-t", IMAGE, ROOT)
+    build = docker("build", "-f", snapshot / "docker/sandbox.Dockerfile", "-t", IMAGE, snapshot, timeout=1200)
     (ARTIFACTS / "docker-build.log").write_text(build.stdout + build.stderr)
     docker("run", "-d", "--name", CONTAINER, "-p", f"127.0.0.1:{PORT}:{PORT}",
            "-e", "HOME=/home/tester", "-e", f"CODEX_WEB_PASSWORD={PASSWORD}",
            "-e", "CODEX_WEB_HOST=0.0.0.0", "-e", f"CODEX_WEB_PORT={PORT}",
            "-e", "PYTHONPATH=/workspace", "-e", "PYTHONDONTWRITEBYTECODE=1",
-           "--mount", f"type=bind,src={ROOT},dst=/workspace,readonly",
+           "--mount", f"type=bind,src={snapshot},dst=/workspace,readonly",
            "--mount", f"type=bind,src={TEMP},dst=/proof,readonly", IMAGE,
            "bash", "-c", "python3 /proof/fixture.py >/tmp/fixture.log 2>&1 & exec python3 -m codoxear.server")
     for _ in range(120):
@@ -165,6 +190,7 @@ def main():
             # Blink's coarse primary-pointer setting also selects hover:none.
             browser("--args", "--blink-settings=primaryPointerType=2", "set", "device", "iPhone 15 Pro")
         browser("open", BASE)
+        grant_clipboard()
         browser("fill", "#pw", PASSWORD)
         browser("click", "#loginBtn")
         browser("wait", "#sessions .session")
@@ -209,8 +235,7 @@ def main():
                     for block_index, label in ((0, "wrapped"), (1, "unbroken-token"), (2, "whitespace")):
                         evaluate(f"document.querySelectorAll('.msg.assistant .md pre')[{block_index}].scrollIntoView({{block:'start'}})")
                         browser("screenshot", str(ARTIFACTS / f"{device}-{label}.png"))
-        # Real clipboard, explicitly permitted in the ephemeral automation context.
-        grant_clipboard()
+        # Real clipboard, explicitly permitted when this browser context opened.
         copies = []
         for index, expected in enumerate(BLOCKS):
             # Assign stable test ids without changing text or copy behavior.
@@ -250,13 +275,26 @@ def main():
     print("PASS: all six theme/mode combinations at desktop and coarse-pointer phone; exact clipboard round trips", flush=True)
 
 
+def save_server_logs():
+    logs = docker("logs", CONTAINER, check=False)
+    (ARTIFACTS / "server.log").write_text(logs.stdout + logs.stderr)
+
+
+def cleanup():
+    # Each action is independent; cleanup must never mask the verification error.
+    for action in (save_server_logs,
+                   lambda: run(["agent-browser", "--session", SESSION, "close"], check=False),
+                   lambda: docker("rm", "-f", CONTAINER, check=False),
+                   lambda: shutil.rmtree(TEMP)):
+        try:
+            action()
+        except Exception as err:
+            print(f"Cleanup warning: {err}", file=sys.stderr)
+
+
 if __name__ == "__main__":
     try:
         main()
     finally:
-        logs = docker("logs", CONTAINER, check=False)
-        (ARTIFACTS / "server.log").write_text(logs.stdout + logs.stderr)
-        run(["agent-browser", "--session", SESSION, "close"], check=False)
-        docker("rm", "-f", CONTAINER, check=False)
-        shutil.rmtree(TEMP)
+        cleanup()
         print(f"artifacts={ARTIFACTS}", flush=True)
