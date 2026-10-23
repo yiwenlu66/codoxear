@@ -137,3 +137,24 @@ def test_sessiond_control_async_send_ack_and_key_errors_are_executable() -> None
     assert state.last_interrupted_idle_ts == 0.0
     response = _run_handler("keys", {"seq": "x"}, state=state, write_all=lambda _fd, _data: (_ for _ in ()).throw(OSError("key failed")))["response"]
     assert response == {"error": "key failed", "commit_unknown": True}
+
+
+def test_sessiond_control_arms_trimmed_receipt_and_restores_it_on_inject_failure() -> None:
+    import hashlib
+    from codoxear.broker_turn_state import apply_pi_prompt_receipt
+
+    state = _state()
+    _run_handler("send", {"text": " \tprompt\n", "send_id": "receipt"}, state=state)
+    digest = hashlib.sha256(b"prompt").hexdigest()
+    assert state.send_latch_text_sha256 == digest
+    apply_pi_prompt_receipt(state, (digest, 123001))
+    assert state.send_latch_accepted is True
+
+    result = _run_handler(
+        "send", {"text": "second", "send_id": "second", "sync": True}, state=state,
+        inject=lambda *_a, **_k: (_ for _ in ()).throw(OSError("write failed")),
+    )
+    assert result["response"] == {"error": "write failed", "commit_unknown": True}
+    assert state.send_latch_id == "receipt"
+    assert state.send_latch_text_sha256 == digest
+    assert state.send_latch_accepted is True

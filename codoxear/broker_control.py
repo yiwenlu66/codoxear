@@ -77,6 +77,8 @@ def _handle_broker_control_connection(
             prev_send_latch_log_off = st.send_latch_log_off
             prev_send_latch_activity_ts = st.send_latch_activity_ts
             prev_send_latch_id = st.send_latch_id
+            prev_send_latch_text_sha256 = st.send_latch_text_sha256
+            prev_send_latch_accepted = st.send_latch_accepted
             prev_send_verdict = dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None
             arm_send_latch(
                 st,
@@ -116,6 +118,8 @@ def _handle_broker_control_connection(
                     st.send_latch_log_off = prev_send_latch_log_off
                     st.send_latch_activity_ts = prev_send_latch_activity_ts
                     st.send_latch_id = prev_send_latch_id
+                    st.send_latch_text_sha256 = prev_send_latch_text_sha256
+                    st.send_latch_accepted = prev_send_latch_accepted
                     st.send_verdict = prev_send_verdict
 
         if sync_commit:

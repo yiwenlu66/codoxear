@@ -173,13 +173,34 @@ def _pi_active_session_caps_path(marker_path: Path) -> Path:
 
 
 def _reset_pi_active_session_marker(marker_path: Path) -> None:
-    for path in (marker_path, _pi_active_session_caps_path(marker_path)):
+    for path in (marker_path, _pi_active_session_caps_path(marker_path), Path(f"{marker_path}.receipt")):
         try:
             path.unlink()
         except FileNotFoundError:
             continue
         except Exception:
             continue
+
+
+def _read_pi_prompt_receipt(marker_path: Path, *, process_pid: int) -> tuple[str, int] | None:
+    """Read agent-loop ingestion evidence from this Pi process, independent of its log."""
+    if type(process_pid) is not int or process_pid <= 0:
+        return None
+    try:
+        data = json.loads(Path(f"{marker_path}.receipt").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
+        return None
+    if type(data.get("pid")) is not int or data["pid"] != process_pid:
+        return None
+    digest = data.get("textSha256")
+    timestamp = data.get("messageTimestamp")
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        return None
+    if type(timestamp) is not int or not 0 < timestamp <= 2**53 - 1:
+        return None
+    return digest, timestamp
 
 
 def _read_pi_active_session_run_settings(marker_path: Path, *, process_pid: int) -> dict[str, str] | None:

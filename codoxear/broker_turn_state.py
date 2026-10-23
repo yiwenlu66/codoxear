@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,9 @@ from codoxear.pi_log import pi_user_text as _pi_user_text
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 _PI_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07"
+# ECMAScript String.trim(), used by Pi's TUI before session.prompt(). Python's
+# default strip() differs (notably FEFF and the C0 record separators).
+_PI_TUI_TRIM_CHARS = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
 _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])")
@@ -188,7 +192,7 @@ def _should_clear_busy_state(
                 # predicted turn exists. Non-turn rows such as Pi
                 # model_change / thinking_level_change grow the log without
                 # opening a turn and must not hold the latch forever.
-                if st.last_turn_activity_ts > latch_start_ts:
+                if st.send_latch_accepted or st.last_turn_activity_ts > latch_start_ts:
                     return False
             elif st.send_latch_log_off is None or st.log_off != st.send_latch_log_off:
                 return False
@@ -232,6 +236,8 @@ def arm_send_latch(
     it by id, and a new undelivered send replaces it only when its own latch
     settles.
     """
+    st.send_latch_accepted = False
+    st.send_latch_text_sha256 = None
     if (
         isinstance(send_id, str)
         and bool(send_id)
@@ -240,8 +246,29 @@ def arm_send_latch(
         and not text.lstrip().startswith("/")
     ):
         st.send_latch_id = send_id
+        # This digest is consumed only by the Pi receipt path. Preserve inner
+        # whitespace; normalize only the outer whitespace Pi's TUI trims.
+        st.send_latch_text_sha256 = hashlib.sha256(text.strip(_PI_TUI_TRIM_CHARS).encode("utf-8")).hexdigest()
     else:
         st.send_latch_id = None
+
+
+def apply_pi_prompt_receipt(st: "State", receipt: tuple[str, int] | None) -> None:
+    """Acknowledge only the current idle-origin exact-text submission.
+
+    Pi's user message_start means the agent loop ingested the prompt, not that
+    the provider answered or the log persisted it. Beyond Pi's native outer
+    whitespace trim, input transforms can change the digest; those sends
+    retain the existing PTY/log fallback. Event time, not file mtime or poll
+    time, rejects an older receipt for identical text.
+    Pi timestamps have millisecond precision, so compare in that same domain.
+    """
+    if receipt is None or not st.send_latch_id or st.send_latch_activity_ts is None:
+        return
+    digest, timestamp_ms = receipt
+    if digest != st.send_latch_text_sha256 or timestamp_ms < int(st.send_latch_activity_ts * 1000):
+        return
+    st.send_latch_accepted = True
 
 
 def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
@@ -251,6 +278,7 @@ def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     latch_settled_idle = (
         st.turn_open
         and not st.turn_has_completion_candidate
+        and not st.send_latch_accepted
         and latch_start_ts is not None
         and st.last_turn_activity_ts <= latch_start_ts
     )
@@ -261,9 +289,6 @@ def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
                 "verdict": "undelivered",
                 "ts": now_ts,
             }
-        # One armed latch can publish at most one verdict. This applies even
-        # to control or busy-origin sends, which intentionally have no id.
-        st.send_latch_id = None
     st.busy = False
     st.turn_open = False
     st.turn_has_completion_candidate = False
@@ -279,6 +304,11 @@ def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     # turn, so the TUI sits at its editor while the log tail may still be
     # non-final from an earlier errored turn.
     st.last_interrupted_idle_ts = now_ts if interrupted_idle or terminal_error_idle or latch_settled_idle else 0.0
+    # One armed latch can publish at most one verdict; any idle transition
+    # retires its receipt correlation too.
+    st.send_latch_id = None
+    st.send_latch_text_sha256 = None
+    st.send_latch_accepted = False
 
 
 def _reopen_turn_on_activity(st: "State") -> None:
@@ -299,6 +329,8 @@ def _close_turn_state(st: "State") -> None:
     st.last_interrupted_idle_ts = 0.0
     st.last_turn_activity_ts = 0.0
     st.send_latch_id = None
+    st.send_latch_text_sha256 = None
+    st.send_latch_accepted = False
 
 
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
@@ -577,6 +609,8 @@ class State:
     send_latch_log_off: int | None = None
     send_latch_activity_ts: float | None = None
     send_latch_id: str | None = None
+    send_latch_text_sha256: str | None = None
+    send_latch_accepted: bool = False
     # First moment the backend was observed able to read input (a bound log, or
     # Pi's live bridge marker written from session_start). 0.0 means "never".
     backend_ready_ts: float = 0.0

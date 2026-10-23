@@ -73,6 +73,8 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             prev_pending_calls = set(st.pending_calls)
             prev_send_latch_activity_ts = st.send_latch_activity_ts
             prev_send_latch_id = st.send_latch_id
+            prev_send_latch_text_sha256 = st.send_latch_text_sha256
+            prev_send_latch_accepted = st.send_latch_accepted
             prev_send_verdict = dict(st.send_verdict) if isinstance(st.send_verdict, dict) else None
             arm_send_latch(
                 st,
@@ -108,6 +110,8 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                     st.pi_retry_status_active = prev_pi_retry_status_active
                     st.send_latch_activity_ts = prev_send_latch_activity_ts
                     st.send_latch_id = prev_send_latch_id
+                    st.send_latch_text_sha256 = prev_send_latch_text_sha256
+                    st.send_latch_accepted = prev_send_latch_accepted
                     st.send_verdict = prev_send_verdict
                     st.pending_calls.clear()
                     st.pending_calls.update(prev_pending_calls)

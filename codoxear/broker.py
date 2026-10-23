@@ -33,6 +33,7 @@ from codoxear.broker_launch import _ensure_pi_session_arg as _ensure_pi_session_
 from codoxear.broker_launch import _expand_cwd
 from codoxear.broker_launch import _pi_active_session_marker_path
 from codoxear.broker_launch import _pi_bridge_session_is_live
+from codoxear.broker_launch import _read_pi_prompt_receipt
 from codoxear.broker_launch import _pi_bridge_extension_path
 from codoxear.broker_launch import _pi_new_session_log_path
 from codoxear.broker_launch import _pi_session_dir_from_args
@@ -85,6 +86,7 @@ from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from codoxear.broker_turn_state import _strip_ansi
 from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.broker_turn_state import apply_pi_prompt_receipt
 from codoxear.broker_turn_state import mark_backend_ready
 from codoxear.cc_live_settings import cc_settings_mtime_ns
 from codoxear.cc_live_settings import changed_cc_settings_reasoning_effort
@@ -822,6 +824,11 @@ class Broker:
         now_ts = _now()
         with self._lock:
             st = self.state
+            if st and AGENT_BACKEND == "pi" and st.send_latch_id and not st.send_latch_accepted:
+                # Read before judging silence, including when no log exists.
+                apply_pi_prompt_receipt(st, _read_pi_prompt_receipt(
+                    self.pi_active_session_marker_path, process_pid=st.codex_pid,
+                ))
             if st and _should_clear_busy_state(st, now_ts):
                 _mark_busy_state_idle(st, now_ts)
 

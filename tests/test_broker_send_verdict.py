@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +20,8 @@ from codoxear.broker_turn_state import _mark_busy_state_idle
 from codoxear.broker_turn_state import _should_clear_busy_state
 from codoxear.broker_turn_state import _update_busy_from_pty_text
 from codoxear.broker_turn_state import mark_backend_ready
+from codoxear.broker_turn_state import apply_pi_prompt_receipt
+from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 
 
 def _state() -> State:
@@ -181,6 +184,8 @@ def test_state_response_copies_send_verdict() -> None:
 def test_inject_failure_restores_previous_latch_and_verdict() -> None:
     state = _state()
     state.send_latch_id = "previous-latch"
+    state.send_latch_text_sha256 = "previous-digest"
+    state.send_latch_accepted = True
     state.send_verdict = {"send_id": "previous-send", "verdict": "undelivered", "ts": 4.0}
 
     result = _run_handler(
@@ -192,6 +197,8 @@ def test_inject_failure_restores_previous_latch_and_verdict() -> None:
 
     assert result["response"] == {"error": "write failed", "commit_unknown": True}
     assert state.send_latch_id == "previous-latch"
+    assert state.send_latch_text_sha256 == "previous-digest"
+    assert state.send_latch_accepted is True
     assert state.send_verdict == {"send_id": "previous-send", "verdict": "undelivered", "ts": 4.0}
 
 
@@ -304,3 +311,98 @@ def test_bound_log_marks_backend_ready() -> None:
     )
 
     assert state.backend_ready_ts == 3.0
+
+
+def _receipt(text: str, timestamp_ms: int) -> tuple[str, int]:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), timestamp_ms
+
+
+def test_pi_receipt_holds_first_turn_without_any_log_or_working_indicator() -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "第一条 prompt\nline two", "send_id": "receipt-1"})
+    # Discovery may learn readiness after the event was received. Acceptance
+    # still dominates that later quiet-window anchor.
+    apply_pi_prompt_receipt(state, _receipt("第一条 prompt\nline two", 10001))
+    mark_backend_ready(state, 12.0)
+
+    assert state.log_path is None
+    assert state.last_turn_activity_ts == 10.0
+    assert state.send_latch_accepted is True
+    assert not _can_settle(state, 100.0)
+    _close_turn_state(state)
+    assert state.send_verdict is None
+    assert state.send_latch_accepted is False
+    assert state.send_latch_text_sha256 is None
+
+
+@pytest.mark.parametrize("receipt", [None, _receipt("same text", 9999), _receipt("different text", 10001)])
+def test_old_identical_or_mismatched_pi_receipt_does_not_acknowledge_current_send(receipt) -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "same text", "send_id": "current"})
+    apply_pi_prompt_receipt(state, receipt)
+
+    assert state.send_latch_accepted is False
+    _settle_latch(state, now_ts=14.0)
+    assert state.send_verdict == {"send_id": "current", "verdict": "undelivered", "ts": 14.0}
+
+
+def test_new_send_does_not_inherit_previous_acceptance_even_for_identical_text() -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "repeat", "send_id": "first"})
+    receipt = _receipt("repeat", 10001)
+    apply_pi_prompt_receipt(state, receipt)
+    _close_turn_state(state)
+    _run_handler(state, "send", {"text": "repeat", "send_id": "second"}, now=lambda: 20.0)
+    apply_pi_prompt_receipt(state, receipt)
+
+    assert state.send_latch_accepted is False
+    _settle_latch(state, now_ts=24.0)
+    assert state.send_verdict["send_id"] == "second"
+
+
+def test_accepted_prompt_can_be_interrupted_without_an_undelivered_verdict() -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "prompt", "send_id": "interrupt"})
+    apply_pi_prompt_receipt(state, _receipt("prompt", 10001))
+    _mark_explicit_interrupt_request(state, 11.0)
+
+    _settle_latch(state, now_ts=15.0)
+    assert state.send_verdict is None
+    assert state.last_interrupted_idle_ts == 15.0
+
+
+@pytest.mark.parametrize("submission,busy", [({"text": "/command", "send_id": "slash"}, False), ({"text": "steer", "send_id": "steer"}, True), ({"text": "no id"}, False)])
+def test_pi_receipt_only_matches_an_armed_idle_origin_latch(submission, busy) -> None:
+    state = _state()
+    state.busy = busy
+    state.turn_open = busy
+    _run_handler(state, "send", submission)
+    apply_pi_prompt_receipt(state, _receipt(submission["text"], 10001))
+    assert state.send_latch_accepted is False
+
+
+@pytest.mark.parametrize("text", ["prompt\n", " \tprompt \r\n", "\ufeff\u00a0prompt\u3000", "\nfirst line\n  indented second line\n"])
+def test_pi_receipt_matches_native_tui_outer_whitespace_trim(text) -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": text, "send_id": "trimmed"})
+    trimmed = text.strip(" \t\r\n\ufeff\u00a0\u3000")
+    apply_pi_prompt_receipt(state, _receipt(trimmed, 10001))
+    assert state.send_latch_accepted is True
+    assert not _can_settle(state, 100.0)
+
+
+def test_pi_digest_keeps_c0_record_separator_that_javascript_trim_preserves() -> None:
+    state = _state()
+    text = "\x1cprompt\x1c"
+    _run_handler(state, "send", {"text": text, "send_id": "c0"})
+    apply_pi_prompt_receipt(state, _receipt(text, 10001))
+    assert state.send_latch_accepted is True
+
+
+def test_transformed_pi_input_still_uses_working_indicator_fallback() -> None:
+    state = _state()
+    _run_handler(state, "send", {"text": "prompt", "send_id": "transformed"})
+    apply_pi_prompt_receipt(state, _receipt("extension-expanded prompt", 10001))
+    assert state.send_latch_accepted is False
+    _update_busy_from_pty_text(state, "Working...", 10.1)
+    assert not _can_settle(state, 100.0)

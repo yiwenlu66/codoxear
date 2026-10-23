@@ -23,6 +23,7 @@ from .broker_launch import _ensure_pi_approve_args
 from .broker_launch import _ensure_pi_bridge_args
 from .broker_launch import _pi_active_session_marker_path
 from .broker_launch import _pi_bridge_session_is_live
+from .broker_launch import _read_pi_prompt_receipt
 from .broker_launch import PiActiveSessionMarkerObserver
 from .broker_launch import _read_pi_active_session_marker_state
 from .broker_launch import _read_pi_active_session_marker_capability
@@ -32,6 +33,7 @@ from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
 from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from .broker_turn_state import _update_busy_from_pty_text
+from .broker_turn_state import apply_pi_prompt_receipt
 from .broker_turn_state import mark_backend_ready
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
@@ -270,6 +272,10 @@ class Sessiond:
                 now_ts = _now()
                 with self._lock:
                     st2 = self.state
+                    if st2 and AGENT_BACKEND == "pi" and st2.send_latch_id and not st2.send_latch_accepted:
+                        apply_pi_prompt_receipt(st2, _read_pi_prompt_receipt(
+                            self.pi_active_session_marker_path, process_pid=st2.codex_pid,
+                        ))
                     if st2 and _should_clear_busy_state(st2, now_ts):
                         _mark_busy_state_idle(st2, now_ts)
                 self._refresh_pi_thinking_capability()

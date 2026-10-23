@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 type SessionManager = {
 	getSessionFile(): string | undefined;
@@ -39,6 +40,7 @@ type ExtensionAPI = {
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
 	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
 	on(event: "model_select", handler: (event: { type: "model_select" }, ctx: ExtensionContext) => void): void;
+	on(event: "message_start", handler: (event: { type: "message_start"; message: { role?: string; content?: unknown; timestamp?: number } }, ctx: ExtensionContext) => void): void;
 	registerCommand(
 		name: string,
 		options: {
@@ -80,6 +82,33 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 		}
 	} catch {
 		// Do not let Codoxear bookkeeping affect Pi session operation.
+	}
+}
+
+function writePromptReceipt(message: { role?: string; content?: unknown; timestamp?: number }): void {
+	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
+	if (!markerPath || message.role !== "user" || typeof message.timestamp !== "number"
+		|| !Number.isSafeInteger(message.timestamp) || message.timestamp <= 0) return;
+	const text = typeof message.content === "string" ? message.content : Array.isArray(message.content)
+		? message.content.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("")
+		: "";
+	if (!text) return;
+	// message_start(user) is emitted after input interception, auth/model checks
+	// and before_agent_start hooks, but before message_end persists anything.
+	// Keep a sibling file so session/capability rewrites cannot erase a receipt.
+	const receiptPath = `${markerPath}.receipt`;
+	try {
+		fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+		const tmp = `${receiptPath}.${process.pid}.tmp`;
+		fs.writeFileSync(tmp, `${JSON.stringify({
+			version: 1,
+			pid: process.pid,
+			textSha256: crypto.createHash("sha256").update(text, "utf8").digest("hex"),
+			messageTimestamp: message.timestamp,
+		})}\n`, { mode: 0o600 });
+		fs.renameSync(tmp, receiptPath);
+	} catch {
+		// Receipt failure leaves the existing PTY/log evidence paths in charge.
 	}
 }
 
@@ -234,6 +263,7 @@ export default function (pi: ExtensionAPI): void {
 		refreshCaps(ctx);
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
+	pi.on("message_start", (event) => writePromptReceipt(event.message));
 	// A native /model switch is only recorded in the session log; model_select
 	// lets the caps file track it immediately instead of at the next turn_end.
 	pi.on("model_select", (_event, ctx) => refreshCaps(ctx));
