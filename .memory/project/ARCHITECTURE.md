@@ -189,6 +189,15 @@ load time. Command registration and runtime queries are deferred until
 `session_start`/`session_switch`; a failed registration retries from a
 later lifecycle event.
 
+Pi first-send acceptance is independent of rollout persistence. The bridge's
+`message_start(user)` writes `<active-session-marker>.receipt` after preflight
+and before persistence; broker/sessiond read it before quiet-window settlement,
+matching Pi pid, ECMAScript-trimmed submission SHA-256, and event milliseconds.
+A match marks the current idle-origin latch accepted, preventing an undelivered
+verdict while the first assistant response/log is pending. Input transforms can
+prevent digest matching; PTY/log evidence remains fallback. Slow preflight before
+`message_start` remains ambiguous. Behavioral coverage: `test_pi_prompt_receipt.py`.
+
 ### Offline cold-load authority
 The canonical SW cache/readiness contract is in AGENTS.md. Activation must warm the uncontrolled first navigation's shell and versioned dependencies; runtime fetch caching alone requires an extra visit. `/api/me` is boot-only: when activation precedes authentication, successful login must refresh it after best-effort worker readiness, otherwise an authenticated UI can render online yet have no cached auth snapshot for offline boot. Theme links are generated dynamically, so the SW warms its explicit family list at the shared asset version; the behavioral activation test pins the list against actual theme files. Transcript caches remain populated only by opening sessions online.
 
