@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
-# Docker-isolated end-to-end verifier for Pi's startup deprecation gate and
-# Codoxear's undelivered-send draft recovery. The build is a Git archive of
-# commit 8c0db06a by default; all runtime state lives in this script's temporary
-# bind-mounted container HOME, never in the host Codoxear runtime directory.
+# Docker-isolated end-to-end verifier for Pi's startup deprecation gate,
+# Codoxear's undelivered-send draft recovery, and the Pi extension's early
+# acceptance receipt (fresh-session scenarios 5-7). The build is a Git archive
+# of the commit argument; the default 8c0db06a is the historical swallow
+# reproducer, so pass HEAD or a release commit to gate current code. All runtime
+# state lives in this script's temporary bind-mounted container HOME, never in
+# the host Codoxear runtime directory.
+#
+# Fresh-session scenarios: 5 is the product path (Pi renders its working
+# indicator, first rollout later than the quiet window); 6 is the decisive
+# control, where a test-only extension suppresses Pi's working indicator so only
+# the receipt can keep the send latch from settling; 7 repeats that control with
+# a prompt carrying outer whitespace and a trailing newline, which exercises
+# Pi's input normalization against the receipt digest. Scenarios 5-7 fail unless
+# the bridge publishes a receipt naming that prompt inside the broker's quiet
+# window while the session rollout file still does not exist. For a pre-receipt
+# commit set CODOXEAR_UDV_REQUIRE_RECEIPT=0: the receipt is still measured and
+# reported, but only the historical assertions decide pass/fail (6-7 then act as
+# negative controls and are expected to publish the false-positive verdict).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target_commit="$(git -C "$repo_root" rev-parse --verify "${1:-8c0db06a}^{commit}")"
 short_commit="$(git -C "$repo_root" rev-parse --short=12 "$target_commit")"
-port=19693
+port="${CODOXEAR_UDV_PORT:-19693}"
 password="docker-udv-password"
 image="codoxear-udv:${short_commit}"
 container="codoxear-udv-${short_commit}-${port}-$$"
