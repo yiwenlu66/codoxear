@@ -99,13 +99,21 @@ function requireFunction(value, name) {
     // Height-mode control is a grabber strip across the composer's top edge:
     // it costs no horizontal space in the input row, and the strip is the
     // honest affordance for the vertical drag it handles.
-    const expandBtn = el("button", { class: "composerGrab", id: "expandBtn", type: "button", title: "Expand composer", "aria-label": "Expand composer", "aria-pressed": "false", "data-hint": "j", style: "display:none", html: `<span class="composerGrabPill" aria-hidden="true"></span>` });
+    const expandBtn = el("button", { class: "composerGrab", id: "expandBtn", type: "button", title: "Expand draft", "aria-label": "Expand draft", "aria-pressed": "false", "data-hint": "j", style: "display:none", html: `<span class="composerGrabPill" aria-hidden="true"></span>` });
     const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", "data-hint": "q", html: iconSvg("queue") });
+    const clearBtn = el("button", { class: "icon-btn", id: "clearBtn", type: "button", title: "Clear draft", "aria-label": "Clear draft", "data-hint": "y", style: "display:none", html: iconSvg("trash") });
+    const draftUndoBtn = el("button", { class: "draftUndoChip", id: "draftUndoBtn", type: "button", "aria-label": "Undo clear draft", style: "display:none" }, [
+      el("span", { "aria-hidden": "true", html: iconSvg("undo") }),
+      el("span", { class: "muted", text: "Draft cleared" }),
+      el("strong", { text: "Undo" }),
+    ]);
+    const composerStrip = el("div", { class: "composerStrip", style: "display:none" }, [expandBtn, draftUndoBtn]);
+    const composerCtlStack = el("div", { class: "composerCtlStack" }, [clearBtn, queueBtn, attachBtn]);
     const sendBtn = el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", "data-hint": "e", html: iconSvg("send") });
     const form = el("form", {}, [
-      expandBtn,
+      composerStrip,
       stagedTray,
-      el("div", { class: "composerInputRow" }, [attachBtn, el("div", { class: "inputWrap" }, [textarea, msgPh]), queueBtn, sendBtn]),
+      el("div", { class: "composerInputRow" }, [composerCtlStack, el("div", { class: "inputWrap" }, [textarea, msgPh]), sendBtn]),
       modelPicker,
       imgInput,
     ]);
@@ -116,7 +124,7 @@ function requireFunction(value, name) {
     app.append(sidebar, main, backdrop);
     root.append(app);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, topMeta, topActions, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, expandBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, topMeta, topActions, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, expandBtn, clearBtn, draftUndoBtn, composerStrip, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

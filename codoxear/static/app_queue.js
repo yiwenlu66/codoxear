@@ -140,6 +140,9 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       const n = selected ? Math.max(0, Number(sessionState.get("queueLen")) || 0) : 0;
       queueBadge.textContent = n > 0 ? String(n) : "";
       queueBadge.style.display = n > 0 ? "inline-flex" : "none";
+      // Preserved orphan items must remain reachable even before their depth
+      // has arrived in the selected-session runtime snapshot.
+      queueBtn.style.display = n > 0 || selectedSessionHasOrphanQueueRecovery() ? "" : "none";
     }
     const unsubscribeQueueLen = sessionState.subscribe("queueLen", updateQueueBadge);
     const unsubscribeSelected = sessionState.subscribe("selected", () => {
@@ -173,6 +176,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
 
     function syncQueueSubmitState() {
       if (!queueBtn) return;
+      updateQueueBadge();
       const selected = sessionState.get("selected");
       const unknownSend = selectedSessionHasUnknownSend();
       const orphanQueueRecovery = selectedSessionHasOrphanQueueRecovery();

@@ -37,8 +37,8 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     const setToast = requireFunction(options.setToast, "setToast");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
     const kickPoll = requireFunction(options.kickPoll, "kickPoll");
-    const sendText = requireFunction(options.sendText, "sendText");
-    const enqueueComposerText = requireFunction(options.enqueueComposerText, "enqueueComposerText");
+    const sendTextRequest = requireFunction(options.sendText, "sendText");
+    const enqueueComposerTextRequest = requireFunction(options.enqueueComposerText, "enqueueComposerText");
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
     const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
     const restoreModalFocus = requireFunction(options.restoreModalFocus, "restoreModalFocus");
@@ -51,6 +51,9 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     // composer stays permanently in normal auto-grow mode.
     const composerEl = options.composer && typeof options.composer === "object" && options.composer.dataset ? options.composer : null;
     const expandBtn = options.expandBtn && typeof options.expandBtn.addEventListener === "function" ? options.expandBtn : null;
+    const clearBtn = options.clearBtn || null;
+    const draftUndoBtn = options.draftUndoBtn || null;
+    const composerStrip = options.composerStrip || null;
     // Browser-dependent measurement seams (real-browser defaults).
     const measureTextareaHeight = typeof options.measureTextareaHeight === "function" ? options.measureTextareaHeight : () => textarea.getBoundingClientRect().height;
     const getAppHeight = typeof options.getAppHeight === "function" ? options.getAppHeight : () => {
@@ -90,6 +93,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     let tallHeightPx = null;
     let normalOverflow = false;
     let heightDragActive = false;
+    let clearedDraft = null;
     let sendChoicePending = null;
     let sendChoiceReturnFocusEl = null;
     let modelPickerOpen = false;
@@ -713,12 +717,23 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       return normalCapPx;
     }
 
+    // One writer for stack, clear control and strip contents. The stack uses
+    // exactly the grabber's height condition, even while undo replaces it.
     function syncExpandBtn() {
-      if (!expandBtn) return;
       const expanded = heightMode !== "normal";
-      expandBtn.style.display = expanded || normalOverflow || heightDragActive ? "" : "none";
+      const stacked = expanded || normalOverflow || heightDragActive;
+      const undoVisible = clearedDraft !== null;
+      if (composerEl) {
+        if (stacked) composerEl.dataset.controls = "stack";
+        else delete composerEl.dataset.controls;
+      }
+      if (clearBtn) clearBtn.style.display = stacked && textarea.value.length > 0 ? "" : "none";
+      if (draftUndoBtn) draftUndoBtn.style.display = undoVisible ? "inline-flex" : "none";
+      if (composerStrip) composerStrip.style.display = stacked || undoVisible ? "flex" : "none";
+      if (!expandBtn) return;
+      expandBtn.style.display = stacked && !undoVisible ? "" : "none";
       expandBtn.classList.toggle("expanded", expanded);
-      const label = heightMode === "normal" ? "Expand composer" : heightMode === "tall" ? "Expand composer fully" : "Restore composer height";
+      const label = heightMode === "normal" ? "Expand draft" : heightMode === "tall" ? "Expand draft fully" : "Restore draft height";
       expandBtn.title = label;
       expandBtn.setAttribute("aria-label", label);
       expandBtn.setAttribute("aria-pressed", expanded ? "true" : "false");
@@ -875,6 +890,43 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       autoGrow();
     }
 
+    function dismissDraftUndo() {
+      clearedDraft = null;
+      syncExpandBtn();
+    }
+
+    async function sendText(raw, options) {
+      const sessionId = (options && options.sid) || sessionState.get("selected");
+      const ok = await sendTextRequest(raw, options);
+      if (ok && sessionId === sessionState.get("selected")) dismissDraftUndo();
+      return ok;
+    }
+
+    async function enqueueComposerText(raw, options) {
+      const sessionId = (options && options.sid) || sessionState.get("selected");
+      const ok = await enqueueComposerTextRequest(raw, options);
+      if (ok && sessionId === sessionState.get("selected")) dismissDraftUndo();
+      return ok;
+    }
+
+    if (clearBtn) listen(clearBtn, "click", () => {
+      const sessionId = sessionState.get("selected");
+      if (!sessionId || !textarea.value) return;
+      clearedDraft = textarea.value;
+      setDraftFromServer(sessionId, "");
+      onDraftEdited("");
+    });
+    if (draftUndoBtn) listen(draftUndoBtn, "click", () => {
+      const saved = clearedDraft;
+      const sessionId = sessionState.get("selected");
+      dismissDraftUndo();
+      if (saved === null || !sessionId || textarea.value.length > 0) return;
+      setDraftFromServer(sessionId, saved);
+      onDraftEdited(saved);
+      textarea.focus();
+      textarea.setSelectionRange(saved.length, saved.length);
+    });
+
     function clearSessionDraft(sessionId) {
       if (sessionId) storageRemoveItem(sessionDraftKey(sessionId));
     }
@@ -885,6 +937,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     }
 
     function clearComposer({ blur = true } = {}) {
+      dismissDraftUndo();
       hideModelPicker();
       textarea.value = "";
       clearSessionDraft(sessionState.get("selected"));
@@ -933,6 +986,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     }
 
     listen(textarea, "input", () => {
+      if (textarea.value.length > 0) dismissDraftUndo();
       autoGrow();
       saveSessionDraft(sessionState.get("selected"));
       onDraftEdited(textarea.value);
@@ -1049,7 +1103,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
     const unsubscribeSessionState = [
-      sessionState.subscribe("selected", () => { hideModelPicker(); loadHeightMode(sessionState.get("selected")); syncSendButtonState(); }),
+      sessionState.subscribe("selected", () => { dismissDraftUndo(); hideModelPicker(); loadHeightMode(sessionState.get("selected")); syncSendButtonState(); }),
       sessionState.subscribe("sending", syncSendButtonState),
       sessionCatalog.subscribe("sessionIndex", syncSendButtonState),
     ];

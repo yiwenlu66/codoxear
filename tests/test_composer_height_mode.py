@@ -73,7 +73,7 @@ PRELUDE = textwrap.dedent(
     }}
 
     // One composer wired to an in-memory storage. Returns the nodes and probes.
-    function harness({{ stored = {{}}, running = false, textareaHeight = 100, appHeight = 1000 }} = {{}}) {{
+    function harness({{ stored = {{}}, running = false, textareaHeight = 100, appHeight = 1000, staged = [], sendOk = true, queueOk = true }} = {{}}) {{
       const storage = new Map(Object.entries(stored));
       const writes = [];
       const captures = [];
@@ -82,6 +82,12 @@ PRELUDE = textwrap.dedent(
       const form = node({{ requestSubmit: noop }});
       const textarea = node();
       const composer = node();
+      const clearBtn = node();
+      const draftUndoBtn = node();
+      const composerStrip = node();
+      const edits = [];
+      textarea.focus = () => calls.push(["focus"]);
+      textarea.setSelectionRange = (start, end) => {{ textarea.selectionStart = start; textarea.selectionEnd = end; }};
       const expandBtn = node({{
         setPointerCapture(id) {{ captures.push(["set", id]); }},
         releasePointerCapture(id) {{ captures.push(["release", id]); }},
@@ -95,14 +101,15 @@ PRELUDE = textwrap.dedent(
       const controller = ctx.window.CodoxearComposer.createComposerController({{
         form, textarea, msgPh: node(), sendBtn: node(), sendChoice: node(), sendChoiceBackdrop: node(),
         sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn: node(),
-        composer, expandBtn,
+        composer, expandBtn, clearBtn, draftUndoBtn, composerStrip,
+        onDraftEdited: (text) => edits.push(text),
         measureTextareaHeight: () => textareaHeight,
         getAppHeight: () => appHeight,
         sessionCatalog, sessionLaunchFailed: () => false, sessionState,
-        getStagedAttachments: () => [], api: async () => ({{}}), setToast: noop,
+        getStagedAttachments: () => staged, api: async () => ({{}}), setToast: noop,
         setPollFastUntilMs: noop, kickPoll: noop,
-        sendText: async (text) => {{ calls.push(["send", text]); return true; }},
-        enqueueComposerText: async (text) => {{ calls.push(["queue", text]); return true; }},
+        sendText: async (text) => {{ calls.push(["send", text]); return sendOk; }},
+        enqueueComposerText: async (text) => {{ calls.push(["queue", text]); return queueOk; }},
         prepareModalOpen: noop, afterModalVisibilityChanged: noop, restoreModalFocus: noop,
         storageGetItem: (key) => (storage.has(key) ? storage.get(key) : null),
         storageSetItem: (key, value) => {{ storage.set(key, value); writes.push(["set", key, value]); }},
@@ -123,7 +130,7 @@ PRELUDE = textwrap.dedent(
         tallVar: composer.style.props["--composer-tall-h"] ?? null,
         stored: storage.get("codexweb.composerHeight.sid") ?? null,
       }});
-      return {{ storage, writes, captures, calls, hookCalls, form, textarea, composer, expandBtn, sendChoiceNowBtn, sendChoiceLaterBtn, sessionState, controller, snapshot }};
+      return {{ clearBtn, draftUndoBtn, composerStrip, edits, storage, writes, captures, calls, hookCalls, form, textarea, composer, expandBtn, sendChoiceNowBtn, sendChoiceLaterBtn, sessionState, controller, snapshot }};
     }}
     const pointer = (clientY, extra = {{}}) => ({{ pointerId: 7, pointerType: "touch", button: 0, clientY, preventDefault: noop, ...extra }});
     """
@@ -192,18 +199,18 @@ def test_click_cycles_normal_tall_full_normal_and_persists_each_step() -> None:
     )
     assert result["normal"]["mode"] == "normal" and result["normal"]["inlineHeight"] == "180px"
     assert result["normal"]["pressed"] == "false" and result["normal"]["expanded"] is False
-    assert result["normal"]["label"] == "Expand composer"
+    assert result["normal"]["label"] == "Expand draft"
 
     tall = result["tall"]
     assert tall["mode"] == "tall" and tall["inlineHeight"] == "" and tall["inlineOverflow"] == ""
     assert tall["stored"] == '{"mode":"tall"}' and tall["tallVar"] is None
     assert tall["pressed"] == "true" and tall["expanded"] is True
-    assert tall["label"] == "Expand composer fully" and tall["display"] == ""
+    assert tall["label"] == "Expand draft fully" and tall["display"] == ""
     assert result["tallTyped"]["inlineHeight"] == "" and result["tallTyped"]["inlineOverflow"] == ""
 
     full = result["full"]
     assert full["mode"] == "full" and full["stored"] == '{"mode":"full"}'
-    assert full["label"] == "Restore composer height" and full["expanded"] is True
+    assert full["label"] == "Restore draft height" and full["expanded"] is True
     assert full["inlineHeight"] == "" and full["inlineOverflow"] == ""
 
     back = result["back"]
