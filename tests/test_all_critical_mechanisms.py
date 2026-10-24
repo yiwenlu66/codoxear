@@ -224,9 +224,10 @@ def test_watchdog_dead_broker_sidecars_become_lost_tombstones(tmp_path: Path) ->
 
 
 # 51e4a30e — browser offline state is immediately visible rather than silent.
-def test_offline_navigator_state_shows_banner() -> None:
+def test_offline_navigator_state_shows_status_icon() -> None:
     module = _test_module("test_offline_resilience")
     rendered = module.render_network_status(on_line=False)
     assert rendered["offline"] is True
-    assert rendered["hidden"] is False
-    assert rendered["text"] == "Offline — waiting for a network connection. Updates retry automatically."
+    assert rendered["initial"]["state"] == "offline"
+    assert rendered["initial"]["hidden"] is False
+    assert rendered["initial"]["spoken"] == "Offline — waiting for a network connection. Updates retry automatically."

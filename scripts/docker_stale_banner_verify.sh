@@ -4,9 +4,9 @@
 # Scenario: the app is loaded while the server is healthy (service worker
 # activates and warms its offline API caches), then the container is paused —
 # the server stops answering without the client ever going "offline". Before
-# the fix this rendered cached content silently forever; now the network
-# banner must appear with the "showing cached data" variant within a poll
-# cycle, and disappear again after the container is unpaused.
+# the fix this rendered cached content silently forever; now the topbar
+# connection icon must appear (its spoken text naming cached data) within a
+# poll cycle, and disappear again after the container is unpaused.
 #
 # Same isolation contract as scripts/docker_verify.sh: the app is built from
 # a Git archive of the requested commit, runs under a container-only HOME,
@@ -91,10 +91,14 @@ wait_for_server() {
 }
 
 PROBE='(() => {
-  const b = document.getElementById("networkBanner");
+  const s = document.getElementById("networkStatus");
+  const spoken = s ? s.querySelector(".sr-only") : null;
   return {
-    bannerText: b ? b.textContent : null,
-    bannerHidden: b ? b.hidden : null,
+    statusSpoken: spoken ? spoken.textContent : null,
+    statusTitle: s ? s.getAttribute("title") : null,
+    statusHidden: s ? s.hidden : null,
+    statusIconPresent: Boolean(s && s.querySelector("svg")),
+    statusInTopbar: Boolean(s && s.closest(".topbar")),
     swControlled: Boolean(navigator.serviceWorker && navigator.serviceWorker.controller),
     appRendered: Boolean(document.querySelector(".app .topbar")),
     onLine: navigator.onLine,
@@ -172,7 +176,9 @@ browser wait 6000 > /dev/null 2>&1
 
 probe 01-baseline
 [[ "$(probe_field 01-baseline appRendered)" == "True" ]] || fail "app did not render while online"
-[[ "$(probe_field 01-baseline bannerHidden)" == "True" ]] || fail "banner visible while server healthy"
+[[ "$(probe_field 01-baseline statusInTopbar)" == "True" ]] || fail "connection status is not a topbar element"
+[[ "$(probe_field 01-baseline statusIconPresent)" == "True" ]] || fail "connection status icon missing from the topbar"
+[[ "$(probe_field 01-baseline statusHidden)" == "True" ]] || fail "connection icon visible while server healthy"
 
 # Freeze the server: requests hang, the worker's network-first race times out,
 # and every API poll is answered from the offline cache.
@@ -180,20 +186,20 @@ probe 01-baseline
 browser wait 16000 > /dev/null 2>&1
 probe 02-server-paused
 [[ "$(probe_field 02-server-paused onLine)" == "True" ]] || fail "test premise broken: navigator went offline"
-[[ "$(probe_field 02-server-paused bannerHidden)" == "False" ]] || fail "banner stayed hidden while server unreachable (stale content rendered as fresh)"
-banner_text="$(probe_field 02-server-paused bannerText)"
-case "$banner_text" in
+[[ "$(probe_field 02-server-paused statusHidden)" == "False" ]] || fail "connection icon stayed hidden while server unreachable (stale content rendered as fresh)"
+status_text="$(probe_field 02-server-paused statusSpoken)"
+case "$status_text" in
   *"cached data"*) ;;
-  *) fail "banner text did not report cached data, got: $banner_text" ;;
+  *) fail "connection status did not report cached data, got: $status_text" ;;
 esac
 browser screenshot "$artifacts/02-server-paused.png" > /dev/null 2>&1 || true
 
 # Recovery: after unpause the suspect-window revalidation clears, a live poll
-# succeeds, and the banner hides again.
+# succeeds, and the icon hides again.
 "${docker[@]}" unpause "$container" > /dev/null
 browser wait 22000 > /dev/null 2>&1
 probe 03-server-recovered
-[[ "$(probe_field 03-server-recovered bannerHidden)" == "True" ]] || fail "banner stayed visible after server recovery"
+[[ "$(probe_field 03-server-recovered statusHidden)" == "True" ]] || fail "connection icon stayed visible after server recovery"
 browser screenshot "$artifacts/03-server-recovered.png" > /dev/null 2>&1 || true
 
-printf 'PASS: stale-cache banner appears on server outage and clears on recovery. Artifacts: %s\n' "$artifacts"
+printf 'PASS: stale-cache connection icon appears on server outage and clears on recovery. Artifacts: %s\n' "$artifacts"

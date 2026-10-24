@@ -62,8 +62,14 @@ function requireFunction(value, name) {
 
     const titleLabel = el("div", { id: "threadTitle", "data-hint": "t", text: "" });
     const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
-    const networkBanner = el("div", { class: "networkBanner", id: "networkBanner", role: "status", "aria-live": "polite", "aria-atomic": "true", "aria-hidden": "true" });
-    networkBanner.hidden = true;
+    // Connection state is chrome: an icon beside the title, never a text block
+    // above the transcript (which is exactly where reading space is needed
+    // while offline). The glyph is static markup; app_network.js is the sole
+    // writer of its visibility and of the spoken+hover text.
+    const networkStatusIcon = el("span", { class: "networkStatusIcon", "aria-hidden": "true", html: iconSvg("offline") });
+    const networkStatusText = el("span", { class: "sr-only", id: "networkStatusText", text: "" });
+    const networkStatus = el("span", { class: "networkStatus", id: "networkStatus", role: "status", "aria-live": "polite", "aria-atomic": "true" }, [networkStatusIcon, networkStatusText]);
+    networkStatus.hidden = true;
     const toggleSidebarBtn = el("button", { id: "toggleSidebarBtn", class: "icon-btn", title: "Toggle sidebar", "aria-label": "Toggle sidebar", "data-hint": "s", html: iconSvg("menu") });
     const unattendedBtn = el("button", { id: "unattendedBtn", class: "icon-btn", title: "Unattended mode", "aria-label": "Unattended mode", "data-hint": "u", "aria-controls": "unattendedMenu", "aria-expanded": "false", "aria-haspopup": "dialog", type: "button", html: iconSvg("unattended") });
     unattendedBtn.disabled = true;
@@ -87,7 +93,7 @@ function requireFunction(value, name) {
     const chatHeader = el("div", { class: "chatHeader", id: "chatHeader" }, [chatTimeChip, chatNavRail]);
     chatWrap.append(chatHeader, chat, chatEmptyState, jumpBtn, chatSearchBar);
     const topActions = el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn]);
-    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), topActions]);
+    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap, networkStatus]), topActions]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
     const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message", "data-hint": "i", spellcheck: "false", autocorrect: "off", autocapitalize: "off", autocomplete: "off" });
@@ -120,11 +126,11 @@ function requireFunction(value, name) {
     composer.appendChild(form);
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo brandLogo" viewBox="130 92 284 328" data-brand="codoxear" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path class="brandLogoPage" d="M142 104h172l88 88v216H142z" stroke-width="24" stroke-linejoin="round"/><path class="brandLogoFold" d="M314 104v88h88" stroke-width="24" stroke-linejoin="round"/><path class="brandLogoTerminal" d="m204 268 38 36-38 36M270 340h50" fill="none" stroke-width="24" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
-    main.append(topbar, networkBanner, toast, chatWrap, composer);
+    main.append(topbar, toast, chatWrap, composer);
     app.append(sidebar, main, backdrop);
     root.append(app);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, topMeta, topActions, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, expandBtn, clearBtn, draftUndoBtn, composerStrip, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, topMeta, topActions, toast, networkStatus, networkStatusText, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, expandBtn, clearBtn, draftUndoBtn, composerStrip, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

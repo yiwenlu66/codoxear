@@ -13,7 +13,7 @@
   function createWiring(_deps = {}) {
     return Object.freeze({
       createShellDOMOptions(deps) { return select(deps, ['root', 'el', 'iconSvg', 'resolveAppUrl', 'versionedShellAssetPath']); },
-      createNetworkStatusOptions(deps) { return select(deps, ['banner', 'navigatorLike']); },
+      createNetworkStatusOptions(deps) { return select(deps, ['status', 'statusText', 'navigatorLike']); },
       createUnattendedDomOptions(deps) { return select(deps, ['el', 'iconSvg', 'unattendedBtn']); },
       createEventBindingsOptions(deps) { return select(deps, ['addEvent']); },
       createSessionTitleOptions(deps) { return select(deps, ['sessionState', 'sessionCatalog', 'titleLabel', 'sessionTitleWithId', 'openEditSession']); },

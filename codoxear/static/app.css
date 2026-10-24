@@ -924,18 +924,22 @@
       .toast:empty {
         display: none;
       }
-      .networkBanner {
-        align-self: stretch;
-        margin: var(--space-2) var(--space-5) 0 var(--space-5);
-        padding: var(--space-2) var(--space-5);
-        border: 1px solid var(--ink);
-        border-radius: var(--radius-card);
-        background: var(--wash);
+      /* Connection state is a chrome-level icon beside the title. It costs no
+         transcript space (the content the state is about), and because it sits
+         inside the flexible .pill it is absorbed by the title's ellipsis slack,
+         so the action cluster never shifts when the state changes. Ink, not a
+         hue or a muted filter: this is a live condition, not disabled chrome. */
+      .networkStatus {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
         color: var(--ink);
-        font-size: var(--font-md);
-        line-height: 1.4;
       }
-      .networkBanner[hidden] {
+      .networkStatusIcon {
+        display: inline-flex;
+        align-items: center;
+      }
+      .networkStatus[hidden] {
         display: none;
       }
       /* Chrome rows are never scroll containers. The 44px hit areas on

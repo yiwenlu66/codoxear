@@ -1,14 +1,14 @@
 """Behavior tests for stale-cache visibility: when the service worker answers
-API polls from its offline cache, the network banner must say so instead of
-rendering stale content as if it were fresh.
+API polls from its offline cache, the connection indicator must stay up
+instead of rendering stale content as if it were fresh.
 
 Chain under test:
   service-worker marks fallback responses (X-Codoxear-Stale)
   -> app_api surfaces the mark (apiResponseStale, non-enumerable)
   -> poll success paths route it to networkStatus.reportStale()
-  -> the banner shows the "showing cached data" variant.
+  -> the icon stays visible and its spoken text names cached data.
 """
-from frontend_module_loader import module_path
+from frontend_module_loader import NETWORK_STATUS_STUB_JS, module_path
 import json
 import subprocess
 import tempfile
@@ -94,56 +94,48 @@ def test_api_surfaces_stale_mark_without_polluting_payload() -> None:
     assert out["recoveredResult"]["stale"] is False
 
 
-def test_network_banner_stale_state() -> None:
+def test_network_status_stale_state() -> None:
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(APP_NETWORK_JS.read_text(encoding="utf-8"))}, ctx);
-        const banner = {{
-          textContent: "", hidden: true, attributes: {{}},
-          setAttribute(name, value) {{ this.attributes[name] = String(value); }},
-        }};
+{NETWORK_STATUS_STUB_JS}
         const navigatorLike = {{ onLine: true }};
-        const status = ctx.window.CodoxearNetwork.createNetworkStatusController({{ banner, navigatorLike }});
-        const snap = () => ({{ text: banner.textContent, hidden: banner.hidden }});
+        const net = ctx.window.CodoxearNetwork.createNetworkStatusController({{ status, statusText, navigatorLike }});
 
-        const initial = snap();
-        status.reportStale();
-        const afterStale = snap();
+        const initial = netSnap(net.sync());
+        const afterStale = netSnap(net.reportStale());
         // One stale answer is proof of unreachability: no failure threshold.
-        status.reportSuccess();
-        const afterSuccess = snap();
+        const afterSuccess = netSnap(net.reportSuccess());
 
-        status.reportStale();
+        net.reportStale();
         navigatorLike.onLine = false;
-        status.sync();
-        const whileOffline = snap();
+        const whileOffline = netSnap(net.sync());
         navigatorLike.onLine = true;
-        status.sync();
-        const backOnline = snap();
-        status.reportSuccess();
-        const afterRecovery = snap();
+        const backOnline = netSnap(net.sync());
+        const afterRecovery = netSnap(net.reportSuccess());
 
         process.stdout.write(JSON.stringify({{ initial, afterStale, afterSuccess, whileOffline, backOnline, afterRecovery }}));
         """
     )
     out = run_node_json(script)
     assert out["initial"]["hidden"] is True
+    assert out["afterStale"]["state"] == "cached"
     assert out["afterStale"]["hidden"] is False
-    assert "cached data" in out["afterStale"]["text"]
-    assert "Connection unavailable" in out["afterStale"]["text"]
+    assert "showing cached data" in out["afterStale"]["spoken"]
     assert out["afterSuccess"]["hidden"] is True
+    assert out["afterSuccess"]["state"] == ""
     # The browser-offline signal is the stronger statement and wins while it holds.
-    assert "Offline" in out["whileOffline"]["text"]
+    assert out["whileOffline"]["state"] == "offline"
     # Connectivity returning does not erase the fact that the server is still
-    # unreachable: the stale state persists until a live response arrives.
-    assert "cached data" in out["backOnline"]["text"]
+    # unreachable: the cached reason persists until a live response arrives.
+    assert out["backOnline"]["state"] == "cached"
     assert out["afterRecovery"]["hidden"] is True
 
 
-def test_message_poll_stale_success_reports_degraded_transport() -> None:
+def test_message_poll_stale_success_reports_cached_transport() -> None:
     sources = [
         module_path("app_polling.js").read_text(encoding="utf-8"),
         module_path("app_transcript.js").read_text(encoding="utf-8"),
@@ -160,12 +152,9 @@ def test_message_poll_stale_success_reports_degraded_transport() -> None:
         {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
 
         const noop = () => {{}};
-        const banner = {{
-          textContent: "", hidden: true, attributes: {{}},
-          setAttribute(name, value) {{ this.attributes[name] = String(value); }},
-        }};
+{NETWORK_STATUS_STUB_JS}
         const navigatorLike = {{ onLine: true }};
-        const networkStatus = ctx.window.CodoxearNetwork.createNetworkStatusController({{ banner, navigatorLike }});
+        const net = ctx.window.CodoxearNetwork.createNetworkStatusController({{ status, statusText, navigatorLike }});
         const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
         sessionState.set("selected", "sid");
         const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
@@ -199,20 +188,21 @@ def test_message_poll_stale_success_reports_degraded_transport() -> None:
           deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
           dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
           visibilityState: () => "visible", navigatorValue: () => navigatorLike,
-          reportTransportSuccess: () => networkStatus.reportSuccess(),
-          reportTransportFailure: () => networkStatus.reportFailure(),
-          reportTransportStale: () => networkStatus.reportStale(),
+          reportTransportSuccess: () => net.reportSuccess(),
+          reportTransportFailure: () => net.reportFailure(),
+          reportTransportStale: () => net.reportStale(),
           EventSource: null, AbortController: null,
           setTimeout: () => ({{ cleared: false }}), clearTimeout: noop, now: () => 1000,
           consoleWarn: noop, consoleError: noop,
         }});
 
         Promise.resolve(controller.pollMessages("sid", 1)).then(() => {{
-          const afterStalePoll = {{ text: banner.textContent, hidden: banner.hidden }};
+          const afterStalePoll = {{ state: net.sync(), hidden: status.hidden, spoken: statusText.textContent }};
           process.stdout.write(JSON.stringify({{ afterStalePoll }}));
         }}).catch((error) => {{ console.error(error); process.exit(1); }});
         """
     )
     out = run_node_json(script)
+    assert out["afterStalePoll"]["state"] == "cached"
     assert out["afterStalePoll"]["hidden"] is False
-    assert "cached data" in out["afterStalePoll"]["text"]
+    assert "showing cached data" in out["afterStalePoll"]["spoken"]

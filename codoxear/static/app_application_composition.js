@@ -144,7 +144,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           topMeta,
           topActions,
           toast,
-          networkBanner,
+          networkStatus,
+          networkStatusText,
           toggleSidebarBtn,
           unattendedBtn,
           diagBtn,
@@ -166,8 +167,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
-        const networkStatus = codoxearNetwork.createNetworkStatusController(wiring.createNetworkStatusOptions({
-          banner: networkBanner,
+        const networkStatusController = codoxearNetwork.createNetworkStatusController(wiring.createNetworkStatusOptions({
+          status: networkStatus,
+          statusText: networkStatusText,
           navigatorLike: typeof navigator === "undefined" ? undefined : navigator,
         }));
         const unattendedDom = CodoxearUnattended.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
@@ -325,24 +327,24 @@ import * as CodoxearWiring from "./app_wiring.js";
           pollingRuntime.markSessionsPollSuccess();
           // Data arrived, but if the service worker served it from its
           // offline cache the server is still unreachable: say so.
-          if (sessionRefreshController.lastRefreshStale()) networkStatus.reportStale();
-          else networkStatus.reportSuccess();
+          if (sessionRefreshController.lastRefreshStale()) networkStatusController.reportStale();
+          else networkStatusController.reportSuccess();
         }
         function markSessionsPollFailure(transportFailed = true) {
           pollingRuntime.markSessionsPollFailure();
-          if (transportFailed) networkStatus.reportFailure();
+          if (transportFailed) networkStatusController.reportFailure();
         }
         function markSecondaryPollSuccess(requestMade = true) {
           pollingRuntime.markSecondaryPollSuccess();
           // A skipped background refresh made no request: it carries no
           // transport evidence and must not clear a degraded state.
           if (!requestMade) return;
-          if (voiceController.lastBackgroundFetchStale()) networkStatus.reportStale();
-          else networkStatus.reportSuccess();
+          if (voiceController.lastBackgroundFetchStale()) networkStatusController.reportStale();
+          else networkStatusController.reportSuccess();
         }
         function markSecondaryPollFailure(transportFailed = true) {
           pollingRuntime.markSecondaryPollFailure();
-          if (transportFailed) networkStatus.reportFailure();
+          if (transportFailed) networkStatusController.reportFailure();
         }
 
         async function runSessionsPollTick() {
@@ -685,7 +687,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           looksLikeImage: looksLikeImage,
           modalIsolationTargets: modalIsolationTargets,
           navigator: navigator,
-          networkStatus: networkStatus,
+          networkStatus: networkStatusController,
           newSessionDialogController: newSessionDialogController,
           nextUserBtn: nextUserBtn,
           olderBtn: olderBtn,
@@ -1322,7 +1324,7 @@ import * as CodoxearWiring from "./app_wiring.js";
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
-                networkStatus.reportSuccess();
+                networkStatusController.reportSuccess();
                 messageFlowController.resetMessagePollBackoff();
                 pollingRuntime.resetStreaks();
                 if (sessionState.get("selected")) {
@@ -1334,7 +1336,7 @@ import * as CodoxearWiring from "./app_wiring.js";
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
-                networkStatus.sync();
+                networkStatusController.sync();
                 messageFlowController.closeMessageEventSource();
                 if (sessionState.get("selected")) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());

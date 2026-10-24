@@ -1,4 +1,4 @@
-from frontend_module_loader import module_path
+from frontend_module_loader import NETWORK_STATUS_STUB_JS, module_path
 import json
 import subprocess
 import tempfile
@@ -31,13 +31,10 @@ def run_transport_failure_flow() -> dict:
         vm.createContext(ctx);
         {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
 
+{NETWORK_STATUS_STUB_JS}
         const noop = () => {{}};
-        const banner = {{
-          textContent: "", hidden: true, attributes: {{}},
-          setAttribute(name, value) {{ this.attributes[name] = String(value); }},
-        }};
         const navigatorLike = {{ onLine: true }};
-        const networkStatus = ctx.window.CodoxearNetwork.createNetworkStatusController({{ banner, navigatorLike }});
+        const net = ctx.window.CodoxearNetwork.createNetworkStatusController({{ status, statusText, navigatorLike }});
         const timers = [];
         const eventSources = [];
         let fetchFails = true;
@@ -89,7 +86,7 @@ def run_transport_failure_flow() -> dict:
           deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
           dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
           visibilityState: () => "visible", navigatorValue: () => navigatorLike,
-          reportTransportSuccess: () => networkStatus.reportSuccess(), reportTransportFailure: () => networkStatus.reportFailure(),
+          reportTransportSuccess: () => net.reportSuccess(), reportTransportFailure: () => net.reportFailure(),
           EventSource: FakeEventSource, AbortController: null,
           setTimeout: (callback, delay) => {{ const timer = {{ callback, delay, cleared: false }}; timers.push(timer); return timer; }},
           clearTimeout: (timer) => {{ timer.cleared = true; }}, now: () => 1000, consoleWarn: noop, consoleError: noop,
@@ -101,8 +98,7 @@ def run_transport_failure_flow() -> dict:
         const firstPoll = timers.find((timer) => timer.delay === 2000 && !timer.cleared);
         Promise.resolve(firstPoll.callback()).then(() => {{
           const afterFailure = {{
-            bannerText: banner.textContent,
-            bannerHidden: banner.hidden,
+            ...netSnap(net.sync()),
             fetchAttempts,
             sseClosed: Boolean(eventSources[0].closed),
             sourceCount: eventSources.length,
@@ -113,24 +109,22 @@ def run_transport_failure_flow() -> dict:
           const recoveryPoll = timers.find((timer) => timer.delay === 4000 && !timer.cleared);
           return Promise.resolve(recoveryPoll.callback()).then(() => {{
             const afterRecovery = {{
-              bannerText: banner.textContent,
-              bannerHidden: banner.hidden,
+              ...netSnap(net.sync()),
               fetchAttempts,
               sourceCount: eventSources.length,
               transportUnavailable: controller.snapshot().messageTransportUnavailable,
             }};
             eventSources[1].onopen();
             navigatorLike.onLine = false;
-            networkStatus.sync();
+            const offlineState = net.sync();
             controller.closeMessageEventSource();
             const afterOffline = {{
-              bannerText: banner.textContent,
-              bannerHidden: banner.hidden,
+              ...netSnap(offlineState),
               sseClosed: Boolean(eventSources[1].closed),
               hasEventSource: controller.snapshot().hasEventSource,
             }};
             navigatorLike.onLine = true;
-            networkStatus.reportSuccess();
+            const onlineState = net.reportSuccess();
             controller.resetMessagePollBackoff();
             controller.resumeLiveDelivery();
             process.stdout.write(JSON.stringify({{
@@ -138,8 +132,7 @@ def run_transport_failure_flow() -> dict:
               afterRecovery,
               afterOffline,
               afterOnline: {{
-                bannerText: banner.textContent,
-                bannerHidden: banner.hidden,
+                ...netSnap(onlineState),
                 sourceCount: eventSources.length,
               }},
             }}));
@@ -159,13 +152,14 @@ def run_transport_failure_flow() -> dict:
     return json.loads(completed.stdout)
 
 
-def test_online_transport_failure_shows_degraded_banner_and_recovers() -> None:
+def test_online_transport_failure_shows_connection_icon_and_recovers() -> None:
     result = run_transport_failure_flow()
 
     failure = result["afterFailure"]
     assert failure["fetchAttempts"] == 1
-    # Banner requires 2 consecutive failures; first failure should not show it yet
-    assert failure["bannerHidden"] is True
+    # Two consecutive failures are required; one failure must not flash the icon.
+    assert failure["state"] == ""
+    assert failure["hidden"] is True
     assert failure["sseClosed"] is True
     assert failure["sourceCount"] == 1
     assert failure["hasRetryTimer"] is False
@@ -173,18 +167,21 @@ def test_online_transport_failure_shows_degraded_banner_and_recovers() -> None:
 
     recovery = result["afterRecovery"]
     assert recovery["fetchAttempts"] == 2
-    assert recovery["bannerText"] == ""
-    assert recovery["bannerHidden"] is True
+    assert recovery["state"] == ""
+    assert recovery["hidden"] is True
+    assert recovery["title"] is None
+    assert recovery["spoken"] == ""
     assert recovery["sourceCount"] == 2
     assert recovery["transportUnavailable"] is False
 
     offline = result["afterOffline"]
-    assert offline["bannerText"] == "Offline — waiting for a network connection. Updates retry automatically."
-    assert offline["bannerHidden"] is False
+    assert offline["state"] == "offline"
+    assert offline["hidden"] is False
+    assert offline["spoken"] == "Offline — waiting for a network connection. Updates retry automatically."
     assert offline["sseClosed"] is True
     assert offline["hasEventSource"] is False
 
     online = result["afterOnline"]
-    assert online["bannerText"] == ""
-    assert online["bannerHidden"] is True
+    assert online["state"] == ""
+    assert online["hidden"] is True
     assert online["sourceCount"] == 3

@@ -1,4 +1,4 @@
-from frontend_module_loader import module_path
+from frontend_module_loader import NETWORK_STATUS_STUB_JS, module_path
 import json
 import subprocess
 import textwrap
@@ -10,29 +10,26 @@ ROOT = Path(__file__).resolve().parents[1]
 NETWORK_JS = module_path("app_network.js")
 
 
-def render_network_status(on_line: bool) -> dict:
+def render_network_status(on_line: bool, failures: int = 0) -> dict:
     source = NETWORK_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const banner = {{
-          textContent: "",
-          hidden: true,
-          attributes: {{}},
-          setAttribute(name, value) {{ this.attributes[name] = String(value); }},
-        }};
+        {NETWORK_STATUS_STUB_JS}
         const ctx = {{ window: {{}}, navigator: {{ onLine: {str(on_line).lower()} }} }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
-        const status = ctx.window.CodoxearNetwork.createNetworkStatusController({{
-          banner,
+        const net = ctx.window.CodoxearNetwork.createNetworkStatusController({{
+          status,
+          statusText,
           navigatorLike: ctx.navigator,
         }});
+        const snapshots = [netSnap(net.sync())];
+        for (let i = 0; i < {int(failures)}; i += 1) snapshots.push(netSnap(net.reportFailure()));
         process.stdout.write(JSON.stringify({{
-          text: banner.textContent,
-          hidden: banner.hidden,
-          ariaHidden: banner.attributes["aria-hidden"],
-          offline: status.browserOffline(ctx.navigator),
+          initial: snapshots[0],
+          snapshots,
+          offline: net.browserOffline(ctx.navigator),
         }}));
         """
     )
@@ -41,21 +38,47 @@ def render_network_status(on_line: bool) -> dict:
 
 
 class TestOfflineResilience(unittest.TestCase):
-    def test_offline_navigator_renders_persistent_network_banner(self) -> None:
+    def test_offline_navigator_shows_connection_icon_with_spoken_reason(self) -> None:
         rendered = render_network_status(on_line=False)
 
         self.assertTrue(rendered["offline"])
-        self.assertFalse(rendered["hidden"])
-        self.assertEqual(rendered["ariaHidden"], "false")
-        self.assertEqual(rendered["text"], "Offline — waiting for a network connection. Updates retry automatically.")
+        initial = rendered["initial"]
+        self.assertEqual(initial["state"], "offline")
+        self.assertFalse(initial["hidden"])
+        self.assertEqual(initial["title"], "Offline — waiting for a network connection. Updates retry automatically.")
+        # The glyph carries no text of its own; the sentence survives for
+        # assistive tech through the sr-only span inside the live region.
+        self.assertEqual(initial["spoken"], initial["title"])
 
-    def test_online_navigator_keeps_network_banner_hidden(self) -> None:
+    def test_online_navigator_keeps_connection_icon_hidden(self) -> None:
         rendered = render_network_status(on_line=True)
 
         self.assertFalse(rendered["offline"])
-        self.assertTrue(rendered["hidden"])
-        self.assertEqual(rendered["ariaHidden"], "true")
-        self.assertEqual(rendered["text"], "")
+        initial = rendered["initial"]
+        self.assertEqual(initial["state"], "")
+        self.assertTrue(initial["hidden"])
+        self.assertIsNone(initial["title"])
+        self.assertEqual(initial["spoken"], "")
+
+
+class TestTransportFailureThreshold(unittest.TestCase):
+    def test_single_failure_does_not_show_the_icon(self) -> None:
+        rendered = render_network_status(on_line=True, failures=1)
+
+        (initial, after_failure) = rendered["snapshots"]
+        self.assertEqual(initial["state"], "")
+        # One flaky poll must not flash the icon.
+        self.assertEqual(after_failure["state"], "")
+        self.assertTrue(after_failure["hidden"])
+
+    def test_two_consecutive_failures_show_the_icon(self) -> None:
+        rendered = render_network_status(on_line=True, failures=2)
+
+        after_second = rendered["snapshots"][2]
+        self.assertEqual(after_second["state"], "failing")
+        self.assertFalse(after_second["hidden"])
+        self.assertEqual(after_second["title"], "Connection unavailable — retrying automatically.")
+        self.assertEqual(after_second["spoken"], after_second["title"])
 
 
 if __name__ == "__main__":

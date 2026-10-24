@@ -102,6 +102,20 @@ MODULE_NAMESPACES = {
 
 _CACHE = Path(tempfile.gettempdir()) / "codoxear-esm-vm"
 
+# Minimal stand-in for the topbar connection-status node. The controller only
+# toggles ``hidden`` and writes one ``title`` attribute plus the spoken text of
+# its sr-only span, so the VM fixtures mirror exactly that surface.
+NETWORK_STATUS_STUB_JS = """        const status = {
+          hidden: true, attributes: {},
+          getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
+          hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name); },
+          setAttribute(name, value) { this.attributes[name] = String(value); },
+          removeAttribute(name) { delete this.attributes[name]; },
+        };
+        const statusText = { textContent: "" };
+        const netSnap = (state) => ({ state, hidden: status.hidden, title: status.getAttribute("title"), spoken: statusText.textContent });
+"""
+
 
 def strip_esm(source: str, module_name: str) -> str:
     """Turn one ESM source into an isolated classic VM script.
