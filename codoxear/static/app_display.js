@@ -262,8 +262,10 @@
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h4"/><path d="M20 9V5h-4"/><path d="M4 15v4h4"/><path d="M20 15v4h-4"/><path d="M8 5H6a2 2 0 0 0-2 2v2"/><path d="M16 5h2a2 2 0 0 1 2 2v2"/><path d="M8 19H6a2 2 0 0 1-2-2v-2"/><path d="M16 19h2a2 2 0 0 0 2-2v-2"/></svg>`;
     if (name === "help")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.35 9.25a2.85 2.85 0 1 1 5.3 1.4c-.55.88-1.46 1.34-2.15 1.83-.74.53-1.25 1.08-1.25 2.02"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+    // A full wifi fan crossed by a slash, not truncated arcs: the fan silhouette
+    // is what stays recognizable at 18px, and the slash alone carries "off".
     if (name === "offline")
-      return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5a17 17 0 0 1 6.2-2.3"/><path d="M22 5.5a17 17 0 0 0-8.6-2.4"/><path d="M5.2 9.8a13 13 0 0 1 4.1-1.6"/><path d="M18.8 9.8a13 13 0 0 0-3.4-1.5"/><path d="M8.5 14a8.5 8.5 0 0 1 2.4-.9"/><path d="M12 18.6h.01"/><path d="M3 3l18 18"/></svg>`;
+      return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M12 20h.01"/><path d="m2 2 20 20"/></svg>`;
     if (name === "info")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v5"/><circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none"/></svg>`;
     if (name === "settings")
