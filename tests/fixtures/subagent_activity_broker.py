@@ -79,6 +79,43 @@ run_dir = status_root / "parallel-layout"
 run_dir.mkdir(parents=True, exist_ok=True)
 status_path = run_dir / "status.json"
 
+# A child launched on a jev-auto placeholder routes itself after launch and records
+# the real model in its OWN session file (pi-jev-auto-model's custom entry plus the
+# model_change it applies). The parent's status.json keeps the placeholder, and the
+# run's events.jsonl is not guaranteed to mirror the routing, so this fixture writes
+# only the child session - the record a real routed child always has.
+JEV_CHILD_MODELS = [
+    ("dexgem-messages", "kimi-k3"),
+    ("dexgem-completions", "deepseek-flash"),
+]
+
+
+def jev_child_session(index: int, placeholder: str) -> str | None:
+    bare = placeholder.strip().split("/")[-1]
+    name, _, level = bare.partition(":")
+    if name != "auto-jev-subagent":
+        return None
+    provider, model_id = JEV_CHILD_MODELS[index]
+    child_path = run_dir / f"child-{index}" / "run-0" / "session.jsonl"
+    child_path.parent.mkdir(parents=True, exist_ok=True)
+    entries = [
+        {"type": "session", "version": 3, "id": f"child-{index}", "cwd": "/workspace", "timestamp": now},
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "thinking_level_change", "thinkingLevel": level},
+        {"type": "model_change", "provider": provider, "modelId": model_id},
+        {"type": "custom", "customType": "jev-auto-model:routed:v1", "data": {
+            "placeholder": "jev-auto/auto-jev-subagent", "provider": provider, "modelId": model_id, "level": level,
+        }},
+    ]
+    child_path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+    return str(child_path)
+
+
+def step_model_field(index: int, model: str) -> dict:
+    """Real status.json omits sessionFile for children launched on a real model."""
+    child = jev_child_session(index, model)
+    return {"sessionFile": child} if child else {}
+
 
 def refresh_status() -> None:
     try:
@@ -103,6 +140,7 @@ def refresh_status() -> None:
                 "status": "running",
                 "startedAt": 1789103548001,
                 "model": models[0],
+                **step_model_field(0, models[0]),
                 "toolCount": 19,
                 "tokens": {"input": 31000, "output": 3500, "total": 34500},
             },
@@ -111,6 +149,7 @@ def refresh_status() -> None:
                 "status": "running",
                 "startedAt": 1789103548002,
                 "model": models[1],
+                **step_model_field(1, models[1]),
                 "toolCount": 18,
                 "tokens": {"input": 15000, "output": 2200, "total": 17200},
             },

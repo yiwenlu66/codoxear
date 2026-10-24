@@ -258,3 +258,130 @@ def test_scan_active_pi_subagents_projects_no_row_for_a_childless_workflow_root(
         },
     )
     assert util.scan_active_pi_subagents(now_monotonic=902.1) == {}
+
+
+def _write_session(path: Path, entries: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+
+
+_ROUTED = "jev-auto-model:routed:v1"
+
+
+def _jev_child_session(provider: str = "dexgem-responses", model_id: str = "gpt-6.1-sol", level: str = "high") -> list[dict]:
+    """The head pi actually writes for a jev-routed child (observed shape)."""
+    return [
+        {"type": "session", "version": 3, "id": "child", "timestamp": "2026-10-24T07:14:41.122Z", "cwd": "/tmp"},
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "thinking_level_change", "thinkingLevel": "high"},
+        {"type": "model_change", "provider": provider, "modelId": model_id},
+        {"type": "custom", "customType": _ROUTED, "data": {"placeholder": "jev-auto/auto-jev-subagent", "provider": provider, "modelId": model_id, "level": level}},
+    ]
+
+
+def test_scan_resolves_jev_placeholder_from_child_session_without_events_mirror(tmp_path: Path, monkeypatch) -> None:
+    """A routed child's own session file is the authority when the mirror is absent."""
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    child_session = tmp_path / "sessions" / "child" / "run-0" / "session.jsonl"
+    _write_session(child_session, _jev_child_session(provider="dexgem-messages", model_id="kimi-k3", level="medium"))
+    _write_status(
+        root,
+        "routed-run",
+        {
+            "runId": "routed-run", "sessionId": parent, "state": "running", "startedAt": 100, "pid": os.getpid(),
+            "steps": [{"agent": "executor", "status": "running", "model": "jev-auto/auto-jev-subagent:high", "sessionFile": str(child_session), "toolCount": 2, "tokens": {"total": 10}}],
+        },
+    )
+    # No events.jsonl in the run dir at all: this is the case that showed the
+    # placeholder in the UI. The marker's own level wins over the launch level.
+    assert util.scan_active_pi_subagents(now_monotonic=100.0)[parent][0]["detail"] == {
+        "role": "executor", "model": "dexgem-messages/kimi-k3:medium", "tools": 2, "tokens": 10,
+    }
+
+
+def test_scan_resolves_jev_placeholder_from_events_mirror_when_child_session_is_gone(tmp_path: Path, monkeypatch) -> None:
+    """The events.jsonl mirror still resolves a child whose session file is unreadable."""
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    _write_status(
+        root,
+        "mirrored-run",
+        {
+            "runId": "mirrored-run", "sessionId": parent, "state": "running", "startedAt": 100, "pid": os.getpid(),
+            "steps": [{"agent": "executor", "status": "running", "model": "jev-auto/auto-jev-subagent:high", "sessionFile": str(tmp_path / "missing.jsonl")}],
+        },
+    )
+    mirror = root / "mirrored-run" / "events.jsonl"
+    mirror.write_text(
+        json.dumps({"type": "entry_appended", "entry": {"type": "custom", "customType": _ROUTED, "data": {"provider": "dexgem-responses", "modelId": "gpt-6.1-sol", "level": "xhigh"}}}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert util.scan_active_pi_subagents(now_monotonic=100.0)[parent][0]["detail"]["model"] == "dexgem-responses/gpt-6.1-sol:xhigh"
+
+
+def test_scan_keeps_placeholder_when_nothing_records_the_routing(tmp_path: Path, monkeypatch) -> None:
+    """Unrouted or unreadable children degrade to the recorded value, never to a guess."""
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    parent = "/tmp/parent.jsonl"
+    unresolved = tmp_path / "sessions" / "unresolved.jsonl"
+    _write_session(unresolved, _jev_child_session()[:3])  # launch placeholder only: routing never recorded
+    _write_session(tmp_path / "sessions" / "placeholders-only.jsonl", [
+        {"type": "session"},
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "custom", "customType": "something-else", "data": {"provider": "dexgem-responses", "modelId": "gpt-6.1-sol"}},
+    ])
+    _write_status(
+        root,
+        "a",
+        {"runId": "a", "sessionId": parent, "state": "running", "startedAt": 100, "pid": os.getpid(),
+         "steps": [{"agent": "executor", "status": "running", "model": "jev-auto/auto-jev-subagent:high", "sessionFile": str(unresolved)}]},
+    )
+    assert util._resolve_jev_routed_model(root / "a", "jev-auto/auto-jev-subagent:high", str(unresolved)) == "jev-auto/auto-jev-subagent:high"
+    assert util._resolve_jev_routed_model(root / "a", "jev-auto/auto-jev-subagent:high", str(tmp_path / "sessions" / "placeholders-only.jsonl")) == "jev-auto/auto-jev-subagent:high"
+    assert util._resolve_jev_routed_model(root / "a", "jev-auto/auto-jev-subagent:high", None) == "jev-auto/auto-jev-subagent:high"
+    # A resolved model_change with no marker still names the real model, with the
+    # thinking level taken from the child's own level change.
+    model_change_only = tmp_path / "sessions" / "model-change-only.jsonl"
+    _write_session(model_change_only, [
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "thinking_level_change", "thinkingLevel": "low"},
+        {"type": "model_change", "provider": "dexgem-completions", "modelId": "deepseek-flash"},
+    ])
+    assert util._resolve_jev_routed_model(root / "a", "jev-auto/auto-jev-subagent:high", str(model_change_only)) == "dexgem-completions/deepseek-flash:low"
+
+
+def test_jev_marker_inside_child_output_is_not_read_as_routing(tmp_path: Path, monkeypatch) -> None:
+    """The marker string appears in tool output; only a real routed entry resolves."""
+    root = tmp_path / "runs"
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
+    noisy = tmp_path / "sessions" / "noisy.jsonl"
+    _write_session(noisy, [
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "message_start", "message": {"role": "user", "content": [{"type": "text", "text": f"read the spec: customType {_ROUTED} provider dexgem-responses modelId gpt-6-luna"}]}},
+        {"type": "tool_execution_end", "toolName": "bash", "result": {"content": [{"type": "text", "text": '{"type":"custom","customType":"jev-auto-model:routed:v1","data":{"provider":"fake","modelId":"fake-model"}}'}]}},
+    ])
+    assert util._resolve_jev_routed_model(root / "noisy", "jev-auto/auto-jev-subagent:high", str(noisy)) == "jev-auto/auto-jev-subagent:high"
+
+    noisy_events = root / "noisy"
+    noisy_events.mkdir(parents=True, exist_ok=True)
+    (noisy_events / "events.jsonl").write_text(
+        json.dumps({"type": "tool_execution_end", "result": {"content": [{"type": "text", "text": f"spec mentions {_ROUTED}"}]}}) + "\n",
+        encoding="utf-8",
+    )
+    assert util._resolve_jev_routed_model(noisy_events, "jev-auto/auto-jev-subagent:high", None) == "jev-auto/auto-jev-subagent:high"
+
+
+def test_jev_resolution_reads_only_the_child_session_head(tmp_path: Path) -> None:
+    """Routing sits in the head; a marker only past the cap must not cost a full read."""
+    huge = tmp_path / "huge.jsonl"
+    _write_session(huge, [
+        {"type": "model_change", "provider": "jev-auto", "modelId": "auto-jev-subagent"},
+        {"type": "message_start", "message": {"role": "user", "content": [{"type": "text", "text": "x" * (util._JEV_SESSION_HEAD_BYTES + 4096)}]}},
+        {"type": "custom", "customType": _ROUTED, "data": {"provider": "dexgem-responses", "modelId": "beyond-cap", "level": "high"}},
+    ])
+    assert util._resolve_jev_routed_model(tmp_path / "run", "jev-auto/auto-jev-subagent:high", str(huge)) == "jev-auto/auto-jev-subagent:high"

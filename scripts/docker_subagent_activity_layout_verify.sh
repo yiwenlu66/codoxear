@@ -158,6 +158,10 @@ set_models() {
   local kind="$1"
   if [[ "$kind" == "short" ]]; then
     payload='["dexgem-responses/gpt-5.6-sol","dexgem-responses/gpt-5.3"]'
+  elif [[ "$kind" == "jev" ]]; then
+    # Children launched on a jev-auto placeholder: status.json keeps the
+    # placeholder and only the child's own session file names the real model.
+    payload='["jev-auto/auto-jev-subagent:high","jev-auto/auto-jev-subagent:high"]'
   else
     payload='["dexgem-responses/gpt-5.6-sol","anthropic/claude-sonnet-4-5-20250929-xhigh-reasoning"]'
   fi
@@ -189,6 +193,7 @@ for state in busy idle; do
     if [[ "$viewport" == "phone" ]]; then width=390; height=844; else width=1280; height=800; fi
     capture "$viewport" "$width" "$height" "$state" short
     capture "$viewport" "$width" "$height" "$state" long
+    capture "$viewport" "$width" "$height" "$state" jev
   done
 done
 
@@ -211,7 +216,8 @@ def load(name):
     assert isinstance(value, dict), (name, value)
     return value
 
-names = [f"{viewport}-{state}-{models}" for viewport in ("phone", "desktop") for state in ("busy", "idle") for models in ("short", "long")]
+names = [f"{viewport}-{state}-{models}" for viewport in ("phone", "desktop") for state in ("busy", "idle") for models in ("short", "long", "jev")]
+jev_names = [f"{viewport}-{state}-jev" for viewport in ("phone", "desktop") for state in ("busy", "idle")]
 probes = {name: load(name) for name in names}
 checks = {}
 for name, probe in probes.items():
@@ -245,6 +251,13 @@ for viewport in ("phone", "desktop"):
         checks[f"{viewport}-{state}:gap_unchanged_by_details"] = math.isclose(short["headerGap"], long["headerGap"], abs_tol=0.25)
         checks[f"{viewport}-{state}:marker_track_unchanged_by_details"] = math.isclose(short["marker"]["width"], long["marker"]["width"], abs_tol=0.25)
         checks[f"{viewport}-{state}:short_shrink_wraps"] = short["bubble"]["width"] < short["availableWidth"] - 20
+# A jev-routed child must render the model it actually selected: the placeholder
+# name and its provider prefix are never what the user sees.
+jev_expected = ["reviewer · kimi-k3:high", "executor · deepseek-flash:high"]
+for name in jev_names:
+    texts = [line["text"] for line in probes[name]["details"]]
+    checks[f"{name}:resolved_child_models"] = len(texts) == 2 and all(text.startswith(prefix) for text, prefix in zip(texts, jev_expected))
+    checks[f"{name}:no_jev_placeholder"] = "auto-jev" not in " ".join(texts)
 checks["phone-long:details_wrap"] = all(any(line["height"] > 14.5 for line in probes[f"phone-{state}-long"]["details"]) for state in ("busy", "idle"))
 for viewport in ("phone", "desktop"):
     for models in ("short", "long"):

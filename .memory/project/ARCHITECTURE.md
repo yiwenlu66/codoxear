@@ -198,6 +198,23 @@ verdict while the first assistant response/log is pending. Input transforms can
 prevent digest matching; PTY/log evidence remains fallback. Slow preflight before
 `message_start` remains ambiguous. Behavioral coverage: `test_pi_prompt_receipt.py`.
 
+Subagent model identity comes from the child's own session, not the run mirror.
+`status.json` records the launch-time model, so a child launched on a `jev-auto`
+placeholder (`pi-jev-auto-model`) keeps the placeholder there until it routes
+itself; only the child's session file records what it selected (the `custom`
+entry `jev-auto-model:routed:v1` with provider/modelId/level, plus the
+`model_change` it applies). The run's `events.jsonl` mirrors that entry only when
+pi-subagents' child session subscription already exists at routing time: measured
+here, 81 of 104 routed children had the mirror, so the sidebar and activity
+bubble showed `auto-jev-subagent` for the rest. `util._resolve_jev_routed_model`
+reads the child session head first (bounded byte cap; routing sits within 2 KB of
+the head) and the events mirror second, and keeps the recorded placeholder when
+neither names a model. Coverage: `tests/test_pi_subagents.py` and the rendered
+label in `scripts/docker_subagent_activity_layout_verify.sh` (its `jev` case).
+This is display-only: the children resolve and run. A placeholder that actually
+reaches the model API is a different defect in the resume path, not a projection
+bug (see `.memory/tasks/2026-10-24-subagent-resume-model-routing/`).
+
 ### Offline cold-load authority
 The canonical SW cache/readiness contract is in AGENTS.md. Activation must warm the uncontrolled first navigation's shell and versioned dependencies; runtime fetch caching alone requires an extra visit. `/api/me` is boot-only: when activation precedes authentication, successful login must refresh it after best-effort worker readiness, otherwise an authenticated UI can render online yet have no cached auth snapshot for offline boot. Theme links are generated dynamically, so the SW warms its explicit family list at the shared asset version; the behavioral activation test pins the list against actual theme files. Transcript caches remain populated only by opening sessions online.
 

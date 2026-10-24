@@ -339,37 +339,134 @@ def _pi_step_child_run_id(step: Mapping[str, Any]) -> str | None:
 
 
 _JEV_ROUTED_MARKER = "jev-auto-model:routed:v1"
+_JEV_PLACEHOLDER_NAMES = frozenset({"auto-jev-main", "auto-jev-subagent"})
+# A routed child writes its marker during startup: measured across every child on
+# this machine the marker sits at line 4-5, within 2 KB of the file head. The cap
+# keeps the scan bounded, and is a byte cap rather than a line cap because a
+# child's first lines can each be hundreds of KB of tool output.
+_JEV_SESSION_HEAD_BYTES = 96 * 1024
 
 
-def _resolve_jev_routed_model(run_dir: Path, model: Any) -> Any:
-    """Resolve a jev-auto placeholder to the model the child actually selected.
-
-    pi-subagents records the launch-time model in status.json; children launched
-    on a jev-auto placeholder (pi-jev-auto-model) route themselves after launch
-    and append a routing marker to the run's events.jsonl. Best-effort: any
-    failure returns the recorded model unchanged."""
+def _is_jev_placeholder_model(model: Any) -> bool:
+    """True when `model` is a jev-auto launch placeholder rather than a real model."""
     if not isinstance(model, str) or not model.strip():
-        return model
+        return False
     bare = model.strip().split("/")[-1].split(":")[0]
-    if bare not in ("auto-jev-main", "auto-jev-subagent"):
-        return model
+    return bare in _JEV_PLACEHOLDER_NAMES
+
+
+def _routed_model_label(provider: Any, model_id: Any, level: Any) -> str | None:
+    """Render a routed provider/model pair, rejecting unresolved placeholders."""
+    if not isinstance(provider, str) or not isinstance(model_id, str):
+        return None
+    provider = provider.strip()
+    model_id = model_id.strip()
+    if not provider or not model_id:
+        return None
+    if provider in _JEV_PLACEHOLDER_NAMES or model_id in _JEV_PLACEHOLDER_NAMES:
+        return None
+    level_text = level.strip() if isinstance(level, str) else ""
+    return f"{provider}/{model_id}" + (f":{level_text}" if level_text else "")
+
+
+def _launch_level(model: Any) -> str | None:
+    """Return the `:level` suffix a status.json model string was launched with."""
+    if not isinstance(model, str):
+        return None
+    text = model.strip()
+    if ":" not in text:
+        return None
+    level = text.split(":")[-1].strip()
+    return level or None
+
+
+def _routed_model_from_child_session(session_file: Any, launch_level: str | None = None) -> str | None:
+    """Read the model a jev-routed child actually selected from its own session.
+
+    This is the authoritative record: the child's session file is where
+    pi-jev-auto-model writes its routing (a `custom` entry carrying
+    provider/modelId/level, plus the `model_change` it applies). The run's
+    events.jsonl only mirrors that entry when the runner's session subscription
+    already exists at routing time, which it often does not (observed here: 23 of
+    104 routed children had no mirror), so the child session is read directly.
+    Only the head is read; routing happens before the first turn."""
+    if not isinstance(session_file, str) or not session_file.strip():
+        return None
+    try:
+        with open(session_file, "rb") as stream:
+            head = stream.read(_JEV_SESSION_HEAD_BYTES)
+    except OSError:
+        return None
+    lines = head.decode("utf-8", "replace").splitlines()
+    thinking_level: str | None = None
+    model_change_label: str | None = None
+    for line in lines:
+        if not (_JEV_ROUTED_MARKER in line or '"model_change"' in line or '"thinking_level_change"' in line):
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, Mapping):
+            continue
+        if entry.get("type") == "custom" and entry.get("customType") == _JEV_ROUTED_MARKER:
+            data = entry.get("data")
+            data = data if isinstance(data, Mapping) else {}
+            marker_level = data.get("level") if isinstance(data.get("level"), str) else launch_level
+            label = _routed_model_label(data.get("provider"), data.get("modelId"), marker_level)
+            if label:
+                return label
+        elif entry.get("type") == "thinking_level_change":
+            if isinstance(entry.get("thinkingLevel"), str):
+                thinking_level = entry.get("thinkingLevel")
+        elif entry.get("type") == "model_change":
+            # Compatibility path for a producer that resolves the model without
+            # writing a marker (for example spawn interception rewriting the
+            # launch model): keep the last resolved change in the head.
+            label = _routed_model_label(entry.get("provider"), entry.get("modelId"), None)
+            if label:
+                model_change_label = label
+    if model_change_label and launch_level:
+        return f"{model_change_label}:{thinking_level or launch_level}"
+    return model_change_label
+
+
+def _routed_model_from_run_events(run_dir: Path) -> str | None:
+    """Read a routed model from the run's events.jsonl mirror, when it exists."""
     try:
         lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
-        return model
+        return None
     for line in reversed(lines):
         if _JEV_ROUTED_MARKER not in line:
             continue
         try:
-            data = json.loads(line).get("entry", {}).get("data", {})
+            entry = json.loads(line).get("entry", {})
         except ValueError:
             continue
-        provider = data.get("provider")
-        model_id = data.get("modelId")
-        if isinstance(provider, str) and provider and isinstance(model_id, str) and model_id:
-            level = data.get("level")
-            suffix = f":{level}" if isinstance(level, str) and level else ""
-            return f"{provider}/{model_id}{suffix}"
+        data = entry.get("data") if isinstance(entry, Mapping) else None
+        if not isinstance(data, Mapping):
+            continue
+        label = _routed_model_label(data.get("provider"), data.get("modelId"), data.get("level"))
+        if label:
+            return label
+    return None
+
+
+def _resolve_jev_routed_model(run_dir: Path, model: Any, session_file: Any = None) -> Any:
+    """Resolve a jev-auto placeholder to the model the child actually selected.
+
+    pi-subagents records the launch-time model in status.json; children launched
+    on a jev-auto placeholder (pi-jev-auto-model) route themselves after launch,
+    so the recorded value names the placeholder. The child's own session file is
+    read first because it always records the routing, and the run's events.jsonl
+    mirror second. Best-effort: any failure returns the recorded model unchanged.
+    """
+    if not _is_jev_placeholder_model(model):
+        return model
+    resolved = _routed_model_from_child_session(session_file, _launch_level(model)) or _routed_model_from_run_events(run_dir)
+    if resolved:
+        return resolved
     return model
 
 
@@ -474,7 +571,7 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
             total_tokens = payload.get("totalTokens")
             tokens = step_tokens.get("total") if isinstance(step_tokens, Mapping) else total_tokens.get("total") if isinstance(total_tokens, Mapping) else None
             tools = step.get("toolCount") if step_index is not None or step else payload.get("toolCount")
-            model = _resolve_jev_routed_model(status_path.parent, step.get("model"))
+            model = _resolve_jev_routed_model(status_path.parent, step.get("model"), step.get("sessionFile"))
             step_started_at = step.get("startedAt")
             child_started_at = (
                 step_started_at
