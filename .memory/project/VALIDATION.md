@@ -20,3 +20,16 @@ Boundary rule: broker/server/session/tmux verification is Docker-only. Host thro
 - Copy Conversation count-truthfulness acceptance requires source/VM tests and Docker/browser proof. Tests must prove the success toast count comes from the formatter-owned copyable parts, not `events.length`, including raw events with system/tool roles, blank user/assistant text, and singular grammar. Browser proof must click the real Copy Conversation button against a Docker session whose raw export count exceeds copied sections, then verify exact clipboard text, truthful toast, desktop/mobile no-overflow, preserved too-large/generic failure handling, auth 401/200, zero broker mutations, sanitized artifacts, and exact sandbox cleanup.
 - Transcript code-block copy acceptance requires both semantic and browser evidence: source/VM tests must prove the renderer adds a button without embedding code in attributes and the runtime copies nearest `<code>.textContent`; Docker/browser proof must use a multi-code-block assistant message and verify exact per-block payloads, no prose leakage, message-level raw markdown copy preservation, mobile/coarse-pointer 44x44 code-copy controls with sufficient `<pre>` padding, fine-pointer desktop compact sizing, and no horizontal overflow. Touch proofs must record actual `pointer: coarse` / `hover: none` media matches, not only viewport width.
 - Destructive confirmation focus acceptance requires source tests for explicit `destructive:true` call-site classification, Cancel-first focus for destructive dialogs, Confirm-first focus for constructive dialogs, and Tab/Shift-Tab trapping in `#appConfirm`; Docker/browser proof must exercise real destructive paths (session delete and reload/discard draft) on desktop and ~390x844 mobile, prove Enter cancels without mutation, prove Tab cycling, and capture absence of unintended broker `send`/`keys`/`shutdown` calls.
+
+- Office-preview acceptance: `scripts/docker_office_preview_verify.sh <commit>`
+  builds committed source and uses real LibreOffice plus Noto/poppler fixtures.
+  It checks DOC/DOCX/XLS/XLSX/PPT/PPTX, hidden/veryHidden/outside-print-area Excel
+  content on ordinary PDF pages, source download bytes, authenticated Range
+  responses, concurrency/cache invalidation, browser render/error recovery, and
+  doctor/cache-clear behavior. Artifacts stay under `/tmp/codoxear-office-preview-verify.*`.
+- Full-suite Docker runs need an actual checkout with `.git` for deploy-script
+  tests; an archive alone cannot exercise their Git operations. The Pi bridge
+  test launches Node with a minimal environment, so make Node available at the
+  image's default executable-search locations (not only `/usr/local/bin`).
+  Mocked voice/HLS unit tests must patch `voice_hls.resolve_executable`, so they
+  remain runnable without optional FFmpeg/ffprobe installed.
