@@ -619,7 +619,10 @@ function requireFunction(value, name) {
           "aria-selected": active ? "true" : "false",
           title: cwd,
         });
-        btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
+        // Clip only the label; keep the full path isolated in natural LTR order.
+        btn.appendChild(el("span", { class: "fileMenuPath" }, [
+          el("span", { class: "cwdPathClip" }, [el("bdi", { dir: "ltr", text: cwd })]),
+        ]));
         if (item.source === "recent") btn.appendChild(el("span", { class: "cwdSuggestionSource", text: "Recent" }));
         btn.onmousedown = (e) => e.preventDefault();
         btn.onclick = () => applyNewSessionCwdSuggestion(cwd);

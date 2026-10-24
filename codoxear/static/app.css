@@ -2601,6 +2601,17 @@ select {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      /* RTL clips at the left edge; the LTR bdi preserves path order.
+         Shrink-to-fit keeps short paths left-aligned; top avoids baseline descent. */
+      .cwdPathClip {
+        display: inline-block;
+        vertical-align: top;
+        max-width: 100%;
+        direction: rtl;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .cwdSuggestionSource {
         flex: 0 0 auto;
         border-radius: var(--radius-control);
