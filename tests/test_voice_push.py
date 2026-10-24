@@ -1434,7 +1434,7 @@ class TestVoicePushCoordinator(unittest.TestCase):
                     return 1.25
                 raise RuntimeError("invalid ffprobe duration: N/A")
 
-            with patch("codoxear.voice_push.shutil.which", return_value="/usr/bin/fake"), \
+            with patch("codoxear.voice_hls.resolve_executable", side_effect=lambda name: f"/usr/bin/fake-{name}"), \
                 patch("codoxear.voice_push.subprocess.run", side_effect=fake_run), \
                 patch.object(stream, "_segment_duration_seconds", side_effect=fake_duration):
                 total = stream.append_audio(message_id=prefix, audio_bytes=b"fake-audio")
