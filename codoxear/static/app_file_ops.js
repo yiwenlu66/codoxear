@@ -514,6 +514,8 @@ const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wirin
   host: fileDiff,
   el,
   ensurePdfJs: () => ensurePdfJs(),
+  fetchPreview: (url, options) => fetch(url, options),
+  handleAuthLoss: () => handleAppAuthLoss(),
   createCanvas: () => document.createElement("canvas"),
   devicePixelRatio: () => window.devicePixelRatio || 1,
   disposeFileEditor: () => disposeFileEditor(),
@@ -811,8 +813,8 @@ function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
   return fileFallbackRuntime.applyBlocked(rel, reason, viewerMaxBytes, size);
 }
 
-async function renderPdfFile(rel, url, request) {
-  return await filePdfRenderRuntime.render(rel, url, request);
+async function renderPdfFile(rel, url, request, preview) {
+  return await filePdfRenderRuntime.render(rel, url, request, preview);
 }
 
 function currentFileEditMode() {
@@ -1063,7 +1065,7 @@ const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime(wir
   renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
   renderFilePreview: (rel, text, preview) => renderFilePreview(rel, text, preview),
   renderBlockedFileNotice: (rel, reason, viewerMaxBytes, size) => renderBlockedFileNotice(rel, reason, viewerMaxBytes, size),
-  renderPdfFile: (rel, url, request) => renderPdfFile(rel, url, request),
+  renderPdfFile: (rel, url, request, preview) => renderPdfFile(rel, url, request, preview),
   showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
   showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
   loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options),

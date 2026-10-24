@@ -165,6 +165,18 @@
         const size = typeof result.size === "number" ? result.size : 0;
         return Object.freeze({ kind: "pdf", pdfUrl: result.pdf_url, status: `${path} - PDF - ${fmtBytes(size)}` });
       }
+      if (result.kind === "office") {
+        applyActiveFileNonTextState("office");
+        const size = typeof result.size === "number" ? result.size : 0;
+        // Office remains a non-text source. Only the render plan points at the
+        // PDF derivative; editing and downloads retain the original identity.
+        return Object.freeze({
+          kind: "office",
+          pdfUrl: typeof result.preview_url === "string" ? result.preview_url : "",
+          downloadUrl: typeof result.download_url === "string" && result.download_url ? result.download_url : activeFileDownloadApiPath(),
+          status: `${path} - document preview - ${fmtBytes(size)}`,
+        });
+      }
       if (result.kind === "video") {
         return Object.freeze({ kind: "video", ...prepareActiveVideoLoadResult(path, result, request) });
       }

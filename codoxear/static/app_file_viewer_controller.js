@@ -360,7 +360,7 @@ function requireFunction(value, name) {
     }
     function applyActiveFileNonTextState(kind) {
       const nextKind = String(kind || "");
-      if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
+      if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "office" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
       activeFileKind = nextKind;
       activeFileText = "";
       activeFileEditable = false;

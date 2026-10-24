@@ -29,7 +29,7 @@ import * as CodoxearUrls from "./app_application.js";
   }
 
   const CLICKABLE_FILE_EXTENSIONS = new Set([
-    "7z", "3gp", "avi", "bash", "bin", "bz2", "c", "cc", "cfg", "conf", "cpp", "css", "csv", "flv", "gif", "go", "gz", "h", "hpp", "html", "htm", "ico", "ini", "java", "jpeg", "jpg", "js", "json", "jsonl", "log", "m4v", "md", "mkv", "mov", "mp4", "mpeg", "mpg", "ogv", "pdf", "patch", "png", "py", "rs", "scss", "sh", "sql", "svg", "tar", "tgz", "toml", "ts", "tsx", "txt", "webm", "webp", "wmv", "xml", "xz", "yaml", "yml", "zip", "zsh",
+    "7z", "3gp", "avi", "bash", "bin", "bz2", "c", "cc", "cfg", "conf", "cpp", "css", "csv", "doc", "docx", "flv", "gif", "go", "gz", "h", "hpp", "html", "htm", "ico", "ini", "java", "jpeg", "jpg", "js", "json", "jsonl", "log", "m4v", "md", "mkv", "mov", "mp4", "mpeg", "mpg", "ogv", "pdf", "patch", "ppt", "pptx", "png", "py", "rs", "scss", "sh", "sql", "svg", "tar", "tgz", "toml", "ts", "tsx", "txt", "webm", "webp", "wmv", "xls", "xlsx", "xml", "xz", "yaml", "yml", "zip", "zsh",
   ]);
 
   function filePathExtension(path) {

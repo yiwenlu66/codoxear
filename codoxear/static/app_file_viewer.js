@@ -277,7 +277,7 @@ function requireFunction(value, name) {
 
     function renderDownload(rel, url, reason = "Preview unavailable") {
       host.innerHTML = "";
-      const link = el("a", { href: url, target: "_blank", rel: "noopener", text: "Open or download file" });
+      const link = el("a", { href: url, download: "", target: "_blank", rel: "noopener", text: "Download original file" });
       const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
         el("div", { class: "title", text: "Preview unavailable" }),
         el("p", { text: `${reason}. You can still open or download ${rel}.` }),
@@ -442,10 +442,15 @@ function requireFunction(value, name) {
         setStatus(loadPlan.status);
         return true;
       }
-      if (loadPlan.kind === "pdf") {
-        const rendered = await renderPdfFile(rel, resolveAppUrl(loadPlan.pdfUrl), request);
+      if (loadPlan.kind === "pdf" || loadPlan.kind === "office") {
+        const office = loadPlan.kind === "office";
+        if (office) setStatus(`${rel} - Preparing document preview…`);
+        const rendered = await renderPdfFile(rel, loadPlan.pdfUrl ? resolveAppUrl(loadPlan.pdfUrl) : "", request, {
+          downloadUrl: office ? resolveAppUrl(loadPlan.downloadUrl) : resolveAppUrl(loadPlan.pdfUrl),
+          prepareDocument: office,
+        });
         if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-        setStatus(loadPlan.status);
+        setStatus(rendered.error ? `${rel} - preview unavailable: ${rendered.error}` : loadPlan.status);
         return true;
       }
       if (loadPlan.kind === "video") {

@@ -146,6 +146,8 @@
     const host = requireRenderHostNode(options.host, "filePdfHost");
     const el = requireFunction(options.el, "el");
     const ensurePdfJs = requireFunction(options.ensurePdfJs, "ensurePdfJs");
+    const fetchPreview = requireFunction(options.fetchPreview, "fetchPreview");
+    const handleAuthLoss = requireFunction(options.handleAuthLoss, "handleAuthLoss");
     const createCanvas = requireFunction(options.createCanvas, "createCanvas");
     const devicePixelRatio = requireFunction(options.devicePixelRatio, "devicePixelRatio");
     const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
@@ -205,71 +207,98 @@
       } catch (e) {
         if (e && e.name === "RenderingCancelledException") return;
         if (!isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
-        slot.textContent = `Page ${pageNumber} failed to render`;
+        slot.textContent = `Page ${pageNumber} failed to render: ${e && e.message ? e.message : "PDF renderer unavailable"}. Use Download for the original file.`;
         slot.classList.add("failed");
       } finally {
         state.rendering.delete(pageNumber);
       }
     }
 
-    async function render(rel, url, request) {
-      const container = preparePdfSurface(rel);
-      if (typeof IntersectionObserverCtor !== "function") {
-        if (!isCurrentFileOpenRequest(request)) return false;
-        renderDownloadFallback(rel, url, "PDF lazy renderer unavailable");
-        return true;
+    // Conversion is demanded only by an opened preview. A one-byte Range
+    // request waits for the derivative and exposes the server's JSON failure
+    // reason before PDF.js (which otherwise reports only an HTTP status).
+    async function prepareDocumentPreview(url, request) {
+      const response = await fetchPreview(url, { headers: { Range: "bytes=0-0" }, credentials: "same-origin", signal: request.signal });
+      if (response.status === 401) {
+        handleAuthLoss();
+        throw new Error("authentication required");
       }
-      let pdfjs;
-      try {
-        pdfjs = await ensurePdfJs();
-      } catch (e) {
-        if (!isCurrentFileOpenRequest(request)) return false;
-        renderDownloadFallback(rel, url, e && e.message ? e.message : "PDF renderer unavailable");
-        return true;
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const body = await response.json();
+          if (body && typeof body.error === "string") detail = body.error;
+        } catch (_) {}
+        throw new Error(detail || `Document preview failed (${response.status})`);
       }
+      // A server ignoring Range must not make us buffer a whole PDF twice.
+      if (response.body) await response.body.cancel();
+    }
+
+    async function render(rel, url, request, { downloadUrl = url, prepareDocument = false } = {}) {
       if (!isCurrentFileOpenRequest(request)) return false;
-      const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
-      const state = {
-        request,
-        loadingTask,
-        observer: null,
-        renderTasks: new Set(),
-        rendered: new Set(),
-        rendering: new Set(),
-        pdf: null,
-      };
-      setActivePdfRenderState(state);
-      const pdf = await loadingTask.promise;
-      if (!isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
-      state.pdf = pdf;
-      const firstPage = await pdf.getPage(1);
-      if (!isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
-      const unitViewport = firstPage.getViewport({ scale: 1 });
-      const maxWidth = Math.max(240, container.clientWidth - 24);
-      const scale = maxWidth / Math.max(1, unitViewport.width);
-      const pageWidth = Math.floor(unitViewport.width * scale);
-      const pageHeight = Math.floor(unitViewport.height * scale);
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        const slot = el("div", {
-          class: "filePdfPage",
-          "data-page-number": String(pageNumber),
-          style: `width: ${pageWidth}px; min-height: ${pageHeight}px;`,
-        }, [
-          el("span", { class: "filePdfPageLabel", text: `Page ${pageNumber}` }),
-        ]);
-        container.appendChild(slot);
+      const container = preparePdfSurface(rel);
+      try {
+        if (prepareDocument) container.textContent = "Preparing document preview…";
+        if (!url) throw new Error("Document preview URL unavailable");
+        if (typeof IntersectionObserverCtor !== "function") throw new Error("PDF lazy renderer unavailable");
+        const pdfjs = await ensurePdfJs();
+        if (!isCurrentFileOpenRequest(request)) return false;
+        if (prepareDocument) await prepareDocumentPreview(url, request);
+        if (!isCurrentFileOpenRequest(request)) return false;
+        const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
+        const state = {
+          request,
+          loadingTask,
+          observer: null,
+          renderTasks: new Set(),
+          rendered: new Set(),
+          rendering: new Set(),
+          pdf: null,
+        };
+        setActivePdfRenderState(state);
+        const pdf = await loadingTask.promise;
+        if (!isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
+        state.pdf = pdf;
+        const firstPage = await pdf.getPage(1);
+        if (!isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
+        const unitViewport = firstPage.getViewport({ scale: 1 });
+        const maxWidth = Math.max(240, container.clientWidth - 24);
+        const scale = maxWidth / Math.max(1, unitViewport.width);
+        const pageWidth = Math.floor(unitViewport.width * scale);
+        const pageHeight = Math.floor(unitViewport.height * scale);
+        container.textContent = "";
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const slot = el("div", {
+            class: "filePdfPage",
+            "data-page-number": String(pageNumber),
+            style: `width: ${pageWidth}px; min-height: ${pageHeight}px;`,
+          }, [
+            el("span", { class: "filePdfPageLabel", text: `Page ${pageNumber}` }),
+          ]);
+          container.appendChild(slot);
+        }
+        state.observer = new IntersectionObserverCtor(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) void renderPageIntoSlot(state, pdf, firstPage, scale, entry.target, request);
+            }
+          },
+          { root: host, rootMargin: "900px 0px" }
+        );
+        container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));
+        updateFileTouchToolbar();
+        return true;
+      } catch (e) {
+        if (!isCurrentFileOpenRequest(request) || (e && e.name === "AbortError")) return false;
+        const reason = e && e.message ? e.message : "PDF renderer unavailable";
+        // The derivative URL is never a download target for an Office source.
+        // This boundary also covers PDF.js loading/getPage failures, which used
+        // to escape with an empty surface and reset the active file state.
+        disposePdfRender();
+        renderDownloadFallback(rel, downloadUrl, reason);
+        return Object.freeze({ error: reason });
       }
-      state.observer = new IntersectionObserverCtor(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) void renderPageIntoSlot(state, pdf, firstPage, scale, entry.target, request);
-          }
-        },
-        { root: host, rootMargin: "900px 0px" }
-      );
-      container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));
-      updateFileTouchToolbar();
-      return true;
     }
 
     return Object.freeze({ render });
