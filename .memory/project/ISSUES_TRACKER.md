@@ -123,3 +123,27 @@ Anyone reading this file in a future session should:
 - Ops invariant: `voice_push.py` caches voice settings in memory at startup
   (`_load_settings`); direct edits to `voice_settings.json` require a server restart,
   only UI saves apply live.
+
+## 2026-10-24 — Pi subagent detail lines showed `auto-jev-subagent` (resolved)
+
+- Symptom (user, mobile UI): child detail lines read `executor · auto-jev-subagent:high`
+  while that child was still calling tools and reporting tokens, so the model was
+  demonstrably working and the display was the only wrong surface.
+- Mechanism: `status.json` keeps the launch-time model, and a jev-spawned child routes
+  itself after launch, so the placeholder stays there. Codoxear resolved placeholders
+  only from the run's `events.jsonl` mirror, which pi-subagents fills only when its
+  child-session subscription already exists at routing time: 81 of 104 routed children
+  on this host had the mirror, so 23 could never resolve however long they ran.
+- Fix: `8ca2ba77` — read the child session head first (routed custom entry, then a
+  resolved `model_change`), events mirror second, recorded value on total failure.
+  Resolution on this host: 81/104 → 104/104; cold-scan cost unchanged (~110 ms,
+  dominated by reading 1104 status files, not by the head reads).
+- Verified: `tests/test_pi_subagents.py` (5 new behavioral cases) and the Docker
+  browser harness's `jev` case, whose fixture's status.json carries only placeholders
+  and renders `reviewer · kimi-k3:high` / `executor · deepseek-flash:high`.
+- Not deployed: the deploy snapshot is 5 commits behind HEAD and those commits are
+  other in-flight features, so deploying this fix would ship them too.
+- Side observation, unrelated and not investigated: the same harness's busy-bubble
+  `header_to_details_gap` check fails for short/long as well, because the activity peek
+  line (`.activityPeekLine`, e.g. `read: two…`) sits between the typing-stats header and
+  `.subagentDetails`, while the check assumes the details directly follow the header.
