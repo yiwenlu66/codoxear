@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+from .system_dependencies import resolve_executable
+
 RunGit = Callable[..., str]
 GitRepoRoot = Callable[[Path], Path | None]
 
@@ -111,7 +113,10 @@ def run_git(
     literal_pathspecs: bool = False,
     decode_errors: str = "replace",
 ) -> str:
-    cmd = ["git", *args]
+    git = resolve_executable("git")
+    if git is None:
+        raise RuntimeError("git is required for Git operations")
+    cmd = [git, *args]
     env = None
     if literal_pathspecs:
         env = os.environ.copy()

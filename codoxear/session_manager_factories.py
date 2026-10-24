@@ -32,6 +32,7 @@ from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .session_web_launch import SessionWebLaunchCoordinator
 from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_runtime import VoiceRuntimeCoordinator
+from .system_dependencies import resolve_executable
 
 
 def _registry_lock(manager: Any) -> Any:
@@ -466,7 +467,7 @@ def session_manager_coordinator_deps(server: Any) -> SessionManagerCoordinatorDe
             submitted_user_messages=server._submitted_user_messages,
             tmux_pane_snapshot=server._tmux_pane_snapshot,
             unlink_quiet=server._unlink_quiet,
-            which_tmux=server.shutil.which,
+            which_tmux=resolve_executable,
         ),
         broker_watchdog_coordinator=BrokerWatchdogFactoryDeps(
             broker_watchdog_grace_seconds=server.BROKER_WATCHDOG_GRACE_SECONDS,
@@ -514,7 +515,7 @@ def session_manager_coordinator_deps(server: Any) -> SessionManagerCoordinatorDe
             tmux_session_name=server.TMUX_SESSION_NAME,
             wait_for_spawned_broker_meta=server._wait_for_spawned_broker_meta,
             wait_or_raise=server._wait_or_raise,
-            which_tmux=server.shutil.which,
+            which_tmux=resolve_executable,
         ),
         snapshot_coordinator=SnapshotFactoryDeps(
             debounce_seconds=server.SESSION_SNAPSHOT_DEBOUNCE_SECONDS,

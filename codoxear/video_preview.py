@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-import shutil
 import subprocess
 import threading
 import time
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .git_ops import path_json_text
+from .system_dependencies import resolve_executable
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -146,7 +146,7 @@ def _clear_preview_failure(path: Path) -> None:
 
 
 def _generate_video_preview(path: Path, out: Path, *, preview_dir: Path) -> Path:
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = resolve_executable("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg is required for compatible video previews")
     preview_dir.mkdir(parents=True, exist_ok=True)

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import math
 import os
-import shutil
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+from .system_dependencies import resolve_executable
 
 
 HLS_TARGET_DURATION_SECONDS = 12
@@ -51,7 +52,8 @@ class MergedHLSStream:
         return path
 
     def append_audio(self, *, message_id: str, audio_bytes: bytes) -> float:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        ffmpeg = resolve_executable("ffmpeg")
+        if ffmpeg is None or resolve_executable("ffprobe") is None:
             raise RuntimeError("ffmpeg and ffprobe are required for merged HLS output")
         os.makedirs(self._segments_dir, exist_ok=True)
         input_path = self._segments_dir / f"{message_id[:12] or 'audio'}.aac"
@@ -60,7 +62,7 @@ class MergedHLSStream:
         try:
             subprocess.run(
                 [
-                    "ffmpeg",
+                    ffmpeg,
                     "-hide_banner",
                     "-loglevel",
                     "error",
@@ -123,7 +125,8 @@ class MergedHLSStream:
         return total_duration
 
     def append_silence(self, *, force: bool = False) -> bool:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        ffmpeg = resolve_executable("ffmpeg")
+        if ffmpeg is None or resolve_executable("ffprobe") is None:
             raise RuntimeError("ffmpeg and ffprobe are required for merged HLS output")
         with self._lock:
             if (not force) and self._last_append_ts and (time.time() - self._last_append_ts) < HLS_KEEPALIVE_SECONDS:
@@ -133,7 +136,7 @@ class MergedHLSStream:
         try:
             subprocess.run(
                 [
-                    "ffmpeg",
+                    ffmpeg,
                     "-hide_banner",
                     "-loglevel",
                     "error",
@@ -201,10 +204,13 @@ class MergedHLSStream:
             self._last_error = str(message or "").strip()
 
     def _segment_duration_seconds(self, segment_path: Path) -> float:
+        ffprobe = resolve_executable("ffprobe")
+        if ffprobe is None:
+            raise RuntimeError("ffprobe is required for merged HLS output")
         try:
             raw = subprocess.check_output(
                 [
-                    "ffprobe",
+                    ffprobe,
                     "-v",
                     "error",
                     "-show_entries",

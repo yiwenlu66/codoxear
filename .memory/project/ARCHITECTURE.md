@@ -236,3 +236,15 @@ PDF derivatives after font/LibreOffice changes, never source documents.
 Behavioral contracts: `tests/test_office_preview.py`,
 `tests/test_office_file_routes.py`, `tests/test_office_preview_frontend.py`;
 Docker/browser acceptance: `scripts/docker_office_preview_verify.sh`.
+
+## Optional native dependency provisioning
+
+`system_dependencies.resolve_executable` is shared by Office/video conversion,
+voice HLS, Git viewer operations and server tmux probe/launch/prune. It preserves
+PATH priority, supports native/Homebrew/app-bundle fallbacks, and does not add
+cwd lookup when PATH is empty. Broker/sessiond initialization and deploy retain
+their existing raw Git/PATH contract. `codoxear-doctor` is an installed, opt-in
+CLI: checks by default; explicit selected native package installation; standalone
+owned-Office-PDF cache clearing. Office version/basic text probes do not certify
+Calc/Impress, so explicit Office provisioning always ensures all three modules.
+See README “System dependencies” for platform maps, commands and boundaries.

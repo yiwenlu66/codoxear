@@ -33,9 +33,9 @@ Not supported:
 
 Requires Python 3.10+.
 
-Optional but recommended: install `ffmpeg` / `ffprobe` if you want incompatible local videos (`.mkv`, `.mov`, `.avi`, etc.) transcoded into browser-safe MP4 previews in the file viewer. Without ffmpeg, browser-native videos can still play, but compatible preview generation fails explicitly.
+Install the agent CLI you intend to use (`pi`, `codex`, or `claude`) separately. See [System dependencies](#system-dependencies) for feature-specific prerequisites and the optional doctor/provisioning helper.
 
-Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-sessiond`):
+Install Codoxear (installs `codoxear-server`, `codoxear-broker`, `codoxear-sessiond`, and `codoxear-doctor`):
 
 - `python3 -m pip install .`
 
@@ -92,6 +92,126 @@ Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-s
    - Click the Unattended icon in the top bar, toggle it on, tune cooldown minutes and injection count, and edit the optional extra request.
    - Unattended mode runs in the server process (not the browser tab), so it continues even if you close the web page.
    - Settings are per session; each injection decrements the remaining count and unattended mode turns itself off at zero. Enabled sessions show an `unattended` badge in the sidebar.
+
+## System dependencies
+
+The Python package does not install native programs. `codoxear-doctor` checks them;
+installation is a separate, explicitly selected operation. The server and preview
+routes never install packages.
+
+| Dependency | Used for |
+| --- | --- |
+| Git | Required by `codoxear-sessiond` when initializing its root repository, by the deployment script, and by Git/diff features. Keep `git` on the launching process's PATH for those existing workflows. |
+| LibreOffice (Writer, Calc, Impress) | Optional Word (`.doc/.docx`), Excel (`.xls/.xlsx`), and PowerPoint (`.ppt/.pptx`) PDF previews. Originals remain available for download. |
+| Noto fonts | Recommended baseline and CJK coverage for readable document previews. Additional script-specific Noto families may be needed; substitute fonts do not guarantee identical Office layout or pagination. |
+| FFmpeg **with libx264 and AAC**, plus ffprobe | Optional browser-compatible local video conversion and merged voice HLS. Browser-native videos still play without conversion tools; missing tools/codecs produce an explicit preview error. |
+| tmux | Optional “Create in tmux” sessions. Ordinary broker sessions do not require it. |
+
+Check everything, or only a selected feature:
+
+```sh
+codoxear-doctor
+codoxear-doctor --media --json
+codoxear-doctor --office --probe-office  # temporary text-to-PDF conversion
+```
+
+Default checks run versions, a temporary Git repository initialization, and a
+short real libx264 + AAC encode with no persistent media output. Font inspection
+uses fontconfig when available, otherwise native font directories (including
+`~/Library/Fonts` on macOS). An unavailable font inventory reports **unknown**,
+not “no fonts installed.” The Office version check alone does not prove that all
+conversion filters/modules work; `--probe-office` additionally checks a basic
+text-to-PDF conversion with an isolated temporary profile. It does not certify
+workbook/presentation fidelity.
+
+Plan or explicitly install selected groups:
+
+```sh
+codoxear-doctor --dry-run --office --fonts
+codoxear-doctor --install --office --fonts        # displays plan, asks [y/N]
+codoxear-doctor --install --media --git --tmux --yes
+# Equivalent without an installed entrypoint, from the source checkout:
+python3 -m codoxear.dependency_doctor --dry-run --office --fonts --json
+```
+
+There is no implicit install-all. `--install`/`--dry-run` require at least one of
+`--office --fonts --media --git --tmux`. Healthy selected groups are skipped;
+non-ok groups are passed to the native manager (which resolves already-installed
+packages). **Office is the exception:** explicit `--install --office` always
+ensures all Writer/Calc/Impress packages (or the full Arch/Homebrew suite), even
+when `soffice --version` or a basic text conversion succeeds. Neither of those
+probes certifies Calc/Impress availability. Installation is rechecked and codec
+failures remain failures.
+The helper performs no whole-system upgrade, index refresh, repository addition,
+or Homebrew bootstrap. It uses `sudo` for native Linux installs when non-root;
+Homebrew runs as the current non-root user. Review the dry-run before installing.
+Package-manager errors are surfaced; stale indexes or unavailable packages need
+manual distribution-specific maintenance. Arch users must follow Arch's normal
+full-upgrade policy first if their package database/system is stale; the helper
+does not run `pacman -Sy` or create a partial-upgrade policy.
+
+Native package plans (subject to availability in the configured repositories):
+
+| Platform | Office | Noto baseline + CJK | Media |
+| --- | --- | --- | --- |
+| Debian/Ubuntu (`apt-get`) | `libreoffice-writer libreoffice-calc libreoffice-impress` | `fonts-noto-core fonts-noto-cjk` | `ffmpeg` |
+| Fedora/RHEL family (`dnf`) | `libreoffice-writer libreoffice-calc libreoffice-impress` | `google-noto-sans-fonts google-noto-sans-cjk-vf-fonts` | `ffmpeg-free` (see below) |
+| Arch (`pacman`) | `libreoffice-fresh` | `noto-fonts noto-fonts-cjk` | `ffmpeg` |
+| openSUSE (`zypper`) | `libreoffice-writer libreoffice-calc libreoffice-impress` | `google-noto-sans-fonts google-noto-sans-cjk-fonts` | `ffmpeg` |
+| macOS (Homebrew) | cask `libreoffice` | casks `font-noto-sans font-noto-sans-cjk` | formula `ffmpeg` |
+
+Git and tmux use the `git`/`tmux` package or formula in each row. Homebrew casks
+and formulae are installed in separate commands. Fedora's native `ffmpeg-free`
+can lack libx264; a successful package install therefore may still leave media
+unavailable. Choose a full-codec FFmpeg source yourself if the probe fails. The
+helper never silently adds RPM Fusion, Packman, or another repository; older
+enterprise distributions may need manual package choices as well. Unsupported
+platforms report manual guidance instead of attempting a guessed installer.
+
+The doctor and Office/media/tmux runtime use the same executable resolver:
+current PATH first, then `~/.local/bin`, `~/bin`, standard native directories,
+Homebrew `/opt/homebrew/bin` and `/usr/local/bin`, and Linux user Homebrew paths.
+On macOS, `/Applications/LibreOffice.app/Contents/MacOS/soffice` is also supported.
+This lets a narrow service PATH find native tools for Office/media/tmux and the
+shared Git viewer operations. Existing deployment and sessiond Git initialization
+still require `git` on their process PATH. Restart a running server after
+installing new dependencies to clear cached availability/failure results. Run
+the doctor as the service user for matching user font/tool locations.
+
+Generated Office PDFs are cached independently of installed fonts and the
+LibreOffice version. After adding fonts or upgrading LibreOffice, explicitly
+clear those derivatives so missing-glyph/old-rendering PDFs regenerate on next
+open:
+
+```sh
+codoxear-doctor --clear-office-cache
+codoxear-doctor --clear-office-cache --json
+```
+
+This standalone operation deletes only renderer-owned, SHA-256-named cached PDF
+files in `~/.local/share/codoxear/office_previews`, obtained from the same
+`default_app_dir()` policy as the server. Run it as the service user. Original
+documents and other files are untouched. A conversion already running may repopulate the cache;
+clear when previews are idle, then reopen the document.
+
+Exit status: **0** = selected checks healthy (or a supported dry-run plan),
+**1** = selected features missing/failing/unverified, **2** = invalid arguments,
+unsupported install, cancellation, or package-manager failure. `--json` keeps the
+report on stdout; installation plans, prompts, and installer output go to stderr.
+
+Package references: [Homebrew LibreOffice](https://formulae.brew.sh/cask/libreoffice),
+[Noto Sans](https://formulae.brew.sh/cask/font-noto-sans),
+[Noto Sans CJK](https://formulae.brew.sh/cask/font-noto-sans-cjk),
+[Fedora CJK fonts](https://packages.fedoraproject.org/pkgs/google-noto-sans-cjk-vf-fonts/google-noto-sans-cjk-vf-fonts/),
+[Arch CJK fonts](https://archlinux.org/packages/extra/any/noto-fonts-cjk/).
+
+### Deployment-only tools
+
+`scripts/deploy.sh` additionally needs `pipx`, `curl`, Node.js (JavaScript syntax
+checking/build tooling), and a working user systemd service. These are deployment
+prerequisites, not dependencies of the running Python server; the doctor does
+not provision them. Backend agent CLIs and their provider authentication are also
+outside this helper's scope.
 
 ## Deployment and operations
 

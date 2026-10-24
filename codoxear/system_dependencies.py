@@ -33,7 +33,9 @@ def resolve_executable(
         fallbacks += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
     if platform == "linux":
         fallbacks += [str(home / ".linuxbrew/bin"), "/home/linuxbrew/.linuxbrew/bin"]
-    resolved = which(name, path=os.pathsep.join([search, *fallbacks]))
+    # An entirely empty/unset PATH must not introduce a new implicit cwd entry.
+    # Nonempty caller PATHs retain their normal component semantics.
+    resolved = which(name, path=os.pathsep.join([*([search] if search else []), *fallbacks]))
     if resolved is None and platform == "darwin" and name == "soffice":
         resolved = which("/Applications/LibreOffice.app/Contents/MacOS/soffice")
     return resolved

@@ -215,6 +215,7 @@ from .static_routes import TOP_LEVEL_STATIC_ASSETS
 from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
+from .system_dependencies import resolve_executable
 from .tmux_runtime import tmux_available as _tmux_available_impl
 from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
 from .util import append_launch_attempt as _append_launch_attempt
@@ -322,7 +323,7 @@ def _tmux_available() -> bool:
         cache_lock=_TMUX_AVAILABLE_CACHE_LOCK,
         get_cache=lambda: _TMUX_AVAILABLE_CACHE,
         set_cache=_set_cache,
-        which=shutil.which,
+        which=resolve_executable,
         now=time.time,
     )
 
