@@ -145,7 +145,9 @@ Anyone reading this file in a future session should:
   and renders `reviewer · kimi-k3:high` / `executor · deepseek-flash:high`.
 - Not deployed: the deploy snapshot is 5 commits behind HEAD and those commits are
   other in-flight features, so deploying this fix would ship them too.
-- Side observation, unrelated and not investigated: the same harness's busy-bubble
-  `header_to_details_gap` check fails for short/long as well, because the activity peek
-  line (`.activityPeekLine`, e.g. `read: two…`) sits between the typing-stats header and
-  `.subagentDetails`, while the check assumes the details directly follow the header.
+- Side finding, fixed in `fb5d4c2a`: the same harness's busy-bubble `header_to_details_gap`
+  check had been failing since 761663e0 added the activity peek row between the
+  typing-stats header and `.subagentDetails` (measured 26px = peek margin 6 + line 14 +
+  details margin 6), so the harness was red for every busy capture. The check now measures
+  the gap above the details from whatever row precedes them and pins the peek row itself.
+  Full clean-tree run after both commits: 214 checks, 0 failing.
