@@ -28,6 +28,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "HIDDEN_SESSIONS_PATH",
     "FILE_HISTORY_PATH",
     "VIDEO_PREVIEW_DIR",
+    "OFFICE_PREVIEW_DIR",
     "QUEUE_PATH",
     "DRAFT_PATH",
     "PENDING_ATTACHMENTS_PATH",
@@ -110,6 +111,7 @@ class ServerConfig:
     HIDDEN_SESSIONS_PATH: Path
     FILE_HISTORY_PATH: Path
     VIDEO_PREVIEW_DIR: Path
+    OFFICE_PREVIEW_DIR: Path
     QUEUE_PATH: Path
     DRAFT_PATH: Path
     PENDING_ATTACHMENTS_PATH: Path
@@ -273,6 +275,7 @@ def build_server_config(
         HIDDEN_SESSIONS_PATH=app_dir / "hidden_sessions.json",
         FILE_HISTORY_PATH=app_dir / "session_files.json",
         VIDEO_PREVIEW_DIR=app_dir / "video_previews",
+        OFFICE_PREVIEW_DIR=app_dir / "office_previews",
         QUEUE_PATH=app_dir / "session_queues.json",
         DRAFT_PATH=app_dir / "session_drafts.json",
         PENDING_ATTACHMENTS_PATH=app_dir / "pending_attachments.json",

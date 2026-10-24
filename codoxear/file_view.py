@@ -57,7 +57,7 @@ def read_client_file_view(path_obj: Path) -> ClientFileView:
     except PermissionError as e:
         raise PermissionError("permission denied") from e
     kind, content_type = file_kind(path_obj, prefix)
-    if kind in {"image", "pdf", "video"}:
+    if kind in {"image", "pdf", "video", "office"}:
         return ClientFileView(kind=kind, size=size, content_type=content_type)
     if size > FILE_READ_MAX_BYTES:
         return ClientFileView(
@@ -82,7 +82,7 @@ def read_client_file_view(path_obj: Path) -> ClientFileView:
 
 def read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
     view = read_client_file_view(path_obj)
-    if view.kind in {"image", "pdf", "video", "download_only", "directory"}:
+    if view.kind in {"image", "pdf", "video", "office", "download_only", "directory"}:
         return view.kind, view.size, view.content_type, None
     raw, size = read_regular_file_bytes_no_symlink(path_obj)
     return view.kind, size, view.content_type, raw

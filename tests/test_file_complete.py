@@ -206,6 +206,7 @@ def _route_deps(responses: list[tuple[int, dict[str, object]]]) -> FileGetRouteD
         list_session_relative_file_entries=lambda _base: [],
         file_kind=lambda _path, _prefix: ("text", None),
         ensure_video_preview=lambda path: path,
+        ensure_office_preview=lambda path: path,
         inspect_downloadable_file=lambda _path: 0,
         download_disposition=lambda _path: "attachment",
         send_inline_file_response=lambda *_args: None,

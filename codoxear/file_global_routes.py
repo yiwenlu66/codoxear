@@ -14,6 +14,7 @@ from .git_ops import git_path_token
 from .file_route_common import body_flag
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
+from .office_preview import office_response_payload
 
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
@@ -218,10 +219,12 @@ def global_file_read_payload(
     if request.git_path and request.session_id and rel_for_url:
         media_blob_url = f"/api/sessions/{request.session_id}/file/blob?{path_token_query(rel_for_url)}&git_path=1"
         media_preview_url = f"/api/sessions/{request.session_id}/file/video_preview?{path_token_query(rel_for_url)}&git_path=1"
+        office_preview_url = f"/api/sessions/{request.session_id}/file/office_preview?{path_token_query(rel_for_url)}&git_path=1"
     else:
         abs_query = _absolute_media_query(path_obj)
         media_blob_url = f"/api/files/blob?{abs_query}"
         media_preview_url = f"/api/files/video_preview?{abs_query}"
+        office_preview_url = f"/api/files/office_preview?{abs_query}"
     if view.kind == "image":
         return {
             "ok": True,
@@ -249,6 +252,13 @@ def global_file_read_payload(
             content_type=view.content_type,
             video_url=media_blob_url,
             preview_url=media_preview_url,
+        )
+        payload.update(token_fields)
+        return payload
+    if view.kind == "office":
+        payload = office_response_payload(
+            path_obj=path_obj, size=int(view.size), content_type=view.content_type,
+            source_url=media_blob_url, preview_url=office_preview_url,
         )
         payload.update(token_fields)
         return payload

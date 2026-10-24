@@ -94,6 +94,7 @@ from .file_view import inspect_openable_file as _inspect_openable_file
 from .file_view import read_client_file_view as _read_client_file_view
 from .file_view import read_text_or_image as _read_text_or_image
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
+from .office_preview import ensure_office_preview as _ensure_office_preview_impl
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
@@ -410,6 +411,10 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
 
 def _ensure_video_preview(path: Path) -> Path:
     return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
+
+
+def _ensure_office_preview(path: Path) -> Path:
+    return _ensure_office_preview_impl(path, preview_dir=OFFICE_PREVIEW_DIR)
 
 
 _is_client_disconnect = _is_client_disconnect_impl

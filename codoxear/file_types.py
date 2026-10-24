@@ -4,6 +4,14 @@ from pathlib import Path
 
 MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
 HTML_EXTENSIONS = frozenset({"html", "htm"})
+OFFICE_CONTENT_TYPES = {
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 VIDEO_CONTENT_TYPES = {
     ".3gp": "video/3gpp",
     ".avi": "video/x-msvideo",
@@ -94,6 +102,9 @@ def raw_file_content_type(path: Path) -> str:
     content_type = RAW_FILE_CONTENT_TYPES.get(ext)
     if content_type is not None:
         return content_type
+    office_type = OFFICE_CONTENT_TYPES.get(path.suffix.lower())
+    if office_type is not None:
+        return office_type
     video_type = VIDEO_CONTENT_TYPES.get(path.suffix.lower())
     if video_type is not None:
         return video_type
@@ -149,6 +160,9 @@ def video_content_type(path: Path, raw: bytes) -> str | None:
 
 
 def file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
+    ctype = OFFICE_CONTENT_TYPES.get(path.suffix.lower())
+    if ctype is not None:
+        return "office", ctype
     ctype = image_content_type(path, raw)
     if ctype is not None:
         return "image", ctype

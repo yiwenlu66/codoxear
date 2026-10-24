@@ -212,3 +212,27 @@ committed bundle without rebuilding it. A frontend commit that updates ESM
 sources but not the bundle makes behavioral verification test the previous
 UI. Rebuild with deploy.sh's exact invocation before committing:
 `npx esbuild codoxear/static/app.js --bundle --minify --outfile=codoxear/static/dist/app.bundle.js --format=esm`.
+
+## Office document preview derivatives
+
+`office_preview.py` converts DOC/DOCX/XLS/XLSX/PPT/PPTX into cached PDFs only when
+an authenticated `office_preview` URL is fetched. Read/inspect retain the source
+kind/MIME/size and never invoke LibreOffice; blob/download URLs still serve the
+original. Session and absolute-file routes share the converter. The frontend
+uses the existing lazy PDF.js surface, with a conversion preflight to expose
+readable server failures and a separate original-file download target.
+
+Calc export normalizes a disposable XLSX: unhide every sheet, remove saved
+Print_Area restrictions, disable fit-to-page/percentage shrinking, preserve
+Print_Titles. Legacy XLS first converts to XLSX. This includes hidden-sheet and
+outside-print-area content on ordinary pages without modifying the original;
+SinglePageSheets is deliberately avoided because oversized pages become giant
+PDF canvases. Each conversion has a private macro-disabled/link-update-disabled
+LibreOffice profile, a bounded process-group deadline and concurrency, and an
+atomic publish after confirming source identity is unchanged. Cache identity
+includes source dev/inode/size/mtime/ctime and renderer settings. Clear only owned
+PDF derivatives after font/LibreOffice changes, never source documents.
+
+Behavioral contracts: `tests/test_office_preview.py`,
+`tests/test_office_file_routes.py`, `tests/test_office_preview_frontend.py`;
+Docker/browser acceptance: `scripts/docker_office_preview_verify.sh`.

@@ -271,6 +271,7 @@ def _file_get_deps(**overrides):
         list_session_relative_file_entries=lambda _base: [{"path": "note.txt"}],
         file_kind=lambda _path, _prefix: ("text", None),
         ensure_video_preview=lambda path: path.with_suffix(".preview.mp4"),
+        ensure_office_preview=lambda path: path.with_suffix(".preview.pdf"),
         inspect_downloadable_file=lambda _path: 5,
         download_disposition=lambda path: f"attachment; filename={path.name}",
         send_inline_file_response=send_inline,
