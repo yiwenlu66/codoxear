@@ -1,6 +1,7 @@
 from frontend_module_loader import module_path
 import json
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -147,7 +148,17 @@ def _run_node(body: str) -> dict:
         {body}
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+    # The embedded sources approach the kernel's MAX_ARG_STRLEN (128 KiB) for a
+    # single argv entry, so run the program from a file instead of `node -e`:
+    # any growth in an embedded module would otherwise fail every test here
+    # with E2BIG instead of a real assertion result.
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+        handle.write(js)
+        program_path = handle.name
+    try:
+        proc = subprocess.run(["node", program_path], check=True, capture_output=True, text=True)
+    finally:
+        Path(program_path).unlink(missing_ok=True)
     return json.loads(proc.stdout)
 
 
