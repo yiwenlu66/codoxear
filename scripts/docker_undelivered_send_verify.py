@@ -400,11 +400,16 @@ def main() -> None:
         "searched_jsonl_files": jsonl_paths,
         "pane_capture": "pane-before-send.txt",
     }
-    scenario2 = bool(isinstance(verdict, dict) and verdict.get("verdict") == "undelivered" and isinstance(verdict.get("send_id"), str) and verdict.get("send_id") and isinstance(verdict.get("ts"), (int, float)) and (correlation_direct or correlation_fallback))
+    # The session has never shown backend turn activity, so the extended
+    # first-send quiet window (default 15s) must be what fired — a latency near
+    # the legacy 3s window would mean the cold-preflight fix is not in effect.
+    latency_in_extended_window = isinstance(verdict_latency, (int, float)) and verdict_latency >= 14.0
+    scenario2 = bool(isinstance(verdict, dict) and verdict.get("verdict") == "undelivered" and isinstance(verdict.get("send_id"), str) and verdict.get("send_id") and isinstance(verdict.get("ts"), (int, float)) and (correlation_direct or correlation_fallback) and latency_in_extended_window)
     report["scenarios"]["2_server_publishes_undelivered_verdict"] = {
         "pass": scenario2,
         "row_send_verdict": verdict,
         "verdict_latency_seconds": verdict_latency,
+        "verdict_latency_in_extended_first_send_window": latency_in_extended_window,
         "send_id_correlation": "journal-id" if correlation_direct else "fallback-only-verdict-holder",
     }
     scenario3 = bool(restored and toast_seen and ab_eval('document.querySelector("#msg").value') == mark1)

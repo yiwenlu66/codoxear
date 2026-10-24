@@ -101,8 +101,7 @@ def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
         # first assistant row takes longer than the quiet window would otherwise
         # be judged undelivered while Pi is demonstrably at work.
         st.busy = True
-        if now_ts > st.last_turn_activity_ts:
-            st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
     if not cleaned:
         return
     st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
@@ -114,13 +113,11 @@ def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     if _interrupt_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
         st.last_interrupt_hint_ts = now_ts
-        if now_ts > st.last_turn_activity_ts:
-            st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
     if _compacting_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
-        if now_ts > st.last_turn_activity_ts:
-            st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
 
 
@@ -138,6 +135,19 @@ def _response_call_finished(payload: dict[str, Any]) -> str | None:
         return None
     call_id = payload.get("call_id")
     return call_id if isinstance(call_id, str) and call_id else None
+
+
+def _note_backend_turn_activity(st: "State", now_ts: float) -> None:
+    """Record backend-originated turn activity (a log row or a TUI status hint).
+
+    Send arming also stamps ``last_turn_activity_ts``, so the timestamp alone
+    cannot distinguish backend work from the broker's own send-time mark; this
+    flag can. The extended first-send quiet window applies only while this
+    process has never observed the backend produce turn activity.
+    """
+    st.backend_turn_activity_seen = True
+    if now_ts > st.last_turn_activity_ts:
+        st.last_turn_activity_ts = now_ts
 
 
 def send_latch_window_start_ts(st: "State") -> float | None:
@@ -166,9 +176,20 @@ def _should_clear_busy_state(
     *,
     busy_quiet_seconds: float,
     busy_interrupt_grace_seconds: float,
+    first_send_quiet_seconds: float | None = None,
 ) -> bool:
     if not st.busy:
         return False
+    quiet_seconds = busy_quiet_seconds
+    if st.send_latch_id and not st.backend_turn_activity_seen and first_send_quiet_seconds is not None:
+        # A first prompt's cold preflight (provider/auth/model resolution,
+        # attachment reads) produces zero turn-activity evidence until it
+        # finishes: the bridge receipt, the Working indicator, and the first
+        # persisted rows all post-date it. Measured live at 1.8-3.3s, this
+        # straddles the normal quiet window and publishes false undelivered
+        # verdicts, so a session that has never shown backend turn activity
+        # waits longer before judging its first send swallowed.
+        quiet_seconds = max(quiet_seconds, first_send_quiet_seconds)
     if st.last_pi_error_probe_ts > 0.0:
         if st.pi_retry_status_active:
             return False
@@ -202,7 +223,7 @@ def _should_clear_busy_state(
         return False
     if quiet_since_ts <= 0.0:
         return False
-    return (now_ts - quiet_since_ts) >= busy_quiet_seconds
+    return (now_ts - quiet_since_ts) >= quiet_seconds
 
 
 def _mark_explicit_interrupt_request(st: "State", now_ts: float) -> None:
@@ -363,7 +384,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
                 st.last_interrupt_hint_ts = 0.0
                 st.last_interrupt_request_ts = 0.0
                 st.last_interrupted_idle_ts = 0.0
-                st.last_turn_activity_ts = now_ts
+                _note_backend_turn_activity(st, now_ts)
             return
         if ev_type in ("turn_aborted", "thread_rolled_back"):
             _close_turn_state(st)
@@ -380,17 +401,17 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if isinstance(msg, str) and msg.strip() and st.turn_open:
                 st.turn_has_completion_candidate = True
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         if ev_type == "agent_reasoning":
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         if ev_type == "token_count" and st.busy:
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         return
 
@@ -405,7 +426,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_interrupt_hint_ts = 0.0
             st.last_interrupt_request_ts = 0.0
             st.last_interrupted_idle_ts = 0.0
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
 
         role = _pi_message_role(obj)
@@ -427,7 +448,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             st.last_pi_error_probe_ts = now_ts
             return
 
@@ -451,7 +472,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
 
         return
@@ -466,7 +487,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_interrupt_hint_ts = 0.0
             st.last_interrupt_request_ts = 0.0
             st.last_interrupted_idle_ts = 0.0
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         if _cc_message_role(obj) == "toolResult":
             _cc_apply_tool_result_to_pending(obj, st.pending_calls)
@@ -474,7 +495,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         return
 
@@ -492,7 +513,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
                 if st.turn_open:
                     st.turn_has_completion_candidate = False
                 st.busy = True
-                st.last_turn_activity_ts = now_ts
+                _note_backend_turn_activity(st, now_ts)
                 return
             _close_turn_state(st)
             return
@@ -503,13 +524,13 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         if has_text:
             if st.turn_open:
                 st.turn_has_completion_candidate = True
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         return
 
@@ -519,7 +540,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
-            st.last_turn_activity_ts = now_ts
+            _note_backend_turn_activity(st, now_ts)
             return
         _close_turn_state(st)
         return
@@ -537,7 +558,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
-        st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
 
     finished = _response_call_finished(payload)
@@ -547,7 +568,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
-        st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
 
     item_type = payload.get("type")
@@ -565,7 +586,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
-        st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
     if item_type == "message" and role == "assistant":
         content = payload.get("content")
@@ -581,7 +602,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if has_text and st.turn_open:
             st.turn_has_completion_candidate = True
         st.busy = True
-        st.last_turn_activity_ts = now_ts
+        _note_backend_turn_activity(st, now_ts)
         return
 
 
@@ -614,6 +635,10 @@ class State:
     # First moment the backend was observed able to read input (a bound log, or
     # Pi's live bridge marker written from session_start). 0.0 means "never".
     backend_ready_ts: float = 0.0
+    # This process has observed at least one backend-originated turn-activity
+    # signal (log row or TUI status hint). Never reset: Pi's cold preflight is
+    # per-process, so only the first send needs the extended quiet window.
+    backend_turn_activity_seen: bool = False
     send_verdict: dict[str, Any] | None = None
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0

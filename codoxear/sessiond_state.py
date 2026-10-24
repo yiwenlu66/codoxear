@@ -28,6 +28,10 @@ class State:
     # First moment the backend was observed able to read input (a bound log, or
     # Pi's live bridge marker written from session_start). 0.0 means "never".
     backend_ready_ts: float = 0.0
+    # This process has observed at least one backend-originated turn-activity
+    # signal (log row or TUI status hint). Never reset: Pi's cold preflight is
+    # per-process, so only the first send needs the extended quiet window.
+    backend_turn_activity_seen: bool = False
     send_verdict: dict[str, Any] | None = None
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False

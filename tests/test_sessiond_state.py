@@ -53,6 +53,7 @@ def test_sessiond_sweep_settles_send_latch_with_settings_only_growth(tmp_path: P
     # turn crashed the watcher with AttributeError. A Pi /model-style send
     # (only non-turn log growth) must now settle after the quiet window.
     from codoxear.broker import BUSY_QUIET_SECONDS
+    from codoxear.broker import FIRST_SEND_QUIET_SECONDS
     from codoxear.broker import _mark_busy_state_idle
     from codoxear.broker import _should_clear_busy_state
 
@@ -72,9 +73,13 @@ def test_sessiond_sweep_settles_send_latch_with_settings_only_growth(tmp_path: P
     )
     state.log_off = 43
 
-    assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS - 0.01) is False
-    assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS + 0.01) is True
-    settled_at = 10.0 + BUSY_QUIET_SECONDS + 0.01
+    # No backend turn activity has been observed in this process, so the
+    # extended first-send window applies: the latch outlives the normal quiet
+    # window and settles only after the first-send window.
+    assert _should_clear_busy_state(state, 10.0 + BUSY_QUIET_SECONDS + 0.01) is False
+    assert _should_clear_busy_state(state, 10.0 + FIRST_SEND_QUIET_SECONDS - 0.01) is False
+    assert _should_clear_busy_state(state, 10.0 + FIRST_SEND_QUIET_SECONDS + 0.01) is True
+    settled_at = 10.0 + FIRST_SEND_QUIET_SECONDS + 0.01
     _mark_busy_state_idle(state, settled_at)
     assert state.busy is False
     assert state.last_interrupted_idle_ts > 0.0

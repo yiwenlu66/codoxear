@@ -122,6 +122,11 @@ if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
     _BUSY_QUIET_RAW = "3.0"
 BUSY_QUIET_SECONDS = max(float(_BUSY_QUIET_RAW), 0.0)
 
+_FIRST_SEND_QUIET_RAW = os.environ.get("CODEX_WEB_FIRST_SEND_QUIET_SECONDS")
+if _FIRST_SEND_QUIET_RAW is None or (not _FIRST_SEND_QUIET_RAW.strip()):
+    _FIRST_SEND_QUIET_RAW = "15.0"
+FIRST_SEND_QUIET_SECONDS = max(float(_FIRST_SEND_QUIET_RAW), 0.0)
+
 _BUSY_INTERRUPT_GRACE_RAW = os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS")
 if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
     _BUSY_INTERRUPT_GRACE_RAW = "3.0"
@@ -317,6 +322,7 @@ def _should_clear_busy_state(st: State, now_ts: float) -> bool:
         now_ts,
         busy_quiet_seconds=BUSY_QUIET_SECONDS,
         busy_interrupt_grace_seconds=BUSY_INTERRUPT_GRACE_SECONDS,
+        first_send_quiet_seconds=FIRST_SEND_QUIET_SECONDS,
     )
 
 

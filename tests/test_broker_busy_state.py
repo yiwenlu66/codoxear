@@ -12,6 +12,7 @@ from codoxear import broker as broker_mod
 from codoxear.broker import (
     BUSY_INTERRUPT_GRACE_SECONDS,
     BUSY_QUIET_SECONDS,
+    FIRST_SEND_QUIET_SECONDS,
     Broker,
     State,
     _apply_rollout_obj_to_state,
@@ -296,6 +297,68 @@ class TestBrokerBusyState(unittest.TestCase):
         st.send_latch_log_off = st.log_off
         st.last_turn_activity_ts = now_ts
         st.send_latch_activity_ts = st.last_turn_activity_ts
+
+    def test_cold_first_send_latch_waits_for_extended_window(self) -> None:
+        st = _state()
+        st.log_off = 42
+        st.last_turn_activity_ts = 9.0
+        self._latch_send(st, now_ts=10.0)
+        st.send_latch_id = "cold-first"
+
+        # Past the normal window but inside the extended first-send window: no
+        # verdict — cold preflight hides every evidence channel this long.
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 0.01))
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + FIRST_SEND_QUIET_SECONDS - 0.01))
+        settle_ts = 10.0 + FIRST_SEND_QUIET_SECONDS + 0.01
+        self.assertTrue(_should_clear_busy_state(st, now_ts=settle_ts))
+        _mark_busy_state_idle(st, now_ts=settle_ts)
+        self.assertEqual(st.send_verdict, {"send_id": "cold-first", "verdict": "undelivered", "ts": settle_ts})
+
+    def test_warm_send_latch_settles_on_normal_window(self) -> None:
+        st = _state()
+        st.log_off = 42
+        # An earlier turn's row: the backend has already shown turn activity in
+        # this process, so a silent send is judged on the normal window.
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "earlier"}]}},
+            now_ts=9.0,
+        )
+        _mark_busy_state_idle(st, now_ts=9.5)
+        self._latch_send(st, now_ts=10.0)
+        st.send_latch_id = "warm-send"
+
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS - 0.01))
+        self.assertTrue(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 0.01))
+
+    def test_backend_turn_activity_flag_sources(self) -> None:
+        # Send arming and interrupt requests are broker-originated: they must
+        # not count as backend turn activity.
+        st = _state()
+        self._latch_send(st, now_ts=10.0)
+        self.assertFalse(st.backend_turn_activity_seen)
+        _mark_explicit_interrupt_request(st, now_ts=11.0)
+        self.assertFalse(st.backend_turn_activity_seen)
+
+        # The Pi Working status hint is backend-originated.
+        st2 = _state()
+        _update_busy_from_pty_text(st2, "Working...", 12.0)
+        self.assertTrue(st2.backend_turn_activity_seen)
+
+        # A non-turn settings row does not count; a real turn row does.
+        st3 = _state()
+        _apply_rollout_obj_to_state(
+            st3,
+            {"type": "model_change", "provider": "occ", "modelId": "gpt-5.5"},
+            now_ts=13.0,
+        )
+        self.assertFalse(st3.backend_turn_activity_seen)
+        _apply_rollout_obj_to_state(
+            st3,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+            now_ts=14.0,
+        )
+        self.assertTrue(st3.backend_turn_activity_seen)
 
     def test_send_latch_with_settings_only_growth_clears_after_quiet_window(self) -> None:
         st = _state()

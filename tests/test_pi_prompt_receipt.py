@@ -135,8 +135,49 @@ def test_broker_reads_receipt_before_unbound_log_quiet_verdict(tmp_path, pid, ac
     with patch.object(broker_mod, "AGENT_BACKEND", "pi"), patch.object(broker_mod, "_now", return_value=14.0):
         broker._mark_idle_if_quiet()
     assert state.send_latch_accepted is accepted
-    assert state.busy is accepted
-    assert (state.send_verdict is None) is accepted
+    # t=14.0 is 4s after the send: past the normal quiet window but inside the
+    # extended first-send window (this session has never shown backend turn
+    # activity), so even an unmatched receipt cannot produce a verdict yet —
+    # cold first-prompt preflight legitimately hides every evidence channel.
+    assert state.busy is True
+    assert state.send_verdict is None
+
+
+def test_broker_cold_first_send_verdict_waits_for_extended_window(tmp_path):
+    marker = tmp_path / "active.json"
+    state = _armed_state(tmp_path)
+    broker = Broker.__new__(Broker)
+    broker.state = state
+    broker._lock = threading.Lock()
+    broker.pi_active_session_marker_path = marker
+    first_quiet = broker_mod.FIRST_SEND_QUIET_SECONDS
+    with patch.object(broker_mod, "AGENT_BACKEND", "pi"), patch.object(
+        broker_mod, "_now", return_value=10.0 + first_quiet - 0.01
+    ):
+        broker._mark_idle_if_quiet()
+    assert state.busy is True
+    assert state.send_verdict is None
+    settle_ts = 10.0 + first_quiet + 0.01
+    with patch.object(broker_mod, "AGENT_BACKEND", "pi"), patch.object(broker_mod, "_now", return_value=settle_ts):
+        broker._mark_idle_if_quiet()
+    assert state.busy is False
+    assert state.send_verdict == {"send_id": "first", "verdict": "undelivered", "ts": settle_ts}
+
+
+def test_broker_warm_session_send_settles_on_normal_window(tmp_path):
+    marker = tmp_path / "active.json"
+    state = _armed_state(tmp_path)
+    # The backend already produced turn activity in this process, so cold
+    # preflight cannot be the explanation for silence: the normal window applies.
+    state.backend_turn_activity_seen = True
+    broker = Broker.__new__(Broker)
+    broker.state = state
+    broker._lock = threading.Lock()
+    broker.pi_active_session_marker_path = marker
+    with patch.object(broker_mod, "AGENT_BACKEND", "pi"), patch.object(broker_mod, "_now", return_value=14.0):
+        broker._mark_idle_if_quiet()
+    assert state.busy is False
+    assert state.send_verdict == {"send_id": "first", "verdict": "undelivered", "ts": 14.0}
 
 
 def test_sessiond_reads_receipt_before_quiet_verdict(tmp_path):
