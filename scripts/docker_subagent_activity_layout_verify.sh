@@ -121,6 +121,7 @@ PROBE='(() => {
   const label = bubble.querySelector(busy ? ".typingStats" : ".subagentActivityText");
   const header = bubble.querySelector(".subagentActivityHeader");
   const details = bubble.querySelector(".subagentDetails");
+  const peek = bubble.querySelector(".activityPeekLine");
   const row = bubble.closest(".msg-row");
   const lines = [...bubble.querySelectorAll(".subagentDetailLine")];
   const rect = (node) => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
@@ -138,6 +139,11 @@ PROBE='(() => {
     markerOffsetFromContent: mr.left - contentLeft,
     firstLineOffsetFromContent: first ? first.left - contentLeft : null,
     headerToDetailsGap: details ? rect(details).top - hr.bottom : null,
+    // The busy bubble carries the ephemeral activity peek row between the header
+    // and the child lines, so the gap above the details is measured against
+    // whichever row actually precedes them - not against the header.
+    peek: peek && rect(peek).height > 0 ? { ...rect(peek), text: peek.textContent, marginTop: parseFloat(getComputedStyle(peek).marginTop) } : null,
+    gapAboveDetails: details && details.previousElementSibling ? rect(details).top - rect(details.previousElementSibling).bottom : null,
     intendedHeaderToDetailsGap: ds ? parseFloat(ds.marginTop) : null,
     interChildGap: lines.length > 1 ? rect(lines[1]).top - rect(lines[0]).bottom : null,
     intendedInterChildGap: ds ? parseFloat(ds.rowGap) : null,
@@ -238,7 +244,7 @@ for name, probe in probes.items():
     checks[f"{name}:matched_padding"] = math.isclose(probe["padding"]["top"], 8.0, abs_tol=0.25) and math.isclose(probe["padding"]["left"], 10.0, abs_tol=0.25)
     checks[f"{name}:marker_at_content_left"] = math.isclose(probe["markerOffsetFromContent"], 0.0, abs_tol=0.25)
     checks[f"{name}:details_at_content_left"] = probe["firstLineOffsetFromContent"] is not None and math.isclose(probe["firstLineOffsetFromContent"], 0.0, abs_tol=0.25)
-    checks[f"{name}:header_to_details_gap"] = probe["headerToDetailsGap"] is not None and probe["intendedHeaderToDetailsGap"] is not None and math.isclose(probe["headerToDetailsGap"], probe["intendedHeaderToDetailsGap"], abs_tol=0.25) and math.isclose(probe["intendedHeaderToDetailsGap"], 6.0, abs_tol=0.25)
+    checks[f"{name}:gap_above_details"] = probe["gapAboveDetails"] is not None and probe["intendedHeaderToDetailsGap"] is not None and math.isclose(probe["gapAboveDetails"], probe["intendedHeaderToDetailsGap"], abs_tol=0.25) and math.isclose(probe["intendedHeaderToDetailsGap"], 6.0, abs_tol=0.25)
     checks[f"{name}:inter_child_gap"] = probe["interChildGap"] is not None and probe["intendedInterChildGap"] is not None and math.isclose(probe["interChildGap"], probe["intendedInterChildGap"], abs_tol=0.25) and math.isclose(probe["intendedInterChildGap"], 4.0, abs_tol=0.25)
     # Detail lines share the summary's UI font family (narrow exception to the
     # mono-for-data rule, pinned by user preference).
@@ -264,7 +270,10 @@ for viewport in ("phone", "desktop"):
         busy_probe = probes[f"{viewport}-busy-{models}"]
         idle_probe = probes[f"{viewport}-idle-{models}"]
         checks[f"{viewport}-{models}:busy_idle_padding_match"] = math.isclose(busy_probe["padding"]["top"], idle_probe["padding"]["top"], abs_tol=0.25) and math.isclose(busy_probe["padding"]["left"], idle_probe["padding"]["left"], abs_tol=0.25)
-        checks[f"{viewport}-{models}:busy_idle_gaps_match"] = math.isclose(busy_probe["headerToDetailsGap"], idle_probe["headerToDetailsGap"], abs_tol=0.25) and math.isclose(busy_probe["interChildGap"], idle_probe["interChildGap"], abs_tol=0.25)
+        checks[f"{viewport}-{models}:busy_idle_gaps_match"] = math.isclose(busy_probe["gapAboveDetails"], idle_probe["gapAboveDetails"], abs_tol=0.25) and math.isclose(busy_probe["interChildGap"], idle_probe["interChildGap"], abs_tol=0.25)
+        # The transient action line is the only difference in busy: it sits between
+        # the header and the child lines, matching the details' own spacing.
+        checks[f"{viewport}-{models}:peek_row_owns_the_gap"] = busy_probe["peek"] is not None and idle_probe["peek"] is None and math.isclose(busy_probe["peek"]["marginTop"], 6.0, abs_tol=0.25)
 
 errors_raw = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8"))
 errors = errors_raw.get("data", {}).get("errors", [])
