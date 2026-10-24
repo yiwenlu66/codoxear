@@ -132,8 +132,10 @@ Anyone reading this file in a future session should:
 - Mechanism: `status.json` keeps the launch-time model, and a jev-spawned child routes
   itself after launch, so the placeholder stays there. Codoxear resolved placeholders
   only from the run's `events.jsonl` mirror, which pi-subagents fills only when its
-  child-session subscription already exists at routing time: 81 of 104 routed children
-  on this host had the mirror, so 23 could never resolve however long they ran.
+  event subscription already exists at routing time. A revive/resume child gets its
+  task at session creation, so it routes before that subscription exists: on this host
+  the mirror named the model for 82 of 105 jev-auto children but only 1 of the 24
+  revive/resume children, so those could never resolve however long they ran.
 - Fix: `8ca2ba77` — read the child session head first (routed custom entry, then a
   resolved `model_change`), events mirror second, recorded value on total failure.
   Resolution on this host: 81/104 → 104/104; cold-scan cost unchanged (~110 ms,

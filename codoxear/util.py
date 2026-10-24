@@ -386,10 +386,13 @@ def _routed_model_from_child_session(session_file: Any, launch_level: str | None
     This is the authoritative record: the child's session file is where
     pi-jev-auto-model writes its routing (a `custom` entry carrying
     provider/modelId/level, plus the `model_change` it applies). The run's
-    events.jsonl only mirrors that entry when the runner's session subscription
-    already exists at routing time, which it often does not (observed here: 23 of
-    104 routed children had no mirror), so the child session is read directly.
-    Only the head is read; routing happens before the first turn."""
+    events.jsonl mirrors that entry only when pi-subagents' event subscription
+    already exists at routing time, and a revive/resume child is created with its
+    task already attached, so it routes during session creation and emits the
+    entry before that subscription exists. Measured here: the mirror named the
+    model for 82 of 105 jev-auto children but only 1 of the 24 revive/resume
+    children, so the child session is read directly. Only the head is read;
+    routing happens before the first turn."""
     if not isinstance(session_file, str) or not session_file.strip():
         return None
     try:

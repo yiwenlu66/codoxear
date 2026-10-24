@@ -204,9 +204,12 @@ placeholder (`pi-jev-auto-model`) keeps the placeholder there until it routes
 itself; only the child's session file records what it selected (the `custom`
 entry `jev-auto-model:routed:v1` with provider/modelId/level, plus the
 `model_change` it applies). The run's `events.jsonl` mirrors that entry only when
-pi-subagents' child session subscription already exists at routing time: measured
-here, 81 of 104 routed children had the mirror, so the sidebar and activity
-bubble showed `auto-jev-subagent` for the rest. `util._resolve_jev_routed_model`
+pi-subagents' event subscription already exists at routing time, and a
+revive/resume child is created with its task already attached, so it routes
+during session creation and never reaches the mirror: measured here, the mirror
+named the model for 82 of 105 jev-auto children but only 1 of the 24 revive/resume
+children, and the sidebar and activity bubble showed `auto-jev-subagent` for the
+rest. `util._resolve_jev_routed_model`
 reads the child session head first (bounded byte cap; routing sits within 2 KB of
 the head) and the events mirror second, and keeps the recorded placeholder when
 neither names a model. Coverage: `tests/test_pi_subagents.py` and the rendered
