@@ -86,7 +86,7 @@ def run_transport_failure_flow() -> dict:
           deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
           dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
           visibilityState: () => "visible", navigatorValue: () => navigatorLike,
-          reportTransportSuccess: () => net.reportSuccess(), reportTransportFailure: () => net.reportFailure(),
+          reportTransportSuccess: () => net.reportSuccess(),
           EventSource: FakeEventSource, AbortController: null,
           setTimeout: (callback, delay) => {{ const timer = {{ callback, delay, cleared: false }}; timers.push(timer); return timer; }},
           clearTimeout: (timer) => {{ timer.cleared = true; }}, now: () => 1000, consoleWarn: noop, consoleError: noop,
@@ -157,7 +157,9 @@ def test_online_transport_failure_shows_connection_icon_and_recovers() -> None:
 
     failure = result["afterFailure"]
     assert failure["fetchAttempts"] == 1
-    # Two consecutive failures are required; one failure must not flash the icon.
+    # This fixture stubs api(), so the message-poll path carries no connection
+    # evidence: the icon assertions below cover the link-loss/recovery path,
+    # and request-level evidence is pinned in test_stale_cached_data_banner.
     assert failure["state"] == ""
     assert failure["hidden"] is True
     assert failure["sseClosed"] is True

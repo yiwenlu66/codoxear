@@ -42,6 +42,30 @@ const perfWindow = 200;
   const API_NOT_MODIFIED = Symbol("api.notModified");
   const API_RESPONSE_STALE = Symbol("api.responseStale");
 
+  const API_TRANSPORT_LIVE = "live";
+  const API_TRANSPORT_STALE = "stale";
+  const API_TRANSPORT_FAILED = "failed";
+
+  // Connection state belongs to the client, not to whichever session's request
+  // happens to run: every response here is transport evidence, so a session
+  // switch, a file read, or a send updates the indicator as promptly as a poll
+  // tick does. This layer is the only producer of that evidence.
+  let transportReporter = null;
+
+  function setTransportReporter(reporter) {
+    transportReporter = typeof reporter === "function" ? reporter : null;
+  }
+
+  function reportTransport(kind) {
+    if (!transportReporter) return;
+    try {
+      transportReporter(kind);
+    } catch (error) {
+      // A broken reporter must never turn into a failed request.
+      console.error("api: transport reporter failed", error);
+    }
+  }
+
   function apiResponseNotModified(obj) {
     return !!(obj && obj[API_NOT_MODIFIED]);
   }
@@ -70,7 +94,19 @@ const perfWindow = 200;
       opts.body = JSON.stringify(body);
     }
     const url = CodoxearUrls.resolveAppUrl(path);
-    const res = await fetch(url, opts);
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (error) {
+      // The caller's own cancellation says nothing about reachability; anything
+      // else means no response came back at all.
+      if (!error || error.name !== "AbortError") reportTransport(API_TRANSPORT_FAILED);
+      throw error;
+    }
+    // A response of any status proves the server answered. The stale mark says
+    // the answer came from the service worker's cache instead of the server.
+    const stale = Boolean(res.headers.get("X-Codoxear-Stale"));
+    reportTransport(stale ? API_TRANSPORT_STALE : API_TRANSPORT_LIVE);
     const dt = performance.now() - t0;
     if (rawPath === "/api/sessions" && method === "GET") codoxearPerfHelpers.pushSample("api_sessions_ms", dt);
     else if (rawPath.includes("/messages") && method === "GET") {
@@ -91,10 +127,10 @@ const perfWindow = 200;
       throw e;
     }
     if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
-    if (res.headers.get("X-Codoxear-Stale")) Object.defineProperty(obj, API_RESPONSE_STALE, { value: true });
+    if (stale) Object.defineProperty(obj, API_RESPONSE_STALE, { value: true });
     const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;
     if (etag) apiEtags.set(rawPath, { etag, text: txt });
     return obj;
   }
 
-export { pushSample, summarize, api, apiResponseNotModified, apiResponseStale, clearApiCache };
+export { pushSample, summarize, api, apiResponseNotModified, apiResponseStale, clearApiCache, setTransportReporter };

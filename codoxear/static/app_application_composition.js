@@ -83,7 +83,7 @@ import * as CodoxearWiring from "./app_wiring.js";
       codoxearFileTouch, pushPerfSample,
       resolveAppUrl, versionedShellAssetPath, storageGetItem,
       storageSetItem, storageRemoveItem, codoxearLaunch, codoxearNewSession,
-      apiResponseNotModified, apiResponseStale, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers,
+      apiResponseNotModified, apiResponseStale, clearApiCache, api, setTransportReporter, fmtTs, fmtBytes, codoxearFileHelpers,
       listFromFilesField, listFromFileRecords, baseName,
       sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash, sessionLaunchIcon, sessionLaunchFailed,
       sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,
@@ -172,6 +172,14 @@ import * as CodoxearWiring from "./app_wiring.js";
           statusText: networkStatusText,
           navigatorLike: typeof navigator === "undefined" ? undefined : navigator,
         }));
+        // The transport layer owns the evidence: every API response reports,
+        // whichever session or feature issued it, so the indicator can never lag
+        // behind a session switch by waiting for that session's next poll.
+        setTransportReporter((kind) => {
+          if (kind === "stale") networkStatusController.reportStale();
+          else if (kind === "failed") networkStatusController.reportFailure();
+          else networkStatusController.reportSuccess();
+        });
         const unattendedDom = CodoxearUnattended.createUnattendedDom(wiring.createUnattendedDomOptions({ el, iconSvg, unattendedBtn }));
         const { unattendedMenu, enabledEl: unattendedEnabledEl, cooldownEl: unattendedCooldownEl, remainingEl: unattendedRemainingEl, requestEl: unattendedRequestEl } = unattendedDom;
         root.appendChild(unattendedMenu);
@@ -323,28 +331,19 @@ import * as CodoxearWiring from "./app_wiring.js";
         function browserOffline() {
           return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
         }
+        // Poll bookkeeping only: connection evidence is reported by the
+        // transport layer for every request, including the ones a poll makes.
         function markSessionsPollSuccess() {
           pollingRuntime.markSessionsPollSuccess();
-          // Data arrived, but if the service worker served it from its
-          // offline cache the server is still unreachable: say so.
-          if (sessionRefreshController.lastRefreshStale()) networkStatusController.reportStale();
-          else networkStatusController.reportSuccess();
         }
-        function markSessionsPollFailure(transportFailed = true) {
+        function markSessionsPollFailure() {
           pollingRuntime.markSessionsPollFailure();
-          if (transportFailed) networkStatusController.reportFailure();
         }
-        function markSecondaryPollSuccess(requestMade = true) {
+        function markSecondaryPollSuccess() {
           pollingRuntime.markSecondaryPollSuccess();
-          // A skipped background refresh made no request: it carries no
-          // transport evidence and must not clear a degraded state.
-          if (!requestMade) return;
-          if (voiceController.lastBackgroundFetchStale()) networkStatusController.reportStale();
-          else networkStatusController.reportSuccess();
         }
-        function markSecondaryPollFailure(transportFailed = true) {
+        function markSecondaryPollFailure() {
           pollingRuntime.markSecondaryPollFailure();
-          if (transportFailed) networkStatusController.reportFailure();
         }
 
         async function runSessionsPollTick() {
@@ -357,7 +356,7 @@ import * as CodoxearWiring from "./app_wiring.js";
               handleAppAuthLoss();
               return;
             }
-            markSessionsPollFailure(!(e2 && typeof e2.status === "number"));
+            markSessionsPollFailure();
             console.error("refreshSessions timer failed", e2);
           }
           scheduleSessionsPoll();
@@ -365,14 +364,14 @@ import * as CodoxearWiring from "./app_wiring.js";
         async function runSecondaryPollTick() {
           if (appDisposed) return;
           try {
-            const requestMade = await refreshVoiceBackgroundState();
-            markSecondaryPollSuccess(Boolean(requestMade));
+            await refreshVoiceBackgroundState();
+            markSecondaryPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
-            markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
+            markSecondaryPollFailure();
             console.error("secondary poll failed", e2);
           }
           scheduleSecondaryPoll();
@@ -1313,6 +1312,7 @@ import * as CodoxearWiring from "./app_wiring.js";
               addAppEvent(document, "visibilitychange", () => {
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
+                  networkStatusController.sync();
                   if (sessionState.get("selected")) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
                   scheduleSecondaryPoll(0);

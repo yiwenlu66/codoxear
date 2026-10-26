@@ -4,8 +4,8 @@ instead of rendering stale content as if it were fresh.
 
 Chain under test:
   service-worker marks fallback responses (X-Codoxear-Stale)
-  -> app_api surfaces the mark (apiResponseStale, non-enumerable)
-  -> poll success paths route it to networkStatus.reportStale()
+  -> app_api surfaces the mark (apiResponseStale, non-enumerable) AND reports it
+     to the connection indicator as transport evidence
   -> the icon stays visible and its spoken text names cached data.
 """
 from frontend_module_loader import NETWORK_STATUS_STUB_JS, module_path
@@ -135,74 +135,91 @@ def test_network_status_stale_state() -> None:
     assert out["afterRecovery"]["hidden"] is True
 
 
-def test_message_poll_stale_success_reports_cached_transport() -> None:
-    sources = [
-        module_path("app_polling.js").read_text(encoding="utf-8"),
-        module_path("app_transcript.js").read_text(encoding="utf-8"),
-        APP_NETWORK_JS.read_text(encoding="utf-8"),
-        module_path("app_message_flow.js").read_text(encoding="utf-8"),
-        module_path("app_session_catalog.js").read_text(encoding="utf-8"),
-        module_path("app_session_state.js").read_text(encoding="utf-8"),
-    ]
+def test_api_responses_report_client_transport_state() -> None:
+    # The indicator's evidence must come from the transport layer, not from
+    # whichever session's poll happened to run: a session switch, a file read,
+    # or a send has to update it as promptly as a poll tick does.
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
+        let responses = [];
+        const ctx = {{
+          URL, console, JSON,
+          performance: {{ now: () => 0 }},
+          fetch: async () => {{
+            const next = responses.shift();
+            if (!next) throw new TypeError("no response queued");
+            if (next.kind === "throw") throw new TypeError("network down");
+            if (next.kind === "abort") throw Object.assign(new Error("aborted"), {{ name: "AbortError" }});
+            const status = next.status || 200;
+            return {{
+              status,
+              ok: status < 400,
+              headers: {{ get(name) {{
+                return String(name).toLowerCase() === "x-codoxear-stale" && next.stale ? "1" : null;
+              }} }},
+              text: async () => next.body || "{{}}",
+            }};
+          }},
+          window: {{
+            location: {{ href: "http://localhost/", origin: "http://localhost", pathname: "/" }},
+          }},
+        }};
         vm.createContext(ctx);
-        {''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
+        vm.runInContext({json.dumps(APP_APPLICATION_JS.read_text(encoding="utf-8"))}, ctx);
+        {NETWORK_STATUS_STUB_JS}
+        vm.runInContext({json.dumps(APP_NETWORK_JS.read_text(encoding="utf-8"))}, ctx);
+        vm.runInContext({json.dumps(APP_API_JS.read_text(encoding="utf-8"))}, ctx);
 
-        const noop = () => {{}};
-{NETWORK_STATUS_STUB_JS}
         const navigatorLike = {{ onLine: true }};
         const net = ctx.window.CodoxearNetwork.createNetworkStatusController({{ status, statusText, navigatorLike }});
-        const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
-        sessionState.set("selected", "sid");
-        const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
-        sessionCatalog.set("latestSessions", [{{ session_id: "sid", agent_backend: "pi" }}]);
-        const active = {{ state: "bound", liveCursor: "c1", logPath: "/tmp/log" }};
-        const typingRowRuntime = {{
-          snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, tools: 0 }} }}),
-          updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop, updateActivityPeek: noop,
-        }};
-        // The api stub returns a payload marked as served from the offline
-        // cache, and the injected apiResponseStale recognizes that mark.
-        const staleData = {{ events: [], busy: false, queue_len: 0, token: null, __stale: true }};
-        const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController({{
-          sessionState, sessionCatalog,
-          currentGeneration: () => 1,
-          isAppDisposed: () => false,
-          sessionLaunchFailed: () => false,
-          api: async () => staleData,
-          apiResponseStale: (data) => Boolean(data && data.__stale),
-          resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop,
-          refreshSessions: async () => [], openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
-          activeTranscriptSnapshot: () => ({{ ...active }}),
-          updateSessionTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
-          renderPendingTranscriptSlot: noop, renderSessionTail: noop, applySessionRuntimeFromTail: noop,
-          resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop,
-          appendEvents: noop, appendTailSnapshotEvents: noop, initPageLimit: () => 60, typingRowRuntime,
-          getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
-          setSelectedSessionPendingAttachment: noop, confirmAction: async () => false,
-          setToast: noop, isTranscriptRenewalCommand: () => false, nextLocalEchoId: () => 1,
-          renderedAtLiveTail: () => true, getSessionTranscriptSlot: () => ({{ epoch: 1 }}), addPendingUser: noop,
-          deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
-          dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false, restoreUndeliveredDraft: () => false,
-          visibilityState: () => "visible", navigatorValue: () => navigatorLike,
-          reportTransportSuccess: () => net.reportSuccess(),
-          reportTransportFailure: () => net.reportFailure(),
-          reportTransportStale: () => net.reportStale(),
-          EventSource: null, AbortController: null,
-          setTimeout: () => ({{ cleared: false }}), clearTimeout: noop, now: () => 1000,
-          consoleWarn: noop, consoleError: noop,
+        const api = ctx.window.CodoxearApi.api;
+        ctx.window.CodoxearApi.setTransportReporter((kind) => {{
+          if (kind === "stale") net.reportStale();
+          else if (kind === "failed") net.reportFailure();
+          else net.reportSuccess();
         }});
 
-        Promise.resolve(controller.pollMessages("sid", 1)).then(() => {{
-          const afterStalePoll = {{ state: net.sync(), hidden: status.hidden, spoken: statusText.textContent }};
-          process.stdout.write(JSON.stringify({{ afterStalePoll }}));
-        }}).catch((error) => {{ console.error(error); process.exit(1); }});
+        const call = (response) => {{
+          responses = [response];
+          return api("/api/sessions").catch(() => null);
+        }};
+
+        (async () => {{
+          const out = {{ initial: netSnap(net.sync()) }};
+          await call({{ body: '{{"sessions":[]}}' }});
+          out.afterLive = netSnap(net.sync());
+          await call({{ body: '{{"sessions":[]}}', stale: true }});
+          out.afterStale = netSnap(net.sync());
+          await call({{ body: '{{"sessions":[]}}' }});
+          out.afterLiveAgain = netSnap(net.sync());
+          await call({{ kind: "throw" }});
+          out.afterOneFailure = netSnap(net.sync());
+          await call({{ kind: "throw" }});
+          out.afterTwoFailures = netSnap(net.sync());
+          await call({{ kind: "abort" }});
+          out.afterAbort = netSnap(net.sync());
+          await call({{ status: 500, body: '{{"error":"boom"}}' }});
+          out.afterServerError = netSnap(net.sync());
+          process.stdout.write(JSON.stringify(out));
+        }})().catch((error) => {{ console.error(error); process.exit(1); }});
         """
     )
     out = run_node_json(script)
-    assert out["afterStalePoll"]["state"] == "cached"
-    assert out["afterStalePoll"]["hidden"] is False
-    assert "showing cached data" in out["afterStalePoll"]["spoken"]
+
+    assert out["initial"]["state"] == ""
+    assert out["afterLive"]["hidden"] is True
+    # A cache-served answer is not transport health, whatever its status line says.
+    assert out["afterStale"]["state"] == "cached"
+    assert out["afterStale"]["hidden"] is False
+    assert "showing cached data" in out["afterStale"]["spoken"]
+    # One live response clears it, with no dependence on a poll cycle.
+    assert out["afterLiveAgain"]["state"] == ""
+    assert out["afterLiveAgain"]["hidden"] is True
+    # One failed request is below the threshold; two in a row trips it.
+    assert out["afterOneFailure"]["state"] == ""
+    assert out["afterTwoFailures"]["state"] == "failing"
+    # A caller's own cancellation is not evidence about the connection.
+    assert out["afterAbort"]["state"] == "failing"
+    # An error response still proves the server answered.
+    assert out["afterServerError"]["state"] == ""

@@ -210,6 +210,9 @@ const global = window;
       function clearApiCache() {
         return CodoxearApi.clearApiCache();
       }
+      function setTransportReporter(reporter) {
+        return CodoxearApi.setTransportReporter(reporter);
+      }
       async function api(path, options = {}) {
         return CodoxearApi.api(path, options);
       }
@@ -610,7 +613,7 @@ const global = window;
         codoxearFileTouch: CodoxearFileTouch, pushPerfSample,
         resolveAppUrl, versionedShellAssetPath, storageGetItem,
         storageSetItem, storageRemoveItem, codoxearLaunch: CodoxearLaunch, codoxearNewSession: CodoxearNewSession,
-        apiResponseNotModified, apiResponseStale, clearApiCache, api, fmtTs, fmtBytes, codoxearFileHelpers: CodoxearFileHelpers,
+        apiResponseNotModified, apiResponseStale, clearApiCache, api, setTransportReporter, fmtTs, fmtBytes, codoxearFileHelpers: CodoxearFileHelpers,
         listFromFilesField, listFromFileRecords, baseName,
         sessionDisplayName, sidebarEffortCode, sidebarModelText, sessionIdFromHash, setSessionHash, sessionLaunchIcon, sessionLaunchFailed,
         sessionLaunchPending, sessionHasUnknownSend, sessionIsOrphanRecovery,

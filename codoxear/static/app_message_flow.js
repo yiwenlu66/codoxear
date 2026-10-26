@@ -120,10 +120,9 @@ import * as CodoxearTranscript from "./app_transcript.js";
 
     const visibilityState = typeof options.visibilityState === "function" ? options.visibilityState : () => document.visibilityState;
     const navigatorValue = typeof options.navigatorValue === "function" ? options.navigatorValue : () => (typeof navigator === "undefined" ? undefined : navigator);
+    // An opened live stream is proof the server answered; every other transport
+    // signal rides on the shared transport layer (see app_api setTransportReporter).
     const reportTransportSuccess = typeof options.reportTransportSuccess === "function" ? options.reportTransportSuccess : () => {};
-    const reportTransportFailure = typeof options.reportTransportFailure === "function" ? options.reportTransportFailure : () => {};
-    const reportTransportStale = typeof options.reportTransportStale === "function" ? options.reportTransportStale : reportTransportFailure;
-    const apiResponseStale = typeof options.apiResponseStale === "function" ? options.apiResponseStale : () => false;
     const EventSourceCtor = Object.prototype.hasOwnProperty.call(options, "EventSource") ? options.EventSource : window.EventSource;
     const AbortControllerCtor = Object.prototype.hasOwnProperty.call(options, "AbortController") ? options.AbortController : window.AbortController;
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : window.setTimeout.bind(window);
@@ -260,20 +259,15 @@ import * as CodoxearTranscript from "./app_transcript.js";
       });
     }
 
-    function markMessagePollSuccess(stale = false) {
+    function markMessagePollSuccess() {
       messagePollErrorStreak = 0;
       messageTransportUnavailable = false;
-      // A stale payload still proves the page is being fed by the service
-      // worker's offline cache, not the server: report degraded transport.
-      if (stale) reportTransportStale();
-      else reportTransportSuccess();
     }
 
     function markMessagePollFailure(transportFailed = true) {
       messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
       if (!transportFailed) return;
       messageTransportUnavailable = true;
-      reportTransportFailure();
       closeMessageEventSource();
     }
 
@@ -328,6 +322,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
         messageSseOpen = true;
         messageSseFallbackUntil = 0;
         markMessagePollSuccess();
+        reportTransportSuccess();
         abortMessagePollRequest();
         if (pollTimer) clearTimeoutFn(pollTimer);
         pollTimer = null;
@@ -455,7 +450,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
 
     async function applyLiveMessageData(sessionId, generation, data) {
       if (!isCurrent(sessionId, generation)) return;
-      markMessagePollSuccess(apiResponseStale(data));
+      markMessagePollSuccess();
       const slotInfo = CodoxearTranscript.transcriptSnapshotFromData(data);
       const nowBusy = Boolean(data.busy);
       const wasTurnOpen = sessionState.get("turnOpen");
@@ -534,7 +529,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
             pollRequest = beginMessagePollRequest(sessionId, generation);
             const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
             if (!isCurrent(sessionId, generation)) return;
-            markMessagePollSuccess(apiResponseStale(data));
+            markMessagePollSuccess();
             const slotChange = updateSessionTranscriptSlot(sessionId, data);
             if (slotChange.ignoredStaleBound) {
               applySessionRuntimeFromTail(sessionId, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
@@ -556,7 +551,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
           pollRequest = beginMessagePollRequest(sessionId, generation);
           const boundData = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
           if (!isCurrent(sessionId, generation)) return;
-          markMessagePollSuccess(apiResponseStale(boundData));
+          markMessagePollSuccess();
           updateSessionTranscriptSlot(sessionId, boundData);
           applySessionRuntimeFromTail(sessionId, boundData);
           const boundEvents = Array.isArray(boundData.events) ? boundData.events : [];

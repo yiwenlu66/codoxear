@@ -18,6 +18,9 @@
     failing: "Connection unavailable — retrying automatically.",
   });
 
+  // Failures arrive per failed request from the transport layer (app_api), so
+  // two concurrent failures inside one poll cycle trip the threshold. One flaky
+  // request still shows nothing, and a caller's abort is not counted at all.
   function createNetworkStatusController({ status, statusText, navigatorLike = typeof navigator === "undefined" ? undefined : navigator } = {}) {
     requireNode(status, "status");
     requireNode(statusText, "statusText");
@@ -64,7 +67,8 @@
     // The service worker answered from its offline cache: the payload was
     // usable, but no server responded. One stale answer is proof of
     // unreachability — no threshold needed. Without this, a cache-served 200
-    // would read as health and the icon would clear on stale content.
+    // would read as health and the icon would clear on stale content. This is
+    // the dominant evidence channel whenever the page is served offline.
     function reportStale() {
       staleServed = true;
       return render();
