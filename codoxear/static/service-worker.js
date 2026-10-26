@@ -249,17 +249,24 @@ async function networkFirstResponse(request, cacheName, matchOptions, onFallback
   const offline = self.navigator?.onLine === false;
   const cooldown = refreshBackoff.get(key);
   const deferred = cooldown && Date.now() < cooldown.until;
+  // Once retry is permitted, start it before consulting Cache Storage. Keep
+  // immediate cached delivery when the lookup wins, but never make a healthy
+  // retry wait for a stalled lookup's separate cache-work budget.
+  let read = !offline && cooldown && !deferred ? startRead(key, request, cacheName, true) : null;
   let cached;
   if (offline || cooldown) {
-    cached = await cachedPromise;
+    cached = await (read ? Promise.race([
+      cachedPromise,
+      read.promise.then(() => undefined, () => undefined),
+    ]) : cachedPromise);
     if (cached) {
-      const read = pendingReads.get(key) || (!offline && !deferred ? startRead(key, request, cacheName, true) : null);
+      read = read || pendingReads.get(key);
       retain(read?.done);
       onFallback?.();
       return markStale(cached, offline ? "offline" : cooldown.reason);
     }
   }
-  const read = startRead(key, request, cacheName, false);
+  read = read || startRead(key, request, cacheName, false);
   if (!read) {
     retain();
     cached = cached || await cachedPromise;

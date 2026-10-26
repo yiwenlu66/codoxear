@@ -164,3 +164,39 @@ def test_conditional_and_unconditional_readers_never_share_a_304_response():
       await Promise.all([conditional.finish(), unconditional.finish(), equivalent.finish()]);
       assert.deepEqual(await (await cached('codoxear-api-v1', '/api/sessions')).json(), {sessions: ['fresh']});
     """)
+
+
+def test_expired_cooldown_retries_live_before_a_stalled_cache_lookup():
+    run_worker(r"""
+      network = async () => Response.json({version: 1});
+      await get('/api/me');
+      offline();
+      assert.equal((await get('/api/me')).headers.get('X-Codoxear-Stale'), 'suspect');
+      await advance(2001);
+      const open = caches.open;
+      let lookups = 0;
+      caches.open = async name => {
+        const cache = await open(name);
+        return {...cache, match() { lookups++; return new Promise(() => {}); }};
+      };
+      let releaseFetch;
+      network = () => new Promise(resolve => { releaseFetch = resolve; });
+      const before = fetches.length;
+      const first = dispatch('fetch', {request: request('/api/me')});
+      const second = dispatch('fetch', {request: request('/api/me')});
+      await flush();
+      assert.equal(fetches.length, before + 1, 'expired cooldown starts one shared retry without waiting for Cache Storage');
+      assert.equal(lookups, 1, 'equivalent callers share the stalled lookup too');
+      let delivered = false;
+      first.response.then(() => {delivered = true;});
+      releaseFetch(Response.json({version: 2}));
+      await flush();
+      assert.equal(delivered, true, 'a complete healthy answer is delivered without advancing the cache budget clock');
+      for (const event of [first, second]) {
+        const response = await event.response;
+        assert.equal(response.headers.get('X-Codoxear-Stale'), null);
+        assert.deepEqual(await response.json(), {version: 2});
+        await event.finish();
+      }
+      assert.equal(clock, 2001, 'cache match never gates retry or healthy delivery');
+    """)

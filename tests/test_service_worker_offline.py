@@ -186,12 +186,16 @@ def test_cache_fallback_responses_are_marked_stale_with_a_reason() -> None:
       assert.equal(offlineHit.headers.get('X-Codoxear-Stale'), 'offline');
       self.navigator.onLine = true;
 
-      // Recovery: the suspect-window request still serves marked cache while its
-      // background revalidation clears the latch; the next request is live again.
-      network = async () => new Response('fresh');
+      // An available cached answer stays immediate while the permitted retry
+      // is still pending; its eventual success restores normal live delivery.
+      let releaseFetch;
+      network = () => new Promise(resolve => { releaseFetch = resolve; });
       await advance(2000);
-      const revalidating = await get('/api/sessions');
-      assert.equal(revalidating.headers.get('X-Codoxear-Stale'), 'suspect');
+      const revalidating = dispatch('fetch', {request: request('/api/sessions')});
+      assert.equal((await revalidating.response).headers.get('X-Codoxear-Stale'), 'suspect');
+      releaseFetch(new Response('fresh'));
+      await revalidating.finish();
+      network = async () => new Response('fresh');
       const recovered = await get('/api/sessions');
       assert.equal(recovered.headers.get('X-Codoxear-Stale'), null);
       assert.equal(await recovered.text(), 'fresh');
@@ -644,9 +648,12 @@ def test_completed_background_response_of_any_status_restores_normal_delivery() 
         await get(path);
         offline(); await get(path);
         await advance(2000);
-        network = async () => new Response(status === 304 ? null : 'alive', {status});
-        const revalidation = await get(path);
-        assert.equal(revalidation.headers.get('X-Codoxear-Stale'), 'suspect');
+        let releaseFetch;
+        network = () => new Promise(resolve => { releaseFetch = resolve; });
+        const revalidation = dispatch('fetch', {request: request(path)});
+        assert.equal((await revalidation.response).headers.get('X-Codoxear-Stale'), 'suspect');
+        releaseFetch(new Response(status === 304 ? null : 'alive', {status}));
+        await revalidation.finish();
         network = async () => new Response('fresh');
         const recovered = await get(path);
         assert.equal(recovered.headers.get('X-Codoxear-Stale'), null);
