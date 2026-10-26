@@ -80,12 +80,13 @@ def choose(name):
     # agent-browser's upload command then supplies the input's selected files.
     js('''(() => {
       window.__uploadPickerEvidence = [];
-      if (window.__uploadPickerObserverInstalled) return;
+      if (window.__uploadPickerObserverInstalled) return true;
       window.__uploadPickerObserverInstalled = true;
       document.addEventListener("click", event => {
         const target = event.target.closest?.("#attachBtn, #imgInput");
         if (target) window.__uploadPickerEvidence.push({id: target.id, trusted: event.isTrusted});
       }, true);
+      return true;
     })()''')
     ab('click', '#attachBtn')
     activation = js('window.__uploadPickerEvidence')
