@@ -114,3 +114,25 @@ Verification evidence:
   `test_hint_mode_coverage::test_rendered_shell_interactives_are_declared_or_explicitly_excluded`
   (missing `draftUndoBtn`). Reproduced at b7544dcb in a detached worktree, so it
   predates this change.
+
+## 2026-10-26T16:46Z — deployed
+
+`scripts/deploy.sh 60505805` → EXIT=0 ("smoke test passed: initial load and
+reload rendered a session card"; "deployed 60505805e91214dbb74ea3d1bc4a973f65821508").
+Snapshot worktree `~/.local/share/codoxear/deploy` at 60505805 with the bundle
+rebuilt from source.
+
+Post-deploy checks (read-only):
+- service active, WorkingDirectory=/home/yiwen/.local/share/codoxear/deploy,
+  ExecStart=<pipx venv>/bin/python -u -m codoxear.server
+- GET / → 200, GET /api/sessions → 401, GET /api/quick-sessions → 404 (POST-only),
+  POST /api/quick-sessions → 401 while POST /api/nonexistent-route → 404
+  (route registered and auth-gated)
+- rebuilt bundle contains reserveQuickSession, api/quick-sessions, "own workspace",
+  "quick session in a fresh workspace"
+- quick_workspace.py present in the snapshot; 25 sidecars / 27 broker processes,
+  all predating the restart (server 00:38:15, brokers from Oct 24 / 21:20)
+
+main tip after this is 97b80f04 (docs + task memory only): `git diff 60505805
+97b80f04` touches no file under codoxear/, scripts/ or tests/, so the deployed
+code is byte-identical to main's code and no second restart was performed.
