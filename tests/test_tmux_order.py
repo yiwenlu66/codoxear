@@ -310,12 +310,19 @@ def test_an_alias_change_only_renames() -> None:
     assert tmux.calls == [("rename", "@1", "alpha (renamed)")]
 
 
-def test_a_window_without_a_title_or_with_a_flag_like_title_keeps_its_name() -> None:
-    tmux = FakeTmux([("@1", "alpha-1", False, "tok-a"), ("@2", "beta-2", False, "tok-b")])
+def test_a_window_without_a_title_or_with_an_unusable_title_keeps_its_name() -> None:
+    tmux = FakeTmux(
+        [("@1", "alpha-1", False, "tok-a"), ("@2", "beta-2", False, "tok-b"), ("@3", "g-3", False, "tok-g")]
+    )
 
-    reconcile_once(tmux, targets(("", "alpha-1", "tok-a"), ("-danger", "beta-2", "tok-b")))
+    reconcile_once(
+        tmux,
+        targets(("", "alpha-1", "tok-a"), ("-danger", "beta-2", "tok-b"), ("two\nlines", "g-3", "tok-g")),
+    )
 
-    assert tmux.order() == ["alpha-1", "beta-2"]
+    # Empty, flag-like and control-character names would break the call or the
+    # status bar; those windows keep their launch names.
+    assert tmux.order() == ["alpha-1", "beta-2", "g-3"]
 
 
 # -- reconcile: positions ----------------------------------------------

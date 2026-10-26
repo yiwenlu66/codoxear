@@ -71,6 +71,16 @@ def _clean_text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def window_title(display_name: str) -> str:
+    """The title to give a window: the sidebar name when tmux can render it.
+
+    Aliases are free text, and a control character (newline, tab, escape) in a
+    window title corrupts tmux's status bar, so such a name is refused and the
+    window keeps its launch name instead.
+    """
+    return display_name if display_name and not any(ord(ch) < 32 or ord(ch) == 127 for ch in display_name) else ""
+
+
 def identity_token(launch_name: str, spawn_nonce: Any) -> str:
     """The rename-proof identity token for one window.
 
@@ -243,7 +253,7 @@ def reconcile_windows(
 
     renamed = 0
     for target, window_id in resolved:
-        wanted = target.display_name
+        wanted = window_title(target.display_name)
         current = by_id.get(window_id) or {}
         if not wanted or window_id not in stampable:
             continue
