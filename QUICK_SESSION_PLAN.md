@@ -62,6 +62,33 @@ Invariants:
 Why zero-padded: both `ls ~/codoxear-quick` and the sidebar sort lexically;
 `quick-01 … quick-10` sorts correctly, `quick-1, quick-10, quick-2` does not.
 
+### Overflow past 99
+
+The padding is a **minimum width**, not a cap: `f"{slot:02d}"` renders slot 100
+as `Quick Session 100` / `quick-100` — same mechanism, one digit more. Nothing
+truncates, nothing collides, no name changes retroactively, and monotonicity is
+unaffected. So the 99 boundary is not an identity problem, and there is no
+rollover rule to design: rolling over (reusing 01…) would break invariant 2,
+and widening the pad code-wide (`quick-001`) would rename nothing today but
+cost a leading zero for a case that has not happened yet.
+
+The one real consequence is **lexicographic order in a directory listing**:
+`quick-100` sorts before `quick-99` (`'1' < '9'` at the first differing
+character). Nothing in the app sorts by directory name — the sidebar sorts by
+priority/time and the tmux mirror follows the sidebar — so the break is only
+visible in `ls`, where `ls -v` (natural sort) restores `01, 02, … 99, 100`. Do
+not "fix" it by parsing the number out of names into any ordering: the number
+is identity, not a sort key.
+
+Growth is one slot per quick launch, ever. 100 launches is reachable for a
+heavy user, which is why the rule is stated rather than assumed; `Quick Session
+137` is still readable and still unique. The parser side is one line:
+`^quick-(\d+)$` → `int()`, so slot parsing is also width-independent
+(`quick-100` → 100). A malformed counter (`next_slot` missing, non-int, ≤ 0)
+is treated as 1, and the invariant-5 clamp still protects every existing
+directory; an absurd but valid value only produces absurd numbers, never a
+collision.
+
 Why monotonic instead of "smallest free number". Reuse requires distinguishing
 *abandoned* from *just allocated*, and at allocation time both look like an
 empty directory. The only escapes are reservation state (a second source of
@@ -79,13 +106,21 @@ already shows a backend icon).
 
 ## 3. Path scheme
 
-- Root: `${CODEX_WEB_QUICK_DIR:-~/codoxear-quick}`, expanded with
-  `expand_user_path` (so it follows the server's HOME).
+- Root: **`~/codoxear-quick`**, hardcoded (`Path.home() / "codoxear-quick"`).
+  No env var, no setting: one fewer knob, and the default is the only value
+  anyone would pick.
 - Slot dir: `<root>/quick-NN`; full path `~/codoxear-quick/quick-07`.
+
+Relocation is a symlink, not a knob: replacing `~/codoxear-quick` with a
+symlink to another volume must work, which is why the containment test resolves
+**both** sides (`Path(cwd).resolve()` against `quick_root().resolve()`) instead
+of comparing a resolved cwd against a lexical root. A symlinked root therefore
+still answers `is_quick_cwd` correctly for the recent-cwd filter and the
+delete-leftover report.
 
 Why one root rather than flat `~/codoxear-quick-07` directories: one entry in
 `$HOME` instead of one per launch; one place to inspect, prune, or relocate
-(`mv ~/codoxear-quick /mnt/big/`); a root can be a mount point or symlink for a
+(symlink it to another volume); a root can be a mount point or symlink for a
 small home partition.
 
 Why the leaf repeats `quick-` rather than being bare `07`: the sidebar falls
@@ -146,15 +181,16 @@ one local request. Rejected: client-side numbering by scraping the directory
 
 ## 5. Server changes
 
-1. `server_config.py`: `QUICK_DIR` (env `CODEX_WEB_QUICK_DIR`, default
-   `~/codoxear-quick`, via `expand_user_path`) and
-   `QUICK_STATE_PATH = app_dir / "quick_sessions.json"`.
+1. `server_config.py`: `QUICK_DIR = Path.home() / "codoxear-quick"` — a plain
+   constant next to `PROC_ROOT`, deliberately **not** readable from the
+   environment — and `QUICK_STATE_PATH = app_dir / "quick_sessions.json"`.
 2. New leaf module `codoxear/quick_workspace.py`:
    - `quick_dir_name(slot)`, `quick_display_name(slot)` (`f"{slot:02d}"`),
    - `quick_cwd(root, slot)`,
-   - `is_quick_cwd(root, cwd)` — resolved-path containment
-     (`Path.is_relative_to`), not string prefix, so `/home/u/codoxear-quick-x`
-     is not mistaken for the root,
+   - `is_quick_cwd(root, cwd)` — containment on paths resolved on both sides
+     (`Path.is_relative_to`), not string prefix and not a lexical root, so
+     `/home/u/codoxear-quick-x` is not mistaken for the root and a symlinked
+     root still matches,
    - `next_slot(state, existing_slots)` — invariant 5 as a pure function,
    - `allocate(root, persist)` returning `(slot, name, cwd)`.
    Pure functions plus one persistence callback; no imports beyond
@@ -243,10 +279,13 @@ never the live deployment):
   the name after the reserve resolves and the placeholder before it; a reserve
   failure opens the preset dialog with the draft preserved and never calls
   `spawnSession`; double-fire still reserves once.
-- New `tests/test_quick_workspace.py`: padding/name round trip; slot
-  monotonicity across allocations; clamp to `max(existing)+1` when the state
-  file is missing or stale; `is_quick_cwd` true for the slot dir and false for
-  a same-prefix sibling; allocate never creates a directory.
+- New `tests/test_quick_workspace.py`: padding/name round trip; **slot 100
+  renders `Quick Session 100` / `quick-100` and allocates cleanly**; a
+  malformed or missing `next_slot` falls back to 1 while the clamp still
+  protects existing directories; slot monotonicity across allocations; clamp to
+  `max(existing)+1` when the state file is missing or stale; `is_quick_cwd`
+  true for the slot dir, false for a same-prefix sibling, true through a
+  symlinked root; allocate never creates a directory.
 - Store test: `quick-NN` cwds never enter `recent_cwds` (write or read) while
   ordinary cwds still do.
 - Browser/Docker: launch #1 → cwd `<HOME>/codoxear-quick/quick-01`, sidebar row
