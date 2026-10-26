@@ -109,6 +109,36 @@ copy_pi_config() {
       install -m 600 "$source_pi_agent/$name" "$home_dir/.pi/agent/$name"
     fi
   done
+  # The mention-link scenario sends one real prompt, so the container Pi needs
+  # the configured API-key file dependency (the picker scenarios never did).
+  # Copy only literal `!cat` reads under the agent dir; never execute commands.
+  python3 - "$source_pi_agent" "$home_dir/.pi/agent" <<'PYKEY'
+import json, pathlib, re, shutil, sys
+source, target = map(pathlib.Path, sys.argv[1:])
+models = json.loads((source / "models.json").read_text())
+for provider in models.get("providers", {}).values():
+    value = provider.get("apiKey", "")
+    match = re.fullmatch(r"!cat ~/.pi/agent/([A-Za-z0-9._/-]+)", value) if isinstance(value, str) else None
+    if not match:
+        continue
+    src = (source / match[1]).resolve()
+    if not src.is_relative_to(source.resolve()) or not src.is_file():
+        raise SystemExit("configured Pi API-key file dependency unavailable")
+    dst = target / match[1]
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+    dst.chmod(0o600)
+PYKEY
+  # Keep provider/model defaults, not the host's package auto-install workflow.
+  python3 - "$home_dir/.pi/agent/settings.json" <<'PYSETTINGS'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+settings = json.loads(p.read_text()) if p.exists() else {}
+for key in ("packages", "extensions", "skills", "promptTemplates"):
+    settings[key] = []
+settings["defaultProjectTrust"] = "always"
+p.write_text(json.dumps(settings))
+PYSETTINGS
 }
 
 wait_for_server() {
@@ -170,6 +200,17 @@ picker_eval='(() => {
 
 capture_picker() { # artifact basename
   browser eval "$picker_eval" --json > "$artifacts/$1.json" 2>&1 || fail "browser picker snapshot failed: $1"
+}
+
+evalv() { browser eval "$1" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["result"])'; }
+
+wait_js() { # condition attempts
+  local condition="$1" attempts="${2:-80}"
+  for _ in $(seq 1 "$attempts"); do
+    if [[ "$(evalv "$condition" 2>/dev/null)" == "True" ]]; then return 0; fi
+    sleep 0.25
+  done
+  return 1
 }
 
 wait_for_picker() { # artifact basename wait milliseconds
@@ -259,6 +300,9 @@ printf '%s\n' "$(api_complete './pln' "$artifacts/api-fuzzy.json")" > "$artifact
 printf '%s\n' "$(api_complete '../' "$artifacts/api-parent.json")" > "$artifacts/api-parent.status"
 printf '%s\n' "$(api_complete '~/' "$artifacts/api-home.json")" > "$artifacts/api-home.status"
 printf '%s\n' "$(api_complete '/etc/ho' "$artifacts/api-etc-hosts.json")" > "$artifacts/api-etc-hosts.status"
+printf '%s\n' "$(api_complete '' "$artifacts/api-mention-cwd.json")" > "$artifacts/api-mention-cwd.status"
+printf '%s\n' "$(api_complete 'pln' "$artifacts/api-mention-fragment.json")" > "$artifacts/api-mention-fragment.status"
+printf '%s\n' "$(curl -sS -b "$root/cookies.txt" -o "$artifacts/api-missing-path.json" -w '%{http_code}' "http://127.0.0.1:${port}/api/sessions/${session_id}/file/complete?limit=50")" > "$artifacts/api-missing-path.status"
 printf '%s\n' "$(curl -sS -G -b "$root/cookies.txt" -o "$artifacts/api-unknown.json" -w '%{http_code}' --data-urlencode 'path=./' "http://127.0.0.1:${port}/api/sessions/no-such-session/file/complete")" > "$artifacts/api-unknown.status"
 
 python3 - "$artifacts" <<'PY' > "$artifacts/api-checks.json"
@@ -290,8 +334,13 @@ checks = {
     "home_listing_includes_fixture": status("api-home.status") == "200" and home.get("dir") == "/home/tester" and match("api-home.json", "path-completion-fixture"),
     "absolute_etc_fragment_matches_hosts": status("api-etc-hosts.status") == "200" and body("api-etc-hosts.json").get("dir") == "/etc" and match("api-etc-hosts.json", "hosts"),
     "unknown_session_is_404": status("api-unknown.status") == "404",
+    # The `@` mention queries the cwd with an empty token and re-prefixes bare
+    # completions, so the server must return them without a `./` directory part.
+    "mention_empty_token_lists_cwd": status("api-mention-cwd.status") == "200" and body("api-mention-cwd.json").get("dir") == "/home/tester/path-completion-fixture" and any(entry.get("name") == "subdir" and entry.get("completion") == "subdir/" and entry.get("is_dir") is True for entry in entries("api-mention-cwd.json")),
+    "mention_slashless_fragment_narrows": status("api-mention-fragment.status") == "200" and names("api-mention-fragment.json") == ["plain.txt"] and entries("api-mention-fragment.json")[0].get("completion") == "plain.txt",
+    "missing_path_parameter_is_400": status("api-missing-path.status") == "400",
 }
-print(json.dumps({"checks": checks, "observed": {"cwd": cwd, "hidden": body("api-hidden.json"), "fuzzy": body("api-fuzzy.json"), "parent": body("api-parent.json"), "home": home, "etc": body("api-etc-hosts.json"), "unknown": body("api-unknown.json")}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"cwd": cwd, "hidden": body("api-hidden.json"), "fuzzy": body("api-fuzzy.json"), "parent": body("api-parent.json"), "home": home, "etc": body("api-etc-hosts.json"), "unknown": body("api-unknown.json"), "mentionCwd": body("api-mention-cwd.json"), "mentionFragment": body("api-mention-fragment.json"), "missingPath": body("api-missing-path.json")}, "pass": all(checks.values())}, indent=2))
 PY
 python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]))["pass"] else 1)' "$artifacts/api-checks.json" || fail "API phase failed; see $artifacts/api-checks.json"
 
@@ -381,6 +430,39 @@ browser mouse down left >> "$artifacts/ui-caret-click.txt" 2>&1 || fail "physica
 browser mouse up left >> "$artifacts/ui-caret-click.txt" 2>&1 || fail "physical caret release failed"
 wait_for_picker ui-17-after-caret-click 0.5
 browser screenshot --full "$artifacts/ui-17-after-caret-click.png" > "$artifacts/ui-17-after-caret-click-screenshot.txt" 2>&1 || true
+# ---------------------------------------------------------------------------
+# `@` mentions: the same picker anchored at the session cwd, with the marker
+# kept in the inserted text; an email local part never triggers it; a no-match
+# listing must not swallow Enter; and the sent message renders a working link.
+# ---------------------------------------------------------------------------
+browser fill '#msg' '@' > "$artifacts/ui-mention-open.txt" 2>&1 || fail "could not type bare @"
+wait_for_picker ui-18-mention-open 1
+browser screenshot --full "$artifacts/ui-18-mention-open.png" > "$artifacts/ui-18-mention-open-screenshot.txt" 2>&1 || true
+browser keyboard type 'pln' > "$artifacts/ui-mention-fragment.txt" 2>&1 || fail "could not type mention fragment"
+wait_for_picker ui-19-mention-fragment 1
+browser press Enter > "$artifacts/ui-mention-accept.txt" 2>&1 || fail "Enter mention acceptance failed"
+wait_for_picker ui-20-mention-accepted 0.4
+browser screenshot --full "$artifacts/ui-20-mention-accepted.png" > "$artifacts/ui-20-mention-accepted-screenshot.txt" 2>&1 || true
+
+browser fill '#msg' 'foo@bar' > "$artifacts/ui-mention-email.txt" 2>&1 || fail "could not type email token"
+wait_for_picker ui-21-mention-email 0.5
+
+browser fill '#msg' 'mail @zzz' > "$artifacts/ui-mention-nomatch.txt" 2>&1 || fail "could not type no-match mention"
+wait_for_picker ui-22-mention-nomatch 0.6
+browser press Enter > "$artifacts/ui-mention-enter.txt" 2>&1 || fail "Enter on a no-match mention failed"
+browser eval '(() => ({ value: document.querySelector("#msg").value }))()' --json > "$artifacts/ui-23-mention-enter.json" 2>&1 || fail "could not read composer after no-match Enter"
+
+browser fill '#msg' '@plain.txt' > "$artifacts/ui-mention-send-source.txt" 2>&1 || fail "could not fill mention message"
+wait_for_picker ui-mention-send-source 0.4
+browser click '#sendBtn' > "$artifacts/ui-mention-send.txt" 2>&1 || fail "could not send mention message"
+wait_js 'Boolean(document.querySelector(".msg-row.user a.inlineFileLink[data-file-path$=\"/plain.txt\"]"))' 120 || fail "mention did not render as a file link"
+browser eval '(() => { const link = document.querySelector(".msg-row.user a.inlineFileLink[data-file-path$=\"/plain.txt\"]"); return { text: link ? link.textContent : null, kind: link ? link.getAttribute("data-file-kind") : null, path: link ? link.getAttribute("data-file-path") : null, pendingLink: Boolean(link && link.closest(".msg-row[data-pending]")) }; })()' --json > "$artifacts/ui-24-mention-link.json" 2>&1 || fail "could not read mention link"
+browser screenshot --full "$artifacts/ui-24-mention-link.png" > "$artifacts/ui-24-mention-link-screenshot.txt" 2>&1 || true
+browser eval '(() => { const link = document.querySelector(".msg-row.user a.inlineFileLink[data-file-path$=\"/plain.txt\"]"); if (!link) return false; link.click(); return true; })()' > "$artifacts/ui-mention-link-click.txt" 2>&1 || fail "mention link click failed"
+wait_js 'document.querySelector("#fileViewer") && getComputedStyle(document.querySelector("#fileViewer")).display !== "none" && String(document.querySelector("#filePickerInput").value).endsWith("plain.txt")' 80 || fail "mention link did not open the viewer on plain.txt"
+browser eval '(() => ({ viewerDisplay: getComputedStyle(document.querySelector("#fileViewer")).display, path: document.querySelector("#filePickerInput").value, status: document.querySelector("#fileStatus").textContent }))()' --json > "$artifacts/ui-25-mention-viewer.json" 2>&1 || fail "could not read the viewer after the mention click"
+browser screenshot --full "$artifacts/ui-25-mention-viewer.png" > "$artifacts/ui-25-mention-viewer-screenshot.txt" 2>&1 || true
+
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
 browser console --json > "$artifacts/browser-console.json" 2>&1 || true
 
@@ -414,6 +496,14 @@ after_escape = result("ui-14-after-escape")
 reopened = result("ui-15-reopened")
 before_caret = result("ui-16-before-caret-click")
 after_caret = result("ui-17-after-caret-click")
+mention_open = result("ui-18-mention-open")
+mention_fragment = result("ui-19-mention-fragment")
+mention_accepted = result("ui-20-mention-accepted")
+mention_email = result("ui-21-mention-email")
+mention_nomatch = result("ui-22-mention-nomatch")
+mention_enter = result("ui-23-mention-enter")
+mention_link = result("ui-24-mention-link")
+mention_viewer = result("ui-25-mention-viewer")
 
 checks = {
     "dot_slash_opens_fixture_picker": first.get("pickerVisible") is True and first.get("ariaLabel") == "Available paths" and first.get("header") == "/home/tester/path-completion-fixture" and {"my dir/", "subdir/", "plain.txt"}.issubset(set(texts(first))),
@@ -431,8 +521,15 @@ checks = {
     "escape_closes_path_picker": before_escape.get("pickerVisible") is True and after_escape.get("pickerVisible") is False,
     "next_input_reopens_path_picker": reopened.get("value") == "./p" and reopened.get("pickerVisible") is True and reopened.get("ariaLabel") == "Available paths",
     "caret_click_leaves_token_and_closes": before_caret.get("pickerVisible") is True and after_caret.get("pickerVisible") is False and isinstance(after_caret.get("caret"), int) and after_caret["caret"] <= 1,
+    "mention_opens_picker_at_cwd": mention_open.get("value") == "@" and mention_open.get("pickerVisible") is True and mention_open.get("ariaLabel") == "Available paths" and mention_open.get("header") == "/home/tester/path-completion-fixture" and {"subdir/", "plain.txt"}.issubset(set(texts(mention_open))),
+    "mention_fragment_narrows": mention_fragment.get("value") == "@pln" and texts(mention_fragment) == ["plain.txt"],
+    "mention_accept_keeps_marker": mention_accepted.get("value") == "@plain.txt" and mention_accepted.get("pickerVisible") is False,
+    "mention_email_never_triggers": mention_email.get("value") == "foo@bar" and not mention_email.get("pickerVisible") and not mention_email.get("pathOptions"),
+    "mention_no_match_does_not_swallow_enter": mention_nomatch.get("pickerVisible") is True and str(mention_enter.get("value", "")).endswith("\n"),
+    "mention_message_renders_a_link": mention_link.get("text") == "@plain.txt" and mention_link.get("kind") == "text" and str(mention_link.get("path", "")).endswith("/plain.txt") and not mention_link.get("pendingLink"),
+    "mention_link_opens_the_file": mention_viewer.get("viewerDisplay") not in {None, "none"} and str(mention_viewer.get("path", "")).endswith("plain.txt"),
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"
@@ -450,4 +547,4 @@ if ! python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[
   echo "FAIL: path-completion verification failed; artifacts=$artifacts" >&2
   exit 1
 fi
-printf 'PASS: composer path completion verified at %s; artifacts=%s screenshots=%s\n' "$short_commit" "$artifacts" "$artifacts/ui-01-dot-slash.png,$artifacts/ui-05-subdir-children.png,$artifacts/ui-09-spacey-children.png,$artifacts/ui-11-mid-message-absolute.png,$artifacts/ui-17-after-caret-click.png"
+printf 'PASS: composer path completion verified at %s; artifacts=%s screenshots=%s\n' "$short_commit" "$artifacts" "$artifacts/ui-01-dot-slash.png,$artifacts/ui-05-subdir-children.png,$artifacts/ui-09-spacey-children.png,$artifacts/ui-11-mid-message-absolute.png,$artifacts/ui-17-after-caret-click.png,$artifacts/ui-18-mention-open.png,$artifacts/ui-20-mention-accepted.png,$artifacts/ui-24-mention-link.png,$artifacts/ui-25-mention-viewer.png"

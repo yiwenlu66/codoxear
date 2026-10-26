@@ -73,7 +73,10 @@ import * as CodoxearUrls from "./app_application.js";
   function parseLocalFileRef(rawValue) {
     const parsed = parseFileLocation(rawValue);
     if (!parsed) return null;
-    const path = parsed.path;
+    // A leading `@` is a mention marker, never path syntax: the message keeps
+    // "@src/a.js" while the link resolves "src/a.js". `./@foo/x.md` still
+    // addresses a directory literally named `@foo`.
+    const path = parsed.path.startsWith("@") ? parsed.path.slice(1) : parsed.path;
     if (path.includes("://") || path.startsWith("mailto:") || path.startsWith("//")) return null;
     const looksAbsolute = path.startsWith("/");
     const looksRelative = path.startsWith("./") || path.startsWith("../") || path.includes("/");
@@ -178,7 +181,7 @@ import * as CodoxearUrls from "./app_application.js";
     return `${text}${fileLocationDisplaySuffix(rawRef, localRef.line)}`;
   }
 
-  const FILE_REF_TEXT_RE = /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
+  const FILE_REF_TEXT_RE = /(^|[\s([{"'@])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
 
   function createFileRefSpan(doc, ref, label) {
     const span = doc.createElement("span");
@@ -208,8 +211,17 @@ import * as CodoxearUrls from "./app_application.js";
       let changed = false;
       const fragment = doc.createDocumentFragment();
       for (let match = FILE_REF_TEXT_RE.exec(raw); match; match = FILE_REF_TEXT_RE.exec(raw)) {
-        const tokenStart = match.index + match[1].length;
-        const token = match[2];
+        let tokenStart = match.index + match[1].length;
+        let token = match[2];
+        if (match[1] === "@") {
+          // The `@` is itself the boundary (CJK prose has no spaces), so absorb
+          // it into the span: the whole mention stays clickable and its label
+          // keeps the `@`. This branch cannot reach an email local part, because
+          // `foo@bar.com` matches as one token from its own start and is never
+          // stripped.
+          tokenStart -= 1;
+          token = `@${token}`;
+        }
         const ref = resolveLocalRefWithOptions(parseLocalFileRef(token), options);
         if (!ref) continue;
         changed = true;
@@ -973,4 +985,4 @@ import * as CodoxearUrls from "./app_application.js";
     });
   }
 
-export { escapeHtml, mdToHtml, mdToHtmlCached, normalizeLineNumber, parseLocalFileRef, markdownPreviewHtml, chatMarkdownHtmlCached, attachmentDisplayMarkdown, prepareImageForDisplay, rememberImageDimensions, hydrateMarkedImages, rewriteMarkedVideos, previewVideoUrlForRef };
+export { escapeHtml, mdToHtml, mdToHtmlCached, normalizeLineNumber, parseLocalFileRef, rewriteInlineCodeFileRefs, markdownPreviewHtml, chatMarkdownHtmlCached, attachmentDisplayMarkdown, prepareImageForDisplay, rememberImageDimensions, hydrateMarkedImages, rewriteMarkedVideos, rewriteTextFileRefs, previewVideoUrlForRef };
