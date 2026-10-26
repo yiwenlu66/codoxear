@@ -62,6 +62,8 @@ def test_raw_blob_headers_json_and_authoritative_status_contract():
       await api('/api/sessions', {cache: 'no-store'});
       assert.equal(requests[4].options.cache, 'no-store');
       assert.equal(requests[4].options.headers['If-None-Match'], undefined);
+      await api('/api/sessions/s1/file/complete?path=latest');
+      assert.equal(requests[5].options.cache, 'no-store', 'keystroke queries bypass HTTP as well as worker caches');
     """)
 
 

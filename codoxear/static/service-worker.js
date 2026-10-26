@@ -355,8 +355,10 @@ self.addEventListener("fetch", (event) => {
   const scopePath = new URL(self.registration.scope).pathname;
   if (request.method !== "GET" || url.origin !== self.location.origin || !url.pathname.startsWith(scopePath)) return;
   const pathname = `/${url.pathname.slice(scopePath.length)}`;
-  // Mutation verification must never read or populate either HTTP or SW caches.
-  if (request.cache === "no-store" || /^\/api\/sessions\/[^/]+\/attachments\/upload-status$/.test(pathname)) return;
+  // Mutation verification and ephemeral keystroke completions must stay native.
+  // Page aborts do not propagate to FetchEvent.request.signal in Chromium, so
+  // retaining completion reads would let obsolete queries exhaust read slots.
+  if (request.cache === "no-store" || /^\/api\/sessions\/[^/]+\/(?:attachments\/upload-status|file\/complete)$/.test(pathname)) return;
   // Native media/derivative clients own streaming and Range semantics. These
   // conversions can spend unbounded time before headers, so a reachability
   // race or cached full response is the wrong transport policy for them.

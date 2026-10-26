@@ -274,3 +274,26 @@ def test_expired_retry_cannot_exceed_a_full_global_read_pool():
       await expired.finish(); await advance(55000);
       await Promise.all(blockers.map(event => event.finish()));
     """)
+
+
+
+def test_completion_queries_are_native_so_aborted_keystrokes_never_consume_worker_slots():
+    run_worker(r"""
+      for (const scope of [origin + '/', origin + '/codoxear/']) {
+        self.registration.scope = scope;
+        const path = new URL(scope).pathname + 'api/sessions/s1/file/complete';
+        const controllers = Array.from({length: 8}, () => new AbortController());
+        const events = controllers.map((controller, i) => dispatch('fetch', {request:
+          new Request(origin + path + '?path=' + i, {signal: controller.signal})}));
+        controllers.forEach(controller => controller.abort());
+        for (const event of events) {
+          assert.equal(event.response, undefined, 'browser owns native fetch and cancellation');
+          assert.equal(event.waits.length, 0, 'obsolete queries retain no worker lifetime');
+        }
+        const latest = dispatch('fetch', {request: new Request(origin + path + '?path=latest')});
+        assert.equal(latest.response, undefined);
+        network = async () => Response.json({healthy: true});
+        assert.deepEqual(await (await get(new URL('api/me', scope).pathname)).json(), {healthy: true});
+      }
+      assert.equal(fetches.length, 2, 'only independent JSON reads used the worker pool');
+    """)

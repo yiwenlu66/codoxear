@@ -94,7 +94,8 @@ const perfWindow = 200;
     }
     const t0 = performance.now();
     const rawPath = String(path ?? "");
-    const authoritative = /\/attachments\/upload-status(?:\?|$)/.test(rawPath);
+    // Completion results are ephemeral keystroke reads, never offline snapshots.
+    const authoritative = /\/(?:attachments\/upload-status|file\/complete)(?:\?|$)/.test(rawPath);
     const cacheMode = authoritative ? "no-store" : cache;
     const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions" && cacheMode !== "no-store";
     const requestHeaders = {};
