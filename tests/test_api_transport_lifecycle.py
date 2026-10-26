@@ -88,6 +88,24 @@ def test_http_json_validation_and_body_failure_are_separate_evidence():
     """)
 
 
+def test_invalid_json_preserves_http_diagnostics_without_outage_evidence():
+    run_api(r"""
+      const raw = '<html> gateway  response </html>';
+      for (const status of [200, 502]) {
+        network = async () => new Response(raw, {status});
+        await assert.rejects(api('/api/sessions/s1/inject_file', {method: 'POST', rawBody: new Blob(['bytes'])}), error => {
+          assert.equal(error.name, 'SyntaxError');
+          assert.equal(error.status, status);
+          assert.equal(error.rawText, raw);
+          assert.equal(error.message, `HTTP ${status} · response was not JSON: <html> gateway response </html>`);
+          return true;
+        });
+        assert.deepEqual(reports.splice(0), ['live']);
+        assert.equal(timers.size, 0);
+      }
+    """)
+
+
 def test_deadline_caller_cancel_and_worker_capacity_never_report_offline():
     run_api(r"""
       let signal;

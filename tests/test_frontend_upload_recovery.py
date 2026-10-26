@@ -54,6 +54,28 @@ def test_lost_commit_response_recovers_by_uncached_identity_without_duplicate_po
     assert result["pending"] is False
 
 
+def test_http_200_invalid_commit_json_reconciles_instead_of_definite_failure() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          apiImpl = async (path) => {
+            if (path.endsWith("inject_file")) throw Object.assign(new SyntaxError("HTTP 200 · response was not JSON"), { status: 200, rawText: "<html>gateway</html>" });
+            return { ok: true, state: "committed", active: true, attachment: { id: "a" }, attachments: [{ id: "a" }], pending_attachment: true, attachments_revision: 2 };
+          };
+          const staged = await controller.stageFiles([{ name: "committed.txt", size: 3 }]);
+          process.stdout.write(JSON.stringify({ staged, calls: apiCalls, list: controller.getStagedAttachments(), pending: controller.hasPendingUploads() }));
+        })();
+        """
+    )
+    assert result["staged"] is True
+    assert len(result["calls"]) == 2
+    assert result["calls"][0]["path"].endswith("inject_file")
+    assert "attachments/upload-status?upload_id=" in result["calls"][1]["path"]
+    assert result["calls"][1]["cache"] == "no-store"
+    assert [item["id"] for item in result["list"]] == ["a"]
+    assert result["pending"] is False
+
+
 def test_unknown_outcome_retains_blob_and_explicit_retry_checks_before_same_id_post() -> None:
     result = run_attachments(
         """
