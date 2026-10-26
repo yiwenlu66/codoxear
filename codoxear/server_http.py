@@ -80,6 +80,8 @@ def json_response(
     if getattr(handler, "_codoxear_refresh_auth_cookie", False):
         set_auth_cookie(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
+    if getattr(handler, "_codoxear_response_no_store", False):
+        handler.send_header("Cache-Control", "no-store")
     if gzip_encoded:
         handler.send_header("Content-Encoding", "gzip")
         handler.send_header("Vary", "Accept-Encoding")

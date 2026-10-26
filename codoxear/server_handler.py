@@ -91,6 +91,9 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
 
     def handle_one_request(self) -> None:
+        # A handler instance serves multiple requests on persistent HTTP/1.1.
+        # Verification reads opt in per request, never per connection.
+        self._codoxear_response_no_store = False
         try:
             super().handle_one_request()
         except Exception as exc:

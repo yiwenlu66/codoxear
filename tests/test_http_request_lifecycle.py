@@ -22,9 +22,13 @@ def http_address(monkeypatch, request):
     # Real route dispatch, JSON/body helpers and HTTP parser; no session runtime.
     monkeypatch.setattr(server, "URL_PREFIX", getattr(request, "param", ""))
     monkeypatch.setattr(server, "HMAC_SECRET", _TEST_SECRET)
-    monkeypatch.setattr(server, "MANAGER", SimpleNamespace(_voice_push=SimpleNamespace(
-        listener_heartbeat=lambda **kwargs: kwargs,
-    )))
+    monkeypatch.setattr(server, "MANAGER", SimpleNamespace(
+        _voice_push=SimpleNamespace(listener_heartbeat=lambda **kwargs: kwargs),
+        upload_status=lambda session_id, upload_id: {
+            "ok": True, "upload_id": upload_id, "state": "absent",
+            "attachments": [], "pending_attachment": None, "attachments_revision": 0,
+        },
+    ))
     base_handler = make_server_handler(server)
 
     class Handler(base_handler):
@@ -185,3 +189,24 @@ def test_expect_continue_oversized_request_still_closes(http_address):
             assert status == 413
             assert headers["connection"] == "close"
             assert stream.read(1) == b""
+
+
+def test_upload_status_is_no_store_only_for_its_request(http_address):
+    with socket.create_connection(http_address, timeout=3) as connection:
+        connection.sendall(_request(path="/api/sessions/test/attachments/upload-status?upload_id=upload-test") + _request())
+        with connection.makefile("rb") as stream:
+            status, headers, body = _response(stream)
+            assert status == 200, body
+            assert headers["cache-control"] == "no-store"
+            status, headers, _body = _response(stream)
+            assert status == 200
+            assert headers.get("cache-control") != "no-store"
+
+
+def test_invalid_upload_status_is_also_no_store(http_address):
+    with socket.create_connection(http_address, timeout=3) as connection:
+        connection.sendall(_request(path="/api/sessions/test/attachments/upload-status?upload_id=bad!"))
+        with connection.makefile("rb") as stream:
+            status, headers, _body = _response(stream)
+            assert status == 400
+            assert headers["cache-control"] == "no-store"
