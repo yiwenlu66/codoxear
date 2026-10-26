@@ -30,7 +30,9 @@ attachments, queue, draft, unattended config, alias, and sidebar metadata and
 rewrites dependency links. Only successful persistence of every participant
 acknowledges the intent. An unchanged subsequent upsert, including one from a
 fresh process, replays unacknowledged intents; attachment transfers and the
-other move operations are idempotent. A restore only stamps ``restoring``;
+other move operations are idempotent. Each intent binds the destination's
+backend, transcript and broker start time; an unavailable or changed identity
+is deferred before any store mutates, never redirected by registry id alone. A restore only stamps ``restoring``;
 the replacement's own upsert proves continuity and creates the intent.
 
 Flush robustness. A flush that cannot build an entry (torn sidecar read) or
@@ -394,7 +396,10 @@ class SessionSnapshotCoordinator:
         }
 
     def queue_protected_session_ids(self) -> set[str] | None:
-        """Registry ids the queue sweep must not drop; None when the snapshot is unreadable (drop nothing)."""
+        """Protect snapshot entries and every unfinished-transfer endpoint from queue pruning.
+
+        None means the snapshot is unreadable and no orphan queue may be dropped.
+        """
         try:
             state = self.store.read()
         except SnapshotCorrupt as exc:
