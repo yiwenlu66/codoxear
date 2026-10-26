@@ -1218,6 +1218,13 @@
         display: flex;
         gap: var(--space-3);
       }
+      /* The pair shares one height: the primary's 44px touch floor
+         (button.primary min-height) would otherwise outgrow the 32px chrome
+         height of its secondary, and fixed-height flex items do not stretch,
+         so the two would top-align with ragged bottoms. */
+      .chatEmptyActions .icon-btn.text-btn {
+        height: var(--ctl);
+      }
       .chat {
         order: 1;
         flex: 1 1 auto;
