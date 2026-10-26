@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 import os
 from uuid import uuid4
 import time
@@ -8,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from .attachment_resource import durable_write_resource
+from .attachment_resource import AttachmentPersistenceUncertain, durable_write_resource
 from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
 from .file_upload import validate_staged_attachment_file_target
@@ -513,34 +514,61 @@ class SessionStore:
     def remap_attachment_resource(self, old: str, new: str) -> None:
         if old == new or not (old in self.attachment_resources or old in self.staged_attachments or old in self.pending_attachment_ids):
             return
-        old_resource = self.attachment_resource(old)
-        target = self.attachment_resource(new)
-        # Create new owned hardlinks before publishing their metadata. A crash
-        # before publication leaves harmless unreferenced links, not lost files.
-        transferred = []
-        for entry in self.staged_attachments.get(old, []):
-            moved = dict(entry)
-            if self.paths.uploads_root is not None:
-                source = validate_staged_attachment_file_target(self.paths.uploads_root, old, entry["path"])
-                directory = self.paths.uploads_root / new
-                directory.mkdir(parents=True, exist_ok=True)
-                dest = directory / f"{uuid4().hex}_{source.name}"
-                os.link(source, dest)
-                moved["path"] = str(dest)
-            transferred.append(moved)
-        self.staged_attachments.setdefault(new, []).extend(transferred)
-        for upload_id, record in old_resource["uploads"].items():
-            if upload_id in target["uploads"] and target["uploads"][upload_id] != record:
-                raise ValueError("upload identity collision during session remap")
-            target["uploads"][upload_id] = dict(record)
-        target["revision"] = max(target["revision"], old_resource["revision"])
-        self.staged_attachments.pop(old, None)
-        for record in old_resource["uploads"].values():
-            if record["state"] == "pending":
-                record.update(state="cancelled", retryable=False)
-        self.advance_attachments(old, pending=False)
-        self.advance_attachments(new, pending=bool(self.staged_attachments.get(new)) or old_resource["pending"] or target["pending"])
-        self.save_staged_attachments()
+        before = deepcopy((self.staged_attachments, self.attachment_resources, self.pending_attachment_ids))
+        links: list[Path] = []
+        try:
+            old_resource = self.attachment_resource(old)
+            target = self.attachment_resource(new)
+            pending = old_resource["pending"] or target["pending"]
+            for upload_id, record in old_resource["uploads"].items():
+                if upload_id in target["uploads"] and target["uploads"][upload_id] != record:
+                    raise ValueError("upload identity collision during session remap")
+            # New owned hardlinks precede metadata publication. A crash before
+            # publication leaves unreferenced links, never missing source bytes.
+            transferred = []
+            existing_ids = {entry["id"] for entry in self.staged_attachments.get(new, [])}
+            for entry in self.staged_attachments.get(old, []):
+                if entry["id"] in existing_ids:
+                    continue
+                moved = dict(entry)
+                if self.paths.uploads_root is not None:
+                    source = validate_staged_attachment_file_target(self.paths.uploads_root, old, entry["path"])
+                    directory = self.paths.uploads_root / new
+                    if directory.is_symlink():
+                        raise ValueError("session upload directory is a symlink")
+                    directory.mkdir(parents=True, exist_ok=True)
+                    dest = directory / f"{uuid4().hex}_{source.name}"
+                    os.link(source, dest)
+                    links.append(dest)
+                    moved["path"] = str(dest)
+                transferred.append(moved)
+            for directory in {link.parent for link in links}:
+                descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+            self.staged_attachments.setdefault(new, []).extend(transferred)
+            for upload_id, record in old_resource["uploads"].items():
+                # The old request still targets old; no writer owns new after
+                # remap. A retry on new may claim it rather than wait forever.
+                target["uploads"][upload_id] = (dict(record, state="failed", retryable=True)
+                    if record["state"] == "pending" else dict(record))
+            target["revision"] = max(target["revision"], old_resource["revision"])
+            self.staged_attachments.pop(old, None)
+            for record in old_resource["uploads"].values():
+                if record["state"] == "pending":
+                    record.update(state="cancelled", retryable=False)
+            self.advance_attachments(old, pending=False)
+            self.advance_attachments(new, pending=bool(self.staged_attachments.get(new)) or pending)
+            self.save_staged_attachments()
+        except AttachmentPersistenceUncertain:
+            raise
+        except Exception:
+            self.staged_attachments, self.attachment_resources, self.pending_attachment_ids = before
+            for link in links:
+                link.unlink(missing_ok=True)
+            raise
 
     def staged_attachments_for_session(self, session_id: str) -> list[dict[str, Any]]:
         return [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
@@ -720,6 +748,7 @@ class SessionStore:
         if self.clear_file_history_for_keys(f"sid:{session_id}", [session_id], cwd=cwd):
             files_changed = True
 
+        attachment_before = deepcopy((self.staged_attachments, self.attachment_resources, self.pending_attachment_ids))
         if session_id in self.pending_attachment_ids:
             self.pending_attachment_ids.discard(session_id)
             pending_changed = True
@@ -732,7 +761,13 @@ class SessionStore:
         for record in self.attachment_resource(session_id)["uploads"].values():
             if record["state"] == "pending":
                 record.update(state="cancelled", retryable=False)
-        self.save_staged_attachments()
+        try:
+            self.save_staged_attachments()
+        except AttachmentPersistenceUncertain:
+            raise
+        except Exception:
+            self.staged_attachments, self.attachment_resources, self.pending_attachment_ids = attachment_before
+            raise
         staged_changed = True
 
         uploads_root = self.paths.uploads_root

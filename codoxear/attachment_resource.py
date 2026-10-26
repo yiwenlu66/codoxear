@@ -20,6 +20,10 @@ def upload_id_value(value: Any) -> str:
     return value
 
 
+class AttachmentPersistenceUncertain(OSError):
+    """Replacement is visible but directory durability could not be confirmed."""
+
+
 def durable_write_resource(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
@@ -30,10 +34,15 @@ def durable_write_resource(path: Path, payload: dict[str, Any]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError as exc:
+            # Never report this as a pre-publication failure: rollback/unlink
+            # would leave the published envelope referencing missing bytes.
+            raise AttachmentPersistenceUncertain("attachment durability unconfirmed") from exc
     finally:
         temporary.unlink(missing_ok=True)

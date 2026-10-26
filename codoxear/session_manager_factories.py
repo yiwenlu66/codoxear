@@ -850,6 +850,7 @@ def pending_state_coordinator_for_manager(manager: Any, deps: PendingStateFactor
         save_queues=manager._save_queues,
         now=deps.now,
         commit_unknown_orphan_prune_seconds=deps.commit_unknown_orphan_prune_seconds,
+        input_lock_for_session=manager._input_lock_for_session,
     )
 
 

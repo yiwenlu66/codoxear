@@ -223,9 +223,9 @@ class SessionSendCoordinator:
                     )
             else:
                 try:
-                    # No captured attachments means no attachment consumption;
-                    # a concurrent upload owns the pending flag now.
-                    pass
+                    # The pending-state writer preserves any concurrently
+                    # staged list while clearing a legacy pending-only flag.
+                    self.set_pending_attachment(session_id, False)
                 except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,

@@ -214,3 +214,109 @@ def test_raw_and_legacy_identified_route_status_no_paths(tmp_path, binary):
     assert responses[-1] == (200, committed)
     assert h._codoxear_response_no_store is True
     assert Path(c.store().staged_attachments['s1'][0]['path']).read_bytes() == raw
+
+
+def test_post_replace_fsync_failure_never_unlinks_published_attachment(tmp_path):
+    from codoxear.attachment_resource import AttachmentPersistenceUncertain
+    import os
+    import stat
+    c = coordinator(make_store(tmp_path))
+    c.begin_upload('s1', 'upload-1', filename='hello.txt', size=5)
+    original_fsync = os.fsync
+    directories = 0
+    def fail_second_directory(fd):
+        nonlocal directories
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directories += 1
+            if directories == 4:  # upload directories succeed; envelope directory fails
+                raise OSError('directory sync failed')
+        return original_fsync(fd)
+    with patch('os.fsync', side_effect=fail_second_directory):
+        with pytest.raises(AttachmentPersistenceUncertain):
+            finish(c)
+    assert c.upload_status('s1', 'upload-1')['state'] == 'committed'
+    restored = make_store(tmp_path)
+    restored.load_persistent_state()
+    assert coordinator(restored).upload_status('s1', 'upload-1')['active']
+    assert Path(restored.staged_attachments['s1'][0]['path']).read_bytes() == b'hello'
+
+
+def test_remap_pending_can_retry_and_failure_rolls_back(tmp_path):
+    c = coordinator(make_store(tmp_path))
+    c.begin_upload('s1', 'upload-1', filename='hello.txt', size=5)
+    c.store().remap_attachment_resource('s1', 's2')
+    assert c.upload_status('s1', 'upload-1')['state'] == 'cancelled'
+    assert c.upload_status('s2', 'upload-1')['state'] == 'failed'
+    assert c.begin_upload('s2', 'upload-1', filename='hello.txt', size=5)['writer']
+    finish(c, sid='s2')
+    with patch('codoxear.session_store.durable_write_resource', side_effect=OSError('no space')):
+        with pytest.raises(OSError):
+            c.store().remap_attachment_resource('s2', 's3')
+    assert c.upload_status('s2', 'upload-1')['active']
+    assert c.upload_status('s1', 'upload-1')['state'] == 'cancelled'
+
+
+def test_http_lost_response_recovers_single_committed_upload(tmp_path):
+    """Real socket POST -> lost response -> authoritative GET -> same-ID POST."""
+    import http.client
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import socket
+    from urllib.parse import urlsplit
+    from codoxear.server_http import json_response
+    c = coordinator(make_store(tmp_path))
+    manager = SimpleNamespace(**{name: getattr(c, name) for name in (
+        'upload_status', 'begin_upload', 'finish_upload', 'fail_upload', 'cancel_upload', 'add_staged_attachment')},
+        attachment_staging_ready=lambda sid: True)
+    lost = threading.Event()
+    deps = route_deps(c, [])
+    def response(h, status, result):
+        if h.headers.get('X-Test-Lose-Response') == '1':
+            lost.set()
+            h.connection.shutdown(socket.SHUT_RDWR)
+            h.connection.close()
+            raise BrokenPipeError('response lost')
+        json_response(h, status, result, set_auth_cookie=lambda _: None)
+    from dataclasses import replace
+    deps = replace(deps, json_response=response)
+    class HTTPHandler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+        def log_message(self, *args):
+            pass
+        def do_POST(self):
+            try:
+                handle_control_post_route(self, path=urlsplit(self.path).path, manager=manager,
+                                          deps=deps, match_session_route=_match_session_route)
+            except BrokenPipeError:
+                self.close_connection = True
+        def do_GET(self):
+            handle_control_get_route(self, path=urlsplit(self.path).path, manager=manager,
+                                     deps=deps, match_session_route=_match_session_route)
+    server = ThreadingHTTPServer(('127.0.0.1', 0), HTTPHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = None
+    try:
+        headers = {'Content-Type': 'application/octet-stream', 'X-Codoxear-Upload-Id': 'upload-1',
+                   'X-Codoxear-Filename': 'hello.txt', 'X-Test-Lose-Response': '1'}
+        connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+        connection.request('POST', '/api/sessions/s1/inject_file', b'hello', headers)
+        with pytest.raises(http.client.RemoteDisconnected):
+            connection.getresponse()
+        connection.close()
+        assert lost.wait(2)
+        connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+        connection.request('GET', '/api/sessions/s1/attachments/upload-status?upload_id=upload-1')
+        received = connection.getresponse()
+        recovered = json.loads(received.read())
+        assert received.status == 200 and recovered['state'] == 'committed' and recovered['active']
+        headers.pop('X-Test-Lose-Response')
+        connection.request('POST', '/api/sessions/s1/inject_file', b'hello', headers)
+        received = connection.getresponse()
+        assert received.status == 200 and json.loads(received.read()) == recovered
+        assert len(list((tmp_path / 'uploads' / 's1').iterdir())) == 1
+    finally:
+        if connection:
+            connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(5)

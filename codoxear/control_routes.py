@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from typing import Any, Callable
 
-from .attachment_resource import upload_id_value
+from .attachment_resource import AttachmentPersistenceUncertain, upload_id_value
 from .server_http import BadRequestError, RequestPayloadTooLargeError
 from .session_store import public_staged_attachment
 
@@ -392,6 +392,7 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
     phase = "validation"
     outcome = "uncommitted"
     error_category = None
+    raw_mode = False
     try:
         raw_mode = str(getattr(handler, "headers", {}).get("Content-Type", "")).split(";", 1)[0].strip().lower() == "application/octet-stream"
         if raw_mode:
@@ -407,14 +408,20 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
             if expected > deps.attach_upload_max_bytes:
                 raise RequestPayloadTooLargeError(f"file too large (max {deps.attach_upload_max_bytes} bytes)")
         else:
+            phase = "receiving"
             obj = deps.read_json_body(handler, limit=deps.attach_upload_body_max_bytes,
                                       too_large_error=f"file too large (max {deps.attach_upload_max_bytes} bytes)")
+            phase = "validation"
             filename = obj.get("filename")
+            if not isinstance(filename, str) or not filename.strip():
+                raise ValueError("filename required")
             if "upload_id" in obj:
                 upload_id = upload_id_value(obj["upload_id"])
             data_b64 = obj.get("data_b64")
             if not isinstance(data_b64, str) or not data_b64:
                 raise ValueError("data_b64 required")
+            if upload_id is None:
+                _require_attachment_ready(manager, session_id, deps)
             try:
                 raw = base64.b64decode(data_b64.encode("ascii"), validate=True)
             except Exception as exc:
@@ -434,8 +441,6 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
                 _require_attachment_ready(manager, session_id, deps)
             reservation = manager.begin_upload(session_id, upload_id, filename=filename, size=expected)
             writer = reservation.pop("writer")
-        else:
-            _require_attachment_ready(manager, session_id, deps)
         phase = "receiving"
         if raw_mode:
             raw = deps.read_body(handler, limit=deps.attach_upload_max_bytes)
@@ -463,19 +468,28 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
         deps.json_response(handler, 200, _project_attachment_response(res))
     except Exception as exc:
         error_category = type(exc).__name__
-        if writer and outcome != "committed":
+        if raw_mode and expected is not None:
+            remaining = getattr(handler, "_codoxear_body_remaining", None)
+            if isinstance(remaining, int):
+                received = expected - remaining
+        if writer and outcome != "committed" and not isinstance(exc, AttachmentPersistenceUncertain):
             try:
                 manager.fail_upload(session_id, upload_id)
-            except KeyError:
-                pass  # Session deletion already retired the operation.
-        if isinstance(exc, KeyError):
+            except (KeyError, OSError):
+                # Status reconciliation remains authoritative if recording the
+                # failed receive itself could not be persisted.
+                pass
+        if isinstance(exc, OSError) and phase in ("validation", "commit"):
+            outcome = "unknown" if isinstance(exc, AttachmentPersistenceUncertain) else "uncommitted"
+            deps.json_response(handler, 503, {"error": "upload storage unavailable; check upload status", "upload_id": upload_id, "stage": phase})
+        elif isinstance(exc, KeyError):
             deps.json_response(handler, 404, {"error": "unknown session"})
         elif isinstance(exc, deps.session_not_ready_error):
             deps.json_response(handler, 409, {"error": str(exc)})
         elif isinstance(exc, RequestPayloadTooLargeError):
             deps.json_response(handler, 413, {"error": str(exc)})
         elif isinstance(exc, ValueError):
-            status = 409 if str(exc).startswith("upload_id reused") else 400
+            status = 413 if str(exc).startswith("file too large") else 409 if str(exc).startswith("upload_id reused") else 400
             deps.json_response(handler, status, {"error": str(exc)})
         else:
             raise

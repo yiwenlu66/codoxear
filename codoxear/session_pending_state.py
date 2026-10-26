@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 import hashlib
 from dataclasses import dataclass
@@ -9,12 +9,11 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 from uuid import uuid4
 
-from .attachment_resource import upload_id_value
-from .file_upload import remove_staged_attachment_file
+from .attachment_resource import AttachmentPersistenceUncertain, upload_id_value
+from .file_upload import remove_staged_attachment_file, validate_staged_attachment_file_target
 from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachment
-from .session_store import public_staged_attachments
 
 
 @dataclass(frozen=True)
@@ -34,11 +33,12 @@ class SessionPendingStateCoordinator:
     commit_unknown_orphan_prune_seconds: float
     save_staged_attachments: Callable[[], None] = lambda: None
     uuid_hex: Callable[[], str] = lambda: uuid4().hex
+    input_lock_for_session: Callable[[str], Any] = lambda _sid: nullcontext()
 
     @contextmanager
     def _attachment_mutation(self, session_id: str):
         # Publication, revision and commit identity share one persistence boundary.
-        with self.lock:
+        with self.input_lock_for_session(session_id), self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
             store = self.store()
@@ -46,6 +46,8 @@ class SessionPendingStateCoordinator:
             try:
                 yield store
                 store.save_staged_attachments()
+            except AttachmentPersistenceUncertain:
+                raise
             except Exception:
                 store.staged_attachments, store.attachment_resources, store.pending_attachment_ids = before
                 raise
@@ -56,8 +58,9 @@ class SessionPendingStateCoordinator:
 
     def set_pending_attachment(self, session_id: str, value: bool) -> None:
         with self._attachment_mutation(session_id) as store:
-            if store.attachment_resource(session_id)["pending"] != bool(value):
-                store.advance_attachments(session_id, pending=bool(value))
+            effective = bool(value) or bool(store.staged_attachments.get(session_id))
+            if store.attachment_resource(session_id)["pending"] != effective:
+                store.advance_attachments(session_id, pending=effective)
 
     def list_staged_attachments(self, session_id: str) -> dict[str, Any]:
         with self.lock:
@@ -73,6 +76,12 @@ class SessionPendingStateCoordinator:
             result = dict(store.attachment_snapshot(session_id), attachment=public_staged_attachment(staged))
         return result
 
+    def _validate_files(self, session_id: str, entries: list[dict[str, Any]]) -> None:
+        root = self.store().paths.uploads_root
+        if root is not None:
+            for entry in entries:
+                validate_staged_attachment_file_target(root, session_id, entry["path"])
+
     def _delete_files(self, session_id: str, entries: list[dict[str, Any]]) -> None:
         root = self.store().paths.uploads_root
         if root is not None:
@@ -83,6 +92,7 @@ class SessionPendingStateCoordinator:
         if not isinstance(attachment_id, str) or not attachment_id.strip():
             raise ValueError("attachment id required")
         with self._attachment_mutation(session_id) as store:
+            self._validate_files(session_id, [entry for entry in store.staged_attachments_for_session(session_id) if entry["id"] == attachment_id.strip()])
             removed, _ = store.remove_staged_attachment(session_id, attachment_id.strip(), delete_files=False)
             result = dict(store.attachment_snapshot(session_id), removed=public_staged_attachment(removed))
         self._delete_files(session_id, [removed])
@@ -90,6 +100,8 @@ class SessionPendingStateCoordinator:
 
     def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, Any]:
         with self._attachment_mutation(session_id) as store:
+            if delete_files:
+                self._validate_files(session_id, [entry for entry in store.staged_attachments_for_session(session_id) if attachment_ids is None or entry["id"] in attachment_ids])
             if attachment_ids is None:
                 removed = store.clear_staged_attachments(session_id, delete_files=False)
             else:
@@ -156,6 +168,8 @@ class SessionPendingStateCoordinator:
                         "path": str(path), "size": len(raw), "created_ts": self.now(),
                     })
                     record.update(state="committed", attachment_id=entry["id"], digest=digest)
+        except AttachmentPersistenceUncertain:
+            raise
         except Exception:
             if path is not None:
                 path.unlink(missing_ok=True)
@@ -177,6 +191,7 @@ class SessionPendingStateCoordinator:
             record = uploads.get(upload_id, {})
             for entry in store.staged_attachments_for_session(session_id):
                 if entry["id"] == record.get("attachment_id"):
+                    self._validate_files(session_id, [entry])
                     item, _ = store.remove_staged_attachment(session_id, entry["id"], delete_files=False)
                     removed.append(item)
             # A consumed committed ID stays committed: cancel must not unlink a

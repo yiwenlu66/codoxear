@@ -62,11 +62,13 @@ def stage_uploaded_file(
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        directory = os.open(subdir, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        # Sync the new session-directory entry as well as the file entry.
+        for parent in (subdir, subdir.parent, subdir.parent.parent):
+            directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     except Exception:
         out_path.unlink(missing_ok=True)
         raise
