@@ -51,6 +51,7 @@ def create_session_store(
     clean_dependency_session_id: Callable[[Any], Any],
     clean_recent_cwd: Callable[[Any], Any],
     clean_commit_unknown_send_record: Callable[[Any], dict[str, Any] | None],
+    quick_root: Path | None = None,
 ) -> SessionStore:
     return SessionStore(
         paths=paths,
@@ -64,6 +65,7 @@ def create_session_store(
         clean_dependency_session_id=clean_dependency_session_id,
         clean_recent_cwd=clean_recent_cwd,
         clean_commit_unknown_send_record=clean_commit_unknown_send_record,
+        quick_root=quick_root,
     )
 
 

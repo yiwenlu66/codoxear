@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 from typing import Any, Callable
 
+from .quick_workspace import release_workspace
 from .session_store import public_staged_attachment
 
 
@@ -123,10 +124,16 @@ def _handle_delete(handler: Any, *, session_id: str, manager: Any, deps: Control
     if not _authorized(handler, deps):
         return
     deps.read_body(handler)
+    session = manager.get_session(session_id)
+    session_cwd = getattr(session, "cwd", "") if session is not None else ""
     ok = manager.delete_session(session_id)
     if not ok:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
+    # A quick workspace is machine-managed scratch space, so it is trimmed once
+    # the session that owned it is gone (rmdir only when empty, never recursive).
+    if isinstance(session_cwd, str) and session_cwd:
+        release_workspace(session_cwd)
     deps.json_response(handler, 200, {"ok": True})
 
 

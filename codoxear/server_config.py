@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import quick_workspace
 from .agent_backend import get_agent_backend, normalize_agent_backend
 from .launch_path_runtime import load_env_file
 from .server_routing import normalize_url_prefix
@@ -36,6 +37,8 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "SESSION_UNREAD_PATH",
     "COMMIT_UNKNOWN_SENDS_PATH",
     "RECENT_CWD_PATH",
+    "QUICK_DIR",
+    "QUICK_STATE_PATH",
     "VOICE_SETTINGS_PATH",
     "UNATTENDED_PROMPT_PATH",
     "PUSH_SUBSCRIPTIONS_PATH",
@@ -119,6 +122,8 @@ class ServerConfig:
     SESSION_UNREAD_PATH: Path
     COMMIT_UNKNOWN_SENDS_PATH: Path
     RECENT_CWD_PATH: Path
+    QUICK_DIR: Path
+    QUICK_STATE_PATH: Path
     VOICE_SETTINGS_PATH: Path
     UNATTENDED_PROMPT_PATH: Path
     PUSH_SUBSCRIPTIONS_PATH: Path
@@ -283,6 +288,8 @@ def build_server_config(
         SESSION_UNREAD_PATH=app_dir / "session_unread.json",
         COMMIT_UNKNOWN_SENDS_PATH=app_dir / "commit_unknown_sends.json",
         RECENT_CWD_PATH=app_dir / "recent_cwds.json",
+        QUICK_DIR=quick_workspace.quick_root(),
+        QUICK_STATE_PATH=quick_workspace.quick_state_path(app_dir),
         VOICE_SETTINGS_PATH=app_dir / "voice_settings.json",
         UNATTENDED_PROMPT_PATH=app_dir / "unattended_prompt.txt",
         PUSH_SUBSCRIPTIONS_PATH=app_dir / "push_subscriptions.json",

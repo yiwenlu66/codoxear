@@ -103,6 +103,7 @@ def new_session_store_for_manager(manager: Any, server: Any, paths: Any) -> Any:
         clean_dependency_session_id=server._clean_dependency_session_id,
         clean_recent_cwd=server._clean_recent_cwd,
         clean_commit_unknown_send_record=manager._clean_commit_unknown_send_record,
+        quick_root=server.QUICK_DIR,
     )
 
 

@@ -2,10 +2,15 @@ import * as CodoxearLaunch from "./app_launch.js";
 
 // Owns the quick-launch controls and transient startup state. The composer
 // subscribes to this state; it remains the sole writer of its enabled controls.
+//
+// A quick session does not launch in $HOME: the server reserves a numbered
+// workspace (`~/codoxear-quick/quick-NN`) and the session is renamed to its
+// "Quick Session NN" label, so two quick launches never share a cwd or a name.
 function createQuickSessionController(options = {}) {
   const { el, iconSvg, sidebarHeaderActions, emptyActions, emptyCopy, textarea,
     sessionState, sessionCatalog, eventBindings, deselectSession, selectSession,
-    spawnSession, restoreDraft, openDialog, closeSidebar, shortcutBlocked, document } = options;
+    spawnSession, restoreDraft, openDialog, closeSidebar, shortcutBlocked, document,
+    reserveQuickSession } = options;
   const quickNewBtn = el("button", { id: "quickNewBtn", type: "button", class: "icon-btn", "data-hint": "r", html: iconSvg("compose") });
   sidebarHeaderActions.insertBefore(quickNewBtn, sidebarHeaderActions.firstChild);
   const quickStartBtn = el("button", { id: "chatEmptyQuickBtn", type: "button", class: "icon-btn text-btn primary", "data-hint": "r", text: "Quick start" });
@@ -20,14 +25,17 @@ function createQuickSessionController(options = {}) {
   function description(record) {
     return `${CodoxearLaunch.agentBackendDisplayName(record.backend)} · ${record.model} · ${record.reasoningEffort}`;
   }
+  function pendingWorkspaceName(run) {
+    return run && run.reserved && run.reserved.name ? run.reserved.name : "a fresh workspace";
+  }
   function render() {
-    const label = `Quick session — ~ · ${description(launchChoice())}`;
+    const label = `Quick session — own workspace · ${description(launchChoice())}`;
     for (const button of [quickNewBtn, quickStartBtn]) {
       button.title = label;
       button.setAttribute("aria-label", label);
       button.disabled = !!pending;
     }
-    emptyCopy.textContent = pending ? `Starting ${description(pending.record)} in ~…` : idleCopy;
+    emptyCopy.textContent = pending ? `Starting ${description(pending.record)} in ${pendingWorkspaceName(pending)}…` : idleCopy;
   }
   function changed() {
     render();
@@ -63,18 +71,26 @@ function createQuickSessionController(options = {}) {
   }
   async function start() {
     if (pending || disposed) return;
-    const run = { record: launchChoice(), identity: null };
+    const run = { record: launchChoice(), identity: null, reserved: null };
     pending = run;
     deselectSession();
     changed();
     closeSidebar();
     // All of this stays within the click/keyboard gesture, including enabling
-    // the textarea via subscribers, so iOS can open its keyboard.
+    // the textarea via subscribers, so iOS can open its keyboard. The reserve
+    // request must therefore come *after* focus().
     textarea.focus({ preventScroll: true });
     let errorText = "Start failed.";
     const r = run.record;
     try {
-      const identity = await spawnSession("~", null, null, "", r.providerChoice, r.model,
+      const reserved = await reserveQuickSession();
+      if (pending !== run || disposed) return;
+      // The server owns slot allocation; the workspace directory itself is
+      // created by the launch path, so a failed start leaves nothing behind.
+      run.reserved = { cwd: String((reserved && reserved.cwd) || ""), name: String((reserved && reserved.name) || "") };
+      if (!run.reserved.cwd) { fail(run, "Quick workspace unavailable."); return; }
+      changed();
+      const identity = await spawnSession(run.reserved.cwd, null, null, run.reserved.name, r.providerChoice, r.model,
         r.reasoningEffort, r.fast, r.tmux, (error) => { errorText = error && error.message || errorText; },
         r.backend, (id) => ready(run, id));
       if (pending !== run || disposed) return;

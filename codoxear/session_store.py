@@ -10,6 +10,7 @@ from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
 from .file_upload import validate_staged_attachment_file_target
 from .draft_store import DraftStore
+from .quick_workspace import is_quick_cwd
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
 from .util import atomic_write_json
@@ -141,8 +142,12 @@ class SessionStore:
         clean_dependency_session_id: Cleaner1,
         clean_recent_cwd: Cleaner1,
         clean_commit_unknown_send_record: CommitUnknownCleaner,
+        quick_root: Path | None = None,
     ) -> None:
         self.paths = paths
+        # Quick workspaces are machine-managed scratch cwds; they never enter
+        # the user-facing recent-cwd list.
+        self.quick_root = quick_root
         self.file_history_max = int(file_history_max)
         self.recent_cwd_max = int(recent_cwd_max)
         self.clean_alias = clean_alias
@@ -559,6 +564,8 @@ class SessionStore:
         cwd = self.clean_recent_cwd(cwd_value)
         if cwd is None:
             return False
+        if self.quick_root is not None and is_quick_cwd(cwd, root=self.quick_root):
+            return False
         prev_recent_ts = self.recent_cwds.get(cwd)
         if prev_recent_ts is None or prev_recent_ts < updated_ts:
             self.recent_cwds[cwd] = updated_ts
@@ -585,7 +592,10 @@ class SessionStore:
         return True
 
     def list_recent_cwds(self, *, limit: int) -> list[str]:
-        return [cwd for cwd, _ts in sorted(self.recent_cwds.items(), key=lambda item: (-float(item[1]), item[0]))[: max(0, int(limit))]]
+        items = sorted(self.recent_cwds.items(), key=lambda item: (-float(item[1]), item[0]))
+        if self.quick_root is not None:
+            items = [item for item in items if not is_quick_cwd(item[0], root=self.quick_root)]
+        return [cwd for cwd, _ts in items[: max(0, int(limit))]]
 
     def clear_deleted_session_state(
         self,

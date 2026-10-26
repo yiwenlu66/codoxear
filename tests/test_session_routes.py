@@ -33,6 +33,12 @@ class _LaunchError(RuntimeError):
 class _FakeManager:
     def __init__(self) -> None:
         self.spawn_args: dict[str, object] | None = None
+        self.quick_error: OSError | None = None
+
+    def allocate_quick_session(self):
+        if self.quick_error is not None:
+            raise self.quick_error
+        return {"slot": 3, "name": "Quick Session 03", "cwd": "/home/u/codoxear-quick/quick-03"}
 
     def list_sessions(self):
         return [{"id": "s1"}]
@@ -271,3 +277,31 @@ def test_handle_session_post_route_spawns_with_launch_request_fields() -> None:
         "service_tier": "default",
         "create_in_tmux": False,
     }
+
+
+def test_handle_session_post_route_allocates_a_quick_slot() -> None:
+    deps, responses, _etag_payloads, _metrics = _deps()
+    handled = handle_session_post_route(
+        _FakeHandler(),
+        path="/api/quick-sessions",
+        manager=_FakeManager(),
+        deps=deps,
+    )
+    assert handled is True
+    assert responses == [
+        (200, {"ok": True, "slot": 3, "name": "Quick Session 03", "cwd": "/home/u/codoxear-quick/quick-03"})
+    ]
+
+
+def test_handle_session_post_route_reports_an_unusable_quick_root() -> None:
+    deps, responses, _etag_payloads, _metrics = _deps()
+    manager = _FakeManager()
+    manager.quick_error = OSError(28, "No space left on device")
+    handled = handle_session_post_route(
+        _FakeHandler(),
+        path="/api/quick-sessions",
+        manager=manager,
+        deps=deps,
+    )
+    assert handled is True
+    assert responses == [(500, {"error": "quick workspace unavailable: No space left on device"})]

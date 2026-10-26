@@ -32,20 +32,28 @@ const doc = {activeElement:null,createElement:()=>node(),body:node(),getElementB
 const events=[];
 const eventBindings={on(target,type,handler){events.push({target,type,handler})}};
 const record={backend:'pi',providerChoice:'p',model:'model-b',providerAbsent:false,reasoningEffort:'low',fast:false,tmux:false};
-function quickHarness({result=123,error=null}={}) {
- let resolveSpawn, spawnArgs, dialog, selections=[], restores=[], blocked=false;
+const reserved={slot:7,name:'Quick Session 07',cwd:'/home/u/codoxear-quick/quick-07'};
+function quickHarness({result=123,error=null,reserveError=null,holdReserve=false,reserveInfo=null}={}) {
+ let resolveSpawn, spawnArgs, dialog, selections=[], restores=[], blocked=false, reserveCalls=0, releaseReserve=noop;
+ const reserveValue=reserveInfo||reserved;
  const text=node(), copy=node({textContent:'Idle'});
  const controller=ctx.window.CodoxearQuickSession.createQuickSessionController({
   el,iconSvg:()=>'',sidebarHeaderActions:node(),emptyActions:node(),emptyCopy:copy,textarea:text,
   sessionState:state,sessionCatalog:catalog,eventBindings,document:doc,
   deselectSession(){state.set('selected',null);text.value=''},
   selectSession(id){state.set('selected',id);text.value=storage.getItem('draft.'+id)||'';selections.push(id);return Promise.resolve()},
+  reserveQuickSession(){reserveCalls+=1;
+   if(!holdReserve)return reserveError?Promise.reject({message:reserveError}):Promise.resolve(reserveValue);
+   return new Promise((res,rej)=>{releaseReserve=()=>reserveError?rej({message:reserveError}):res(reserveValue)})},
   spawnSession(...args){spawnArgs=args;return new Promise(resolve=>{resolveSpawn=resolve})},
   restoreDraft(id,value){if(!text.value){text.value=value;restores.push([id,value])}},
   openDialog(o){dialog=o},closeSidebar:noop,shortcutBlocked:()=>blocked,
  });
  return {controller,text,copy,get args(){return spawnArgs},get dialog(){return dialog},selections,restores,
-  async resolve({ready=true}={}){if(error)spawnArgs[9]({message:error});if(ready&&result)await spawnArgs[11]('new');resolveSpawn(result)},
+  get reserveCalls(){return reserveCalls},
+  async settle(){await tick()},
+  releaseReserve(){releaseReserve();releaseReserve=noop;return tick()},
+  async resolve({ready=true}={}){await tick();if(error)spawnArgs[9]({message:error});if(ready&&result)await spawnArgs[11]('new');resolveSpawn(result)},
   block(v){blocked=v}};
 }
 function dialogHarness() {
@@ -106,11 +114,17 @@ storage.setItem('codoxear.lastLaunch','bad json');assert.equal(L.loadLastLaunch(
 
 def test_quick_start_focus_cwd_repeat_guard_and_preselection_draft_capture():
     run(r"""
-L.rememberLastLaunch(record);state.set('selected','old');const h=quickHarness();
+L.rememberLastLaunch(record);state.set('selected','old');const h=quickHarness({holdReserve:true});
 const launch=h.controller.start();h.controller.start();
 assert.equal(state.get('selected'),null);assert.equal(h.text.focused,true);assert.equal(h.controller.isStarting(),true);
-assert.equal(h.args[0],'~');assert.equal(h.args[1],null);assert.equal(h.args[4],'p');assert.equal(h.args[5],'model-b');assert.equal(h.args[6],'low');assert.equal(h.args[8],false);
-assert.equal(h.copy.textContent,'Starting Pi · model-b · low in ~…');
+// One reservation per gesture, and focus happens before the request so iOS
+// still opens its keyboard inside the click.
+assert.equal(h.reserveCalls,1);assert.equal(h.args,undefined);
+assert.equal(h.copy.textContent,'Starting Pi · model-b · low in a fresh workspace…');
+await h.releaseReserve();
+assert.equal(h.args[0],'/home/u/codoxear-quick/quick-07');assert.equal(h.args[3],'Quick Session 07');
+assert.equal(h.args[1],null);assert.equal(h.args[4],'p');assert.equal(h.args[5],'model-b');assert.equal(h.args[6],'low');assert.equal(h.args[8],false);
+assert.equal(h.copy.textContent,'Starting Pi · model-b · low in Quick Session 07…');
 h.text.value='Typed during startup';await h.resolve();await launch;
 assert.deepEqual(h.restores,[['new','Typed during startup']]);assert.equal(h.text.value,'Typed during startup');assert.equal(h.controller.isStarting(),false);
 assert.deepEqual(JSON.parse(storage.getItem('codoxear.lastLaunch')),record);
@@ -123,7 +137,10 @@ const h=quickHarness();const launch=h.controller.start();h.text.value='scratch';
 await h.resolve();await launch;assert.equal(h.text.value,'existing');assert.deepEqual(h.restores,[]);
 h.controller.dispose();const other=quickHarness();const next=other.controller.start();other.text.value='do not move';
 state.set('selected','manual');assert.equal(other.controller.isStarting(),false);
-await other.resolve();await next;assert.equal(state.get('selected'),'manual');assert.deepEqual(other.selections,[]);assert.deepEqual(other.restores,[]);
+// The manual selection lands while the reserve request is in flight, so the
+// launch is abandoned before it ever spawns anything.
+await next;assert.equal(state.get('selected'),'manual');assert.equal(other.args,undefined);
+assert.deepEqual(other.selections,[]);assert.deepEqual(other.restores,[]);
 """)
 
 
@@ -132,6 +149,16 @@ def test_failure_retains_text_and_opens_preset_dialog():
 L.rememberLastLaunch(record);const h=quickHarness({result:null,error:'Provider unavailable'});const launch=h.controller.start();
 h.text.value='keep me';await h.resolve();await launch;
 assert.equal(h.text.value,'keep me');assert.equal(h.controller.isStarting(),false);assert.equal(h.dialog.cwd,'~');assert.equal(h.dialog.statusText,'Provider unavailable');
+assert.deepEqual(JSON.parse(JSON.stringify(h.dialog.launchPreset)),record);
+""")
+
+
+def test_reserve_failure_preserves_draft_and_opens_dialog_without_spawning():
+    run(r"""
+L.rememberLastLaunch(record);const h=quickHarness({reserveError:'Quick workspace unavailable'});const launch=h.controller.start();
+h.text.value='keep me';await launch;
+assert.equal(h.text.value,'keep me');assert.equal(h.controller.isStarting(),false);
+assert.equal(h.args,undefined);assert.equal(h.dialog.cwd,'~');assert.equal(h.dialog.statusText,'Quick workspace unavailable');
 assert.deepEqual(JSON.parse(JSON.stringify(h.dialog.launchPreset)),record);
 """)
 

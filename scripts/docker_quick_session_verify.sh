@@ -100,7 +100,7 @@ browser eval '({focused:document.activeElement.id,sendDisabled:document.getEleme
 browser screenshot "$artifacts/starting.png" >/dev/null
 wait_js 'Boolean(localStorage.getItem("codexweb.selected")) && !document.getElementById("sendBtn").disabled'
 wait_js 'document.getElementById("msg").value === "Reply exactly QUICK_SESSION_OK."'
-browser eval '(async()=>{const data=await (await window.__quickNativeFetch("/api/sessions")).json();const selected=localStorage.getItem("codexweb.selected");return {session:data.sessions.find(s=>s.session_id===selected),record:JSON.parse(localStorage.getItem("codoxear.lastLaunch")),body:window.__quickBodies[0],draft:document.getElementById("msg").value}})()' --json > "$artifacts/selected.json"
+browser eval '(async()=>{const data=await (await window.__quickNativeFetch("/api/sessions")).json();const selected=localStorage.getItem("codexweb.selected");const row=document.querySelector(`#sessions .session[data-session-id="${selected}"] .titleText`);return {session:data.sessions.find(s=>s.session_id===selected),record:JSON.parse(localStorage.getItem("codoxear.lastLaunch")),body:window.__quickBodies[0],draft:document.getElementById("msg").value,sidebarText:row?row.textContent:"",recentCwds:data.recent_cwds||[]}})()' --json > "$artifacts/selected.json"
 # Give the real TUI time to register readiness, then exercise the actual Send.
 browser wait 3500 >/dev/null
 browser click '#sendBtn' >/dev/null
@@ -130,7 +130,9 @@ for path in pathlib.Path.home().joinpath('.local/share/codoxear/socks').glob('*.
     rows.append({'cwd':meta.get('cwd'),'log_path':meta.get('log_path'),'session_id':path.stem,
                  'state':call_control_socket(path.with_suffix('.sock'), {'cmd':'state'}),
                  'tail':redact_launch_failure_text(tail[-14000:])})
-print(json.dumps(rows,indent=2))
+quick_root=pathlib.Path.home()/'codoxear-quick'
+quick_dirs=sorted(p.name for p in quick_root.iterdir()) if quick_root.is_dir() else []
+print(json.dumps({'brokers':rows,'quick_dirs':quick_dirs},indent=2))
 PY
 # A real server validation error must preserve the composer and show a preset.
 browser eval 'window.__quickFail=true;window.__quickDelay=true' >/dev/null
@@ -153,23 +155,31 @@ import json, pathlib, sys
 p=pathlib.Path(sys.argv[1])
 def read(n): return json.loads((p/(n+'.json')).read_text())['data']['result']
 a=read('selected'); r=a['record']; s=a['session']; b=a['body']
-assert s['cwd']=='/home/tester', s
+quick_cwd='/home/tester/codoxear-quick/quick-01'
+assert s['cwd']==quick_cwd, s
+assert s['display_name']=='Quick Session 01', s
+assert a['sidebarText'].strip()=='Quick Session 01', a['sidebarText']
+assert not any('/codoxear-quick/' in cwd for cwd in a['recentCwds']), a['recentCwds']
 assert s['agent_backend']==r['backend']=='pi', s
 assert s['model']==r['model'] and s['reasoning_effort']==r['reasoningEffort'], (s,r)
-assert b['cwd']=='~' and b['agent_backend']==r['backend'] and b['model']==r['model'], b
+assert b['cwd']==quick_cwd and b['agent_backend']==r['backend'] and b['model']==r['model'], b
 assert read('starting')['sendDisabled'] and read('starting')['focused']=='msg'
 delivery=read('delivered'); comparison=read('dialog-send')
 assert delivery['echo'] and delivery['draft']=='' and len(delivery['acks'])==1, delivery
 assert delivery['acks'][0]['status']==200 and delivery['acks'][0]['body'].get('queued') is False, delivery
 assistant_reply=any(e.get('role')=='assistant' and 'QUICK_SESSION_OK' in e.get('text','') for e in delivery['events'])
-brokers=json.loads((p/'broker-evidence.json').read_text())
+evidence=json.loads((p/'broker-evidence.json').read_text())
+brokers=evidence['brokers']
 assert len(brokers)==2 and all('Reply exactly QUICK_SESSION_OK.' in row['tail'] for row in brokers), brokers
+# The quick workspace exists and is the only one: failed starts reserve a slot
+# but never create a directory.
+assert evidence['quick_dirs']==['quick-01'], evidence['quick_dirs']
 provider_errors=[line.strip() for row in brokers for line in row['tail'].splitlines() if 'Error:' in line]
 assert len(comparison['acks'])==2 and comparison['acks'][-1]['status']==200, comparison
 f=read('failure'); assert f['draft']=='Preserve this failed-start draft.' and f['cwd']=='~' and f['status'], f
 assert r['model'] in f['model'] and r['reasoningEffort'] in f['effort'] and f['record']==r, f
 m=read('mobile'); assert not m['sidebarOpen'] and not m['overflow'] and m['focused']=='msg', m
-(p/'report.json').write_text(json.dumps({'commit':sys.argv[2], 'homeCwd':s['cwd'],'launch':r,'draftHandoff':True,'sendAcknowledgedByBroker':True,'assistantReplyRecorded':assistant_reply,'providerErrors':provider_errors,'sendEchoVisible':True,'ordinaryDialogSendAcknowledged':True,'failurePreservedDraft':True,'mobile':m},indent=2))
+(p/'report.json').write_text(json.dumps({'commit':sys.argv[2], 'quickCwd':s['cwd'],'quickDisplayName':s['display_name'],'quickDirs':evidence['quick_dirs'],'launch':r,'draftHandoff':True,'sendAcknowledgedByBroker':True,'assistantReplyRecorded':assistant_reply,'providerErrors':provider_errors,'sendEchoVisible':True,'ordinaryDialogSendAcknowledged':True,'failurePreservedDraft':True,'mobile':m},indent=2))
 print('PASS: actual dialog → quick launch → draft → broker ACK + Pi PTY receipt; server-error fallback; narrow drawer/focus')
 if not assistant_reply: print('BOUNDARY: no assistant reply observed; provider diagnostics are in report.json and broker-evidence.json')
 PY

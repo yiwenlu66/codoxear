@@ -114,6 +114,7 @@ from .path_runtime import resolve_session_path as _resolve_session_path_impl
 from .path_runtime import resolve_under as _resolve_under_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from . import quick_workspace
 from .process_runtime import terminate_process as _terminate_process_impl
 from .process_runtime import terminate_process_group as _terminate_process_group_impl
 from .session_cleaners import clean_alias as _clean_alias_impl
@@ -410,6 +411,7 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         default_agent_backend=DEFAULT_AGENT_BACKEND,
         unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
         unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+        quick_root=QUICK_DIR,
     )
 
 
@@ -1309,6 +1311,10 @@ class SessionManager:
 
     def recent_cwds(self, *, limit: int | None = None) -> list[str]:
         return self._recent_cwd_coordinator_for_manager().list_recent(limit=limit)
+
+    def allocate_quick_session(self) -> dict[str, Any]:
+        """Reserve the next quick-session slot; creates no directory."""
+        return quick_workspace.allocate(state_path=QUICK_STATE_PATH, root=QUICK_DIR)
 
     def _queue_len(self, session_id: str) -> int:
         return self._queue_coordinator_for_manager().queue_len(session_id)
