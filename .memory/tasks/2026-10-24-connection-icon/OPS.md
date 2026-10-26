@@ -84,3 +84,52 @@ ellipsis slack.
 - Screenshots: `/tmp/conn-icon-verify/before-after.png`,
   `topbar-offline-390.png`, `topbar-online-390.png`,
   `topbar-offline-longtitle-zoom.png`.
+
+## 2026-10-26 — second iteration: the indicator's evidence source was wrong
+
+User report: "staying offline and switching sessions, I have to wait a few
+seconds until the offline icon appears; online/offline should be global to each
+client, not a property of a session."
+
+Mechanism (code): transport evidence reached `app_network` from exactly four
+places — the sessions poll success/failure, the secondary poll, the message poll,
+and the browser online/offline events. Boot's `/api/me` + `/api/sessions`, the
+session-switch transcript fetch, file reads and sends carried no evidence. So the
+indicator updated only when a poll tick completed: a backoff, a suspended tab, or
+a fresh boot made it lag the state it was reporting.
+
+Fix (`8057f4ec`): `app_api` reports `live` / `stale` / `failed` for every request
+at the one chokepoint (`setTransportReporter`, installed by the composition);
+poll paths keep only their own bookkeeping, and message flow keeps one signal for
+an SSE stream opening. Threshold unchanged in value (2) but now counts failed
+requests; a caller's own abort reports nothing; any response (including 4xx/5xx)
+proves the server answered. Visibility resume also re-reads the link state, since
+mobile browsers can change `onLine` while the page is suspended.
+
+Measured A/B (Docker, real SW, 390x844, server frozen, ms from navigation start
+to icon visible):
+
+| commit | icon visible |
+|---|---|
+| 3450275d (poll-driven) | 8045 ms |
+| 8057f4ec (transport-driven) | 3205 ms |
+
+3205 ms is the service worker's 3s network race; nothing of the remaining
+latency is poll-dependent.
+
+## 2026-10-26 — regression caught by the Docker gate
+
+The first cut read `setTransportReporter` from the composition's dependency bag
+without adding it to `app_application.js`'s bag. `renderApp` threw
+`TypeError: ve is not a function`, so the app did not render at all after login;
+the unit suite (2517 passed) and the wiring guard both stayed green because
+neither boots the app. The stale-banner verifier failed at `01-baseline`
+(`appRendered: false`), which is how it surfaced. Lesson recorded: a new key read
+off the renderApp deps bag has no automated completeness check.
+
+## 2026-10-26 — deployed
+
+`scripts/deploy.sh 8057f4ecd5cd` → snapshot worktree at 8057f4ec, service
+restarted, asset version `24493ae249a1`. Note for the next iteration: the
+previous report's "not working" was a deploy gap, not a code defect — the phone
+serves whatever the snapshot worktree holds.

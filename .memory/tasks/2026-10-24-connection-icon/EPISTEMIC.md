@@ -47,12 +47,29 @@ as fresh) or the no-flap threshold.
 - Truncated wifi arcs as the glyph: measured at 18 px, fragments read as noise.
   The full fan + slash is what stays recognizable.
 
+## Second correction: the evidence source
+
+The first iteration fixed the icon's *presentation* and left its *evidence*
+where it was: the poll loop. That is the wrong owner. Connection state is a
+property of the client, and every HTTP response is evidence about it, so the
+producer belongs in the transport layer (`app_api`), not in whichever
+session-scoped poll happened to complete. A poll path that reports transport
+state couples the indicator to a scheduling cadence: backoff, a suspended tab, or
+a boot sequence each delay it for reasons that have nothing to do with the
+network.
+
+Consequence for the model: "which requests report" is no longer a per-feature
+decision that can be forgotten. A new feature that calls `api` reports
+automatically, and a request that is never made reports nothing (so a skipped
+refresh cannot clear the indicator, structurally rather than by a rule).
+
 ## Verified vs assumed
 
 Verified by measurement: transcript recovered 56 px (chatTop 156→100,
 chatHeight 632→688); title absorbs exactly 26 px; topbar and action cluster
-unchanged; stale/offline/recovery transitions on a frozen server; 2517 tests
-pass with one pre-existing unrelated failure.
+unchanged; stale/offline/recovery transitions on a frozen server; boot-to-icon
+latency 8045 ms → 3205 ms on a frozen server; 2517 tests pass with one
+pre-existing unrelated failure.
 
 Assumed, not measured: iOS dynamic-type scaling of the old banner (why it can
 grow without bound) — plausible from the CSS but not exercised.
