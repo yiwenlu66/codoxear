@@ -313,3 +313,88 @@ def test_recovery_css_keeps_error_reason_wrapped_and_retry_touch_sized() -> None
     assert reason["overflow-wrap"] == "anywhere"
     assert retry["min-height"] == "44px"
     assert retry["min-width"] == "44px"
+    cancel = styles[".stagedAttachmentChip[data-pending] .stagedAttachmentRemove"]
+    assert cancel["width"] == "44px"
+    assert cancel["min-height"] == "44px"
+    assert styles[".stagedAttachmentChip[data-pending]"]["height"] == "auto"
+
+
+def test_unknown_upload_remains_send_blocking_when_retry_hits_a_session_blocker() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          apiImpl = async () => { throw new Error("unreachable"); };
+          await controller.stageFiles([{ name: "unknown.txt", size: 3 }]);
+          sessionState.set("sending", true);
+          await tray.children[0].children.find((c) => c.className === "stagedAttachmentRetry").onclick();
+          process.stdout.write(JSON.stringify({ calls: apiCalls.length, pending: controller.hasPendingUploads(), text: tray.children[0].children.find((c) => c.className === "stagedAttachmentPhase").textContent }));
+        })();
+        """
+    )
+    assert result["calls"] == 2
+    assert result["pending"] is True
+    assert "Wait for the current send" in result["text"]
+
+
+def test_delete_ack_updates_original_session_even_after_selection_switch() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          sessionCatalog.set("latestSessions", [
+            { session_id: "sid", start_ts: 10, attachments_revision: 1, staged_attachments: [{ id: "a" }], pending_attachment: true },
+            { session_id: "other", start_ts: 20, attachments_revision: 0, staged_attachments: [], pending_attachment: false },
+          ]);
+          controller.syncStagedAttachmentsFromSelectedSession();
+          let complete;
+          apiImpl = async () => new Promise((resolve) => { complete = resolve; });
+          const removing = tray.children[0].children.find((c) => c.className === "stagedAttachmentRemove").onclick();
+          sessionState.set("selected", "other");
+          complete({ ok: true, attachments: [], pending_attachment: false, attachments_revision: 2 });
+          await removing;
+          process.stdout.write(JSON.stringify({ old: sessionCatalog.get("sessionIndex").get("sid"), other: sessionCatalog.get("sessionIndex").get("other"), toasts }));
+        })();
+        """
+    )
+    assert result["old"]["attachments_revision"] == 2
+    assert result["old"]["staged_attachments"] == []
+    assert result["other"]["attachments_revision"] == 0
+    assert result["toasts"] == []
+
+
+def test_selection_switch_aborts_an_already_started_post_without_status_or_failure() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          let started = false, signal;
+          apiImpl = async (path, options) => new Promise((resolve, reject) => {
+            started = true; signal = options.signal;
+            signal.listeners.push(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          });
+          const staging = controller.stageFiles([{ name: "switch.txt", size: 3 }]);
+          while (!started) await new Promise((resolve) => setImmediate(resolve));
+          sessionState.set("selected", "other");
+          await staging;
+          process.stdout.write(JSON.stringify({ aborted: signal.aborted, calls: apiCalls.length, chips: tray.children.length, pending: controller.hasPendingUploads(), toasts }));
+        })();
+        """
+    )
+    assert result == {"aborted": True, "calls": 1, "chips": 0, "pending": False, "toasts": []}
+
+
+def test_successful_http_pending_response_reconciles_until_commit_instead_of_finishing() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          apiImpl = async (path) => path.endsWith("inject_file")
+            ? { ok: true, state: "pending", attachments: [], pending_attachment: false, attachments_revision: 1 }
+            : { ok: true, state: "committed", active: true, attachment: { id: "a" }, attachments: [{ id: "a" }], pending_attachment: true, attachments_revision: 2 };
+          const staged = await controller.stageFiles([{ name: "pending.txt", size: 3 }]);
+          process.stdout.write(JSON.stringify({ staged, paths: apiCalls.map((call) => call.path), list: controller.getStagedAttachments(), pending: controller.hasPendingUploads() }));
+        })();
+        """
+    )
+    assert result["staged"] is True
+    assert len(result["paths"]) == 2
+    assert result["paths"][1].split("?")[0].endswith("upload-status")
+    assert [item["id"] for item in result["list"]] == ["a"]
+    assert result["pending"] is False

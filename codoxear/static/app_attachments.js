@@ -327,8 +327,8 @@
           if (!sessionId) return;
           try {
             const response = await api(`/api/sessions/${sessionId}/attachments/delete`, { method: "POST", body: { id: item.id } });
+            applyAttachmentResource(sessionId, response);
             if (sessionState.get("selected") === sessionId) {
-              applyAttachmentResource(sessionId, response);
               setToast("attachment removed");
               refreshAfterAttachmentMutation();
             }
@@ -350,8 +350,8 @@
         if (!sessionId) return;
         try {
           const response = await api(`/api/sessions/${sessionId}/attachments/clear`, { method: "POST", body: {} });
+          applyAttachmentResource(sessionId, response);
           if (sessionState.get("selected") === sessionId) {
-            applyAttachmentResource(sessionId, response);
             setToast("attachments cleared");
             refreshAfterAttachmentMutation();
           }
@@ -560,7 +560,7 @@
     async function runUpload(entry, reconcileFirst = false) {
       if (!entryIsCurrent(entry) || entry.working || entry.cancelRequested) return false;
       const blocker = latestAttachmentBlockerForSession(entry.sessionId);
-      if (blocker) { failEntry(entry, new Error(blocker), false); return false; }
+      if (blocker) { failEntry(entry, new Error(blocker), entry.unknown); return false; }
       entry.working = true;
       entry.failed = false;
       entry.unknown = false;
@@ -592,6 +592,12 @@
             });
             if (!entryIsCurrent(entry) || entry.cancelRequested) return false;
             if (!response || !response.ok) throw new Error("upload response did not confirm commit");
+            if (response.state === "cancelled") {
+              applyAttachmentResource(entry.sessionId, response);
+              removePendingUpload(entry.key);
+              return false;
+            }
+            if (response.state && response.state !== "committed") throw new Error("upload has not committed yet");
             return finishUpload(entry, response);
           } catch (error) {
             if (!entryIsCurrent(entry) || entry.cancelRequested || isAbortError(error)) return false;
@@ -634,7 +640,11 @@
       addPendingUploads(entries);
       let successes = 0;
       for (const entry of entries) if (await runUpload(entry)) successes += 1;
-      if (sessionState.get("selected") === sessionId) refreshAfterAttachmentMutation();
+      if (sessionState.get("selected") === sessionId) {
+        setPollFastUntilMs(now() + 4000);
+        kickPoll(0);
+        refreshAfterAttachmentMutation();
+      }
       return successes > 0;
     }
 
