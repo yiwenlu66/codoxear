@@ -23,6 +23,17 @@ No cross-module renderer calls. Reducers write stores atomically
 (`applyRuntime`/`applySnapshot`/`patchSession`); imperative render relays
 are an anti-pattern the wiring guard and reviews reject.
 
+### Attachment consistency and recovery
+
+The server's attachment list, pending flag and durable monotonic revision form
+one resource; the catalog rejects older resource revisions, including through a
+bounded metadata checkpoint on reload. One upload ID names one logical file:
+retries reconcile through fresh, no-store status before retransmission, and
+retired IDs cannot resurrect attachments. HTTP request bodies must be fully
+consumed or the connection closed before reuse. Upload recovery never sends a
+prompt. API, persistence-v2 migration, downgrade and verification details live
+in [Attachment uploads: consistency and recovery](../../docs/attachment-upload-robustness.md).
+
 ### Widget rule
 
 Element + render + subscription in one module:
