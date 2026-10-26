@@ -302,7 +302,7 @@ def main() -> int:
             {"name": "", "priority_offset": 0, "snooze_until": None},
         )
         check(status == 200, f"un-snoozing the session failed: {status} {body}")
-        restored = wait_for_convergence(opener, note="after un-snoozing")
+        wait_for_convergence(opener, note="after un-snoozing")
         check(codoxear_window_order() == order_after_launch, f"un-snooze did not restore the original order: {codoxear_window_order()}")
         check(len(windows()) == len(WORKSPACES) + 1, f"the reorder changed the window set: {windows()}")
         log(f"PASS restore order: order={codoxear_window_order()}")
