@@ -64,11 +64,12 @@ upload POSTs have no arbitrary short total timeout.
 
 A failed status lookup leaves a persistent **Upload outcome unknown** chip with
 its reason, Retry and Cancel. The File is retained in memory for recovery;
-Retry checks status before uploading again. Reload does not persist local File
-bytes or unfinished operations. Switching sessions aborts local work and
-initiates identified cancellation; failures remain recoverable when returning
-to the originating session. These are not resumable/chunked transfers: a
-pre-commit interruption retries the whole file.
+Retry checks status before uploading again. Switching sessions aborts local
+work without posting identified cancellation; switching or reloading discards
+unfinished local File bytes and their recovery operation. An attachment already
+committed on the server may appear through a fresh catalog when returning.
+Explicit × cancellation uses the identified cancellation endpoint. These are
+not resumable/chunked transfers: a pre-commit interruption retries the whole file.
 
 ## Revision authority and reload
 
