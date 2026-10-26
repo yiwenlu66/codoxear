@@ -24,15 +24,14 @@ Trigger model (all server-side, none in a request handler's critical path):
   (``DELETE /api/sessions/snapshot/<id>``), for entries that no longer have
   any row to delete from.
 
-Identity remap happens at exactly one moment: when an upsert supersedes an
-entry (store rules (a)/(c) — the transcript is now live under a new registry
-id). ``remap_session_identity`` then moves the queue, draft, unattended
-config, alias, and sidebar metadata from the old registry id to the new one
-and rewrites other sessions' ``dependency_session_id`` links. A restore does
-not remap: it only stamps the entry ``restoring`` and lets the replacement's
-own upsert prove continuity, which also covers a server restart between the
-launch and the discovery of the replacement (the entry persists with its old
-registry id until then).
+An upsert that supersedes an entry (store rules (a)/(c)) records durable
+``remap_intents`` alongside the new identity. ``remap_session_identity`` moves
+attachments, queue, draft, unattended config, alias, and sidebar metadata and
+rewrites dependency links. Only successful persistence of every participant
+acknowledges the intent. An unchanged subsequent upsert, including one from a
+fresh process, replays unacknowledged intents; attachment transfers and the
+other move operations are idempotent. A restore only stamps ``restoring``;
+the replacement's own upsert proves continuity and creates the intent.
 
 Flush robustness. A flush that cannot build an entry (torn sidecar read) or
 cannot write the store re-marks those ids dirty and re-arms the timer at

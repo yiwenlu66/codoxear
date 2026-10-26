@@ -22,7 +22,7 @@ def make_store(root):
     return SessionStore(
         paths=SessionStorePaths(**{name: root / (name + '.json') for name in (
             'aliases', 'sidebar_meta', 'hidden_sessions', 'files', 'queues', 'pending_attachments',
-            'commit_unknown_sends', 'recent_cwds', 'unattended', 'staged_attachments')}, uploads_root=root / 'uploads'),
+            'commit_unknown_sends', 'recent_cwds', 'unattended', 'staged_attachments')}, uploads_root=root / 'uploads', drafts=root / 'drafts.json'),
         file_history_max=5, recent_cwd_max=5, unattended_default_idle_minutes=5,
         unattended_default_max_injections=5, clean_alias=lambda x: x, clean_priority_offset=lambda x: x,
         clean_snooze_until=lambda x: x, clean_dependency_session_id=lambda x: x,
@@ -320,3 +320,117 @@ def test_http_lost_response_recovers_single_committed_upload(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(5)
+
+
+def manager_for_routes(c):
+    return SimpleNamespace(**{name: getattr(c, name) for name in (
+        'upload_status', 'begin_upload', 'finish_upload', 'fail_upload', 'cancel_upload',
+        'add_staged_attachment', 'list_staged_attachments')}, attachment_staging_ready=lambda sid: True)
+
+
+def post_upload(c, *, identified=True, responses=None):
+    responses = responses if responses is not None else []
+    if identified:
+        body = b'hello'
+        headers = {'Content-Type': 'application/octet-stream', 'Content-Length': '5',
+                   'X-Codoxear-Upload-Id': 'upload-1', 'X-Codoxear-Filename': 'hello.txt'}
+    else:
+        body = json.dumps({'filename': 'hello.txt', 'data_b64': 'aGVsbG8='}).encode()
+        headers = {'Content-Type': 'application/json', 'Content-Length': str(len(body))}
+    handle_control_post_route(Handler(body, headers), path='/api/sessions/s1/inject_file',
+                             manager=manager_for_routes(c), deps=route_deps(c, responses),
+                             match_session_route=_match_session_route)
+    return responses[-1]
+
+
+def fail_next_resource_directory_sync():
+    """Fail the actual post-replace fsync, not file write or byte staging."""
+    from contextlib import contextmanager
+    from codoxear.attachment_resource import durable_write_resource
+    import os
+    import stat
+    real_sync = os.fsync
+    pending = True
+    def write(path, payload):
+        nonlocal pending
+        if not pending:
+            return durable_write_resource(path, payload)
+        pending = False
+        def sync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError('injected metadata directory fsync failure')
+            real_sync(fd)
+        with patch('os.fsync', side_effect=sync):
+            durable_write_resource(path, payload)
+    @contextmanager
+    def failing():
+        with patch('codoxear.session_store.durable_write_resource', side_effect=write):
+            yield
+    return failing()
+
+
+def test_legacy_route_post_publication_failure_retains_referenced_bytes(tmp_path):
+    c = coordinator(make_store(tmp_path))
+    with fail_next_resource_directory_sync():
+        status, _ = post_upload(c, identified=False)
+    assert status == 503
+    current = c.list_staged_attachments('s1')
+    assert len(current['attachments']) == 1 and current['pending_attachment']
+    restored = make_store(tmp_path)
+    restored.load_persistent_state()
+    assert restored.attachment_snapshot('s1') == current
+    assert Path(restored.staged_attachments['s1'][0]['path']).read_bytes() == b'hello'
+
+
+def test_legacy_route_pre_publication_failure_unlinks_unreferenced_bytes(tmp_path):
+    c = coordinator(make_store(tmp_path))
+    with patch('codoxear.session_store.durable_write_resource', side_effect=OSError('no space')):
+        assert post_upload(c, identified=False)[0] == 503
+    assert not c.list_staged_attachments('s1')['attachments']
+    assert not list((tmp_path / 'uploads' / 's1').iterdir())
+
+
+def test_begin_route_uncertain_publication_is_retryable_without_restart(tmp_path):
+    c = coordinator(make_store(tmp_path))
+    with fail_next_resource_directory_sync():
+        assert post_upload(c)[0] == 503
+    status = c.upload_status('s1', 'upload-1')
+    assert status['state'] == 'failed' and status['retryable']
+    assert not (tmp_path / 'uploads').exists()
+    assert post_upload(c)[1]['state'] == 'committed'
+    assert len(list((tmp_path / 'uploads' / 's1').iterdir())) == 1
+
+
+def test_duplicate_route_uncertain_save_cannot_retire_live_writer(tmp_path):
+    c = coordinator(make_store(tmp_path))
+    assert c.begin_upload('s1', 'upload-1', filename='hello.txt', size=5)['writer']
+    with fail_next_resource_directory_sync():
+        assert post_upload(c)[0] == 503
+    assert c.upload_status('s1', 'upload-1')['state'] == 'pending'
+    assert not c.begin_upload('s1', 'upload-1', filename='hello.txt', size=5)['writer']
+    assert finish(c)['state'] == 'committed'
+
+
+def test_begin_route_retirement_save_failure_does_not_strand_reservation(tmp_path):
+    store = make_store(tmp_path)
+    c = coordinator(store)
+    real_save = store.save_staged_attachments
+    calls = 0
+    def save():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            with fail_next_resource_directory_sync():
+                return real_save()
+        if calls == 2:
+            raise OSError('retirement save failed before replacement')
+        return real_save()
+    with patch.object(store, 'save_staged_attachments', side_effect=save):
+        assert post_upload(c)[0] == 503
+        assert c.upload_status('s1', 'upload-1')['state'] == 'failed'
+        # The disk may still hold pending; a new process must also recover it.
+        restored = make_store(tmp_path)
+        restored.load_persistent_state()
+        assert coordinator(restored).upload_status('s1', 'upload-1')['state'] == 'failed'
+        assert post_upload(c)[1]['state'] == 'committed'
+    assert len(list((tmp_path / 'uploads' / 's1').iterdir())) == 1

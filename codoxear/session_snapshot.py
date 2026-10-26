@@ -16,9 +16,9 @@ Upsert rules (``SessionSnapshotStore.upsert``), applied per incoming entry
 
 (a) Same transcript key. The stored entry is updated in place. When the
     registry id differs the transcript was resumed by a new broker, and the
-    result reports an ``IdentityRemap`` so the coordinator can move
-    per-session state (queue, draft, alias, ...) from the old registry id to
-    the new one. Any ``restoring`` mark clears: the live upsert is the proof
+    result reports an ``IdentityRemap`` and persists a replayable intent so
+    the coordinator can move per-session state (queue, draft, alias, ...) from
+    the old registry id to the new one before acknowledging the intent. Any ``restoring`` mark clears: the live upsert is the proof
     the restore landed.
 (b) Same broker incarnation (``session_id`` and ``start_ts``) under a
     different transcript key: the live session moved on (Pi ``/new``,
