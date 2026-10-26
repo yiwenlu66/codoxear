@@ -3,13 +3,23 @@
 Feature request: *quick session should be named something like "Quick Session xx"
 and have a dedicated dir (e.g. `~/codoxear-xxx`) rather than `$HOME`.*
 
-Status: plan only — nothing implemented.
+Status: implemented in `33889b8d`. Shipped form and the two deviations from this
+document:
+
+- The slot counter is owned by `codoxear/quick_workspace.py` (which writes
+  `<app_dir>/quick_sessions.json` through `json_state`) instead of being threaded
+  through `SessionStore`; only `quick_root` was added to the store, for the
+  recent-cwd filter. One module owns one file, the way `draft_store`/`queue_store`
+  already do.
+- §5.6/§6.3 (report the leftover directory path on delete, toast it) were dropped
+  as the plan allowed: deleting a quick session only `rmdir`s the workspace when
+  it is empty. Users find retained files at the fixed path `~/codoxear-quick`.
 
 ---
 
-## 1. What happens today
+## 1. What happened before this change
 
-`app_quick_session.js::start()` calls `spawnSession("~", …)`, so the launch body
+`app_quick_session.js::start()` called `spawnSession("~", …)`, so the launch body
 carries `cwd: "~"`, the server expands it (`launch_path_runtime.expand_user_path`),
 and the broker sidecar records `/home/<user>`. Nothing distinguishes a quick
 session from a session the user deliberately opened in `~`.

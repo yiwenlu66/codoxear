@@ -80,3 +80,37 @@ User: "no env/knob for this; just hardcode default. what if overflows 99?"
 Push held: `subagent-chat-01a17685` asked for no main publication while the
 upload-robustness merge lands. Committed locally only; origin/main still
 `2b2f1fae` at the time of this entry.
+
+## 2026-10-26T16:40Z — implemented and verified
+
+Shipped as 33889b8d (feature) + 60505805 (help-text correction), pushed to main
+(b7544dcb..60505805) and deployed from the committed snapshot.
+
+Implementation shape (deviations in QUICK_SESSION_PLAN.md §Status):
+- `codoxear/quick_workspace.py` owns naming, containment, the slot counter
+  (`<app_dir>/quick_sessions.json`, `{"next_slot": N}`, module lock, dirs as the
+  floor) and `release_workspace` (rmdir-only-if-empty).
+- `POST /api/quick-sessions` → `manager.allocate_quick_session()` in
+  `session_routes._handle_quick_session_allocate`; no directory, no spawn.
+- Client: `app_quick_session.js` reserves inside the gesture *after*
+  `textarea.focus()`, then reuses `spawnSessionWithCwd(cwd, …, sessionName)` so
+  the existing rename sets the alias; new seam `reserveQuickSession` wired in
+  `app_wiring.js` + `app_application_composition.js`.
+- `SessionStore.quick_root` filters quick cwds out of `recent_cwds` on write and
+  read; `launch_attempt_row(..., quick_root=)` names provisional rows from the
+  slot; `control_routes._handle_delete` trims an empty quick workspace.
+
+Verification evidence:
+- `scripts/docker_quick_session_verify.sh 33889b8d` → PASS, EXIT=0,
+  artifacts /tmp/codoxear-quick-verify.FoJ4H4. Measured: session cwd
+  `/home/tester/codoxear-quick/quick-01`; alias + display_name + sidebar
+  `.titleText` all `Quick Session 01`; launch body cwd = the workspace path;
+  `quick_dirs == ['quick-01']` after two failed starts (reserve creates nothing);
+  `recent_cwds == ['/tmp']`; draft handoff, broker ACK, mobile drawer/focus,
+  failure dialog `cwd: "~"`. In-container pytest: 45 passed.
+- Screenshots: starting.png shows "Starting Pi · auto-jev-main · low in Quick
+  Session 01…" with a preserved draft.
+- Host suite: 2613 passed, 1 failed —
+  `test_hint_mode_coverage::test_rendered_shell_interactives_are_declared_or_explicitly_excluded`
+  (missing `draftUndoBtn`). Reproduced at b7544dcb in a detached worktree, so it
+  predates this change.
