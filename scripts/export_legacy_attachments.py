@@ -28,12 +28,27 @@ def legacy_projection(envelope):
     return attachments, sorted(pending)
 
 
+def require_settled_remaps(backup):
+    snapshot = backup.with_name('session_snapshot.json')
+    if not snapshot.exists():
+        return
+    value = json.loads(snapshot.read_text())
+    if not isinstance(value, dict) or not isinstance(value.get('remap_intents', []), list):
+        raise ValueError('cannot verify session_snapshot.json remap_intents; preserve the full backup and repair it before downgrade')
+    if value.get('remap_intents'):
+        raise ValueError('unresolved remap_intents in session_snapshot.json: finish or explicitly resolve transfers with the new server before downgrade; preserve the full backup')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('v2_backup', type=Path)
     parser.add_argument('output_directory', type=Path)
     args = parser.parse_args()
     lists, pending = legacy_projection(json.loads(args.v2_backup.read_text()))
+    try:
+        require_settled_remaps(args.v2_backup)
+    except ValueError as exc:
+        parser.error(str(exc))
     args.output_directory.mkdir(mode=0o700)
     for name, value in [('staged_attachments.json', lists), ('pending_attachments.json', pending)]:
         path = args.output_directory / name

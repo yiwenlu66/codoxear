@@ -31,6 +31,30 @@ def test_export_preserves_files_and_pending_without_overwriting(tmp_path):
     assert json.loads((out / 'staged_attachments.json').read_text())['s'] == [item]
 
 
+@pytest.mark.parametrize('intents', [[{'old_session_id': 'old', 'new_session_id': 'new'}], 'invalid'])
+def test_export_refuses_outstanding_or_unverifiable_remaps_without_output(tmp_path, intents):
+    backup = tmp_path / 'staged_attachments.json'
+    backup.write_text(json.dumps({'version': 2, 'sessions': {}}))
+    snapshot = tmp_path / 'session_snapshot.json'
+    snapshot.write_text(json.dumps({'remap_intents': intents}))
+    before = snapshot.read_bytes()
+    out = tmp_path / 'export'
+    result = subprocess.run([sys.executable, str(SCRIPT), str(backup), str(out)], capture_output=True, text=True)
+    assert result.returncode != 0
+    assert 'remap_intents' in result.stderr and 'before downgrade' in result.stderr
+    assert not out.exists()
+    assert snapshot.read_bytes() == before
+
+
+def test_export_accepts_settled_snapshot(tmp_path):
+    backup = tmp_path / 'staged_attachments.json'
+    backup.write_text(json.dumps({'version': 2, 'sessions': {}}))
+    (tmp_path / 'session_snapshot.json').write_text(json.dumps({'remap_intents': []}))
+    out = tmp_path / 'export'
+    subprocess.run([sys.executable, str(SCRIPT), str(backup), str(out)], check=True)
+    assert json.loads((out / 'staged_attachments.json').read_text()) == {}
+
+
 @pytest.mark.parametrize('value', [{}, {'version': 1, 'sessions': {}}, {'version': 2, 'sessions': {'s': {'attachments': [], 'pending': 'false'}}}])
 def test_rejects_unknown_or_invalid_envelope(value):
     with pytest.raises(ValueError):

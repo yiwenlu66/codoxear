@@ -103,15 +103,24 @@ below instead of simply deploying an older commit.
 
 ### Downgrade procedure (operator action, not automatic deployment)
 
-1. Stop **only** `codoxear-server.service`; leave brokers and agent processes
-   running. Close browser tabs or otherwise prevent new staging mutations.
+1. Before rollback, require **no outstanding `remap_intents`** in
+   `session_snapshot.json`. Finish or explicitly resolve any pending identity
+   transfers using the new server, then stop **only** `codoxear-server.service`;
+   leave brokers and agent processes running. Close browser tabs or otherwise
+   prevent new staging mutations. Older readers discard these intents and can
+   sweep a source queue before its transfer completes; exporting attachment
+   lists alone does not make such a rollback valid.
 2. Back up the complete application state directory, including
-   `staged_attachments.json`, `pending_attachments.json`, and `uploads/`, with
+   `session_snapshot.json`, `staged_attachments.json`, `pending_attachments.json`, and `uploads/`, with
    restrictive permissions. Keep this original v2 backup unchanged.
 3. From the new-code checkout, run
    `python3 scripts/export_legacy_attachments.py <backup>/staged_attachments.json <new-export-directory>`.
    The tool refuses an existing output directory and never edits its input.
-   Inspect the exported lists and confirm every referenced upload file remains.
+   It checks the sibling `session_snapshot.json` when present and refuses
+   non-empty or malformed `remap_intents`; supply the complete stopped-server
+   backup, not an attachment-only copy that would bypass that check. The export
+   never replays or migrates transfers. Inspect the exported lists and confirm
+   every referenced upload file remains.
 4. While the server is still stopped, install the exported
    `staged_attachments.json` and `pending_attachments.json` into the application
    state directory with the same owner and mode 0600. Keep the existing upload
