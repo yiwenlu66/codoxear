@@ -9,7 +9,7 @@
 
   // One user-visible state ("not live") carried by an icon. The three reasons
   // below are evidence channels, not distinct UI states: the browser link
-  // signal, a cache-served response that looks like a 200, and repeated
+  // signal, cached data served after a failed transfer, and repeated
   // transport failures. They differ in how they are detected and cleared, so
   // they stay separate internally; only the hover/assistive text names them.
   const MESSAGES = Object.freeze({
@@ -64,11 +64,9 @@
       return render();
     }
 
-    // The service worker answered from its offline cache: the payload was
-    // usable, but no server responded. One stale answer is proof of
-    // unreachability — no threshold needed. Without this, a cache-served 200
-    // would read as health and the icon would clear on stale content. This is
-    // the dominant evidence channel whenever the page is served offline.
+    // app_api calls this only for browser-offline or failed-transfer cache
+    // fallbacks. A cache hit or lost delivery race alone never calls it.
+    // Cached-data freshness and transport reachability are separate facts.
     function reportStale() {
       staleServed = true;
       return render();

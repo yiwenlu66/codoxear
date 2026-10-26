@@ -19,7 +19,7 @@ def eval_polling_and_cache() -> dict:
         const requests = []; let responseNo = 0;
         const ctx = {{ window: {{ CodoxearUrls: {{resolveAppUrl:p=>"http://host"+p}}, CodoxearPerf: {{pushSample:()=>{{}}}} }}, performance: {{now:()=>1}},
           fetch: async (url, options) => {{ requests.push([url, options.headers["If-None-Match"] || null]); responseNo += 1;
-            const notModified=responseNo===2; return {{status:notModified?304:200, ok:true, headers:{{get:()=>notModified?null:'"sessions-v1"'}}, text:async()=>JSON.stringify({{sessions:["one"]}})}}; }} }};
+            const notModified=responseNo===2; return {{status:notModified?304:200, ok:true, headers:{{get:(name)=>name==='ETag'&&!notModified?'"sessions-v1"':null}}, text:async()=>JSON.stringify({{sessions:["one"]}})}}; }} }};
         vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);
         (async()=>{{ const polling=ctx.window.CodoxearPolling, api=ctx.window.CodoxearApi;
           const first=await api.api("/api/sessions"); const second=await api.api("/api/sessions");

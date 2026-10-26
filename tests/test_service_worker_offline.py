@@ -49,7 +49,7 @@ let clock = 0, timerId = 0;
 const timers = new Map();
 function setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, at: clock + delay }); return id; }
 function clearTimeout(id) { timers.delete(id); }
-async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
+async function flush() { for (let i = 0; i < 60; i++) await Promise.resolve(); await new Promise(setImmediate); }
 async function advance(ms) {
   clock += ms;
   for (const [id, timer] of [...timers]) {
@@ -58,7 +58,7 @@ async function advance(ms) {
   await flush();
 }
 class FakeDate extends Date { static now() { return clock; } }
-const ctx = { self, clients, caches, URL, Request, Response, Headers, Date: FakeDate, setTimeout, clearTimeout, console: { warn: (...args) => warnings.push(args) }, fetch: async request => { fetches.push(request.url); return network(request); } };
+const ctx = { self, clients, caches, URL, Request, Response, Headers, AbortController, Date: FakeDate, setTimeout, clearTimeout, console: { warn: (...args) => warnings.push(args) }, fetch: async (request, options) => { fetches.push(request.url); return network(request, options); } };
 vm.createContext(ctx);
 vm.runInContext(WORKER_SOURCE, ctx);
 function dispatch(type, extra = {}) {
@@ -68,7 +68,7 @@ function dispatch(type, extra = {}) {
   return { response, waits, async finish() { await Promise.all(waits); } };
 }
 function request(path, options = {}) {
-  return { url: new URL(path, origin).href, method: options.method || 'GET', mode: options.mode || 'cors',
+  return { url: new URL(path, origin).href, method: options.method || 'GET', mode: options.mode || 'cors', cache: options.cache || 'default', signal: options.signal,
     headers: options.headers instanceof Headers ? options.headers : new Headers(options.headers || {}) };
 }
 async function get(path, options = {}) {
@@ -85,8 +85,10 @@ function offline() { network = async () => { throw new TypeError('offline'); }; 
 
 def run_worker(body: str) -> None:
     program = "const WORKER_SOURCE = " + json.dumps(WORKER.read_text()) + ";\n" + HARNESS
-    program += "\n(async () => {\n" + body + "\n})().catch(e => { console.error(e); process.exit(1); });"
-    subprocess.run(["node", "-e", program], check=True, text=True, capture_output=True)
+    program += "\n(async () => {\n" + body + "\nconsole.log('WORKER_DONE');\n})().catch(e => { console.error(e); process.exit(1); });"
+    result = subprocess.run(["node", "-e", program], text=True, capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "WORKER_DONE" in result.stdout, "scenario did not complete (unsettled promise)"
 
 
 def test_navigation_network_first_and_ignore_search_offline_fallback() -> None:
@@ -121,10 +123,10 @@ def test_navigation_marker_preserves_last_offline_fallback_across_network_recove
 
       network = async () => new Response('recovered shell');
       // The first recovery request serves cache while its revalidation clears the latch.
-      assert.equal(await (await get('/?third=3', { mode: 'navigate' })).text(), 'network shell');
+      assert.equal(await (await get('/?third=3', { mode: 'navigate' })).text(), 'recovered shell');
       const recoveryFallback = await (await cached('codoxear-sw-meta-v1', '/sw-meta/last-offline-navigation')).json();
       assert.equal(recoveryFallback.offline, true);
-      assert.equal(recoveryFallback.url, origin + '/?third=3');
+      assert.equal(recoveryFallback.url, origin + '/?second=2');
       assert.equal(await (await get('/?fourth=4', { mode: 'navigate' })).text(), 'recovered shell');
       marker = await (await cached('codoxear-sw-meta-v1', '/sw-meta/last-navigation')).json();
       const retainedOfflineMarker = await (await cached('codoxear-sw-meta-v1', '/sw-meta/last-offline-navigation')).json();
@@ -153,6 +155,7 @@ def test_api_200_snapshots_survive_offline_with_exact_query_keys() -> None:
       }
       await assert.rejects(get('/api/sessions/s1/messages/tail?limit=10'), /offline/);
       network = async () => new Response('new sessions');
+      await advance(30000);
       await get('/api/sessions'); // Cached delivery plus successful background recovery.
       assert.equal(await (await get('/api/sessions')).text(), 'new sessions');
     """)
@@ -186,6 +189,7 @@ def test_cache_fallback_responses_are_marked_stale_with_a_reason() -> None:
       // Recovery: the suspect-window request still serves marked cache while its
       // background revalidation clears the latch; the next request is live again.
       network = async () => new Response('fresh');
+      await advance(2000);
       const revalidating = await get('/api/sessions');
       assert.equal(revalidating.headers.get('X-Codoxear-Stale'), 'suspect');
       const recovered = await get('/api/sessions');
@@ -407,57 +411,28 @@ def test_activation_warmup_skips_non_200_and_isolates_asset_failures() -> None:
 
 def test_network_first_hanging_fetch_times_out_but_late_success_refreshes_cache() -> None:
     run_worker("""
-      for (const [path, options, name] of [
-        ['/?warm=1', {mode: 'navigate'}, 'codoxear-html-v1'],
-        ['/api/me', {}, 'codoxear-api-v1'],
-      ]) {
-        network = async () => new Response('cached');
-        await get(path, options);
-        let resolveFetch, delivered = false;
-        network = () => new Promise(resolve => { resolveFetch = resolve; });
-        const target = options.mode === 'navigate' ? '/?hang=1' : path;
-        const event = dispatch('fetch', {request: request(target, options)});
-        event.response.then(() => { delivered = true; });
-        await flush();
-        const before = fetches.length;
-        await advance(2999);
-        assert.equal(delivered, false, 'hanging network must remain pending before the 3s floor');
-        // EWMA adaptation may have raised the bound; cross its 10s ceiling.
-        await advance(7001);
-        const timedOut = await event.response;
-        assert.equal(timedOut.headers.get('X-Codoxear-Stale'), 'timeout');
-        assert.equal(await timedOut.text(), 'cached');
-        assert.equal(delivered, true);
-        assert.equal(fetches.length, before, 'timeout must not retry or abort the fetch');
-        let backgroundFinished = false;
-        event.finish().then(() => { backgroundFinished = true; });
-        await flush();
-        assert.equal(backgroundFinished, false, 'waitUntil retains late cache refresh');
-        if (options.mode === 'navigate') {
-          const marker = await (await cached('codoxear-sw-meta-v1', '/sw-meta/last-offline-navigation')).json();
-          assert.equal(marker.url, origin + target);
-          assert.equal(marker.offline, true);
-        }
-        resolveFetch(new Response('late success'));
-        await event.finish();
-        assert.equal(await (await cached(name, target)).text(), 'late success');
-        assert.equal(timers.size, 0);
-        // A lost race is slowness, not unreachability: it must not arm the
-        // suspect latch, so the next request still races the network.
-        let resolveNext, nextDelivered = false;
-        network = () => new Promise(resolve => { resolveNext = resolve; });
-        const nextEvent = dispatch('fetch', {request: request(target, options)});
-        nextEvent.response.then(() => { nextDelivered = true; });
-        await flush();
-        assert.equal(timers.size, 1, 'a timed-out request must not latch the network as suspect');
-        assert.equal(nextDelivered, false);
-        resolveNext(new Response('next live'));
-        const nextResponse = await nextEvent.response;
-        assert.equal(nextResponse.headers.get('X-Codoxear-Stale'), null);
-        assert.equal(await nextResponse.text(), 'next live');
-        await nextEvent.finish();
-        assert.equal(timers.size, 0);
-      }
+
+      await get('/api/me');
+      let resolveFetch;
+      network = () => new Promise(resolve => { resolveFetch = resolve; });
+      const event = dispatch('fetch', {request: request('/api/me')});
+      await flush();
+      await advance(3000);
+      assert.equal((await event.response).headers.get('X-Codoxear-Stale'), 'timeout');
+      let finished = false;
+      event.finish().then(() => { finished = true; });
+      await flush();
+      assert.equal(finished, false);
+      resolveFetch(new Response('late success'));
+      await event.finish();
+      assert.equal(await (await cached('codoxear-api-v1', '/api/me')).text(), 'late success');
+      assert.equal(timers.size, 0);
+      // Slow completed reads cool down per key, without being labelled unavailable.
+      const before = fetches.length;
+      const slowHit = await get('/api/me');
+      assert.equal(slowHit.headers.get('X-Codoxear-Stale'), 'timeout');
+      assert.equal(fetches.length, before);
+
     """)
 
 
@@ -626,239 +601,168 @@ def test_network_first_quick_success_clears_timeout_and_missing_navigator_works(
     """)
 
 
-def test_network_first_uncached_timeout_rejects_but_late_fetch_can_warm_cache() -> None:
+def test_uncached_slow_request_keeps_running_until_retained_deadline() -> None:
     run_worker("""
-      for (const [path, options, name] of [
-        ['/uncached', {mode: 'navigate'}, 'codoxear-html-v1'],
-        ['/api/uncached', {}, 'codoxear-api-v1'],
-      ]) {
-        let resolveFetch;
-        network = () => new Promise(resolve => { resolveFetch = resolve; });
-        const event = dispatch('fetch', {request: request(path, options)});
-        const rejected = assert.rejects(event.response, /timed out/);
-        await flush();
-        await advance(3000);
-        await rejected;
-        resolveFetch(new Response('late'));
-        await event.finish();
-        assert.equal(await (await cached(name, path)).text(), 'late');
-      }
+
+      let resolveFetch, delivered = false;
+      network = () => new Promise(resolve => { resolveFetch = resolve; });
+      const event = dispatch('fetch', {request: request('/api/uncached')});
+      event.response.then(() => { delivered = true; });
+      await flush(); await advance(10000);
+      assert.equal(delivered, false, 'a cache delivery budget is not an uncached deadline');
+      resolveFetch(new Response('late'));
+      assert.equal(await (await event.response).text(), 'late');
+      await event.finish();
+      assert.equal(await (await cached('codoxear-api-v1', '/api/uncached')).text(), 'late');
+
     """)
 
 
-def test_network_suspect_rejection_serves_next_cached_api_without_another_timer() -> None:
+def test_failed_refresh_backoff_is_per_key_and_suppresses_repeat_fetches() -> None:
     run_worker("""
-      await get('/', {mode: 'navigate'});
-      await get('/api/me');
-      await get('/api/sessions');
-      // A rejection is proof of unreachability: it arms the suspect latch.
-      offline();
-      const armed = await get('/api/me');
-      assert.equal(armed.headers.get('X-Codoxear-Stale'), 'suspect');
-      network = () => new Promise(() => {});
-      const before = fetches.length, deliveredAt = clock;
-      for (const path of ['/api/me', '/api/sessions']) {
-        const next = dispatch('fetch', {request: request(path)});
-        assert.equal(await (await next.response).text(), 'online');
-        assert.equal(clock, deliveredAt, 'cached delivery requires no clock advancement');
-        assert.equal(timers.size, 0, 'latched cache hits never start a timeout');
-        assert.equal(next.waits.length, 1, 'revalidation retained in worker lifetime');
-      }
-      assert.equal(fetches.length, before + 2, 'each cache hit revalidates in background');
-    """)
 
-
-def test_network_suspect_background_success_of_any_status_restores_network_first() -> None:
-    run_worker("""
-      for (const status of [200, 304, 401, 500]) {
-        network = async () => new Response('cached');
-        await get('/api/me');
-        offline(); // rejection arms the suspect latch
-        const armed = await get('/api/me');
-        assert.equal(armed.headers.get('X-Codoxear-Stale'), 'suspect');
-        let resolveBackground;
-        network = () => new Promise(resolve => { resolveBackground = resolve; });
-        const second = dispatch('fetch', {request: request('/api/me')});
-        assert.equal(await (await second.response).text(), 'cached');
-        assert.equal(timers.size, 0);
-        resolveBackground(new Response(status === 304 ? null : 'alive', {status}));
-        await second.finish();
-        assert.equal(await (await cached('codoxear-api-v1', '/api/me')).text(), status === 200 ? 'alive' : 'cached');
-        let resolveForeground, delivered = false;
-        network = () => new Promise(resolve => { resolveForeground = resolve; });
-        const third = dispatch('fetch', {request: request('/api/me')});
-        third.response.then(() => { delivered = true; });
-        await flush();
-        assert.equal(timers.size, 1, 'recovered request races network again');
-        await advance(1);
-        assert.equal(delivered, false, 'third request must not serve cached data');
-        resolveForeground(new Response('fresh'));
-        assert.equal(await (await third.response).text(), 'fresh');
-        await third.finish();
-        assert.equal(timers.size, 0);
-      }
-    """)
-
-
-def test_network_suspect_expires_exactly_30_seconds_after_rejection() -> None:
-    run_worker("""
-      await get('/api/me');
-      offline(); // rejects immediately at clock 0: latch armed until t=30000
-      const armed = await get('/api/me');
-      assert.equal(armed.headers.get('X-Codoxear-Stale'), 'suspect');
-      network = () => new Promise(() => {});
-      await advance(29999);
-      const within = dispatch('fetch', {request: request('/api/me')});
-      assert.equal(await (await within.response).text(), 'online');
-      assert.equal(timers.size, 0);
-      await advance(1);
-      let delivered = false;
-      const expired = dispatch('fetch', {request: request('/api/me')});
-      expired.response.then(() => { delivered = true; });
-      await flush();
-      assert.equal(timers.size, 1, 'at expiry network must be tried normally');
-      assert.equal(delivered, false);
-      await advance(2999);
-      assert.equal(delivered, false);
-      await advance(1);
-      const expiredResponse = await expired.response;
-      assert.equal(expiredResponse.headers.get('X-Codoxear-Stale'), 'timeout');
-      assert.equal(await expiredResponse.text(), 'online');
-      assert.equal(timers.size, 0);
-    """)
-
-
-def test_network_suspect_cache_miss_attempts_network_and_foreground_success_clears() -> None:
-    run_worker("""
       await get('/api/me');
       offline();
-      await get('/api/me');
-      for (const status of [200, 401]) {
-        let resolveFetch;
-        network = () => new Promise(resolve => { resolveFetch = resolve; });
-        const before = fetches.length;
-        const miss = dispatch('fetch', {request: request('/api/uncached-' + status)});
-        await flush();
-        assert.equal(fetches.length, before + 1);
-        assert.equal(timers.size, 1, 'cache miss uses foreground race despite latch');
-        resolveFetch(new Response('network', {status}));
-        assert.equal((await miss.response).status, status);
-        await miss.finish();
-        network = async () => new Response('fresh');
-        assert.equal(await (await get('/api/me')).text(), 'fresh', 'foreground success clears latch');
-        offline();
-        await get('/api/me');
-      }
-    """)
-
-
-def test_network_suspect_rejection_latches_and_background_errors_do_not_extend_window() -> None:
-    run_worker("""
-      await get('/api/me');
-      offline();
-      await get('/api/me');
-      assert.equal(clock, 0);
-      await advance(29999);
+      assert.equal((await get('/api/me')).headers.get('X-Codoxear-Stale'), 'suspect');
       const before = fetches.length;
-      const second = dispatch('fetch', {request: request('/api/me')});
-      assert.equal(await (await second.response).text(), 'online');
-      await second.finish(); // Rejected background fetch is swallowed.
-      assert.equal(fetches.length, before + 1);
+      for (let i = 0; i < 10; i++) {
+        assert.equal((await get('/api/me')).headers.get('X-Codoxear-Stale'), 'suspect');
+      }
+      assert.equal(fetches.length, before, 'failed refresh cooldown suppresses repeated fetches');
       assert.equal(timers.size, 0);
+      network = async () => new Response('independent');
+      assert.equal(await (await get('/api/other')).text(), 'independent');
+
+    """)
+
+
+def test_completed_background_response_of_any_status_restores_normal_delivery() -> None:
+    run_worker("""
+
+      for (const status of [200, 304, 401, 500]) {
+        const path = '/api/status-' + status;
+        await get(path);
+        offline(); await get(path);
+        await advance(2000);
+        network = async () => new Response(status === 304 ? null : 'alive', {status});
+        const revalidation = await get(path);
+        assert.equal(revalidation.headers.get('X-Codoxear-Stale'), 'suspect');
+        network = async () => new Response('fresh');
+        const recovered = await get(path);
+        assert.equal(recovered.headers.get('X-Codoxear-Stale'), null);
+        assert.equal(await recovered.text(), 'fresh');
+      }
+
+    """)
+
+
+def test_backoff_expiry_starts_one_shared_background_refresh() -> None:
+    run_worker("""
+
+      await get('/api/me'); offline(); await get('/api/me');
+      const before = fetches.length;
+      await advance(1999); await get('/api/me');
+      assert.equal(fetches.length, before);
+      let resolveFetch;
+      network = () => new Promise(resolve => { resolveFetch = resolve; });
       await advance(1);
-      network = async () => new Response('fresh');
-      assert.equal(await (await get('/api/me')).text(), 'fresh', 'background rejection must not prolong latch');
+      const a = dispatch('fetch', {request: request('/api/me')});
+      const b = dispatch('fetch', {request: request('/api/me')});
+      assert.equal((await a.response).headers.get('X-Codoxear-Stale'), 'suspect');
+      assert.equal((await b.response).headers.get('X-Codoxear-Stale'), 'suspect');
+      assert.equal(fetches.length, before + 1, 'concurrent stale hits share a retained refresh');
+      resolveFetch(new Response('recovered'));
+      await Promise.all([a.finish(), b.finish()]);
+
+    """)
+
+
+def test_cache_miss_is_independent_of_another_keys_backoff() -> None:
+    run_worker("""
+
+      await get('/api/me'); offline(); await get('/api/me');
+      network = async () => new Response('miss');
+      const fresh = await get('/api/uncached');
+      assert.equal(fresh.headers.get('X-Codoxear-Stale'), null);
+      assert.equal(await fresh.text(), 'miss');
+      const hit = await get('/api/me');
+      assert.equal(hit.headers.get('X-Codoxear-Stale'), 'suspect', 'another resource success cannot make old bytes fresh');
+
+    """)
+
+
+def test_repeated_failed_background_refreshes_back_off() -> None:
+    run_worker("""
+
+      await get('/api/me'); offline(); await get('/api/me');
+      const first = fetches.length;
+      await advance(2000); await get('/api/me');
+      assert.equal(fetches.length, first + 1);
+      await advance(3999); await get('/api/me');
+      assert.equal(fetches.length, first + 1);
+      await advance(1); await get('/api/me');
+      assert.equal(fetches.length, first + 2, 'repeated failures exponentially back off');
+
     """)
 
 
 def test_slow_connection_timeout_never_latches_and_the_bound_adapts() -> None:
     run_worker("""
-      network = async () => new Response('cached');
+
       await get('/api/me');
-      // A 4s response loses the 3s race: cache is served, marked timeout, and
-      // no latch is armed — slowness is not unreachability.
       let resolveFetch;
       network = () => new Promise(resolve => { resolveFetch = resolve; });
       const slow = dispatch('fetch', {request: request('/api/me')});
-      await flush();
-      await advance(3000);
-      const slowResponse = await slow.response;
-      assert.equal(slowResponse.headers.get('X-Codoxear-Stale'), 'timeout');
-      assert.equal(await slowResponse.text(), 'cached');
-      await advance(1000);
-      resolveFetch(new Response('late success')); // resolves 4s after it started
+      await flush(); await advance(3000);
+      assert.equal((await slow.response).headers.get('X-Codoxear-Stale'), 'timeout');
+      await advance(1000); resolveFetch(new Response('late'));
       await slow.finish();
-      assert.equal(await (await cached('codoxear-api-v1', '/api/me')).text(), 'late success');
-      // The observed 4s latency raises the race bound to 8s: a 5s response is
-      // now served live instead of being abandoned to the cache.
-      let resolveNext, delivered = false;
-      network = () => new Promise(resolve => { resolveNext = resolve; });
-      const next = dispatch('fetch', {request: request('/api/me')});
-      next.response.then(() => { delivered = true; });
-      await flush();
-      await advance(5000);
-      assert.equal(delivered, false, 'no timeout below the adapted 8s bound');
-      resolveNext(new Response('slow but live'));
-      await flush();
-      assert.equal(delivered, true, 'adapted 8s bound must outlast a 5s response');
-      const nextResponse = await next.response;
-      assert.equal(nextResponse.headers.get('X-Codoxear-Stale'), null);
-      assert.equal(await nextResponse.text(), 'slow but live');
-      await next.finish();
-      // The success reset the escalation clock: a fresh hang starts unproven
-      // again instead of escalating immediately on the earlier timeouts.
-      network = () => new Promise(() => {});
-      const third = dispatch('fetch', {request: request('/api/me')});
-      await flush();
-      await advance(9000); // the adapted ~8.6s bound fires near the end
-      const thirdResponse = await third.response;
-      assert.equal(thirdResponse.headers.get('X-Codoxear-Stale'), 'timeout');
-      assert.equal(await thirdResponse.text(), 'slow but live');
-      assert.equal(timers.size, 0);
+      // A different key uses the learned 8s bound and is not blocked by backoff.
+      let resolveOther, delivered = false;
+      network = () => new Promise(resolve => { resolveOther = resolve; });
+      const other = dispatch('fetch', {request: request('/api/other')});
+      other.response.then(() => { delivered = true; });
+      await flush(); await advance(5000);
+      assert.equal(delivered, false);
+      resolveOther(new Response('slow live'));
+      assert.equal((await other.response).headers.get('X-Codoxear-Stale'), null);
+      await other.finish();
+
     """)
 
 
-def test_never_settling_hang_escalates_to_suspect_after_8_seconds() -> None:
+def test_elapsed_silence_never_becomes_unreachability_and_read_is_bounded() -> None:
     run_worker("""
+
       await get('/api/me');
-      network = () => new Promise(() => {});
-      // Each request loses the 3s race; while the outage is unproven the marks
-      // stay 'timeout', and once no fetch has settled for 8s the hang
-      // escalates: 'suspect' marks and an armed latch.
-      const marks = [];
-      for (let i = 0; i < 4; i++) {
-        const event = dispatch('fetch', {request: request('/api/me')});
-        await flush();
-        await advance(3000);
-        marks.push((await event.response).headers.get('X-Codoxear-Stale'));
+      let retainedSignal;
+      network = (_request, options) => { retainedSignal = options.signal; return new Promise(() => {}); };
+      const events = [];
+      for (let i = 0; i < 6; i++) {
+        const event = dispatch('fetch', {request: request('/api/me')}); events.push(event);
+        await flush(); await advance(3000);
+        assert.equal((await event.response).headers.get('X-Codoxear-Stale'), 'timeout');
       }
-      assert.deepEqual(marks, ['timeout', 'timeout', 'timeout', 'suspect']);
-      // The latch is armed now: cache is served immediately, no new race.
-      const latched = dispatch('fetch', {request: request('/api/me')});
-      const latchedResponse = await latched.response;
-      assert.equal(latchedResponse.headers.get('X-Codoxear-Stale'), 'suspect');
-      assert.equal(await latchedResponse.text(), 'online');
-      assert.equal(timers.size, 0);
+      assert.equal(fetches.length, 2, 'all stale hits share the same pending fetch');
+      await advance(60000);
+      await Promise.all(events.map(e => e.finish()));
+      assert.equal(retainedSignal.aborted, true);
+      assert.equal((await get('/api/me')).headers.get('X-Codoxear-Stale'), 'timeout');
+
     """)
 
 
-def test_network_suspect_keeps_offline_hint_first_and_marks_cached_navigation() -> None:
+def test_browser_offline_hint_skips_refresh_and_marks_cached_navigation() -> None:
     run_worker("""
+
       await get('/', {mode: 'navigate'});
-      offline();
-      await get('/?latch=1', {mode: 'navigate'});
       self.navigator.onLine = false;
       const before = fetches.length;
-      assert.equal(await (await get('/?offline=1', {mode: 'navigate'})).text(), 'online');
-      assert.equal(fetches.length, before, 'offline hint still skips background fetch entirely');
-      self.navigator.onLine = true;
-      network = () => new Promise(() => {});
-      const event = dispatch('fetch', {request: request('/?suspect=1', {mode: 'navigate'})});
-      assert.equal(await (await event.response).text(), 'online', 'latched navigation ignores query for match');
-      await flush();
+      const event = dispatch('fetch', {request: request('/?offline=1', {mode: 'navigate'})});
+      assert.equal((await event.response).headers.get('X-Codoxear-Stale'), 'offline');
+      await event.finish();
+      assert.equal(fetches.length, before);
       const marker = await (await cached('codoxear-sw-meta-v1', '/sw-meta/last-offline-navigation')).json();
       assert.equal(marker.offline, true);
-      assert.equal(marker.url, origin + '/?suspect=1');
-      assert.equal(fetches.length, before + 1);
-      assert.equal(timers.size, 0);
+
     """)

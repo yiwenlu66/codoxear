@@ -81,61 +81,117 @@ const perfWindow = 200;
     apiEtags.clear();
   }
 
-  async function api(path, { method = "GET", body, signal } = {}) {
+  const RESPONSE_BODY_TIMEOUT_MS = 60000;
+
+  function requestTimeout() {
+    return Object.assign(new Error("Request deadline exceeded"), { name: "TimeoutError", code: "REQUEST_TIMEOUT" });
+  }
+
+  async function api(path, { method = "GET", body, rawBody, headers, cache, signal, timeoutMs } = {}) {
+    if (body !== undefined && rawBody !== undefined) throw new TypeError("body and rawBody are mutually exclusive");
+    if (timeoutMs !== undefined && !(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+      throw new TypeError("timeoutMs must be a positive finite duration");
+    }
     const t0 = performance.now();
     const rawPath = String(path ?? "");
-    const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";
-    const opts = { method, headers: {}, signal };
-    if (cacheableSessionsRequest && apiEtags.has(rawPath)) {
-      opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;
+    const authoritative = /\/attachments\/upload-status(?:\?|$)/.test(rawPath);
+    const cacheMode = authoritative ? "no-store" : cache;
+    const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions" && cacheMode !== "no-store";
+    const requestHeaders = {};
+    // Keep a plain header record for existing callers, accepting Headers and tuples too.
+    if (headers) {
+      const entries = typeof headers[Symbol.iterator] === "function" ? headers : Object.entries(headers);
+      for (const [name, value] of entries) requestHeaders[name] = value;
+    }
+    const hasHeader = (name) => Object.keys(requestHeaders).some((key) => key.toLowerCase() === name.toLowerCase());
+    const opts = { method, headers: requestHeaders, signal };
+    if (cacheMode !== undefined) opts.cache = cacheMode;
+    if (cacheableSessionsRequest && apiEtags.has(rawPath) && !hasHeader("If-None-Match")) {
+      requestHeaders["If-None-Match"] = apiEtags.get(rawPath).etag;
     }
     if (body !== undefined) {
-      opts.headers["Content-Type"] = "application/json";
+      if (!hasHeader("Content-Type")) requestHeaders["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
+    } else if (rawBody !== undefined) {
+      if (!hasHeader("Content-Type")) requestHeaders["Content-Type"] = "application/octet-stream";
+      opts.body = rawBody;
     }
     const url = CodoxearUrls.resolveAppUrl(path);
-    let res;
+    // No default total deadline: uploading a file may legitimately take minutes.
+    // The finite response-body budget starts only after response headers arrive.
+    const controller = typeof AbortController === "undefined" ? null : new AbortController();
+    if (controller) opts.signal = controller.signal;
+    let timer, timedOut = false, rejectDeadline;
+    const deadline = new Promise((_resolve, reject) => { rejectDeadline = reject; });
+    const armDeadline = (ms) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        rejectDeadline(requestTimeout());
+        controller?.abort();
+      }, ms);
+    };
+    const cancel = () => {
+      controller?.abort();
+      rejectDeadline(Object.assign(new Error("Request cancelled"), { name: "AbortError" }));
+    };
+    if (signal) {
+      signal.addEventListener("abort", cancel, { once: true });
+      if (signal.aborted) cancel();
+    }
+    if (timeoutMs !== undefined) armDeadline(timeoutMs);
+    let res, stale, responseComplete = false;
     try {
-      res = await fetch(url, opts);
+      res = await Promise.race([fetch(url, opts), deadline]);
+      stale = res.headers.get("X-Codoxear-Stale");
+      const transport = res.headers.get("X-Codoxear-Transport");
+      if (transport === "deadline" || transport === "capacity") {
+        if (transport === "deadline") throw requestTimeout();
+        throw Object.assign(new Error("Retained read capacity exhausted"), { name: "ReadCapacityError", code: "READ_CAPACITY" });
+      }
+      if (timeoutMs === undefined && res.body) armDeadline(RESPONSE_BODY_TIMEOUT_MS);
+      const txt = await Promise.race([res.text(), deadline]);
+      responseComplete = true;
+      // Complete bytes prove contact, regardless of HTTP status or JSON validity.
+      // Cached bytes only describe freshness; only failure-backed/offline cache
+      // marks feed the connection indicator. A delivery timeout is no verdict.
+      if (!stale) reportTransport(API_TRANSPORT_LIVE);
+      else if (stale === "offline" || stale === "suspect") reportTransport(API_TRANSPORT_STALE);
+      const dt = performance.now() - t0;
+      if (rawPath === "/api/sessions" && method === "GET") codoxearPerfHelpers.pushSample("api_sessions_ms", dt);
+      else if (rawPath.includes("/messages") && method === "GET") {
+        codoxearPerfHelpers.pushSample(rawPath.includes("init=1") ? "api_messages_init_ms" : "api_messages_poll_ms", dt);
+      }
+      if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {
+        const cached = JSON.parse(apiEtags.get(rawPath).text);
+        Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });
+        if (stale) Object.defineProperty(cached, API_RESPONSE_STALE, { value: true });
+        return cached;
+      }
+      let obj;
+      try {
+        obj = JSON.parse(txt);
+      } catch (error) {
+        console.error("api: invalid json response", { path, url, method });
+        throw error;
+      }
+      if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
+      if (stale && obj && typeof obj === "object") Object.defineProperty(obj, API_RESPONSE_STALE, { value: true });
+      const etag = cacheableSessionsRequest && !stale ? res.headers.get("ETag") : null;
+      if (etag) apiEtags.set(rawPath, { etag, text: txt });
+      return obj;
     } catch (error) {
-      // The caller's own cancellation says nothing about reachability; anything
-      // else means no response came back at all.
-      if (!error || error.name !== "AbortError") reportTransport(API_TRANSPORT_FAILED);
+      // Body stream failures count just like fetch failures; HTTP/JSON errors,
+      // caller cancellation and our own delivery deadline do not imply outage.
+      if (timedOut) throw requestTimeout();
+      if (!responseComplete && !signal?.aborted && error?.name !== "AbortError" && error?.name !== "TimeoutError"
+          && error?.name !== "ReadCapacityError" && !error?.status && error?.name !== "SyntaxError") {
+        reportTransport(API_TRANSPORT_FAILED);
+      }
       throw error;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
     }
-    // A response of any status proves an answer arrived. The stale mark says
-    // the answer came from the service worker's cache instead of the server,
-    // and its value names why: "offline"/"suspect" prove unreachability, but
-    // "timeout" only means the delivery race lost while the fetch kept running
-    // — evidence of slowness, not a verdict, so it produces no report. The
-    // retained fetch's outcome delivers the next signal.
-    const stale = res.headers.get("X-Codoxear-Stale");
-    if (!stale) reportTransport(API_TRANSPORT_LIVE);
-    else if (stale !== "timeout") reportTransport(API_TRANSPORT_STALE);
-    const dt = performance.now() - t0;
-    if (rawPath === "/api/sessions" && method === "GET") codoxearPerfHelpers.pushSample("api_sessions_ms", dt);
-    else if (rawPath.includes("/messages") && method === "GET") {
-      if (rawPath.includes("init=1")) codoxearPerfHelpers.pushSample("api_messages_init_ms", dt);
-      else codoxearPerfHelpers.pushSample("api_messages_poll_ms", dt);
-    }
-    if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {
-      const cached = JSON.parse(apiEtags.get(rawPath).text);
-      Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });
-      return cached;
-    }
-    const txt = await res.text();
-    let obj;
-    try {
-      obj = JSON.parse(txt);
-    } catch (e) {
-      console.error("api: invalid json response", { path, url, method, txt });
-      throw e;
-    }
-    if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
-    if (stale) Object.defineProperty(obj, API_RESPONSE_STALE, { value: true });
-    const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;
-    if (etag) apiEtags.set(rawPath, { etag, text: txt });
-    return obj;
   }
 
 export { pushSample, summarize, api, apiResponseNotModified, apiResponseStale, clearApiCache, setTransportReporter };

@@ -5,30 +5,76 @@ const SW_META_CACHE = "codoxear-sw-meta-v1";
 const APP_CACHES = new Set([HTML_CACHE, STATIC_CACHE, API_CACHE, SW_META_CACHE]);
 const NETWORK_FIRST_MIN_TIMEOUT_MS = 3000;
 const NETWORK_FIRST_MAX_TIMEOUT_MS = 10000;
-const NETWORK_SUSPECT_WINDOW_MS = 30000;
-// A lost race starts as unproven slowness: the retained fetch may still
-// succeed. Only when no network-first fetch has settled successfully for this
-// long does a hang escalate to "unreachable" and arm the suspect latch.
-const HANG_SUSPECT_AFTER_MS = 8000;
-// Marks a cache-served fallback so the page can tell "server answered" from
-// "service worker served stale data": behind a cache-serving worker, a
-// resolved 200 is evidence about the cache, not the network. The value names
-// why the cache answered:
-//   offline — the browser reports no link (navigator.onLine === false)
-//   suspect — a fetch rejected outright, or a hang outlasted slowness
-//   timeout — the delivery-bounding race lost, but the fetch is still running;
-//             this is evidence of slowness, never of unreachability
+// A delivery race is a latency policy, never evidence that the link is down.
+const RETAINED_READ_TIMEOUT_MS = 60000;
+const MAX_RETAINED_READS = 8;
+const MAX_BACKGROUND_READS = 3;
+const CACHE_WORK_TIMEOUT_MS = 5000;
+const MAX_CACHE_READS = 8;
+const MAX_CACHE_WRITES = 4;
+const MAX_BACKOFF_KEYS = 128;
 const STALE_HEADER = "X-Codoxear-Stale";
-let networkSuspectUntil = 0;
-// Clock time of the first race timeout since the last successful network-first
-// fetch; 0 while every recent fetch has settled. Any success or rejection
-// resets it — success proves reachability, rejection arms the latch directly.
-let unsettledNetworkSince = 0;
-// EWMA of successful network-first fetch durations; 0 until the first sample.
-// The race timeout adapts to the observed connection so a consistently slow
-// link stops losing every race, while a sample-less worker keeps the 3s bound
-// that the offline cold-boot budget relies on.
+const pendingReads = new Map();
+const refreshBackoff = new Map();
+const cacheWrites = new Map();
+let cacheReads = 0;
+let backgroundReads = 0;
+let activeReads = 0;
 let fetchLatencyEwmaMs = 0;
+
+function timeoutError() {
+  return Object.assign(new Error("Retained read deadline exceeded"), { name: "TimeoutError" });
+}
+
+// Cache Storage offers no cancellation. Keep the slot until the actual work
+// settles, even after its caller stops waiting, so a broken cache cannot spawn
+// an unbounded chain of retained operations.
+function withinBudget(work, ms) {
+  let timer;
+  return Promise.race([
+    work,
+    new Promise((_resolve, reject) => { timer = setTimeout(() => reject(timeoutError()), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function matchCached(cacheName, request, options) {
+  if (cacheReads >= MAX_CACHE_READS) return undefined;
+  cacheReads++;
+  const work = Promise.resolve().then(async () => (await caches.open(cacheName)).match(request, options))
+    .finally(() => { cacheReads--; });
+  return withinBudget(work, CACHE_WORK_TIMEOUT_MS).catch(() => undefined);
+}
+
+function storeResponse(cacheName, request, response) {
+  const key = `${cacheName}:${request.url}`;
+  if (response.status !== 200 || cacheWrites.has(key) || cacheWrites.size >= MAX_CACHE_WRITES) return Promise.resolve();
+  let copy;
+  try { copy = response.clone(); } catch (_) { return Promise.resolve(); }
+  const work = Promise.resolve().then(async () => (await caches.open(cacheName)).put(request, copy))
+    .finally(() => cacheWrites.delete(key));
+  cacheWrites.set(key, work);
+  return withinBudget(work, CACHE_WORK_TIMEOUT_MS).catch(() => {});
+}
+
+function readKey(cacheName, request) {
+  return JSON.stringify([cacheName, request.url, request.credentials, request.mode, request.cache,
+    [...request.headers].sort(([a], [b]) => a.localeCompare(b))]);
+}
+
+function deferRefresh(key, reason) {
+  const previous = refreshBackoff.get(key);
+  const attempts = Math.min(5, (previous?.attempts || 0) + 1);
+  refreshBackoff.delete(key);
+  refreshBackoff.set(key, { attempts, reason, until: Date.now() + Math.min(30000, 1000 * 2 ** attempts) });
+  if (refreshBackoff.size > MAX_BACKOFF_KEYS) refreshBackoff.delete(refreshBackoff.keys().next().value);
+}
+
+function transportResponse(kind) {
+  return new Response(JSON.stringify({ error: kind === "deadline" ? "Read deadline exceeded" : "Retained read capacity exhausted" }), {
+    status: kind === "deadline" ? 504 : 503,
+    headers: { "Content-Type": "application/json", "X-Codoxear-Transport": kind },
+  });
+}
 
 function recordFetchLatency(durationMs) {
   if (!(durationMs >= 0)) return;
@@ -57,6 +103,14 @@ function warnWarmupFailure(error) {
 }
 
 async function warmUrl(url, cacheName) {
+  if (cacheName === API_CACHE) {
+    const request = new Request(url, { credentials: "same-origin" });
+    const read = startRead(readKey(cacheName, request), request, cacheName, true);
+    if (!read) return transportResponse("capacity");
+    const response = await read.promise;
+    await read.done;
+    return response.clone();
+  }
   const cache = await caches.open(cacheName);
   return fetchAndCache(new Request(url, { credentials: "same-origin" }), cache, {
     pruneVersions: cacheName === STATIC_CACHE,
@@ -123,96 +177,119 @@ function markStale(response, reason) {
   });
 }
 
-function networkFirst(event, cacheName, matchOptions, onFallback) {
-  // Register the lifetime before any cache await or fetch settlement. The
-  // response path below resolves it with the retained network + body-storage
-  // work; early cache hits and setup failures settle it immediately.
-  let retainLifetime = () => {};
-  event.waitUntil(new Promise((resolve) => { retainLifetime = resolve; }));
-  return networkFirstResponse(event, cacheName, matchOptions, onFallback, retainLifetime).catch((error) => {
-    retainLifetime();
-    throw error;
-  });
-}
-
-async function networkFirstResponse(event, cacheName, matchOptions, onFallback, retainLifetime) {
-  const request = event.request;
-  const cache = await caches.open(cacheName);
-  if (self.navigator && self.navigator.onLine === false) {
-    const cached = await cache.match(request, matchOptions);
-    if (cached) {
-      retainLifetime();
-      onFallback?.();
-      return markStale(cached, "offline");
-    }
-  }
-  if (Date.now() < networkSuspectUntil) {
-    const cached = await cache.match(request, matchOptions);
-    if (cached) {
-      onFallback?.();
-      const startedAt = Date.now();
-      retainLifetime(fetchAndCache(request, cache).then(() => {
-        recordFetchLatency(Date.now() - startedAt);
-        networkSuspectUntil = 0;
-        unsettledNetworkSince = 0;
-      }).catch(() => {}));
-      return markStale(cached, "suspect");
-    }
-  }
-  // Airplane + VPN tails and captive portals can hang instead of rejecting.
-  // Bound response delivery, but retain the fetch so its outcome decides the
-  // verdict: rejection proves unreachability and arms the suspect latch, while
-  // a late success proves mere slowness, refreshes the cache, and feeds the
-  // adaptive race bound. Losing the race itself arms nothing.
+function startRead(key, request, cacheName, background) {
+  if (pendingReads.has(key)) return pendingReads.get(key);
+  if (activeReads >= MAX_RETAINED_READS || (background && backgroundReads >= MAX_BACKGROUND_READS)) return null;
+  const controller = new AbortController();
   const startedAt = Date.now();
-  let rejected = false;
-  let cacheWrite = Promise.resolve();
-  const network = fetch(request).then((response) => {
-    if (response.status === 200) {
-      // Clone in the fetch continuation, before the consumer can read or
-      // disturb the body. Cache failures must not fail a live network answer.
-      try {
-        cacheWrite = cache.put(request, response.clone()).catch(() => {});
-      } catch (_) {}
+  const read = { storage: Promise.resolve() };
+  activeReads++;
+  if (background) backgroundReads++;
+  let timer, expired = false;
+  const deadline = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(timeoutError());
+      controller.abort();
+    }, RETAINED_READ_TIMEOUT_MS);
+  });
+  // The shared request has its own lifetime: cancelling one page consumer must
+  // not abort another consumer or a cache refresh already retained by the worker.
+  const work = Promise.resolve().then(async () => {
+    const response = await fetch(request, { signal: controller.signal });
+    // Finite API JSON completes at usable bytes. Native streams and derivatives
+    // are excluded by routing; non-JSON document/media bodies stay native.
+    if (cacheName === API_CACHE && /(?:application|text)\/(?:[^;]+\+)?json\b/i.test(response.headers.get("Content-Type") || "")) {
+      const bytes = await response.arrayBuffer();
+      return new Response([204, 205, 304].includes(response.status) ? null : bytes, { status: response.status, statusText: response.statusText, headers: response.headers });
     }
-    recordFetchLatency(Date.now() - startedAt);
-    networkSuspectUntil = 0;
-    unsettledNetworkSince = 0;
+    return response;
+  }).finally(() => {
+    activeReads--;
+    if (background) backgroundReads--;
+  });
+  read.promise = Promise.race([work, deadline]).then((response) => {
+    const duration = Date.now() - startedAt;
+    recordFetchLatency(duration);
+    if (duration >= NETWORK_FIRST_MIN_TIMEOUT_MS) deferRefresh(key, "timeout");
+    else refreshBackoff.delete(key);
+    read.storage = storeResponse(cacheName, request, response);
     return response;
   }, (error) => {
-    rejected = true;
-    networkSuspectUntil = Date.now() + NETWORK_SUSPECT_WINDOW_MS;
-    unsettledNetworkSince = 0;
+    // Locally chosen deadlines are slowness evidence only. Native fetch/body
+    // rejection is a failed transfer, not a statement about cache freshness.
+    const cancelled = error?.name === "AbortError";
+    deferRefresh(key, expired || cancelled ? "timeout" : "suspect");
+    if (expired) return transportResponse("deadline");
     throw error;
+  }).finally(() => {
+    clearTimeout(timer);
   });
-  // Delivery settles at response headers; the event remains alive until the
-  // retained clone has finished storing, including after a fallback response.
-  retainLifetime(network.then(() => cacheWrite).catch(() => {}));
-  let timer;
-  try {
-    return await Promise.race([
-      network,
-      new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Network-first request timed out")), networkFirstTimeoutMs());
-      }),
-    ]);
-  } catch (error) {
-    onFallback?.();
-    const cached = await cache.match(request, matchOptions);
+  read.done = read.promise.then(() => read.storage).catch(() => {}).finally(() => pendingReads.delete(key));
+  pendingReads.set(key, read);
+  return read;
+}
+
+function networkFirst(event, cacheName, matchOptions, onFallback) {
+  let retain;
+  event.waitUntil(new Promise((resolve) => { retain = resolve; }));
+  return networkFirstResponse(event.request, cacheName, matchOptions, onFallback, retain)
+    .catch((error) => { retain(); throw error; });
+}
+
+async function networkFirstResponse(request, cacheName, matchOptions, onFallback, retain) {
+  const key = readKey(cacheName, request);
+  // Read cache concurrently with starting a foreground request. A stalled cache
+  // lookup must not delay a valid live answer or consume the network budget.
+  const cachedPromise = matchCached(cacheName, request, matchOptions);
+  const offline = self.navigator?.onLine === false;
+  const cooldown = refreshBackoff.get(key);
+  const deferred = cooldown && Date.now() < cooldown.until;
+  let cached;
+  if (offline || cooldown) {
+    cached = await cachedPromise;
     if (cached) {
-      if (rejected) return markStale(cached, "suspect");
-      const now = Date.now();
-      if (!unsettledNetworkSince) unsettledNetworkSince = now;
-      // A fetch that never settles outlasts slowness: escalate the hang to
-      // unreachability so cache fallbacks stop masquerading as a live server.
-      if (now - unsettledNetworkSince >= HANG_SUSPECT_AFTER_MS) {
-        networkSuspectUntil = now + NETWORK_SUSPECT_WINDOW_MS;
-        return markStale(cached, "suspect");
-      }
-      return markStale(cached, "timeout");
+      const read = pendingReads.get(key) || (!offline && !deferred ? startRead(key, request, cacheName, true) : null);
+      retain(read?.done);
+      onFallback?.();
+      return markStale(cached, offline ? "offline" : cooldown.reason);
     }
+  }
+  const read = startRead(key, request, cacheName, false);
+  if (!read) {
+    retain();
+    cached = cached || await cachedPromise;
+    if (cached) { onFallback?.(); return markStale(cached, "timeout"); }
+    return transportResponse("capacity");
+  }
+  retain(read.done);
+  let timer, settled = false;
+  try {
+    const delivered = read.promise.then((response) => response.clone());
+    // A cached answer may win after the delivery budget. With no cached answer
+    // there is no useful short timeout: await the complete retained lifecycle.
+    const fallback = new Promise((resolve) => {
+      timer = setTimeout(async () => {
+        const hit = cached || await cachedPromise;
+        if (hit && !settled) {
+          deferRefresh(key, "timeout");
+          onFallback?.();
+          resolve(markStale(hit, "timeout"));
+        }
+      }, networkFirstTimeoutMs());
+    });
+    const response = await Promise.race([delivered, fallback]);
+    if (response.headers.get("X-Codoxear-Transport") === "deadline") {
+      cached = cached || await cachedPromise;
+      if (cached) { onFallback?.(); return markStale(cached, "timeout"); }
+    }
+    return response;
+  } catch (error) {
+    cached = cached || await cachedPromise;
+    if (cached) { onFallback?.(); return markStale(cached, error?.name === "AbortError" ? "timeout" : "suspect"); }
     throw error;
   } finally {
+    settled = true;
     clearTimeout(timer);
   }
 }
@@ -263,6 +340,8 @@ self.addEventListener("fetch", (event) => {
   const scopePath = new URL(self.registration.scope).pathname;
   if (request.method !== "GET" || url.origin !== self.location.origin || !url.pathname.startsWith(scopePath)) return;
   const pathname = `/${url.pathname.slice(scopePath.length)}`;
+  // Mutation verification must never read or populate either HTTP or SW caches.
+  if (request.cache === "no-store" || /^\/api\/sessions\/[^/]+\/attachments\/upload-status$/.test(pathname)) return;
   // Native media/derivative clients own streaming and Range semantics. These
   // conversions can spend unbounded time before headers, so a reachability
   // race or cached full response is the wrong transport policy for them.
