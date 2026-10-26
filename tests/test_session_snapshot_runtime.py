@@ -47,7 +47,13 @@ class _Harness:
         self.timers: list[_FakeTimer] = []
         self.saved: list[str] = []
         self.clock = [50.0]
-        self.session_store = SimpleNamespace(queues={}, drafts={}, unattended={}, aliases={}, sidebar_meta={})
+        # This harness exercises non-attachment stores. Attachment transfer and
+        # durable revision behavior use the real SessionStore in
+        # test_attachment_resource.py.
+        self.session_store = SimpleNamespace(
+            queues={}, drafts={}, unattended={}, aliases={}, sidebar_meta={},
+            pending_attachment_ids=set(), remap_attachment_resource=lambda old, new: None,
+        )
         self.stderr = io.StringIO()
         self.store = SessionSnapshotStore(snapshot_path(tmp_path), now=lambda: self.clock[0])
         self.lock = threading.Lock()
