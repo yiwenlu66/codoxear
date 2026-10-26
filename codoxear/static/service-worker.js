@@ -251,8 +251,11 @@ async function networkFirstResponse(request, cacheName, matchOptions, onFallback
   const deferred = cooldown && Date.now() < cooldown.until;
   // Once retry is permitted, start it before consulting Cache Storage. Keep
   // immediate cached delivery when the lookup wins, but never make a healthy
-  // retry wait for a stalled lookup's separate cache-work budget.
-  let read = !offline && cooldown && !deferred ? startRead(key, request, cacheName, true) : null;
+  // retry wait for a stalled lookup's separate cache-work budget. An incoming
+  // foreground demand may use a global slot even if background admission is full.
+  let read = !offline && cooldown && !deferred
+    ? startRead(key, request, cacheName, true) || startRead(key, request, cacheName, false)
+    : null;
   let cached;
   if (offline || cooldown) {
     cached = await (read ? Promise.race([

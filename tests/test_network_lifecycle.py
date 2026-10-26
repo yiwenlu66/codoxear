@@ -88,14 +88,14 @@ def test_retained_read_pool_bounds_never_settling_work_without_serializing_foreg
       network = () => new Promise(() => {});
       const events = seeds.map(path => dispatch('fetch', {request: request(path)}));
       for (const event of events) assert.equal((await event.response).headers.get('X-Codoxear-Stale'), 'suspect');
-      assert.equal(fetches.length, 13, 'only three retained background refreshes');
+      assert.equal(fetches.length, 15, 'incoming demands use three background slots plus two permitted foreground slots');
       network = async () => Response.json({foreground: true});
       assert.deepEqual(await (await get('/api/foreground')).json(), {foreground: true});
       network = () => new Promise(() => {});
       const blockers = Array.from({length: 8}, (_, i) => dispatch('fetch', {request: request('/api/block-' + i)}));
       await flush();
-      assert.equal(fetches.length, 19, 'three background plus five foreground slots');
-      for (const event of blockers.slice(5)) assert.equal((await event.response).headers.get('X-Codoxear-Transport'), 'capacity');
+      assert.equal(fetches.length, 19, 'five retained retries plus three additional foreground slots');
+      for (const event of blockers.slice(3)) assert.equal((await event.response).headers.get('X-Codoxear-Transport'), 'capacity');
       await advance(60000);
       await Promise.all([...events, ...blockers].map(e => e.finish()));
       const before = fetches.length;
@@ -199,4 +199,78 @@ def test_expired_cooldown_retries_live_before_a_stalled_cache_lookup():
         await event.finish();
       }
       assert.equal(clock, 2001, 'cache match never gates retry or healthy delivery');
+    """)
+
+
+def test_expired_retry_uses_free_foreground_capacity_when_background_pool_is_full():
+    run_worker(r"""
+      const paths = Array.from({length: 4}, (_, i) => '/api/saturated-' + i);
+      network = async () => Response.json({cached: true});
+      for (const path of paths) await get(path);
+      offline(); for (const path of paths) await get(path);
+      await advance(2001);
+      const releases = new Map();
+      network = req => new Promise(resolve => {releases.set(req.url, resolve);});
+      const background = paths.slice(0, 3).map(path => dispatch('fetch', {request: request(path)}));
+      for (const event of background) assert.equal((await event.response).headers.get('X-Codoxear-Stale'), 'suspect');
+      assert.equal(releases.size, 3);
+      const open = caches.open;
+      caches.open = async name => {
+        const cache = await open(name);
+        return {...cache, match(req, options) {
+          return req.url === origin + paths[3] ? new Promise(() => {}) : cache.match(req, options);
+        }};
+      };
+      const before = fetches.length;
+      const foreground = dispatch('fetch', {request: request(paths[3])});
+      const equivalent = dispatch('fetch', {request: request(paths[3])});
+      await flush();
+      assert.equal(fetches.length, before + 1, 'three background reads must not block a permitted incoming foreground retry');
+      releases.get(origin + paths[3])(Response.json({live: true}));
+      for (const event of [foreground, equivalent]) {
+        const response = await event.response;
+        assert.equal(response.headers.get('X-Codoxear-Stale'), null);
+        assert.deepEqual(await response.json(), {live: true}); await event.finish();
+      }
+      assert.equal(clock, 2001, 'stalled cache lookup never delays foreground delivery');
+      // Three background reads still occupy slots. Five further foreground
+      // reads fill the global pool; further incoming requests cannot exceed eight.
+      const blockers = Array.from({length: 5}, (_, i) => dispatch('fetch', {request: request('/api/full-' + i)}));
+      await flush();
+      assert.equal(releases.size, 9, 'four prior fetches plus five additional pending foreground reads');
+      const pendingCount = fetches.length;
+      offline();
+      const saturated = await get('/api/no-capacity');
+      assert.equal(saturated.headers.get('X-Codoxear-Transport'), 'capacity');
+      assert.equal(fetches.length, pendingCount, 'global pool capacity remains eight regardless of background admission');
+      await advance(60000);
+      await Promise.all([...background, ...blockers].map(event => event.finish()));
+    """)
+
+
+def test_expired_retry_cannot_exceed_a_full_global_read_pool():
+    run_worker(r"""
+      const path = '/api/expired-at-capacity';
+      network = async () => Response.json({cached: true}); await get(path);
+      offline(); await get(path); await advance(2001);
+      network = () => new Promise(() => {});
+      const blockers = Array.from({length: 8}, (_, i) => dispatch('fetch', {request: request('/api/occupied-' + i)}));
+      await flush();
+      const open = caches.open;
+      caches.open = async name => {
+        const cache = await open(name);
+        return {...cache, match(req, options) {
+          return req.url === origin + path ? new Promise(() => {}) : cache.match(req, options);
+        }};
+      };
+      const before = fetches.length;
+      const expired = dispatch('fetch', {request: request(path)});
+      await flush();
+      assert.equal(fetches.length, before, 'expired demand does not bypass the eight-read global limit');
+      await advance(5000);
+      const response = await expired.response;
+      assert.equal(response.headers.get('X-Codoxear-Transport'), 'capacity');
+      assert.equal(fetches.length, before);
+      await expired.finish(); await advance(55000);
+      await Promise.all(blockers.map(event => event.finish()));
     """)
