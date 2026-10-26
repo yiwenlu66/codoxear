@@ -152,6 +152,21 @@ assert network['hidden'] is True, network
 assert fault['max_catalog'] <= 2, fault
 check('slow_cache_bounded', {'responses': slow, 'network': network, 'max_catalog': fault['max_catalog']})
 http('/__fault', {'delay': 0})
+# Explicit cancellation through the real mobile-visible unknown chip retires
+# an already committed ID without any retry POST or prompt submission.
+ab('set', 'viewport', '390', '844')
+http('/__fault', {'lose_next': True, 'fail_status': True})
+choose('cancelled.bin')
+wait(lambda: any(c['pending'] and 'Retry' in c['text'] for c in chips()))
+ab('screenshot', str(art / 'mobile-unknown.png'))
+assert js('document.documentElement.scrollWidth <= window.innerWidth')
+posts_before_cancel = len(http('/__fault')['uploads'])
+http('/__fault', {'fail_status': False})
+ab('click', '[data-pending="1"] .stagedAttachmentRemove')
+wait(lambda: len(chips()) == 1 and not chips()[0]['pending'])
+assert len(resource()['attachments']) == 1
+assert len(http('/__fault')['uploads']) == posts_before_cancel
+check('mobile_explicit_cancel', {'chips': chips(), 'resource': resource(), 'extra_posts': 0})
 ab('screenshot', str(art / 'final.png'))
 # Hash the actual server-side file rather than trusting response metadata.
 server_files = subprocess.check_output(['docker', 'exec', a.container, 'sh', '-c', 'find "$HOME/.local/share/codoxear/uploads" -type f -exec sha256sum {} \\;'], text=True)
