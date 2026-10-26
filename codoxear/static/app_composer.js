@@ -514,7 +514,9 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
         label.textContent = state.dir;
         modelPicker.appendChild(label);
       }
-      const fragment = state.token.slice(state.token.lastIndexOf("/") + 1);
+      // `fragment` is the name part of the request query; the typed token may
+      // carry a mention prefix (`@`) the entry names never contain.
+      const fragment = String(state.fragment || "");
       state.entries.forEach((entry, index) => {
         const option = document.createElement("button");
         option.type = "button";
@@ -1019,8 +1021,10 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
         }
         // Only unmodified keys commit the picker: Ctrl/Cmd+Enter must fall through
         // to send (popup must never block sending), Shift+Enter must insert a newline.
-        const isPickerAccept = (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey)
-          || (event.key === "Tab" && modelPickerKind === "path");
+        // An empty listing has nothing to accept, so Enter keeps its textarea
+        // meaning (a no-match mention must not swallow the newline).
+        const isPickerAccept = ((event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey)
+          || (event.key === "Tab" && modelPickerKind === "path")) && modelPickerOptions.length > 0;
         if (isPickerAccept && !event.isComposing) {
           event.preventDefault();
           selectPickerOption(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);

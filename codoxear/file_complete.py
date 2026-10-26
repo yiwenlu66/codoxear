@@ -32,11 +32,13 @@ def _resolve_directory(session_cwd: Path, dir_part: str) -> Path:
 
 
 def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompletionResult:
+    # A token without a slash is a bare fragment in the session cwd. The
+    # composer's `@` mention is sent in exactly that form (`@comp` -> `comp`,
+    # `@` -> ``), and it is also the shape a user gets from completing the cwd
+    # before any directory has been chosen.
     slash_index = token.rfind("/")
-    if slash_index < 0:
-        raise ValueError("path must contain a slash")
-    dir_part = token[: slash_index + 1]
-    fragment = token[slash_index + 1 :]
+    dir_part = token[: slash_index + 1] if slash_index >= 0 else ""
+    fragment = token[slash_index + 1 :] if slash_index >= 0 else token
     directory = _resolve_directory(session_cwd, dir_part)
     include_hidden = fragment.startswith(".")
     matches: list[tuple[int, str, bool]] = []
@@ -76,6 +78,9 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompl
 
 def complete_session_path(session_cwd: Path, *, token: str, limit: int = FILE_COMPLETE_DEFAULT_LIMIT) -> FileCompletionResult:
     """Complete one composer path token without allowing a slow mount to stall HTTP.
+
+    A token may carry a directory part (`./src/al`, `../be`, `~/ga`, `/etc/ho`)
+    or be a bare cwd fragment (`alpha`, or empty for the cwd itself).
 
     Resolution and directory enumeration both run in a bounded worker because
     either operation can block while a network mount is unavailable.  A path

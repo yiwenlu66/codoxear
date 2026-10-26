@@ -434,10 +434,12 @@ def _handle_session_file_complete(handler: Any, *, session_id: str, query: str, 
         return
     values = urllib.parse.parse_qs(query, keep_blank_values=True)
     path_values = values.get("path")
-    token = path_values[0] if path_values else ""
-    if not token or "/" not in token:
-        deps.json_response(handler, 400, {"error": "path must be a non-empty slash-containing token"})
+    if path_values is None:
+        deps.json_response(handler, 400, {"error": "path required"})
         return
+    # An empty token lists the session cwd: the composer's `@` mention sends an
+    # empty query for a bare `@`, and a slash-less token is a cwd fragment.
+    token = path_values[0]
     limit_values = values.get("limit")
     if limit_values is None:
         limit = 50

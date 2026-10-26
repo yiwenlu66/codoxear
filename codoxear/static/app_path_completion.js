@@ -1,6 +1,17 @@
+const MENTION_LOCAL_PART_RE = /[A-Za-z0-9._%+-]/;
+
+// A mention is an `@` that is not glued to an email local part. The renderer
+// encodes the same rule (app_markdown.js: the file-ref boundary class, with an
+// email-shaped token matched whole from its own start); the composer may not
+// offer to complete a token the transcript would refuse to link back.
+function mentionBoundaryAt(value, at) {
+  return at <= 0 || !MENTION_LOCAL_PART_RE.test(value[at - 1]);
+}
+
 function hasPathPrefix(token, start) {
   return token.startsWith("./") || token.startsWith("../") || token.startsWith("~/")
-    || (start > 0 && token.startsWith("/"));
+    || (start > 0 && token.startsWith("/"))
+    || token.startsWith("@");
 }
 
 function tokenEnd(value, caret) {
@@ -14,7 +25,26 @@ function pathTokenAt(value, caret) {
   while (start > 0 && !/[ \t\n\r]/.test(value[start - 1])) start -= 1;
   const end = tokenEnd(value, caret);
   const token = value.slice(start, end);
-  return hasPathPrefix(token, start) ? { start, end, token } : null;
+  if (hasPathPrefix(token, start)) return { start, end, token };
+  // A mention anchors at its own `@`, which need not be the whitespace
+  // boundary: CJK prose has no spaces (`看看@src/x`). The last qualifying `@`
+  // before the caret wins, so a later `@` always retargets the span.
+  const at = value.lastIndexOf("@", caret - 1);
+  if (at >= start && at < caret && mentionBoundaryAt(value, at)) {
+    return { start: at, end, token: value.slice(at, end) };
+  }
+  return null;
+}
+
+// `@` is a mention marker, not path syntax: the request carries the token
+// without it and the completion is re-prefixed, so the inserted text keeps the
+// `@` the user typed.
+function splitTrigger(typed) {
+  return typed.startsWith("@") ? { prefix: "@", query: typed.slice(1) } : { prefix: "", query: typed };
+}
+
+function nameFragment(query) {
+  return query.slice(query.lastIndexOf("/") + 1);
 }
 
 // This runtime owns the anchored completion session and network state only.
@@ -23,6 +53,8 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
   let anchor = null;
   let sessionId = null;
   let end = 0;
+  let typed = "";
+  let prefix = "";
   let token = "";
   let entries = [];
   let dir = "";
@@ -33,7 +65,7 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
   let seq = 0;
 
   function snapshot() {
-    return { open: anchor !== null, start: anchor, end, token, sessionId, entries: entries.slice(), dir, loading, truncated };
+    return { open: anchor !== null, start: anchor, end, token: typed, fragment: nameFragment(token), sessionId, entries: entries.slice(), dir, loading, truncated };
   }
 
   function cancelRequest() {
@@ -49,6 +81,8 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
     anchor = null;
     sessionId = null;
     end = 0;
+    typed = "";
+    prefix = "";
     token = "";
     entries = [];
     dir = "";
@@ -65,6 +99,7 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
     const requestSeq = seq;
     const requestSession = sessionId;
     const requestToken = token;
+    const requestPrefix = prefix;
     timer = timerSet(async () => {
       timer = null;
       const controller = typeof AbortCtor === "function" ? new AbortCtor() : null;
@@ -77,7 +112,12 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
       }
       if (requestSeq !== seq || sessionId !== requestSession || anchor === null) return;
       abort = null;
-      entries = result && result.ok === true && Array.isArray(result.entries) ? result.entries : [];
+      const raw = result && result.ok === true && Array.isArray(result.entries) ? result.entries : [];
+      entries = requestPrefix
+        ? raw.map((entry) => (entry && typeof entry === "object"
+          ? { ...entry, completion: `${requestPrefix}${String(entry.completion || "")}` }
+          : entry))
+        : raw;
       dir = result && result.ok === true ? String(result.dir || "") : "";
       truncated = Boolean(result && result.ok === true && result.truncated);
       loading = false;
@@ -98,8 +138,11 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
         return null;
       }
       end = tokenEnd(value, caret);
-      if (active !== token) {
-        token = active;
+      if (active !== typed) {
+        typed = active;
+        const split = splitTrigger(typed);
+        prefix = split.prefix;
+        token = split.query;
         schedule();
       }
     } else {
@@ -110,7 +153,10 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
       anchor = span.start;
       sessionId = selectedSessionId;
       end = span.end;
-      token = active;
+      typed = active;
+      const split = splitTrigger(typed);
+      prefix = split.prefix;
+      token = split.query;
       schedule();
     }
     return snapshot();

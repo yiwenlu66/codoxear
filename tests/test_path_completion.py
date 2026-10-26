@@ -119,6 +119,17 @@ def run_js(body: str) -> None:
     ("a\t./b\nc", 5, {"start": 2, "end": 5, "token": "./b"}),
     ("a ./b ", 6, None),
     ("a\n/tmp", 6, {"start": 2, "end": 6, "token": "/tmp"}),
+    # A mention anchors at its own `@`, including in CJK prose with no spaces.
+    ("@", 1, {"start": 0, "end": 1, "token": "@"}),
+    ("@", 0, {"start": 0, "end": 1, "token": "@"}),
+    ("see @sr end", 7, {"start": 4, "end": 7, "token": "@sr"}),
+    ("看看@sr", 5, {"start": 2, "end": 5, "token": "@sr"}),
+    ("看看@sr 后", 5, {"start": 2, "end": 5, "token": "@sr"}),
+    ("@~/x", 5, {"start": 0, "end": 5, "token": "@~/x"}),
+    ("@src/x", 6, {"start": 0, "end": 6, "token": "@src/x"}),
+    # An email local part before the `@` keeps the token inert.
+    ("foo@bar", 7, None),
+    ("a@b/c.txt", 9, None),
 ])
 def test_path_token_trigger_matrix(value: str, caret: int, expected: dict | None) -> None:
     run_js(f"assert.deepEqual(plain(ctx.window.CodoxearPathCompletion.pathTokenAt({json.dumps(value)}, {caret})), {json.dumps(expected)});")
@@ -157,6 +168,73 @@ def test_runtime_anchors_spaces_debounces_aborts_and_drops_stale_responses() -> 
     assert.equal(runtime.sync('read ./x', 4, 'sid'), null);
     runtime.sync('./x', 3, 'sid'); runtime.close();
     assert.equal(timers.size, 0);
+    """)
+
+
+def test_mention_completion_keeps_the_at_prefix_and_drills(tmp_path: Path) -> None:
+    run_js(r"""
+    const mentionDir = { name: 'src space', completion: 'src space/', is_dir: true };
+    const mentionFile = { name: 'read me.md', completion: 'src space/read me.md', is_dir: false };
+    const h = harness((url) => url.includes('src%20space%2F') ? listing([mentionFile], '/work/src space') : listing([mentionDir], '/work'));
+    await h.type('@');
+    assert.equal(h.open(), true);
+    assert.match(h.requests[0].url, /file\/complete\?path=&limit=50$/);
+    assert.equal(h.modelPicker.children[0].textContent, '/work');
+    assert.equal(h.options()[0].textContent, 'src space/');
+
+    await h.type('@sr');
+    assert.match(h.requests[1].url, /file\/complete\?path=sr&limit=50$/);
+    const marks = h.options()[0].children.filter((child) => child.className === 'fileMenuMatch');
+    assert.equal(marks.map((child) => child.textContent).join(''), 'sr');
+
+    h.key('Enter');
+    assert.equal(h.textarea.value, '@src space/');
+    await flush();
+    assert.match(h.requests[2].url, /path=src%20space%2F&limit=50$/);
+    assert.equal(h.options()[0].textContent, 'read me.md');
+
+    h.key('Enter');
+    assert.equal(h.textarea.value, '@src space/read me.md');
+    assert.equal(h.textarea.selectionStart, 21);
+    assert.equal(h.open(), false);
+    assert.equal(h.storage.get('codexweb.draft.sid'), h.textarea.value);
+    assert.equal(h.edited.at(-1), h.textarea.value);
+    h.controller.dispose();
+    """)
+
+
+def test_mention_in_cjk_prose_and_email_nontrigger() -> None:
+    run_js(r"""
+    const h = harness((url) => listing([{ name: 'README.md', completion: 'README.md', is_dir: false }]));
+    await h.type('看看@re');
+    assert.equal(h.open(), true);
+    assert.match(h.requests[0].url, /path=re&limit=50$/);
+    h.key('Enter');
+    assert.equal(h.textarea.value, '看看@README.md');
+    assert.equal(h.open(), false);
+
+    await h.type('foo@bar');
+    assert.equal(h.open(), false);
+    assert.equal(h.requests.length, 1);
+    await h.type('mail@bar.com');
+    assert.equal(h.open(), false);
+    assert.equal(h.requests.length, 1);
+    h.controller.dispose();
+    """)
+
+
+def test_no_match_mention_does_not_swallow_enter() -> None:
+    run_js(r"""
+    const h = harness(() => listing([]));
+    await h.type('mail @zzz');
+    assert.equal(h.open(), true);
+    assert.equal(h.modelPicker.children.map((child) => child.textContent).join('|'), '/work|No matches');
+    assert.equal(h.key('Enter').prevented, false);
+    assert.equal(h.key('Tab').prevented, false);
+    assert.equal(h.textarea.value, 'mail @zzz');
+    h.key('Escape');
+    assert.equal(h.open(), false);
+    h.controller.dispose();
     """)
 
 
