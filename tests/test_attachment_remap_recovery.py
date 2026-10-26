@@ -33,7 +33,8 @@ def save_other_stores(h):
 
 @pytest.mark.parametrize('failure', ['before_attachment_publish', 'after_attachment_publish', 'queue_save'])
 @pytest.mark.parametrize('restart', [False, True])
-def test_snapshot_intent_replays_all_stores_after_failed_remap(tmp_path, failure, restart):
+@pytest.mark.parametrize('automatic', [False, True])
+def test_snapshot_intent_replays_all_stores_after_failed_remap(tmp_path, failure, restart, automatic):
     h = _Harness(tmp_path)
     store = real_stores(h, tmp_path / 'state')
     old, _ = h.add_live_session('broker-10', broker_pid=10, thread_id='t1')
@@ -56,7 +57,7 @@ def test_snapshot_intent_replays_all_stores_after_failed_remap(tmp_path, failure
     store.unattended = {'thread:t1': {'enabled': True, 'request': 'continue', 'cooldown_minutes': 5, 'remaining_injections': 2}}
     save_other_stores(h)
     h.alive.discard(10)
-    new, _ = h.add_live_session('broker-30', broker_pid=30, thread_id='t1', start_ts=2)
+    new, replacement = h.add_live_session('broker-30', broker_pid=30, thread_id='t1', start_ts=2)
     if failure == 'before_attachment_publish':
         fault = patch('codoxear.session_store.durable_write_resource', side_effect=OSError('no space'))
     elif failure == 'after_attachment_publish':
@@ -64,8 +65,13 @@ def test_snapshot_intent_replays_all_stores_after_failed_remap(tmp_path, failure
     else:
         fault = patch.object(h.coordinator, 'save_queues', side_effect=OSError('queue save failed'))
     with fault:
-        with pytest.raises(OSError, match='transfer incomplete'):
-            h.coordinator.save_now()
+        if automatic:
+            h.coordinator.observe_registrations([replacement])
+            h.flush()
+            assert 'broker-30' in h.coordinator._dirty
+        else:
+            with pytest.raises(OSError, match='transfer incomplete'):
+                h.coordinator.save_now()
     state = h.store.read()
     assert state.entries[('pi', 't1')].session_id == 'broker-30'
     assert len(state.remap_intents) == 1
@@ -73,10 +79,15 @@ def test_snapshot_intent_replays_all_stores_after_failed_remap(tmp_path, failure
     if restart:
         h = _Harness(tmp_path)
         store = real_stores(h, tmp_path / 'state', load=True)
-        new, _ = h.add_live_session('broker-30', broker_pid=30, thread_id='t1', start_ts=2)
+        new, replacement = h.add_live_session('broker-30', broker_pid=30, thread_id='t1', start_ts=2)
     # No supersede event can regenerate this remap: only durable intent can.
     assert h.store.upsert([h.coordinator.entry_for_session(new)]).remaps == []
-    h.coordinator.save_now()
+    if automatic:
+        if restart:
+            h.coordinator.observe_registrations([replacement])
+        h.flush()
+    else:
+        h.coordinator.save_now()
     assert h.store.read().remap_intents == ()
     assert [entry['id'] for entry in store.queues['broker-30']] == ['q1', 'q2']
     assert 'broker-10' not in store.queues
