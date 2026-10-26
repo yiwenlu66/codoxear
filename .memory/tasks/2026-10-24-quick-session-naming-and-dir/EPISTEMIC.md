@@ -39,6 +39,19 @@ One slot per quick launch, and the slot is the identity:
 - Rollover past 99 or a code-wide 3-digit pad: rejected; `{slot:02d}` is a
   minimum width, so 100 is `quick-100`. Only `ls` lexicographic order breaks.
 
+## Failure mode found in the first live minutes
+
+The reserve handler answered a body-less POST without consuming the request
+body. The server is HTTP/1.1 with keep-alive, so the two body bytes were parsed
+as the next request line and the following request on that socket got a 501/400
+HTML page — surfaced to the user as `JSON.parse: unexpected character at line 1
+column 1`. Symptom signature: the counter advances, no workspace directory
+appears, and no launch attempt is recorded, because the *second* request (the
+launch) never got through. Fix: `deps.read_body(handler)` in the handler, plus a
+same-connection probe in the Docker verify. The general rule is now in AGENTS.md
+("Performance"): every POST handler consumes its body even when it takes no
+fields.
+
 ## Evidence
 
 Docker browser run against 33889b8d: `PASS` (`/tmp/codoxear-quick-verify.FoJ4H4`)
@@ -50,7 +63,11 @@ draft handoff + broker ACK + mobile drawer/focus green, 45 in-container tests.
 Host suite: 2613 passed, 1 failed — `draftUndoBtn` hint coverage, reproduced at
 b7544dcb, pre-existing.
 
-Deployed 60505805 from the snapshot; `/` 200, `GET /api/sessions` 401,
+Docker browser run against the fix (aa670a99): `PASS`
+(`/tmp/codoxear-quick-verify.t9EVDe`), including three POSTs and a GET on one
+keep-alive connection all returning JSON.
+
+Deployed aa670a99 from the snapshot; `/` 200, `GET /api/sessions` 401,
 `POST /api/quick-sessions` 401 while an unknown POST path is 404 (route
 registered and auth-gated), bundle contains `reserveQuickSession`, and all live
 brokers predate the restart.

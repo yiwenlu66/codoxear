@@ -136,3 +136,59 @@ Post-deploy checks (read-only):
 main tip after this is 97b80f04 (docs + task memory only): `git diff 60505805
 97b80f04` touches no file under codoxear/, scripts/ or tests/, so the deployed
 code is byte-identical to main's code and no second restart was performed.
+
+## 2026-10-26T16:58Z — live bug after deploy, root-caused
+
+User report: New-session dialog shows `JSON.parse: unexpected character at line
+1 column 1 of the JSON data` right after a quick start; no session, no
+`~/codoxear-quick`.
+
+Evidence gathered (read-only, live):
+- `~/.local/share/codoxear/quick_sessions.json` = `{"next_slot": 4}` → three
+  successful reserves; `~/codoxear-quick` does not exist → no launch ever began;
+  `session_launches.jsonl` mtime 23:54 (before the 00:38 deploy) → no launch
+  attempt was recorded.
+
+Root cause (measured, not inferred): `_handle_quick_session_allocate` answered a
+body-less POST without consuming the request body. The server runs HTTP/1.1 with
+keep-alive, so the two body bytes (`{}`) stayed in the socket and were parsed as
+the next request line. Confirmed against a container from the deployed image
+(`codoxear-verify:33889b8d4209`, throwaway HOME, port 19680), one
+`http.client.HTTPConnection`:
+
+    reserve#1 200 application/json {"ok": true, "slot": 1, ...}
+    reserve#2 501 text/html "<!DOCTYPE HTML>..."   → JSONDecodeError
+
+That HTML body is exactly what the browser reported as a JSON.parse failure.
+Three clicks → three reserves → three dialogs.
+
+Fix (aa670a99): `SessionRouteDeps.read_body` drains the body before allocating;
+`app_api.js` keeps the SyntaxError identity but names the real event
+(`HTTP 501 · response was not JSON: <snippet>`) instead of the parser's message;
+`scripts/docker_quick_session_verify.sh` now POSTs `/api/quick-sessions` three
+times plus a GET on ONE connection and requires JSON every time (the probe fails
+on the pre-fix code by construction — verified by hand against the same image).
+AGENTS.md "Performance" carries the rule for future body-less POST handlers.
+
+Pre-existing, not fixed here: `_authorized` runs before any body read on the
+POST routes, so an unauthorized POST also leaves its body unread; that path
+usually ends in a navigation, and it is not part of this report.
+
+## 2026-10-27T00:50Z — fix verified and deployed
+
+- `scripts/docker_quick_session_verify.sh aa670a99` → PASS, EXIT=0
+  (/tmp/codoxear-quick-verify.t9EVDe). New same-connection probe measured:
+  three `POST /api/quick-sessions` + one `GET /api/sessions` on ONE
+  `http.client.HTTPConnection` → `[200, 200, 200]` with slots 4/5/6 and
+  `listingJson: true`. The same probe against the pre-fix image returned
+  `501 text/html` on request #2.
+- Deployed `scripts/deploy.sh aa670a99` → EXIT=0 ("smoke test passed"), deploy
+  worktree at aa670a99, service active (pid 2197200), `GET /` 200,
+  `/api/sessions` 401, `POST /api/quick-sessions` 401, bundle carries
+  "response was not JSON" and `reserveQuickSession`; 25 sidecars / 27 broker
+  processes unchanged.
+- Reset the live counter created by the bug: `quick_sessions.json`
+  `{"next_slot": 4}` → `{"next_slot": 1}` (no `quick-NN` directory exists, so
+  the dirs-floor clamp agrees and the user's next quick session is 01).
+- Host suite after the fix: 2613 passed, same single pre-existing
+  `draftUndoBtn` hint-coverage failure.
