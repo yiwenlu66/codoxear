@@ -11,6 +11,7 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git libatomic1 \
        libreoffice-writer libreoffice-calc libreoffice-impress \
+       ffmpeg \
        fonts-noto-core fonts-noto-cjk \
        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -18,7 +19,7 @@ RUN apt-get update \
 # Test-only fixture tooling: encrypts an OOXML fixture inside the container so
 # the Office preview failure path can be exercised against a real encrypted
 # document. Never used by the application itself.
-RUN python3 -m pip install --no-cache-dir 'msoffcrypto-tool>=5.4'
+RUN python3 -m pip install --no-cache-dir 'msoffcrypto-tool>=5.4' pytest
 
 COPY --from=pi_runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi_runtime /usr/local/bin/npm /usr/local/bin/npm

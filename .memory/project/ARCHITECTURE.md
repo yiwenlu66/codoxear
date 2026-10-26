@@ -221,6 +221,8 @@ bug (see `.memory/tasks/2026-10-24-subagent-resume-model-routing/`).
 ### Offline cold-load authority
 The canonical SW cache/readiness contract is in AGENTS.md. Activation must warm the uncontrolled first navigation's shell and versioned dependencies; runtime fetch caching alone requires an extra visit. `/api/me` is boot-only: when activation precedes authentication, successful login must refresh it after best-effort worker readiness, otherwise an authenticated UI can render online yet have no cached auth snapshot for offline boot. Theme links are generated dynamically, so the SW warms its explicit family list at the shared asset version; the behavioral activation test pins the list against actual theme files. Transcript caches remain populated only by opening sessions online.
 
+Network-first response delivery and cache durability are separate lifetimes: delivery settles at headers, a synchronous clone is stored under the fetch event's pre-registered `waitUntil`, and cache-write failures cannot reject the live answer. The race no longer bounds a peer that sends headers and then stalls the body. Static/warm-up writes remain awaited. In-scope session and absolute `office_preview`/`video_preview` routes, plus every Range request, bypass interception so native streaming/206 semantics cannot be replaced by a cached full 200. Derivatives therefore have no service-worker offline fallback; non-Range blob/raw/download caching is unchanged.
+
 ## Deployment runtime resolution (verified 2026-10-10)
 
 The pipx venv (`~/.local/share/pipx/venvs/codoxear`) supplies only the interpreter and dependencies at runtime. The service's `WorkingDirectory=~/.local/share/codoxear/deploy` plus `python -m codoxear.server` puts the deploy worktree first on `sys.path`, so all code and static assets (including `STATIC_DIR` and `dist/app.bundle.js`) resolve from the worktree, not site-packages. setuptools package-data deliberately excludes `static/dist/*`, so the installed package never contains the bundle — checking site-packages for served assets is a dead end; check the deploy worktree (`/proc/<MainPID>/cwd`) instead.
@@ -240,7 +242,14 @@ an authenticated `office_preview` URL is fetched. Read/inspect retain the source
 kind/MIME/size and never invoke LibreOffice; blob/download URLs still serve the
 original. Session and absolute-file routes share the converter. The frontend
 uses the existing lazy PDF.js surface, with a conversion preflight to expose
-readable server failures and a separate original-file download target.
+readable server failures and a separate original-file download target. Failures
+identify transport, conversion/authentication, or renderer stages. Retry is
+available while that failed open request is still current; it re-enters the
+normal open flow with a fresh request/abort identity and reruns read/preflight,
+so closing or switching files makes an old Retry control inert. Conversion
+failures retain the existing 15-second negative-cache cooldown; immediate Retry
+can report that recent failure until it expires. The Docker Office verifier
+waits out that cooldown before proving a successful transient-failure Retry.
 
 Calc export normalizes a disposable XLSX: unhide every sheet, remove saved
 Print_Area restrictions, disable fit-to-page/percentage shrinking, preserve

@@ -16,6 +16,10 @@ authenticated PDF conversion, every Excel worksheet marker (hidden sheet,
 veryHidden sheet, outside-print-range cell, multi-page tail), unchanged
 original downloads, source-rewrite invalidation, simultaneous conversions,
 corrupt/encrypted failure paths, and the real-browser PDF.js viewer flow.
+The browser phase also runs under a controlling service worker with a 6s
+conversion delay, transient-failure Retry and stale-request checks, native
+Office/video derivative bypass, and large-response/offline cache lifecycle
+checks.
 Artifacts (browser output, PDFs, extracted text, screenshots, container logs)
 are retained in a fresh /tmp/codoxear-office-preview-verify.* directory.
 
@@ -131,6 +135,12 @@ build_context="$root/build-context"
 mkdir -p "$build_context/docker"
 git -C "$repo_root" archive --format=tar "$target_commit" | tar -x -C "$build_context"
 install -m 644 "$repo_root/docker/verify.Dockerfile" "$build_context/docker/verify.Dockerfile"
+
+# Exercise the same ESM source being committed rather than a stale tracked
+# bundle; the output stays inside this disposable build context.
+npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
+  --outfile="$build_context/codoxear/static/dist/app.bundle.js" --format=esm \
+  > "$artifacts/esbuild.log" 2>&1 || fail "esbuild bundle rebuild failed; see $artifacts/esbuild.log"
 "${docker[@]}" build --file "$build_context/docker/verify.Dockerfile" --tag "$image" "$build_context" \
   > "$artifacts/docker-build.log" 2>&1 || fail "Docker image build failed; see $artifacts/docker-build.log"
 
@@ -193,6 +203,14 @@ BOOT
   || fail "container bootstrap failed to start"
 
 wait_for_server || fail "isolated server did not become reachable"
+
+# Execute behavior suites against the same committed source in Docker, never
+# the editable checkout or live deployment. Includes prefixed SW route cases.
+"${docker[@]}" exec --env PYTHONPATH=/workspace:/workspace/tests "$container" \
+  python3 -m pytest -q tests/test_service_worker_offline.py tests/test_office_preview_frontend.py \
+    tests/test_office_preview.py tests/test_office_file_routes.py tests/test_pdf_viewer_pipeline.py \
+  > "$artifacts/focused-tests.log" 2>&1 \
+  || fail "focused Docker behavior tests failed; see $artifacts/focused-tests.log"
 
 python3 "$repo_root/scripts/docker_office_preview_verify.py" \
   --port "$port" \

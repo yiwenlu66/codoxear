@@ -14,6 +14,7 @@ Endpoint contract:
   original download:    GET /api/sessions/<id>/file/download?path=<rel>
 """
 import argparse
+import base64
 import hashlib
 import http.cookiejar
 import json
@@ -54,6 +55,8 @@ report: dict = {"commit": args.commit, "base_url": BASE, "started_at": T0, "chec
 def check(name: str, ok: bool, evidence) -> None:
     report["checks"][name] = bool(ok)
     report["observed"][name] = evidence
+    # Keep decisive evidence available even if a later optional check fails.
+    (ART / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"[{'PASS' if ok else 'FAIL'}] {name}", flush=True)
 
 
@@ -144,12 +147,103 @@ def browser(*cli) -> dict:
 
 def browser_eval(expr: str):
     out = browser("eval", expr, "--json")
-    return out.get("data", {}).get("result")
+    if out.get("_rc") != 0 or out.get("success") is False:
+        raise RuntimeError(f"browser evaluation failed: {out.get('error') or out}")
+    return (out.get("data") or {}).get("result")
 
 
 def browser_ok(*cli) -> bool:
     out = browser(*cli)
     return out.get("_rc") == 0 and out.get("success") is not False
+
+
+def file_view_state():
+    return browser_eval("""(() => {
+      const vis = (n) => !!n && getComputedStyle(n).display !== "none" && n.getBoundingClientRect().width > 0;
+      const viewer = document.querySelector("#fileViewer");
+      const status = document.querySelector("#fileStatus");
+      const network = document.querySelector("#networkStatus");
+      const text = viewer ? viewer.textContent : "";
+      const canvases = viewer ? Array.from(viewer.querySelectorAll("canvas")).filter(vis) : [];
+      const download = viewer ? viewer.querySelector(".fileDownloadFallback a[download], a[href*='/file/download']") : null;
+      const retry = viewer ? Array.from(viewer.querySelectorAll("button")).find((b) => /retry preview/i.test(b.textContent || "")) : null;
+      return {open: vis(viewer), status: status ? status.textContent : "", text: text.slice(0, 1200),
+              preparing: /preparing/i.test(text), canvases: canvases.length,
+              networkHidden: network ? network.hidden : null, retryPresent: !!retry,
+              downloadHref: download ? download.href : null};
+    })()""")
+
+
+def wait_for_preview_canvas(timeout_s: float = 60):
+    deadline = time.time() + timeout_s
+    state = {}
+    while time.time() < deadline:
+        state = file_view_state()
+        if isinstance(state, dict) and state.get("canvases"):
+            return True, state
+        time.sleep(0.5)
+    return False, state
+
+
+def close_file_viewer() -> None:
+    state = file_view_state()
+    if isinstance(state, dict) and state.get("open"):
+        browser("click", "#fileCloseBtn")
+        browser("wait", "400")
+
+
+def open_file_via_picker(rel: str, *, fail_once: bool = False) -> bool:
+    browser("click", "#fileBtn")
+    browser("wait", "500")
+    browser("fill", "#filePickerInput", rel)
+    browser("wait", "900")
+    option = browser_eval("""(() => {
+      const rel = %s;
+      const item = Array.from(document.querySelectorAll("#filePickerMenu .fileMenuItem"))
+        .find((n) => {
+          const text = (n.innerText || "").trim();
+          return text === rel || text.startsWith(rel + "\\n") || text.includes("/" + rel + "\\n");
+        });
+      return item ? item.id : null;
+    })()""" % json.dumps(rel))
+    # Opening the picker may reopen the previous file. Arm only after that
+    # navigation, immediately before selecting the intended failure fixture.
+    if option and fail_once:
+        docker("touch", "/tmp/office-preview-fail-once")
+    return bool(option) and browser_ok("click", f"#{option}")
+
+
+SOFFICE_SHIM = r"""#!/bin/bash
+printf '%s\n' "$*" >> /tmp/office-preview-soffice.log
+if [[ -f /tmp/office-preview-fail-once ]]; then
+  /bin/rm -f /tmp/office-preview-fail-once
+  echo "transient verifier conversion failure" >&2
+  exit 42
+fi
+if [[ -f /tmp/office-preview-delay-6s ]]; then
+  /bin/rm -f /tmp/office-preview-delay-6s
+  sleep 6
+fi
+exec /usr/bin/soffice.codoxear-real "$@"
+"""
+
+
+def install_soffice_shim() -> None:
+    real = "/usr/bin/soffice.codoxear-real"
+    current = docker("bash", "-c", f"if [[ -e {real} || -L {real} ]]; then echo present; fi").stdout.strip()
+    if current != "present":
+        docker("mv", "/usr/bin/soffice", real)
+    encoded = base64.b64encode(SOFFICE_SHIM.encode()).decode()
+    docker("bash", "-c",
+           f"echo {encoded} | base64 -d > /usr/bin/soffice && chmod 755 /usr/bin/soffice && : > /tmp/office-preview-soffice.log")
+
+
+def restore_soffice() -> None:
+    docker("bash", "-c",
+           "if [[ -e /usr/bin/soffice.codoxear-real || -L /usr/bin/soffice.codoxear-real ]]; then "
+           "mv -f /usr/bin/soffice.codoxear-real /usr/bin/soffice; fi; "
+           "/bin/rm -f /tmp/office-preview-fail-once /tmp/office-preview-delay-6s",
+           check_rc=False)
 
 
 # --- login + session discovery ---------------------------------------------
@@ -414,13 +508,74 @@ try:
         encrypted_observed = {"error": "secret.xlsx missing from fixture manifest; the test image installs msoffcrypto-tool"}
     check("6b_encrypted_file_fails_explicitly", encrypted_ok, encrypted_observed)
 
-    # --- 7. Browser: authenticated viewer opens Office previews --------------------
+    # --- 7. Real Chrome + controlling service worker -------------------------
+    # Extra fixtures stay container-local. The MKV forces a real ffmpeg
+    # derivative; the DOCX copies have independent conversion/cache identities.
+    docker("cp", f"{DEMO}/report.docx", f"{DEMO}/retry.docx")
+    docker("cp", f"{DEMO}/report.docx", f"{DEMO}/stale.docx")
+    docker("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+           "-f", "lavfi", "-i", "testsrc=size=96x96:rate=5", "-t", "0.4",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", f"{DEMO}/clip.mkv")
+    # blob serves previewable media, not arbitrary binaries. Pad a valid PDF
+    # to 8 MiB so the ordinary blob/cache path receives an actual 200 body.
+    large_pdf = base64.b64encode((ART / "preview-report-docx.pdf").read_bytes()).decode()
+    docker("python3", "-c", "import base64; from pathlib import Path; "
+           f"p=Path('{DEMO}/large.pdf'); p.write_bytes(base64.b64decode('{large_pdf}')); "
+           "f=p.open('ab'); f.truncate(8*1024*1024); f.close()")
+    video_status, _, video_payload = read_payload("clip.mkv")
+    video_preview_url = video_payload.get("video_preview_url") or ""
+    video_range_status, video_range_headers, video_range_body = (None, {}, b"")
+    if video_preview_url:
+        video_range_status, video_range_headers, video_range_body = api(
+            "GET", video_preview_url, headers={"Range": "bytes=0-0"}, raw=True)
+    check("7a_video_fixture_and_native_range",
+          video_status == 200 and video_payload.get("kind") == "video" and bool(video_preview_url)
+          and video_range_status == 206 and len(video_range_body) == 1,
+          {"read_status": video_status, "kind": video_payload.get("kind"),
+           "preview_url": video_preview_url, "range_status": video_range_status,
+           "range_bytes": len(video_range_body), "content_range": video_range_headers.get("Content-Range")})
+
     browser("open", BASE + "/")
     browser("errors", "--clear", "--json")
     browser("console", "--clear", "--json")
     browser("fill", "#pw", args.password)
     browser("click", "#loginBtn")
     browser("wait", "3500")
+    sw_state = {}
+    for _ in range(60):
+        sw_state = browser_eval("""(() => ({
+          controlled: Boolean(navigator.serviceWorker && navigator.serviceWorker.controller),
+          script: navigator.serviceWorker && navigator.serviceWorker.controller
+            ? navigator.serviceWorker.controller.scriptURL : null,
+          appRendered: Boolean(document.querySelector('.app .topbar'))
+        }))()""")
+        if isinstance(sw_state, dict) and sw_state.get("controlled"):
+            break
+        time.sleep(0.5)
+    check("7b_service_worker_controls_preview_page",
+          isinstance(sw_state, dict) and sw_state.get("controlled") is True
+          and sw_state.get("appRendered") is True,
+          sw_state)
+
+    # Observe the application's own read/preflight traffic. Retry must create a
+    # new normal open request, not merely repeat PDF.js against an old surface.
+    browser_eval("""(() => {
+      if (window.__previewVerify) return true;
+      const records = { reads: [], preflights: [] };
+      window.__previewVerify = records;
+      const original = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : String(input && input.url || "");
+        const headers = new Headers(init && init.headers ? init.headers : (input && input.headers));
+        if (url.includes("/file/read?")) records.reads.push(url);
+        if (url.includes("/file/office_preview") && headers.has("range")) {
+          records.preflights.push({ url, range: headers.get("range") });
+        }
+        return original(input, init);
+      };
+      return true;
+    })()""")
+
     card = f'#sessions .session[data-session-id="{session_id}"]'
     if not browser_ok("click", card):
         check("7_browser_session_card", False, {"selector": card})
@@ -430,26 +585,25 @@ try:
     browser("wait", "3000")
     links = browser_eval("Array.from(document.querySelectorAll('a.inlineFileLink')).map((a) => a.dataset.filePath)")
 
-    # deck.ppt has never been converted: observe the Preparing state, then render.
+    # deck.ppt is still unconverted. The shim delays exactly this conversion by
+    # six seconds, beyond the worker's initial 3s network-first race.
+    install_soffice_shim()
+    docker("touch", "/tmp/office-preview-delay-6s")
+    slow_started = time.time()
     browser("click", 'a.inlineFileLink[data-file-path$="/deck.ppt"]')
     preparing_seen = False
+    network_stayed_hidden = True
     rendered = False
-    status_text = ""
-    for _ in range(120):  # up to 60s
-        state = browser_eval("""(() => {
-          const vis = (n) => !!n && getComputedStyle(n).display !== "none" && n.getBoundingClientRect().width > 0;
-          const viewer = document.querySelector("#fileViewer");
-          const status = document.querySelector("#fileStatus");
-          const canvases = Array.from(document.querySelectorAll("#fileViewer canvas")).filter(vis);
-          return {open: vis(viewer), status: status ? status.textContent : "",
-                  preparing: /preparing/i.test(viewer ? viewer.textContent : ""),
-                  canvases: canvases.length};
-        })()""")
+    slow_elapsed = None
+    state = {}
+    for _ in range(180):  # up to 90s
+        state = file_view_state()
         if isinstance(state, dict):
             preparing_seen = preparing_seen or bool(state.get("preparing"))
-            status_text = state.get("status") or status_text
+            network_stayed_hidden = network_stayed_hidden and state.get("networkHidden") is True
             if state.get("canvases"):
                 rendered = True
+                slow_elapsed = round(time.time() - slow_started, 2)
                 break
         time.sleep(0.5)
     browser("screenshot", "--full", str(ART / "office-browser-preview.png"))
@@ -460,43 +614,115 @@ try:
       const buttons = Array.from(viewer.querySelectorAll("button")).filter((b) => /download/i.test(b.textContent || b.title || b.getAttribute("aria-label") || ""));
       return links.length + buttons.length > 0;
     })()""")
+    conversion_log = docker("cat", "/tmp/office-preview-soffice.log", check_rc=False).stdout
     check("7_browser_office_pdf_render",
-          rendered and ppt_download_present is True,
+          rendered and ppt_download_present is True and preparing_seen
+          and network_stayed_hidden and slow_elapsed is not None and slow_elapsed >= 5
+          and "source.ppt" in conversion_log,
           {"links": links, "preparing_seen": preparing_seen, "rendered": rendered,
-           "status_text": status_text, "download_present": ppt_download_present})
+           "elapsed_s": slow_elapsed, "network_stayed_hidden": network_stayed_hidden,
+           "status_text": state.get("status") if isinstance(state, dict) else None,
+           "download_present": ppt_download_present, "conversion_log": conversion_log,
+           "service_worker": sw_state})
     report["observed"]["7_browser_preparing_state_seen"] = preparing_seen
 
-    # Browser error path: corrupt file keeps the original download reachable.
-    browser("click", "#fileCloseBtn")
-    browser("wait", "800")
-    browser("click", "#fileBtn")
-    browser("wait", "600")
-    browser("fill", "#filePickerInput", "broken.docx")
-    browser("wait", "900")
-    broken_option = browser_eval("""(() => {
-      const item = Array.from(document.querySelectorAll("#filePickerMenu .fileMenuItem"))
-        .find((n) => (n.innerText || "").includes("broken.docx"));
-      return item ? item.id : null;
-    })()""")
-    if broken_option:
-        browser("click", f"#{broken_option}")
-    else:
-        browser("click", "#filePickerOption-1")
+    # Reopening the same source reuses its native derivative; it neither starts
+    # another conversion nor resurrects an earlier render request.
+    close_file_viewer()
+    conversion_count = len(conversion_log.splitlines())
+    reopened_picker = open_file_via_picker("deck.ppt")
+    reopened, reopened_state = wait_for_preview_canvas()
+    reopened_log = docker("cat", "/tmp/office-preview-soffice.log", check_rc=False).stdout
+    check("7c_browser_duplicate_reopen",
+          reopened_picker and reopened and len(reopened_log.splitlines()) == conversion_count,
+          {"picker": reopened_picker, "rendered": reopened, "state": reopened_state,
+           "conversion_count_before": conversion_count,
+           "conversion_count_after": len(reopened_log.splitlines())})
+
+    # Corrupt input produces a readable conversion failure with the original
+    # download intact; it does not collapse to a generic network failure.
+    close_file_viewer()
+    broken_picker = open_file_via_picker("broken.docx")
     browser("wait", "6000")
-    error_view = browser_eval("""(() => {
-      const vis = (n) => !!n && getComputedStyle(n).display !== "none" && n.getBoundingClientRect().width > 0;
-      const viewer = document.querySelector("#fileViewer");
-      const text = viewer ? viewer.textContent : "";
-      const fallback = viewer ? viewer.querySelector(".fileDownloadFallback a, a[href*='/file/download']") : null;
-      return {open: vis(viewer), text: text.slice(0, 400),
-              canvases: viewer ? viewer.querySelectorAll("canvas").length : 0,
-              fallbackHref: fallback ? fallback.href : null};
-    })()""")
+    error_view = file_view_state()
     browser("screenshot", "--full", str(ART / "office-browser-error.png"))
-    check("7b_browser_error_keeps_download",
-          isinstance(error_view, dict) and error_view.get("open") is True
-          and error_view.get("canvases") == 0 and bool(error_view.get("fallbackHref")),
-          error_view)
+    check("7d_browser_error_keeps_download",
+          broken_picker and isinstance(error_view, dict) and error_view.get("open") is True
+          and error_view.get("canvases") == 0 and bool(error_view.get("downloadHref"))
+          and "Document conversion failed" in error_view.get("text", ""),
+          {"picker": broken_picker, "view": error_view})
+
+    # A one-shot converter failure is retryable. The retry must traverse read +
+    # Range preflight again and then render the same current file.
+    close_file_viewer()
+    retry_picker = open_file_via_picker("retry.docx", fail_once=True)
+    retry_failure = {}
+    for _ in range(60):
+        retry_failure = file_view_state()
+        if isinstance(retry_failure, dict) and retry_failure.get("retryPresent"):
+            break
+        time.sleep(0.5)
+    failure_counts = browser_eval("({reads: window.__previewVerify.reads.length, preflights: window.__previewVerify.preflights.length})")
+    failure_ok = (retry_picker and isinstance(retry_failure, dict) and retry_failure.get("retryPresent")
+                  and "Document conversion failed" in retry_failure.get("text", "")
+                  and "transient verifier conversion failure" in retry_failure.get("text", "")
+                  and "retry.docx" in str(retry_failure.get("downloadHref")))
+    browser("screenshot", "--full", str(ART / "office-browser-retryable-error.png"))
+    if isinstance(retry_failure, dict) and retry_failure.get("retryPresent"):
+        # The converter intentionally negative-caches failures for 15 seconds.
+        # Let that expire before testing a genuinely new conversion attempt.
+        time.sleep(16)
+        browser("click", "#fileViewer .fileDownloadFallback button")
+    retry_rendered, retry_success = wait_for_preview_canvas()
+    retry_counts = browser_eval("({reads: window.__previewVerify.reads.length, preflights: window.__previewVerify.preflights.length})")
+    check("7e_browser_retry_reopens_and_renders",
+          failure_ok and retry_rendered
+          and retry_counts.get("reads", 0) > failure_counts.get("reads", 0)
+          and retry_counts.get("preflights", 0) > failure_counts.get("preflights", 0),
+          {"failure": retry_failure, "failure_counts": failure_counts,
+           "retry_counts": retry_counts, "rendered": retry_rendered, "success": retry_success})
+    browser("screenshot", "--full", str(ART / "office-browser-retry-success.png"))
+
+    # Retain a failed file's actual button as a detached DOM capability. After a
+    # different file owns the viewer, clicking it must be inert: no new read,
+    # no new preflight, and no replacement of the current preview.
+    close_file_viewer()
+    stale_picker = open_file_via_picker("stale.docx", fail_once=True)
+    stale_failure = {}
+    for _ in range(60):
+        stale_failure = file_view_state()
+        if isinstance(stale_failure, dict) and stale_failure.get("retryPresent"):
+            break
+        time.sleep(0.5)
+    stale_button_retained = browser_eval("""(() => {
+      const viewer = document.querySelector("#fileViewer");
+      const button = viewer ? Array.from(viewer.querySelectorAll("button")).find((b) => /retry preview/i.test(b.textContent || "")) : null;
+      window.__staleRetryButton = button || null;
+      return Boolean(button);
+    })()""")
+    close_file_viewer()
+    current_picker = open_file_via_picker("deck.ppt")
+    current_rendered, current_before_stale = wait_for_preview_canvas()
+    before_stale_click = browser_eval("({reads: window.__previewVerify.reads.length, preflights: window.__previewVerify.preflights.length})")
+    browser_eval("(() => { if (window.__staleRetryButton) window.__staleRetryButton.click(); return true; })()")
+    browser("wait", "1000")
+    after_stale_click = browser_eval("""(() => ({
+      reads: window.__previewVerify.reads.length,
+      preflights: window.__previewVerify.preflights.length,
+      detached: window.__staleRetryButton ? !window.__staleRetryButton.isConnected : null
+    }))()""")
+    current_after_stale = file_view_state()
+    check("7f_browser_stale_retry_cannot_resurrect",
+          stale_picker and stale_button_retained is True and current_picker and current_rendered
+          and after_stale_click.get("detached") is True
+          and after_stale_click.get("reads") == before_stale_click.get("reads")
+          and after_stale_click.get("preflights") == before_stale_click.get("preflights")
+          and current_after_stale.get("canvases", 0) > 0
+          and "deck.ppt" in current_after_stale.get("status", ""),
+          {"stale_failure": stale_failure, "before": before_stale_click,
+           "after": after_stale_click, "before_view": current_before_stale,
+           "after_view": current_after_stale})
+    restore_soffice()
 
     errors_payload = browser("errors", "--json")
     console_payload = browser("console", "--json")
@@ -505,8 +731,103 @@ try:
     fatal_console = [m for m in console_msgs if isinstance(m, dict)
                      and re.search(r"\b(?:ReferenceError|TypeError|SyntaxError)\b|\bCodoxear\b.*\bfailed to load\b",
                                    str(m.get("text") or ""), re.I)]
-    check("7c_browser_no_fatal_errors", page_errors == [] and not fatal_console,
+    check("7g_browser_no_fatal_errors", page_errors == [] and not fatal_console,
           {"page_errors": page_errors, "fatal_console": fatal_console})
+
+    # Full session and absolute derivative GETs stay out of every Cache Storage
+    # cache. VM coverage exercises these same routes under a prefixed scope.
+    derivative_urls = [
+        payloads["deck.ppt"]["payload"]["preview_url"],
+        "/api/files/office_preview?" + urllib.parse.urlencode({"path": f"{DEMO}/report.docx"}),
+        video_preview_url,
+        "/api/files/video_preview?" + urllib.parse.urlencode({"path": f"{DEMO}/clip.mkv"}),
+    ]
+    derivative_results = browser_eval("""(async () => {
+      const results = [];
+      for (const url of %s) {
+        const response = await fetch(url, { credentials: "same-origin" });
+        const body = await response.arrayBuffer();
+        let cached = false;
+        for (const name of await caches.keys()) {
+          const cache = await caches.open(name);
+          if (await cache.match(url)) cached = true;
+        }
+        results.push({ url, status: response.status, bytes: body.byteLength,
+                       stale: response.headers.get("X-Codoxear-Stale"), cached });
+      }
+      return results;
+    })()""" % json.dumps(derivative_urls))
+    check("7h_browser_derivative_passthrough_and_cache_exclusion",
+          isinstance(derivative_results, list) and len(derivative_results) == 4
+          and all(row.get("status") == 200 and row.get("bytes", 0) > 0
+                  and row.get("cached") is False and row.get("stale") is None
+                  for row in derivative_results),
+          derivative_results)
+
+    # Generic non-Range blob policy remains network-first and durable. A large
+    # body is delivered live, appears in Cache Storage, and can be read offline.
+    large_url = f"/api/sessions/{session_id}/file/blob?" + urllib.parse.urlencode({"path": f"{DEMO}/large.pdf"})
+    large_result = browser_eval("""(async () => {
+      const url = %s;
+      const started = performance.now();
+      const response = await fetch(url, { credentials: "same-origin" });
+      const headersMs = performance.now() - started;
+      const body = await response.arrayBuffer();
+      const bodyMs = performance.now() - started - headersMs;
+      let cachedBytes = 0;
+      for (let i = 0; i < 100; i++) {
+        const cache = await caches.open("codoxear-api-v1");
+        const hit = await cache.match(url);
+        if (hit) { cachedBytes = (await hit.arrayBuffer()).byteLength; break; }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      return { status: response.status, bytes: body.byteLength, cachedBytes,
+               headersMs, bodyMs, stale: response.headers.get("X-Codoxear-Stale") };
+    })()""" % json.dumps(large_url))
+    expected_large_bytes = 8 * 1024 * 1024
+    check("7i_browser_large_response_cache_lifecycle",
+          isinstance(large_result, dict) and large_result.get("status") == 200
+          and large_result.get("bytes") == expected_large_bytes
+          and large_result.get("cachedBytes") == expected_large_bytes
+          and large_result.get("stale") is None,
+          large_result)
+
+    browser("set", "offline", "on")
+    browser("wait", "300")
+    offline_result = browser_eval("""(async () => {
+      const blobUrl = %s, officeUrl = %s;
+      let rangeStatus = 0, rangeBytes = 0, rangeError = "";
+      try {
+        const response = await fetch(blobUrl, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" });
+        rangeStatus = response.status;
+        rangeBytes = (await response.arrayBuffer()).byteLength;
+      } catch (error) { rangeError = String(error && error.message || error); }
+      const full = await fetch(blobUrl, { credentials: "same-origin" });
+      const fullBytes = (await full.arrayBuffer()).byteLength;
+      let officeStatus = 0, officeError = "";
+      try {
+        const response = await fetch(officeUrl, { credentials: "same-origin" });
+        officeStatus = response.status;
+      } catch (error) { officeError = String(error && error.message || error); }
+      const asset = document.querySelector("script[type='module'][src*='app.bundle.js']");
+      const staticResponse = await fetch(asset.src);
+      const staticBytes = (await staticResponse.arrayBuffer()).byteLength;
+      return { rangeStatus, rangeBytes, rangeError, fullStatus: full.status,
+               fullBytes, fullStale: full.headers.get("X-Codoxear-Stale"),
+               officeStatus, officeError, staticStatus: staticResponse.status, staticBytes };
+    })()""" % (json.dumps(large_url), json.dumps(payloads["deck.ppt"]["payload"]["preview_url"])))
+    browser("set", "offline", "off")
+    browser("wait", "1000")
+    check("7j_browser_offline_range_and_cache_fallbacks",
+          isinstance(offline_result, dict)
+          and (bool(offline_result.get("rangeError")) or
+               (offline_result.get("rangeStatus") == 206 and offline_result.get("rangeBytes") == 1))
+          and offline_result.get("fullStatus") == 200
+          and offline_result.get("fullBytes") == expected_large_bytes
+          and offline_result.get("fullStale") in ("offline", "suspect")
+          and bool(offline_result.get("officeError")) and offline_result.get("officeStatus") == 0
+          and offline_result.get("staticStatus") == 200 and offline_result.get("staticBytes", 0) > 0,
+          offline_result)
 
     # --- 8. Provisioning helper (in-container only) ----------------------
 
@@ -532,8 +853,8 @@ try:
         parsed = json.loads(json_res["stdout"])
         groups = parsed.get("checks", {})
         helper_observed["check_json_groups"] = {g: v.get("status") for g, v in groups.items()}
-        # The verify image honestly lacks ffmpeg/tmux; the doctor must report
-        # rc 1 with office/fonts/git ok and the real gaps named.
+        # Optional groups may be absent in the minimal verify image; the
+        # complete schema and working Office group are the contract here.
         json_ok = (json_res["rc"] in (0, 1) and set(groups) == {"office", "fonts", "media", "git", "tmux"}
                    and groups.get("office", {}).get("status") == "ok")
     except Exception:
