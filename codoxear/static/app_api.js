@@ -128,7 +128,13 @@ const perfWindow = 200;
     try {
       obj = JSON.parse(txt);
     } catch (e) {
-      console.error("api: invalid json response", { path, url, method, txt });
+      console.error("api: invalid json response", { path, url, method, status: res.status, txt });
+      // Keep the SyntaxError identity (callers and tests key on it) but make the
+      // message name the real situation: an HTML/gateway body is not a parse bug.
+      const snippet = String(txt || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      e.status = res.status;
+      e.rawText = txt;
+      e.message = `HTTP ${res.status} · response was not JSON${snippet ? `: ${snippet}` : " (empty body)"}`;
       throw e;
     }
     if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });

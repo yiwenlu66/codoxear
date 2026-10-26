@@ -20,6 +20,7 @@ def _deps(payload, responses):
         json_response=lambda _handler, status, body: responses.append((status, body)),
         json_response_with_etag=lambda *_args: None,
         read_json_body=lambda _handler: payload,
+        read_body=lambda _handler, **_kwargs: b"direct",
         read_new_session_defaults=lambda: {}, tmux_available=lambda: False,
         tmux_session_name="", note_listing_generation=None, metrics_snapshot=lambda: {}, record_metric=lambda *_args: None,
         perf_counter=lambda: 0.0, normalize_agent_backend=lambda value, default: default,

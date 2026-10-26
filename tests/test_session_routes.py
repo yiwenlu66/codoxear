@@ -91,6 +91,7 @@ def _deps(**overrides):
         json_response=json_response,
         json_response_with_etag=json_response_with_etag,
         read_json_body=lambda _handler, **_kwargs: {},
+        read_body=lambda _handler, **_kwargs: b"{}",
         read_new_session_defaults=lambda: {"backend": "codex"},
         tmux_available=lambda: True,
         tmux_session_name="codoxear",

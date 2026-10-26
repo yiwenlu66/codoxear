@@ -149,6 +149,33 @@ browser eval 'window.__quickDelay=true;window.__quickFail=true' >/dev/null
 browser click '#quickNewBtn' >/dev/null
 browser eval '({width:innerWidth,focused:document.activeElement.id,sidebarOpen:document.body.classList.contains("sidebar-open"),overflow:document.documentElement.scrollWidth>innerWidth})' --json > "$artifacts/mobile.json"
 browser screenshot "$artifacts/mobile-starting.png" >/dev/null
+# The reserve endpoint takes no fields. It must still consume the request body:
+# the server keeps connections alive (HTTP/1.1), and an unread body is parsed as
+# the next request line, so the following request on that socket answers with an
+# HTML error page instead of JSON — observed live as "JSON.parse: unexpected
+# character at line 1 column 1" in the New-session dialog after a quick start.
+# Three POSTs plus a GET ride one connection; every response must be JSON.
+"${docker[@]}" exec -i "$container" python3 - "$port" "$password" > "$artifacts/keepalive.json" <<'PROBE'
+import http.client, json, sys
+port = int(sys.argv[1]); password = sys.argv[2]
+con = http.client.HTTPConnection("127.0.0.1", port, timeout=15)
+con.request("POST", "/api/login", body=json.dumps({"password": password}),
+            headers={"Content-Type": "application/json"})
+login = con.getresponse()
+cookie = login.getheader("Set-Cookie", "").split(";")[0]
+login.read()
+headers = {"Content-Type": "application/json", "Cookie": cookie}
+reserved = []
+for _ in range(3):
+    con.request("POST", "/api/quick-sessions", body="{}", headers=headers)
+    response = con.getresponse()
+    raw = response.read()
+    reserved.append({"status": response.status, "body": json.loads(raw)})
+con.request("GET", "/api/sessions", headers={"Cookie": cookie})
+response = con.getresponse()
+listing = json.loads(response.read())
+print(json.dumps({"reserved": reserved, "listingJson": isinstance(listing, dict)}))
+PROBE
 browser errors --json > "$artifacts/browser-errors.json"
 python3 - "$artifacts" "$commit" <<'PY'
 import json, pathlib, sys
@@ -179,6 +206,10 @@ assert len(comparison['acks'])==2 and comparison['acks'][-1]['status']==200, com
 f=read('failure'); assert f['draft']=='Preserve this failed-start draft.' and f['cwd']=='~' and f['status'], f
 assert r['model'] in f['model'] and r['reasoningEffort'] in f['effort'] and f['record']==r, f
 m=read('mobile'); assert not m['sidebarOpen'] and not m['overflow'] and m['focused']=='msg', m
+keepalive=json.loads((p/'keepalive.json').read_text())
+assert [item['status'] for item in keepalive['reserved']]==[200,200,200], keepalive
+assert all(item['body']['cwd'].startswith('/home/tester/codoxear-quick/') for item in keepalive['reserved']), keepalive
+assert keepalive['listingJson'] is True, keepalive
 (p/'report.json').write_text(json.dumps({'commit':sys.argv[2], 'quickCwd':s['cwd'],'quickDisplayName':s['display_name'],'quickDirs':evidence['quick_dirs'],'launch':r,'draftHandoff':True,'sendAcknowledgedByBroker':True,'assistantReplyRecorded':assistant_reply,'providerErrors':provider_errors,'sendEchoVisible':True,'ordinaryDialogSendAcknowledged':True,'failurePreservedDraft':True,'mobile':m},indent=2))
 print('PASS: actual dialog → quick launch → draft → broker ACK + Pi PTY receipt; server-error fallback; narrow drawer/focus')
 if not assistant_reply: print('BOUNDARY: no assistant reply observed; provider diagnostics are in report.json and broker-evidence.json')

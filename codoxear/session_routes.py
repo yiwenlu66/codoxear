@@ -22,6 +22,7 @@ class SessionRouteDeps:
     json_response: JsonResponse
     json_response_with_etag: JsonResponseWithEtag
     read_json_body: ReadJsonBody
+    read_body: Callable[..., bytes]
     read_new_session_defaults: Callable[[], dict[str, Any]]
     tmux_available: Callable[[], bool]
     tmux_session_name: str
@@ -268,6 +269,11 @@ def _handle_quick_session_allocate(handler: Any, *, manager: Any, deps: SessionR
     """Reserve one quick-session slot. Creates no directory; spawns nothing."""
     if not _authorized(handler, deps):
         return
+    # This endpoint takes no fields, but the request body must still be
+    # consumed: the server keeps connections alive, and an unread body is
+    # parsed as the next request line — the following request on that socket
+    # then answers with an HTML error page instead of JSON.
+    deps.read_body(handler)
     try:
         reserved = manager.allocate_quick_session()
     except OSError as e:
