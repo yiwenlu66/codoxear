@@ -3,13 +3,42 @@ const STATIC_CACHE = "codoxear-static-v1";
 const API_CACHE = "codoxear-api-v1";
 const SW_META_CACHE = "codoxear-sw-meta-v1";
 const APP_CACHES = new Set([HTML_CACHE, STATIC_CACHE, API_CACHE, SW_META_CACHE]);
-const NETWORK_FIRST_TIMEOUT_MS = 3000;
+const NETWORK_FIRST_MIN_TIMEOUT_MS = 3000;
+const NETWORK_FIRST_MAX_TIMEOUT_MS = 10000;
 const NETWORK_SUSPECT_WINDOW_MS = 30000;
+// A lost race starts as unproven slowness: the retained fetch may still
+// succeed. Only when no network-first fetch has settled successfully for this
+// long does a hang escalate to "unreachable" and arm the suspect latch.
+const HANG_SUSPECT_AFTER_MS = 8000;
 // Marks a cache-served fallback so the page can tell "server answered" from
 // "service worker served stale data": behind a cache-serving worker, a
-// resolved 200 is evidence about the cache, not the network.
+// resolved 200 is evidence about the cache, not the network. The value names
+// why the cache answered:
+//   offline — the browser reports no link (navigator.onLine === false)
+//   suspect — a fetch rejected outright, or a hang outlasted slowness
+//   timeout — the delivery-bounding race lost, but the fetch is still running;
+//             this is evidence of slowness, never of unreachability
 const STALE_HEADER = "X-Codoxear-Stale";
 let networkSuspectUntil = 0;
+// Clock time of the first race timeout since the last successful network-first
+// fetch; 0 while every recent fetch has settled. Any success or rejection
+// resets it — success proves reachability, rejection arms the latch directly.
+let unsettledNetworkSince = 0;
+// EWMA of successful network-first fetch durations; 0 until the first sample.
+// The race timeout adapts to the observed connection so a consistently slow
+// link stops losing every race, while a sample-less worker keeps the 3s bound
+// that the offline cold-boot budget relies on.
+let fetchLatencyEwmaMs = 0;
+
+function recordFetchLatency(durationMs) {
+  if (!(durationMs >= 0)) return;
+  fetchLatencyEwmaMs = fetchLatencyEwmaMs ? fetchLatencyEwmaMs * 0.7 + durationMs * 0.3 : durationMs;
+}
+
+function networkFirstTimeoutMs() {
+  if (!fetchLatencyEwmaMs) return NETWORK_FIRST_MIN_TIMEOUT_MS;
+  return Math.min(NETWORK_FIRST_MAX_TIMEOUT_MS, Math.max(NETWORK_FIRST_MIN_TIMEOUT_MS, fetchLatencyEwmaMs * 2));
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -84,9 +113,9 @@ async function fetchAndCache(request, cache, { pruneVersions = false } = {}) {
   return response;
 }
 
-function markStale(response) {
+function markStale(response, reason) {
   const headers = new Headers(response.headers);
-  headers.set(STALE_HEADER, "1");
+  headers.set(STALE_HEADER, reason);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -101,24 +130,39 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     const cached = await cache.match(request, matchOptions);
     if (cached) {
       onFallback?.();
-      return markStale(cached);
+      return markStale(cached, "offline");
     }
   }
   if (Date.now() < networkSuspectUntil) {
     const cached = await cache.match(request, matchOptions);
     if (cached) {
       onFallback?.();
+      const startedAt = Date.now();
       event.waitUntil(fetchAndCache(request, cache).then(() => {
+        recordFetchLatency(Date.now() - startedAt);
         networkSuspectUntil = 0;
+        unsettledNetworkSince = 0;
       }).catch(() => {}));
-      return markStale(cached);
+      return markStale(cached, "suspect");
     }
   }
   // Airplane + VPN tails and captive portals can hang instead of rejecting.
-  // Bound response delivery, but retain the fetch so late success refreshes cache.
+  // Bound response delivery, but retain the fetch so its outcome decides the
+  // verdict: rejection proves unreachability and arms the suspect latch, while
+  // a late success proves mere slowness, refreshes the cache, and feeds the
+  // adaptive race bound. Losing the race itself arms nothing.
+  const startedAt = Date.now();
+  let rejected = false;
   const network = fetchAndCache(request, cache).then((response) => {
+    recordFetchLatency(Date.now() - startedAt);
     networkSuspectUntil = 0;
+    unsettledNetworkSince = 0;
     return response;
+  }, (error) => {
+    rejected = true;
+    networkSuspectUntil = Date.now() + NETWORK_SUSPECT_WINDOW_MS;
+    unsettledNetworkSince = 0;
+    throw error;
   });
   event.waitUntil(network.catch(() => {}));
   let timer;
@@ -126,14 +170,24 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     return await Promise.race([
       network,
       new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Network-first request timed out")), NETWORK_FIRST_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new Error("Network-first request timed out")), networkFirstTimeoutMs());
       }),
     ]);
   } catch (error) {
-    networkSuspectUntil = Date.now() + NETWORK_SUSPECT_WINDOW_MS;
     onFallback?.();
     const cached = await cache.match(request, matchOptions);
-    if (cached) return markStale(cached);
+    if (cached) {
+      if (rejected) return markStale(cached, "suspect");
+      const now = Date.now();
+      if (!unsettledNetworkSince) unsettledNetworkSince = now;
+      // A fetch that never settles outlasts slowness: escalate the hang to
+      // unreachability so cache fallbacks stop masquerading as a live server.
+      if (now - unsettledNetworkSince >= HANG_SUSPECT_AFTER_MS) {
+        networkSuspectUntil = now + NETWORK_SUSPECT_WINDOW_MS;
+        return markStale(cached, "suspect");
+      }
+      return markStale(cached, "timeout");
+    }
     throw error;
   } finally {
     clearTimeout(timer);

@@ -71,8 +71,8 @@ const perfWindow = 200;
   }
 
   // True when the service worker answered from its offline cache instead of
-  // the server (marked with X-Codoxear-Stale). The payload is usable but the
-  // server is unreachable; callers must not treat this as transport health.
+  // the server (marked with X-Codoxear-Stale). The payload is cached data
+  // whatever the mark's reason, so callers must not treat it as fresh.
   function apiResponseStale(obj) {
     return !!(obj && obj[API_RESPONSE_STALE]);
   }
@@ -103,10 +103,15 @@ const perfWindow = 200;
       if (!error || error.name !== "AbortError") reportTransport(API_TRANSPORT_FAILED);
       throw error;
     }
-    // A response of any status proves the server answered. The stale mark says
-    // the answer came from the service worker's cache instead of the server.
-    const stale = Boolean(res.headers.get("X-Codoxear-Stale"));
-    reportTransport(stale ? API_TRANSPORT_STALE : API_TRANSPORT_LIVE);
+    // A response of any status proves an answer arrived. The stale mark says
+    // the answer came from the service worker's cache instead of the server,
+    // and its value names why: "offline"/"suspect" prove unreachability, but
+    // "timeout" only means the delivery race lost while the fetch kept running
+    // — evidence of slowness, not a verdict, so it produces no report. The
+    // retained fetch's outcome delivers the next signal.
+    const stale = res.headers.get("X-Codoxear-Stale");
+    if (!stale) reportTransport(API_TRANSPORT_LIVE);
+    else if (stale !== "timeout") reportTransport(API_TRANSPORT_STALE);
     const dt = performance.now() - t0;
     if (rawPath === "/api/sessions" && method === "GET") codoxearPerfHelpers.pushSample("api_sessions_ms", dt);
     else if (rawPath.includes("/messages") && method === "GET") {

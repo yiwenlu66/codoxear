@@ -75,11 +75,15 @@ def test_api_surfaces_stale_mark_without_polluting_payload() -> None:
             serialized: JSON.stringify(stale),
           }};
 
+          staleHeader = "timeout";
+          const timeoutMarked = await api("/api/sessions");
+          const timeoutResult = {{ stale: apiResponseStale(timeoutMarked) }};
+
           staleHeader = null;
           const recovered = await api("/api/sessions");
           const recoveredResult = {{ stale: apiResponseStale(recovered) }};
 
-          process.stdout.write(JSON.stringify({{ liveResult, staleResult, recoveredResult }}));
+          process.stdout.write(JSON.stringify({{ liveResult, staleResult, timeoutResult, recoveredResult }}));
         }})().catch((error) => {{ console.error(error); process.exit(1); }});
         """
     )
@@ -91,6 +95,8 @@ def test_api_surfaces_stale_mark_without_polluting_payload() -> None:
     # so reducers and caches cannot tell a marked response apart from a live one.
     assert out["staleResult"]["enumerableKeys"] == ["sessions"]
     assert "Stale" not in out["staleResult"]["serialized"]
+    # A timeout-marked payload is still cached data: the provenance flag stays.
+    assert out["timeoutResult"]["stale"] is True
     assert out["recoveredResult"]["stale"] is False
 
 
@@ -156,7 +162,7 @@ def test_api_responses_report_client_transport_state() -> None:
               status,
               ok: status < 400,
               headers: {{ get(name) {{
-                return String(name).toLowerCase() === "x-codoxear-stale" && next.stale ? "1" : null;
+                return String(name).toLowerCase() === "x-codoxear-stale" && next.stale ? next.stale : null;
               }} }},
               text: async () => next.body || "{{}}",
             }};
@@ -189,10 +195,18 @@ def test_api_responses_report_client_transport_state() -> None:
           const out = {{ initial: netSnap(net.sync()) }};
           await call({{ body: '{{"sessions":[]}}' }});
           out.afterLive = netSnap(net.sync());
-          await call({{ body: '{{"sessions":[]}}', stale: true }});
+          await call({{ body: '{{"sessions":[]}}', stale: "suspect" }});
           out.afterStale = netSnap(net.sync());
+          // A timeout-marked answer means the delivery race lost while the
+          // fetch kept running: slowness, not unreachability. It produces no
+          // transport report, so the existing state — in either direction —
+          // survives it unchanged.
+          await call({{ body: '{{"sessions":[]}}', stale: "timeout" }});
+          out.afterTimeoutWhileStale = netSnap(net.sync());
           await call({{ body: '{{"sessions":[]}}' }});
           out.afterLiveAgain = netSnap(net.sync());
+          await call({{ body: '{{"sessions":[]}}', stale: "timeout" }});
+          out.afterTimeoutWhileLive = netSnap(net.sync());
           await call({{ kind: "throw" }});
           out.afterOneFailure = netSnap(net.sync());
           await call({{ kind: "throw" }});
@@ -213,9 +227,14 @@ def test_api_responses_report_client_transport_state() -> None:
     assert out["afterStale"]["state"] == "cached"
     assert out["afterStale"]["hidden"] is False
     assert "showing cached data" in out["afterStale"]["spoken"]
+    # A timeout mark reports nothing: a stale verdict survives it...
+    assert out["afterTimeoutWhileStale"]["state"] == "cached"
     # One live response clears it, with no dependence on a poll cycle.
     assert out["afterLiveAgain"]["state"] == ""
     assert out["afterLiveAgain"]["hidden"] is True
+    # ...and a healthy state survives a timeout mark too.
+    assert out["afterTimeoutWhileLive"]["state"] == ""
+    assert out["afterTimeoutWhileLive"]["hidden"] is True
     # One failed request is below the threshold; two in a row trips it.
     assert out["afterOneFailure"]["state"] == ""
     assert out["afterTwoFailures"]["state"] == "failing"
