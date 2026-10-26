@@ -1073,6 +1073,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           deselectSession: () => sessionLifecycleController.deselectSession(),
           selectSession: (id) => sessionLifecycleController.selectSession(id),
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
+          reserveQuickSession: () => api("/api/quick-sessions", { method: "POST", body: {} }),
           restoreDraft: restoreUndeliveredDraft,
           openDialog: (options) => newSessionDialogController.open(options),
           closeSidebar: () => { if (isMobile()) setSidebarOpen(false); },

@@ -22,6 +22,7 @@ class SessionRouteDeps:
     json_response: JsonResponse
     json_response_with_etag: JsonResponseWithEtag
     read_json_body: ReadJsonBody
+    read_body: Callable[..., bytes]
     read_new_session_defaults: Callable[[], dict[str, Any]]
     tmux_available: Callable[[], bool]
     tmux_session_name: str
@@ -91,6 +92,9 @@ def handle_session_post_route(
     match_session_route: RouteMatcher | None = None,
 ) -> bool:
     if path != "/api/sessions":
+        if path == "/api/quick-sessions":
+            _handle_quick_session_allocate(handler, manager=manager, deps=deps)
+            return True
         session_id = match_session_route(path, "read") if match_session_route is not None else None
         if session_id is not None:
             _handle_read_post(handler, session_id=session_id, manager=manager, deps=deps)
@@ -259,6 +263,24 @@ def _handle_unattended_get(handler: Any, *, session_id: str, manager: Any, deps:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
     deps.json_response(handler, 200, {"ok": True, **cfg})
+
+
+def _handle_quick_session_allocate(handler: Any, *, manager: Any, deps: SessionRouteDeps) -> None:
+    """Reserve one quick-session slot. Creates no directory; spawns nothing."""
+    if not _authorized(handler, deps):
+        return
+    # This endpoint takes no fields, but the request body must still be
+    # consumed: the server keeps connections alive, and an unread body is
+    # parsed as the next request line — the following request on that socket
+    # then answers with an HTML error page instead of JSON.
+    deps.read_body(handler)
+    try:
+        reserved = manager.allocate_quick_session()
+    except OSError as e:
+        detail = e.strerror or str(e)
+        deps.json_response(handler, 500, {"error": f"quick workspace unavailable: {detail}"})
+        return
+    deps.json_response(handler, 200, {"ok": True, **reserved})
 
 
 def _handle_session_create(handler: Any, *, manager: Any, deps: SessionRouteDeps) -> None:

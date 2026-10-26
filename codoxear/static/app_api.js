@@ -173,7 +173,13 @@ const perfWindow = 200;
       try {
         obj = JSON.parse(txt);
       } catch (error) {
-        console.error("api: invalid json response", { path, url, method });
+        console.error("api: invalid json response", { path, url, method, status: res.status, txt });
+        // Preserve SyntaxError identity and upstream HTTP/body diagnostics. A
+        // successful HTTP status still cannot confirm an upload's commit JSON.
+        const snippet = String(txt || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        error.status = res.status;
+        error.rawText = txt;
+        error.message = `HTTP ${res.status} · response was not JSON${snippet ? `: ${snippet}` : " (empty body)"}`;
         throw error;
       }
       if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });

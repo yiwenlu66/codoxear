@@ -11,6 +11,7 @@ from .broker_turn_state import _strip_ansi
 from .launch_config import provider_choice_for_settings
 from .post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
 from .post_log_recovery import record_is_post_log_bound_recovery
+from .quick_workspace import quick_display_name_for_cwd
 from .session_display import sidebar_display_name
 from .util import append_launch_attempt
 from .util import read_launch_attempts
@@ -297,6 +298,7 @@ def launch_attempt_row(
     unattended_default_idle_minutes: int,
     unattended_default_max_injections: int,
     provider_choice_func: ProviderChoiceFunc | None = None,
+    quick_root: Path | None = None,
 ) -> dict[str, Any] | None:
     launch_id = launch_attempt_id(record)
     route_id = launch_attempt_route_id(record)
@@ -341,7 +343,10 @@ def launch_attempt_row(
         "unattended_cooldown_minutes": unattended_default_idle_minutes,
         "unattended_remaining_injections": unattended_default_max_injections,
         "alias": "",
-        "display_name": sidebar_display_name({"cwd": record.get("cwd")}),
+        # A provisional row has no alias by construction, so a quick workspace
+        # names itself from its slot instead of showing the bare directory name.
+        "display_name": quick_display_name_for_cwd(cwd, root=quick_root)
+        or sidebar_display_name({"cwd": record.get("cwd")}),
         "draft_updated_ts": 0.0,
         "files": [],
         "git_branch": "",

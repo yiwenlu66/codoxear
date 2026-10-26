@@ -104,6 +104,7 @@ def _route_deps() -> SessionRouteDeps:
             set_auth_cookie=no_cookie,
         ),
         read_json_body=lambda handler, **_kwargs: json.loads(read_body(handler).decode("utf-8")),
+        read_body=read_body,
         read_new_session_defaults=lambda: {"backend": "pi"},
         tmux_available=lambda: False,
         tmux_session_name="codoxear-test",

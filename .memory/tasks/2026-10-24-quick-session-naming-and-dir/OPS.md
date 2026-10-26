@@ -80,3 +80,115 @@ User: "no env/knob for this; just hardcode default. what if overflows 99?"
 Push held: `subagent-chat-01a17685` asked for no main publication while the
 upload-robustness merge lands. Committed locally only; origin/main still
 `2b2f1fae` at the time of this entry.
+
+## 2026-10-26T16:40Z — implemented and verified
+
+Shipped as 33889b8d (feature) + 60505805 (help-text correction), pushed to main
+(b7544dcb..60505805) and deployed from the committed snapshot.
+
+Implementation shape (deviations in QUICK_SESSION_PLAN.md §Status):
+- `codoxear/quick_workspace.py` owns naming, containment, the slot counter
+  (`<app_dir>/quick_sessions.json`, `{"next_slot": N}`, module lock, dirs as the
+  floor) and `release_workspace` (rmdir-only-if-empty).
+- `POST /api/quick-sessions` → `manager.allocate_quick_session()` in
+  `session_routes._handle_quick_session_allocate`; no directory, no spawn.
+- Client: `app_quick_session.js` reserves inside the gesture *after*
+  `textarea.focus()`, then reuses `spawnSessionWithCwd(cwd, …, sessionName)` so
+  the existing rename sets the alias; new seam `reserveQuickSession` wired in
+  `app_wiring.js` + `app_application_composition.js`.
+- `SessionStore.quick_root` filters quick cwds out of `recent_cwds` on write and
+  read; `launch_attempt_row(..., quick_root=)` names provisional rows from the
+  slot; `control_routes._handle_delete` trims an empty quick workspace.
+
+Verification evidence:
+- `scripts/docker_quick_session_verify.sh 33889b8d` → PASS, EXIT=0,
+  artifacts /tmp/codoxear-quick-verify.FoJ4H4. Measured: session cwd
+  `/home/tester/codoxear-quick/quick-01`; alias + display_name + sidebar
+  `.titleText` all `Quick Session 01`; launch body cwd = the workspace path;
+  `quick_dirs == ['quick-01']` after two failed starts (reserve creates nothing);
+  `recent_cwds == ['/tmp']`; draft handoff, broker ACK, mobile drawer/focus,
+  failure dialog `cwd: "~"`. In-container pytest: 45 passed.
+- Screenshots: starting.png shows "Starting Pi · auto-jev-main · low in Quick
+  Session 01…" with a preserved draft.
+- Host suite: 2613 passed, 1 failed —
+  `test_hint_mode_coverage::test_rendered_shell_interactives_are_declared_or_explicitly_excluded`
+  (missing `draftUndoBtn`). Reproduced at b7544dcb in a detached worktree, so it
+  predates this change.
+
+## 2026-10-26T16:46Z — deployed
+
+`scripts/deploy.sh 60505805` → EXIT=0 ("smoke test passed: initial load and
+reload rendered a session card"; "deployed 60505805e91214dbb74ea3d1bc4a973f65821508").
+Snapshot worktree `~/.local/share/codoxear/deploy` at 60505805 with the bundle
+rebuilt from source.
+
+Post-deploy checks (read-only):
+- service active, WorkingDirectory=/home/yiwen/.local/share/codoxear/deploy,
+  ExecStart=<pipx venv>/bin/python -u -m codoxear.server
+- GET / → 200, GET /api/sessions → 401, GET /api/quick-sessions → 404 (POST-only),
+  POST /api/quick-sessions → 401 while POST /api/nonexistent-route → 404
+  (route registered and auth-gated)
+- rebuilt bundle contains reserveQuickSession, api/quick-sessions, "own workspace",
+  "quick session in a fresh workspace"
+- quick_workspace.py present in the snapshot; 25 sidecars / 27 broker processes,
+  all predating the restart (server 00:38:15, brokers from Oct 24 / 21:20)
+
+main tip after this is 97b80f04 (docs + task memory only): `git diff 60505805
+97b80f04` touches no file under codoxear/, scripts/ or tests/, so the deployed
+code is byte-identical to main's code and no second restart was performed.
+
+## 2026-10-26T16:58Z — live bug after deploy, root-caused
+
+User report: New-session dialog shows `JSON.parse: unexpected character at line
+1 column 1 of the JSON data` right after a quick start; no session, no
+`~/codoxear-quick`.
+
+Evidence gathered (read-only, live):
+- `~/.local/share/codoxear/quick_sessions.json` = `{"next_slot": 4}` → three
+  successful reserves; `~/codoxear-quick` does not exist → no launch ever began;
+  `session_launches.jsonl` mtime 23:54 (before the 00:38 deploy) → no launch
+  attempt was recorded.
+
+Root cause (measured, not inferred): `_handle_quick_session_allocate` answered a
+body-less POST without consuming the request body. The server runs HTTP/1.1 with
+keep-alive, so the two body bytes (`{}`) stayed in the socket and were parsed as
+the next request line. Confirmed against a container from the deployed image
+(`codoxear-verify:33889b8d4209`, throwaway HOME, port 19680), one
+`http.client.HTTPConnection`:
+
+    reserve#1 200 application/json {"ok": true, "slot": 1, ...}
+    reserve#2 501 text/html "<!DOCTYPE HTML>..."   → JSONDecodeError
+
+That HTML body is exactly what the browser reported as a JSON.parse failure.
+Three clicks → three reserves → three dialogs.
+
+Fix (aa670a99): `SessionRouteDeps.read_body` drains the body before allocating;
+`app_api.js` keeps the SyntaxError identity but names the real event
+(`HTTP 501 · response was not JSON: <snippet>`) instead of the parser's message;
+`scripts/docker_quick_session_verify.sh` now POSTs `/api/quick-sessions` three
+times plus a GET on ONE connection and requires JSON every time (the probe fails
+on the pre-fix code by construction — verified by hand against the same image).
+AGENTS.md "Performance" carries the rule for future body-less POST handlers.
+
+Pre-existing, not fixed here: `_authorized` runs before any body read on the
+POST routes, so an unauthorized POST also leaves its body unread; that path
+usually ends in a navigation, and it is not part of this report.
+
+## 2026-10-27T00:50Z — fix verified and deployed
+
+- `scripts/docker_quick_session_verify.sh aa670a99` → PASS, EXIT=0
+  (/tmp/codoxear-quick-verify.t9EVDe). New same-connection probe measured:
+  three `POST /api/quick-sessions` + one `GET /api/sessions` on ONE
+  `http.client.HTTPConnection` → `[200, 200, 200]` with slots 4/5/6 and
+  `listingJson: true`. The same probe against the pre-fix image returned
+  `501 text/html` on request #2.
+- Deployed `scripts/deploy.sh aa670a99` → EXIT=0 ("smoke test passed"), deploy
+  worktree at aa670a99, service active (pid 2197200), `GET /` 200,
+  `/api/sessions` 401, `POST /api/quick-sessions` 401, bundle carries
+  "response was not JSON" and `reserveQuickSession`; 25 sidecars / 27 broker
+  processes unchanged.
+- Reset the live counter created by the bug: `quick_sessions.json`
+  `{"next_slot": 4}` → `{"next_slot": 1}` (no `quick-NN` directory exists, so
+  the dirs-floor clamp agrees and the user's next quick session is 01).
+- Host suite after the fix: 2613 passed, same single pre-existing
+  `draftUndoBtn` hint-coverage failure.

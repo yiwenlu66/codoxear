@@ -35,6 +35,9 @@ class Manager:
         self.calls = []
         self.ready = True
 
+    def get_session(self, session_id):
+        return None
+
     def delete_session(self, session_id):
         self.calls.append(("delete", session_id))
         return True
