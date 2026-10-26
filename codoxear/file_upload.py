@@ -49,8 +49,27 @@ def stage_uploaded_file(
         if not str(out_path).startswith(str(subdir) + os.sep):
             raise ValueError("bad path")
         counter += 1
-    out_path.write_bytes(data)
-    os.chmod(out_path, 0o600)
+    # Exclusive creation arbitrates concurrent legacy uploads as well.
+    while True:
+        try:
+            descriptor = os.open(out_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            break
+        except FileExistsError:
+            counter += 1
+            out_path = subdir / f"{stamp}_{counter}_{safe_name}"
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory = os.open(subdir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except Exception:
+        out_path.unlink(missing_ok=True)
+        raise
     return out_path
 
 

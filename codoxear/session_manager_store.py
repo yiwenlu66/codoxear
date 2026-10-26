@@ -77,6 +77,7 @@ def copy_session_store_state(*, source: SessionStore, target: SessionStore) -> N
     target.drafts = source.drafts
     target.pending_attachment_ids = source.pending_attachment_ids
     target.staged_attachments = source.staged_attachments
+    target.attachment_resources = source.attachment_resources
     target.commit_unknown_sends = source.commit_unknown_sends
     target.recent_cwds = source.recent_cwds
 

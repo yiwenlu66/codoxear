@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import base64
 import re
+import json
+import sys
+from urllib.parse import parse_qs, unquote, urlsplit
 from dataclasses import dataclass
 from pathlib import Path
 import time
 from typing import Any, Callable
 
+from .attachment_resource import upload_id_value
+from .server_http import BadRequestError, RequestPayloadTooLargeError
 from .session_store import public_staged_attachment
 
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 RouteMatcher = Callable[..., str | None]
-ReadBody = Callable[[Any], bytes]
+ReadBody = Callable[..., bytes]
 ReadJsonBody = Callable[..., dict[str, Any]]
 
 
@@ -70,15 +75,25 @@ def handle_control_get_route(
     deps: ControlRouteDeps,
     match_session_route: RouteMatcher,
 ) -> bool:
-    session_id = match_session_route(path, "attachments")
+    status_id = match_session_route(path, "attachments", "upload-status")
+    session_id = status_id if status_id is not None else match_session_route(path, "attachments")
     if session_id is None:
         return False
     if not _authorized(handler, deps):
         return True
     try:
-        res = manager.list_staged_attachments(session_id)
+        if status_id is not None:
+            handler._codoxear_response_no_store = True
+            query = parse_qs(urlsplit(handler.path).query)
+            upload_id = upload_id_value(query.get("upload_id", [None])[0])
+            res = manager.upload_status(session_id, upload_id)
+        else:
+            res = manager.list_staged_attachments(session_id)
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
+        return True
+    except ValueError as exc:
+        deps.json_response(handler, 400, {"error": str(exc)})
         return True
     deps.json_response(handler, 200, _project_attachment_response(res))
     return True
@@ -99,6 +114,7 @@ def handle_control_post_route(
         ("pending_attachment", "clear", _handle_pending_attachment_clear),
         ("attachments", "delete", _handle_attachment_delete),
         ("attachments", "clear", _handle_attachments_clear),
+        ("attachments", "upload-cancel", _handle_upload_cancel),
         ("commit_unknown_send", "clear", _handle_commit_unknown_send_clear),
         ("send", None, _handle_send),
         ("settings", None, _handle_settings),
@@ -349,68 +365,135 @@ def _handle_interrupt(handler: Any, *, session_id: str, manager: Any, deps: Cont
     deps.json_response(handler, 200, {"ok": True, "broker": resp})
 
 
+def _handle_upload_cancel(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    obj = deps.read_json_body(handler)
+    try:
+        upload_id = upload_id_value(obj.get("upload_id"))
+        result = manager.cancel_upload(session_id, upload_id)
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    except ValueError as exc:
+        deps.json_response(handler, 400, {"error": str(exc)})
+        return
+    deps.json_response(handler, 200, _project_attachment_response(result))
+
+
 def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
-    obj = deps.read_json_body(
-        handler,
-        limit=deps.attach_upload_body_max_bytes,
-        too_large_error=f"file too large (max {deps.attach_upload_max_bytes} bytes)",
-    )
-    data_b64 = obj.get("data_b64")
-    filename = obj.get("filename")
-    if not isinstance(filename, str) or (not filename.strip()):
-        deps.json_response(handler, 400, {"error": "filename required"})
-        return
-    if not isinstance(data_b64, str) or not data_b64:
-        deps.json_response(handler, 400, {"error": "data_b64 required"})
-        return
+    started = time.monotonic()
+    upload_id = None
+    writer = False
+    expected = None
+    received = 0
+    phase = "validation"
+    outcome = "uncommitted"
+    error_category = None
     try:
-        ready_for_attachment = manager.attachment_staging_ready(session_id)
-    except KeyError:
-        deps.json_response(handler, 404, {"error": "unknown session"})
-        return
-    except deps.session_not_ready_error as e:
-        deps.json_response(handler, 409, {"error": str(e)})
-        return
-    except Exception:
-        deps.json_response(handler, 409, {"error": "session state unavailable; wait before attaching a file"})
-        return
-    if not ready_for_attachment:
-        deps.json_response(handler, 409, {"error": "wait for the current queue drain before attaching a file"})
-        return
+        raw_mode = str(getattr(handler, "headers", {}).get("Content-Type", "")).split(";", 1)[0].strip().lower() == "application/octet-stream"
+        if raw_mode:
+            upload_id = upload_id_value(handler.headers.get("X-Codoxear-Upload-Id"))
+            encoded_name = handler.headers.get("X-Codoxear-Filename")
+            if not isinstance(encoded_name, str) or re.search(r"%(?![0-9a-fA-F]{2})", encoded_name):
+                raise ValueError("invalid filename encoding")
+            filename = unquote(encoded_name, encoding="utf-8", errors="strict")
+            length = handler.headers.get("Content-Length")
+            if length is None or re.fullmatch(r"[0-9]+", str(length).strip()) is None:
+                raise ValueError("known content-length required")
+            expected = int(length)
+            if expected > deps.attach_upload_max_bytes:
+                raise RequestPayloadTooLargeError(f"file too large (max {deps.attach_upload_max_bytes} bytes)")
+        else:
+            obj = deps.read_json_body(handler, limit=deps.attach_upload_body_max_bytes,
+                                      too_large_error=f"file too large (max {deps.attach_upload_max_bytes} bytes)")
+            filename = obj.get("filename")
+            if "upload_id" in obj:
+                upload_id = upload_id_value(obj["upload_id"])
+            data_b64 = obj.get("data_b64")
+            if not isinstance(data_b64, str) or not data_b64:
+                raise ValueError("data_b64 required")
+            try:
+                raw = base64.b64decode(data_b64.encode("ascii"), validate=True)
+            except Exception as exc:
+                raise ValueError("invalid base64") from exc
+            expected = received = len(raw)
+            if expected > deps.attach_upload_max_bytes:
+                raise RequestPayloadTooLargeError(f"file too large (max {deps.attach_upload_max_bytes} bytes)")
+        if not isinstance(filename, str) or not filename.strip():
+            raise ValueError("filename required")
+        if len(filename) > 256 or any(ord(ch) < 32 or ch in "/\\" for ch in filename) or filename in (".", ".."):
+            raise ValueError("invalid filename")
+        if upload_id is not None:
+            # Committed/retired IDs remain recoverable even if the session is
+            # temporarily not ready for a new upload.
+            existing = manager.upload_status(session_id, upload_id)
+            if existing["state"] in ("absent", "failed"):
+                _require_attachment_ready(manager, session_id, deps)
+            reservation = manager.begin_upload(session_id, upload_id, filename=filename, size=expected)
+            writer = reservation.pop("writer")
+        else:
+            _require_attachment_ready(manager, session_id, deps)
+        phase = "receiving"
+        if raw_mode:
+            raw = deps.read_body(handler, limit=deps.attach_upload_max_bytes)
+            received = len(raw)
+            if received != expected:
+                raise BadRequestError("incomplete upload body")
+        phase = "commit"
+        stage = lambda: deps.stage_uploaded_file(session_id, filename, raw)
+        if upload_id is not None:
+            if writer or reservation["state"] == "committed":
+                res = manager.finish_upload(session_id, upload_id, filename=filename, raw=raw, stage=stage)
+            else:
+                res = manager.upload_status(session_id, upload_id)
+            outcome = res["state"]
+        else:
+            out_path = stage()
+            try:
+                res = manager.add_staged_attachment(session_id, display_name=filename, filename=out_path.name,
+                                                    path=out_path, size=len(raw), created_ts=time.time())
+            except Exception:
+                out_path.unlink(missing_ok=True)
+                raise
+            outcome = "committed"
+        phase = "response"
+        deps.json_response(handler, 200, _project_attachment_response(res))
+    except Exception as exc:
+        error_category = type(exc).__name__
+        if writer and outcome != "committed":
+            try:
+                manager.fail_upload(session_id, upload_id)
+            except KeyError:
+                pass  # Session deletion already retired the operation.
+        if isinstance(exc, KeyError):
+            deps.json_response(handler, 404, {"error": "unknown session"})
+        elif isinstance(exc, deps.session_not_ready_error):
+            deps.json_response(handler, 409, {"error": str(exc)})
+        elif isinstance(exc, RequestPayloadTooLargeError):
+            deps.json_response(handler, 413, {"error": str(exc)})
+        elif isinstance(exc, ValueError):
+            status = 409 if str(exc).startswith("upload_id reused") else 400
+            deps.json_response(handler, status, {"error": str(exc)})
+        else:
+            raise
+    finally:
+        # Bounded metadata only: no filenames, paths, request data or auth.
+        print(json.dumps({"event": "attachment_upload", "upload_id": upload_id,
+                          "stage": phase, "expected_bytes": expected,
+                          "received_bytes": received, "commit_outcome": outcome,
+                          "duration_ms": round((time.monotonic() - started) * 1000),
+                          "error_category": error_category}), file=sys.stderr)
+
+
+def _require_attachment_ready(manager: Any, session_id: str, deps: ControlRouteDeps) -> None:
     try:
-        raw = base64.b64decode(data_b64.encode("ascii"), validate=True)
-    except Exception:
-        deps.json_response(handler, 400, {"error": "invalid base64"})
-        return
-    try:
-        out_path = deps.stage_uploaded_file(session_id, filename, raw)
-    except ValueError as e:
-        status = 413 if str(e).startswith("file too large") else 400
-        deps.json_response(handler, status, {"error": str(e)})
-        return
-    try:
-        res = manager.add_staged_attachment(
-            session_id,
-            display_name=filename,
-            filename=out_path.name,
-            path=out_path,
-            size=len(raw),
-            created_ts=time.time(),
-        )
-    except KeyError:
-        try:
-            out_path.unlink()
-        except OSError:
-            pass
-        deps.json_response(handler, 404, {"error": "unknown session"})
-        return
-    except ValueError as e:
-        try:
-            out_path.unlink()
-        except OSError:
-            pass
-        deps.json_response(handler, 400, {"error": str(e)})
-        return
-    deps.json_response(handler, 200, _project_attachment_response({"ok": True, **res}))
+        ready = manager.attachment_staging_ready(session_id)
+    except (KeyError, deps.session_not_ready_error):
+        raise
+    except Exception as exc:
+        raise deps.session_not_ready_error("session state unavailable; wait before attaching a file") from exc
+    if not ready:
+        raise deps.session_not_ready_error("wait for the current queue drain before attaching a file")

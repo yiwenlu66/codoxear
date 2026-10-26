@@ -95,6 +95,7 @@ class ActiveSessionRowFacts:
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
     subagent_details: list[dict[str, Any]] = field(default_factory=list)
+    attachments_revision: int = 0
     run_settings_log_revision: tuple[int, int, int, int] | None = None
 
 
@@ -275,6 +276,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "queue_len": facts.queue_len,
         "queue_recovery": facts.queue_recovery,
         "pending_attachment": facts.pending_attachment,
+        "attachments_revision": facts.attachments_revision,
         "staged_attachments": public_staged_attachments(facts.staged_attachments),
         "commit_unknown_send": bool(commit_unknown),
         "commit_unknown_send_text": _commit_unknown_text(commit_unknown),
@@ -460,7 +462,8 @@ def build_active_session_rows_snapshot(
                     last_send_log_size=s.last_send_log_size,
                     queue_len=int(queue_len),
                     queue_recovery=bool(queue_recovery),
-                    pending_attachment=bool(s.pending_attachment),
+                    pending_attachment=store.attachment_resource(s.session_id)["pending"],
+                    attachments_revision=store.attachment_resource(s.session_id)["revision"],
                     staged_attachments=store.staged_attachments_for_session(s.session_id),
                     commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
                     send_verdict=s.send_verdict,

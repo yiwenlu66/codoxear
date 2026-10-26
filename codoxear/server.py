@@ -1032,7 +1032,10 @@ class SessionManager:
     _load_pending_attachments = _load_store_attr("_pending_attachment_ids", "load_pending_attachments")
     _save_pending_attachments = _save_pending_attachment_ids_attr("_pending_attachment_ids", "save_pending_attachments")
     _load_staged_attachments = _load_store_attr("_staged_attachments", "load_staged_attachments")
-    _save_staged_attachments = _save_dict_store_attr("_staged_attachments", "save_staged_attachments")
+    def _save_staged_attachments(self) -> None:
+        with self._lock:
+            self._session_store_for_manager().save_staged_attachments()
+
     _load_commit_unknown_sends = _load_store_attr("_commit_unknown_sends", "load_commit_unknown_sends")
     _save_commit_unknown_sends = _save_dict_store_attr("_commit_unknown_sends", "save_commit_unknown_sends")
     _load_recent_cwds = _load_store_attr("_recent_cwds", "load_recent_cwds")
@@ -1283,8 +1286,23 @@ class SessionManager:
     def remove_staged_attachment(self, session_id: str, attachment_id: str) -> dict[str, Any]:
         return self._pending_state_coordinator_for_manager().remove_staged_attachment(session_id, attachment_id)
 
-    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> dict[str, Any]:
-        return self._pending_state_coordinator_for_manager().clear_staged_attachments(session_id, delete_files=delete_files)
+    def upload_status(self, session_id: str, upload_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().upload_status(session_id, upload_id)
+
+    def begin_upload(self, session_id: str, upload_id: str, *, filename: str, size: int) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().begin_upload(session_id, upload_id, filename=filename, size=size)
+
+    def finish_upload(self, session_id: str, upload_id: str, *, filename: str, raw: bytes, stage: Callable[[], Path]) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().finish_upload(session_id, upload_id, filename=filename, raw=raw, stage=stage)
+
+    def fail_upload(self, session_id: str, upload_id: str) -> None:
+        return self._pending_state_coordinator_for_manager().fail_upload(session_id, upload_id)
+
+    def cancel_upload(self, session_id: str, upload_id: str) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().cancel_upload(session_id, upload_id)
+
+    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, Any]:
+        return self._pending_state_coordinator_for_manager().clear_staged_attachments(session_id, delete_files=delete_files, attachment_ids=attachment_ids)
 
     def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
         return self._pending_state_coordinator_for_manager().clear_pending_attachment(session_id)

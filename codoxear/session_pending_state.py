@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from copy import deepcopy
+import hashlib
 from dataclasses import dataclass
 import math
 from pathlib import Path
 from typing import Any, Callable, MutableMapping
 from uuid import uuid4
 
+from .attachment_resource import upload_id_value
+from .file_upload import remove_staged_attachment_file
 from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachment
@@ -30,97 +35,157 @@ class SessionPendingStateCoordinator:
     save_staged_attachments: Callable[[], None] = lambda: None
     uuid_hex: Callable[[], str] = lambda: uuid4().hex
 
-    def set_pending_attachment(self, session_id: str, value: bool) -> None:
+    @contextmanager
+    def _attachment_mutation(self, session_id: str):
+        # Publication, revision and commit identity share one persistence boundary.
         with self.lock:
-            ids = self.pending_attachment_ids()
-            if not isinstance(ids, set):
-                self.set_pending_attachment_ids(set())
-                ids = self.pending_attachment_ids()
-            session = self.sessions().get(session_id)
-            if session:
-                session.pending_attachment = bool(value)
-            if value:
-                ids.add(session_id)
-            else:
-                ids.discard(session_id)
-        self.save_pending_attachments()
+            if session_id not in self.sessions():
+                raise KeyError("unknown session")
+            store = self.store()
+            before = deepcopy((store.staged_attachments, store.attachment_resources, store.pending_attachment_ids))
+            try:
+                yield store
+                store.save_staged_attachments()
+            except Exception:
+                store.staged_attachments, store.attachment_resources, store.pending_attachment_ids = before
+                raise
+            finally:
+                session = self.sessions().get(session_id)
+                if session:
+                    session.pending_attachment = session_id in store.pending_attachment_ids
 
-    def _sync_pending_projection_locked(self, session_id: str) -> bool:
-        has_staged = bool(self.store().staged_attachments.get(session_id))
-        ids = self.pending_attachment_ids()
-        if not isinstance(ids, set):
-            self.set_pending_attachment_ids(set())
-            ids = self.pending_attachment_ids()
-        session = self.sessions().get(session_id)
-        if session:
-            session.pending_attachment = has_staged
-        if has_staged:
-            ids.add(session_id)
-        else:
-            ids.discard(session_id)
-        return has_staged
+    def set_pending_attachment(self, session_id: str, value: bool) -> None:
+        with self._attachment_mutation(session_id) as store:
+            if store.attachment_resource(session_id)["pending"] != bool(value):
+                store.advance_attachments(session_id, pending=bool(value))
 
     def list_staged_attachments(self, session_id: str) -> dict[str, Any]:
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-            attachments = self.store().staged_attachments_for_session(session_id)
-            pending = bool(attachments)
-        return {"ok": True, "attachments": public_staged_attachments(attachments), "pending_attachment": pending}
+            return self.store().attachment_snapshot(session_id)
 
     def add_staged_attachment(self, session_id: str, *, display_name: str, filename: str, path: Path, size: int, created_ts: float) -> dict[str, Any]:
-        entry = {
-            "id": self.uuid_hex(),
-            "display_name": str(display_name or filename or Path(path).name or "file"),
-            "filename": str(filename or display_name or Path(path).name or "file"),
-            "path": str(path),
-            "size": int(size),
-            "created_ts": float(created_ts),
-        }
-        with self.lock:
-            if session_id not in self.sessions():
-                raise KeyError("unknown session")
-            staged = self.store().add_staged_attachment(session_id, entry)
-            self._sync_pending_projection_locked(session_id)
-            attachments = self.store().staged_attachments_for_session(session_id)
-        self.save_staged_attachments()
-        self.save_pending_attachments()
-        projected = public_staged_attachment(staged)
-        if projected is None:
-            raise ValueError("invalid staged attachment")
-        return {"ok": True, "attachment": projected, "attachments": public_staged_attachments(attachments), "pending_attachment": True}
+        entry = {"id": self.uuid_hex(), "display_name": display_name or filename,
+                 "filename": filename or display_name, "path": str(path), "size": int(size), "created_ts": float(created_ts)}
+        with self._attachment_mutation(session_id) as store:
+            staged = store.add_staged_attachment(session_id, entry)
+            result = dict(store.attachment_snapshot(session_id), attachment=public_staged_attachment(staged))
+        return result
+
+    def _delete_files(self, session_id: str, entries: list[dict[str, Any]]) -> None:
+        root = self.store().paths.uploads_root
+        if root is not None:
+            for entry in entries:
+                remove_staged_attachment_file(root, session_id, entry["path"])
 
     def remove_staged_attachment(self, session_id: str, attachment_id: str) -> dict[str, Any]:
         if not isinstance(attachment_id, str) or not attachment_id.strip():
             raise ValueError("attachment id required")
-        with self.lock:
-            if session_id not in self.sessions():
-                raise KeyError("unknown session")
-            removed, attachments = self.store().remove_staged_attachment(session_id, attachment_id.strip())
-            pending = self._sync_pending_projection_locked(session_id)
-        self.save_staged_attachments()
-        self.save_pending_attachments()
-        projected_removed = public_staged_attachment(removed)
-        if projected_removed is None:
-            raise ValueError("invalid staged attachment")
-        return {"ok": True, "removed": projected_removed, "attachments": public_staged_attachments(attachments), "pending_attachment": pending}
+        with self._attachment_mutation(session_id) as store:
+            removed, _ = store.remove_staged_attachment(session_id, attachment_id.strip(), delete_files=False)
+            result = dict(store.attachment_snapshot(session_id), removed=public_staged_attachment(removed))
+        self._delete_files(session_id, [removed])
+        return result
 
-    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> dict[str, Any]:
-        with self.lock:
-            if session_id not in self.sessions():
-                raise KeyError("unknown session")
-            removed = self.store().clear_staged_attachments(session_id, delete_files=delete_files)
-            self._sync_pending_projection_locked(session_id)
-        self.save_staged_attachments()
-        self.save_pending_attachments()
-        return {"ok": True, "removed_count": len(removed), "attachments": [], "pending_attachment": False}
+    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, Any]:
+        with self._attachment_mutation(session_id) as store:
+            if attachment_ids is None:
+                removed = store.clear_staged_attachments(session_id, delete_files=False)
+            else:
+                # A confirmed send consumes exactly its captured set. Uploads
+                # committed while broker dispatch ran belong to the next send.
+                removed = []
+                for entry in store.staged_attachments_for_session(session_id):
+                    if entry["id"] in attachment_ids:
+                        item, _ = store.remove_staged_attachment(session_id, entry["id"], delete_files=False)
+                        removed.append(item)
+            result = dict(store.attachment_snapshot(session_id), removed_count=len(removed))
+        if delete_files:
+            self._delete_files(session_id, removed)
+        return result
 
     def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
+        return self.clear_staged_attachments(session_id)
+
+    def upload_status(self, session_id: str, upload_id: str) -> dict[str, Any]:
+        upload_id_value(upload_id)
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-        self.clear_staged_attachments(session_id)
-        return {"ok": True, "pending_attachment": False}
+            store = self.store()
+            record = store.attachment_resource(session_id)["uploads"].get(upload_id, {})
+            attachment = next((entry for entry in store.staged_attachments_for_session(session_id)
+                               if entry["id"] == record.get("attachment_id")), None)
+            result = dict(store.attachment_snapshot(session_id), upload_id=upload_id,
+                          state=record.get("state", "absent"), active=attachment is not None)
+            if attachment is not None:
+                result["attachment"] = public_staged_attachment(attachment)
+            if record.get("state") == "failed":
+                result["retryable"] = bool(record.get("retryable"))
+            return result
+
+    def begin_upload(self, session_id: str, upload_id: str, *, filename: str, size: int) -> dict[str, Any]:
+        upload_id_value(upload_id)
+        with self._attachment_mutation(session_id) as store:
+            uploads = store.attachment_resource(session_id)["uploads"]
+            record = uploads.get(upload_id)
+            if record and record.get("filename") is not None and (record["filename"] != filename or record["size"] != size):
+                raise ValueError("upload_id reused with incompatible file")
+            owner = record is None or (record["state"] == "failed" and record.get("retryable"))
+            if owner:
+                uploads[upload_id] = {"state": "pending", "filename": filename, "size": size}
+                store.advance_attachments(session_id)
+            # Do not reacquire self.lock (test doubles may use a non-reentrant lock).
+            result = dict(store.attachment_snapshot(session_id), upload_id=upload_id,
+                          state=uploads[upload_id]["state"], writer=bool(owner))
+        return result
+
+    def finish_upload(self, session_id: str, upload_id: str, *, filename: str, raw: bytes, stage: Callable[[], Path]) -> dict[str, Any]:
+        digest = hashlib.sha256(raw).hexdigest()
+        path = None
+        try:
+            with self._attachment_mutation(session_id) as store:
+                record = store.attachment_resource(session_id)["uploads"][upload_id]
+                if record.get("digest") is not None and record["digest"] != digest:
+                    raise ValueError("upload_id reused with incompatible file")
+                if record["state"] == "pending":
+                    path = stage()
+                    entry = store.add_staged_attachment(session_id, {
+                        "id": self.uuid_hex(), "display_name": filename, "filename": path.name,
+                        "path": str(path), "size": len(raw), "created_ts": self.now(),
+                    })
+                    record.update(state="committed", attachment_id=entry["id"], digest=digest)
+        except Exception:
+            if path is not None:
+                path.unlink(missing_ok=True)
+            raise
+        return self.upload_status(session_id, upload_id)
+
+    def fail_upload(self, session_id: str, upload_id: str) -> None:
+        with self._attachment_mutation(session_id) as store:
+            record = store.attachment_resource(session_id)["uploads"].get(upload_id)
+            if record and record["state"] == "pending":
+                record.update(state="failed", retryable=True)
+                store.advance_attachments(session_id)
+
+    def cancel_upload(self, session_id: str, upload_id: str) -> dict[str, Any]:
+        upload_id_value(upload_id)
+        removed = []
+        with self._attachment_mutation(session_id) as store:
+            uploads = store.attachment_resource(session_id)["uploads"]
+            record = uploads.get(upload_id, {})
+            for entry in store.staged_attachments_for_session(session_id):
+                if entry["id"] == record.get("attachment_id"):
+                    item, _ = store.remove_staged_attachment(session_id, entry["id"], delete_files=False)
+                    removed.append(item)
+            # A consumed committed ID stays committed: cancel must not unlink a
+            # path already handed to the agent. Only an active chip is removed.
+            if record.get("state") != "committed":
+                uploads[upload_id] = dict(record, state="cancelled", retryable=False)
+            store.advance_attachments(session_id)
+        self._delete_files(session_id, removed)
+        return self.upload_status(session_id, upload_id)
 
     def clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
         if not isinstance(raw, dict):

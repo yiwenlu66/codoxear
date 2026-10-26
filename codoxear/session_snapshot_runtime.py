@@ -485,6 +485,10 @@ class SessionSnapshotCoordinator:
         with self.lock:
             store = self.session_store()
             if old != new:
+                store.remap_attachment_resource(old, new)
+                current = self.sessions().get(new)
+                if current:
+                    current.pending_attachment = new in store.pending_attachment_ids
                 queues = store.queues
                 old_queue = queues.pop(old, None)
                 if isinstance(old_queue, list) and old_queue:

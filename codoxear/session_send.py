@@ -213,7 +213,8 @@ class SessionSendCoordinator:
             if staged_entries:
                 try:
                     # The confirmed message now owns these paths; session deletion reclaims their files.
-                    self.clear_staged_attachments(session_id, delete_files=False)
+                    cleanup = self.clear_staged_attachments(session_id, delete_files=False, attachment_ids=[entry["id"] for entry in staged_entries])
+                    response.update({key: cleanup[key] for key in ("attachments", "pending_attachment", "attachments_revision") if key in cleanup})
                 except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,
@@ -222,7 +223,9 @@ class SessionSendCoordinator:
                     )
             else:
                 try:
-                    self.set_pending_attachment(session_id, False)
+                    # No captured attachments means no attachment consumption;
+                    # a concurrent upload owns the pending flag now.
+                    pass
                 except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,

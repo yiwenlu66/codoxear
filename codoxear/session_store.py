@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import math
+import os
+from uuid import uuid4
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .attachment_resource import durable_write_resource
 from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
 from .file_upload import validate_staged_attachment_file_target
@@ -160,6 +163,7 @@ class SessionStore:
         self.drafts: dict[str, dict[str, Any]] = {}
         self.pending_attachment_ids: set[str] = set()
         self.staged_attachments: dict[str, list[dict[str, Any]]] = {}
+        self.attachment_resources: dict[str, dict[str, Any]] = {}
         self.commit_unknown_sends: dict[str, dict[str, Any]] = {}
         self.recent_cwds: dict[str, float] = {}
         self.unattended_store = UnattendedStore(
@@ -180,6 +184,7 @@ class SessionStore:
         self.drafts = {}
         self.pending_attachment_ids = set()
         self.staged_attachments = {}
+        self.attachment_resources = {}
         self.commit_unknown_sends = {}
         self.recent_cwds = {}
 
@@ -192,7 +197,10 @@ class SessionStore:
         self.queues = self.load_queues()
         self.drafts = self.load_drafts()
         self.staged_attachments = self.load_staged_attachments()
-        self.pending_attachment_ids = self.load_pending_attachments() | set(self.staged_attachments.keys())
+        legacy_pending = self.load_pending_attachments()
+        self.pending_attachment_ids = (legacy_pending - self.attachment_resources.keys()) | {
+            sid for sid, resource in self.attachment_resources.items() if resource["pending"]
+        } | set(self.staged_attachments.keys())
         self.commit_unknown_sends = self.load_commit_unknown_sends()
         self.recent_cwds = self.load_recent_cwds()
 
@@ -431,9 +439,33 @@ class SessionStore:
             return {}
         if not isinstance(obj, dict):
             raise ValueError("invalid staged_attachments.json (expected object)")
+        versioned = obj.get("version") == 2 and isinstance(obj.get("sessions"), dict)
+        resources = obj["sessions"] if versioned else obj
+        self.attachment_resources = {}
         cleaned: dict[str, list[dict[str, Any]]] = {}
-        for sid, arr in obj.items():
-            if not isinstance(sid, str) or not sid.strip() or not isinstance(arr, list):
+        for sid, value in resources.items():
+            if not isinstance(sid, str) or not sid.strip():
+                continue
+            if versioned:
+                if not isinstance(value, dict):
+                    raise ValueError("invalid attachment resource")
+                revision = value.get("revision")
+                if type(revision) is not int or revision < 0:
+                    raise ValueError("invalid attachment revision")
+                uploads = value.get("uploads", {})
+                if not isinstance(uploads, dict):
+                    raise ValueError("invalid upload outcomes")
+                # A persisted pending record has no writer after restart.
+                uploads = {key: dict(record, state="failed", retryable=True)
+                           if record.get("state") == "pending" else dict(record)
+                           for key, record in uploads.items() if isinstance(record, dict)}
+                self.attachment_resources[sid] = {
+                    "revision": revision, "pending": bool(value.get("pending")), "uploads": uploads,
+                }
+                arr = value.get("attachments", [])
+            else:
+                arr = value
+            if not isinstance(arr, list):
                 continue
             out: list[dict[str, Any]] = []
             seen: set[str] = set()
@@ -444,20 +476,71 @@ class SessionStore:
                 seen.add(entry["id"])
                 out.append(entry)
             if out:
-                cleaned[sid.strip()] = out
+                cleaned[sid] = out
         return cleaned
 
-    def save_staged_attachments(self, source: dict[str, list[dict[str, Any]]]) -> None:
-        obj: dict[str, list[dict[str, Any]]] = {}
-        for sid, entries in source.items():
-            if not isinstance(sid, str) or not sid.strip() or not isinstance(entries, list):
-                continue
-            cleaned = [entry for entry in (self._clean_staged_attachment_entry(raw) for raw in entries) if entry is not None]
-            if cleaned:
-                obj[sid.strip()] = cleaned
+    def attachment_resource(self, session_id: str) -> dict[str, Any]:
+        return self.attachment_resources.setdefault(session_id, {
+            "revision": 0, "pending": session_id in self.pending_attachment_ids or bool(self.staged_attachments.get(session_id)), "uploads": {},
+        })
+
+    def advance_attachments(self, session_id: str, *, pending: bool | None = None) -> None:
+        resource = self.attachment_resource(session_id)
+        resource["revision"] += 1
+        if pending is not None:
+            resource["pending"] = bool(pending)
+        if resource["pending"]:
+            self.pending_attachment_ids.add(session_id)
+        else:
+            self.pending_attachment_ids.discard(session_id)
+
+    def attachment_snapshot(self, session_id: str) -> dict[str, Any]:
+        resource = self.attachment_resource(session_id)
+        return {"ok": True, "attachments": self.public_staged_attachments_for_session(session_id),
+                "pending_attachment": resource["pending"], "attachments_revision": resource["revision"]}
+
+    def save_staged_attachments(self, source: dict[str, list[dict[str, Any]]] | None = None) -> None:
+        # Deliberately ignore detached legacy snapshots: this writes the live
+        # aggregate under the registry lock, never an older list plus new IDs.
         if self.paths.staged_attachments is None:
             return
-        atomic_write_json(self.paths.staged_attachments, obj)
+        sessions = {}
+        for sid in self.attachment_resources.keys() | self.staged_attachments.keys() | self.pending_attachment_ids:
+            resource = self.attachment_resource(sid)
+            sessions[sid] = dict(resource, attachments=self.staged_attachments_for_session(sid))
+        durable_write_resource(self.paths.staged_attachments, {"version": 2, "sessions": sessions})
+
+    def remap_attachment_resource(self, old: str, new: str) -> None:
+        if old == new or not (old in self.attachment_resources or old in self.staged_attachments or old in self.pending_attachment_ids):
+            return
+        old_resource = self.attachment_resource(old)
+        target = self.attachment_resource(new)
+        # Create new owned hardlinks before publishing their metadata. A crash
+        # before publication leaves harmless unreferenced links, not lost files.
+        transferred = []
+        for entry in self.staged_attachments.get(old, []):
+            moved = dict(entry)
+            if self.paths.uploads_root is not None:
+                source = validate_staged_attachment_file_target(self.paths.uploads_root, old, entry["path"])
+                directory = self.paths.uploads_root / new
+                directory.mkdir(parents=True, exist_ok=True)
+                dest = directory / f"{uuid4().hex}_{source.name}"
+                os.link(source, dest)
+                moved["path"] = str(dest)
+            transferred.append(moved)
+        self.staged_attachments.setdefault(new, []).extend(transferred)
+        for upload_id, record in old_resource["uploads"].items():
+            if upload_id in target["uploads"] and target["uploads"][upload_id] != record:
+                raise ValueError("upload identity collision during session remap")
+            target["uploads"][upload_id] = dict(record)
+        target["revision"] = max(target["revision"], old_resource["revision"])
+        self.staged_attachments.pop(old, None)
+        for record in old_resource["uploads"].values():
+            if record["state"] == "pending":
+                record.update(state="cancelled", retryable=False)
+        self.advance_attachments(old, pending=False)
+        self.advance_attachments(new, pending=bool(self.staged_attachments.get(new)) or old_resource["pending"] or target["pending"])
+        self.save_staged_attachments()
 
     def staged_attachments_for_session(self, session_id: str) -> list[dict[str, Any]]:
         return [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
@@ -470,6 +553,7 @@ class SessionStore:
         if clean is None:
             raise ValueError("invalid staged attachment")
         self.staged_attachments.setdefault(session_id, []).append(clean)
+        self.advance_attachments(session_id, pending=True)
         return dict(clean)
 
     def remove_staged_attachment(
@@ -496,6 +580,7 @@ class SessionStore:
             self.staged_attachments[session_id] = kept
         else:
             self.staged_attachments.pop(session_id, None)
+        self.advance_attachments(session_id, pending=bool(kept))
         return removed, [dict(entry) for entry in kept]
 
     def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> list[dict[str, Any]]:
@@ -508,6 +593,10 @@ class SessionStore:
             for entry in removed:
                 remove_staged_attachment_file(uploads_root, session_id, entry["path"])
         self.staged_attachments.pop(session_id, None)
+        for record in self.attachment_resource(session_id)["uploads"].values():
+            if record["state"] == "pending":
+                record.update(state="cancelled", retryable=False)
+        self.advance_attachments(session_id, pending=False)
         return removed
 
     def load_commit_unknown_sends(self) -> dict[str, dict[str, Any]]:
@@ -638,6 +727,13 @@ class SessionStore:
         if session_id in self.staged_attachments:
             self.staged_attachments.pop(session_id, None)
             staged_changed = True
+
+        self.advance_attachments(session_id, pending=False)
+        for record in self.attachment_resource(session_id)["uploads"].values():
+            if record["state"] == "pending":
+                record.update(state="cancelled", retryable=False)
+        self.save_staged_attachments()
+        staged_changed = True
 
         uploads_root = self.paths.uploads_root
         if uploads_root is not None:
