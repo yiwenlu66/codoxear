@@ -216,6 +216,7 @@ from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
 from .system_dependencies import resolve_executable
+from .tmux_order_sync import TmuxOrderSync as _TmuxOrderSync
 from .tmux_runtime import tmux_available as _tmux_available_impl
 from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
 from .util import append_launch_attempt as _append_launch_attempt
@@ -282,6 +283,8 @@ _FILE_WRITE_LOCKS_LOCK = threading.Lock()
 _FILE_WRITE_LOCKS: dict[str, tuple[threading.Lock, int]] = {}
 _TMUX_AVAILABLE_CACHE: tuple[float, bool] | None = None
 _TMUX_AVAILABLE_CACHE_LOCK = threading.Lock()
+_TMUX_ORDER_SYNC_LOCK = threading.Lock()
+_TMUX_ORDER_SYNC: Any = None
 _LAUNCH_DEFAULTS_CACHE: tuple[tuple[tuple[str, bool, int | None, int | None], ...], dict[str, Any]] | None = None
 _LAUNCH_DEFAULTS_CACHE_LOCK = threading.Lock()
 
@@ -340,6 +343,41 @@ def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: st
         window=window,
         run=subprocess.run,
     )
+
+
+def _tmux_order_log(message: str) -> None:
+    try:
+        sys.stderr.write(message + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _tmux_order_sync() -> Any:
+    global _TMUX_ORDER_SYNC
+    with _TMUX_ORDER_SYNC_LOCK:
+        if _TMUX_ORDER_SYNC is None:
+            _TMUX_ORDER_SYNC = _TmuxOrderSync(
+                default_session=TMUX_SESSION_NAME,
+                tmux_available=_tmux_available,
+                which_tmux=resolve_executable,
+                run=subprocess.run,
+                log=_tmux_order_log,
+            )
+        return _TMUX_ORDER_SYNC
+
+
+def _note_tmux_order_generation(rows: list[dict[str, Any]]) -> None:
+    """Hand one session-listing generation to the tmux order mirror.
+
+    Called from the listing route with the exact array the browser will render,
+    so tmux follows what the sidebar shows rather than a second opinion about
+    priority. Never raises into the request path.
+    """
+    try:
+        _tmux_order_sync().note_generation(rows)
+    except Exception as exc:
+        _tmux_order_log(f"tmux-order: generation rejected: {type(exc).__name__}: {exc}")
 
 
 def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
@@ -1510,6 +1548,10 @@ def _init_runtime() -> None:
     HMAC_SECRET = _load_or_create_hmac_secret()
     MANAGER = SessionManager()
     Handler = make_server_handler(sys.modules[__name__])
+    # Order mirror worker: consumes listing generations produced by
+    # `/api/sessions` (see `_note_tmux_order_generation`). Daemon thread; a host
+    # without tmux simply has nothing to do.
+    _tmux_order_sync().start()
 
 
 def _read_static_bytes(path: Path) -> bytes:

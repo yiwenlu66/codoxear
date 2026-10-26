@@ -200,6 +200,7 @@ def _session_route_deps() -> SessionRouteDeps:
         read_new_session_defaults=lambda: {"backend": "pi"},
         tmux_available=lambda: False,
         tmux_session_name="codoxear-test",
+        note_listing_generation=None,
         metrics_snapshot=lambda: {},
         record_metric=lambda _name, _value: None,
         perf_counter=lambda: 1.0,

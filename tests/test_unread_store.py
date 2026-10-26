@@ -21,7 +21,7 @@ def _deps(payload, responses):
         json_response_with_etag=lambda *_args: None,
         read_json_body=lambda _handler: payload,
         read_new_session_defaults=lambda: {}, tmux_available=lambda: False,
-        tmux_session_name="", metrics_snapshot=lambda: {}, record_metric=lambda *_args: None,
+        tmux_session_name="", note_listing_generation=None, metrics_snapshot=lambda: {}, record_metric=lambda *_args: None,
         perf_counter=lambda: 0.0, normalize_agent_backend=lambda value, default: default,
         default_agent_backend="pi", resolve_dir_target=lambda *_args, **_kwargs: Path("."),
         describe_session_cwd=lambda _path: {}, list_resume_candidates_for_cwd=lambda *_args, **_kwargs: [],

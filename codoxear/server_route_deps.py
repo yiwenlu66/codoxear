@@ -159,6 +159,7 @@ class ServerRouteDepsFactory:
             read_new_session_defaults=server._read_new_session_defaults,
             tmux_available=server._tmux_available,
             tmux_session_name=self.config.TMUX_SESSION_NAME,
+            note_listing_generation=server._note_tmux_order_generation,
             metrics_snapshot=server._metrics_snapshot,
             record_metric=server._record_metric,
             perf_counter=server.time.perf_counter,

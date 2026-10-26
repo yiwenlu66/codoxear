@@ -112,6 +112,46 @@ not visual size. Full design-language rules are in AGENTS.md.
 
 ## Backend
 
+### Sidebar order and the tmux window mirror
+
+Sidebar order has one writer: `session_listing.sort_session_rows`, key
+`(group rank, -final_priority, -updated_ts, -start_ts, session_id)`. The group
+rank (Now → Waiting → Later, blocked before snoozed) is part of the key because
+the renderer emits blocks and both deferred groups carry `final_priority 0`
+after clamping; sorting by priority alone interleaved them. The browser renders
+the server's array order verbatim (`app_session_refresh.js` does not re-sort;
+`sidebarSessionEntries` only partitions).
+
+`codoxear/tmux_order.py` (pure planning) + `codoxear/tmux_order_sync.py`
+(schedule) mirror that order into the window indices of
+`CODEX_WEB_TMUX_SESSION`. The listing route hands each `/api/sessions`
+generation — the exact array a client renders — to a coalescing single-flight
+worker (`TmuxOrderSync.tick`, driven by a 1s daemon loop). The pass swaps only
+codoxear windows among the indices they already occupy, so a window no session
+names never moves and no window is created, killed, renamed or selected.
+
+Load-bearing details (measured, not assumed):
+
+- `swap-window -d` is unusable as a viewer guard: on tmux 3.5a it is ignored for
+  a swapped current window, while on 3.8 it keeps the viewer's pane there but
+  moves the viewer to the swap source when neither swapped window is current.
+  The mirror never passes `-d`; it restores the session's current window with
+  `select-window -t <id>` when the pass moved it.
+- The settle window is anchored to the first *unapplied* generation, not the
+  newest arrival — a client polling faster than the window otherwise starves
+  the pass forever (caught by the Docker verifier).
+- Work is driven by listing generations, never a timer: with nobody polling,
+  `list_sessions` never runs and `updated_ts` never advances, so a timer would
+  reorder against stale priorities.
+- Window identity is `(row.tmux_session, row.tmux_window)`: `new-window -n`
+  pins the name (`automatic-rename` off per window), so it survives the backend
+  running. Ambiguous or missing names are skipped and logged, never guessed.
+
+Behavioral contracts: `tests/test_tmux_order.py`,
+`tests/test_tmux_order_sync.py`, `tests/test_tmux_runtime.py`,
+`tests/test_sidebar_render_order.py` (order is rendered, not re-derived);
+Docker acceptance: `scripts/docker_tmux_order_verify.sh`.
+
 ### Log-derived session projection
 
 All log-derived session state (busy, tokens, model, effort) commits

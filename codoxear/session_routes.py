@@ -25,6 +25,9 @@ class SessionRouteDeps:
     read_new_session_defaults: Callable[[], dict[str, Any]]
     tmux_available: Callable[[], bool]
     tmux_session_name: str
+    # Sidebar order is mirrored into tmux window order from the exact array a
+    # client renders. `None` means the host runs no mirror (route tests).
+    note_listing_generation: Callable[[list[dict[str, Any]]], None] | None
     metrics_snapshot: Callable[[], dict[str, Any]]
     record_metric: Callable[[str, float], None]
     perf_counter: Callable[[], float]
@@ -172,6 +175,10 @@ def _handle_sessions_list(handler: Any, *, manager: Any, deps: SessionRouteDeps)
         return
     t0 = deps.perf_counter()
     sessions = manager.list_sessions()
+    if deps.note_listing_generation is not None:
+        # Hand the rendered order to the tmux window mirror before the body is
+        # written; the call only records a projection and never blocks.
+        deps.note_listing_generation(sessions)
     recent_cwds = manager.recent_cwds()
     new_session_defaults = deps.read_new_session_defaults()
     dt_ms = (deps.perf_counter() - t0) * 1000.0

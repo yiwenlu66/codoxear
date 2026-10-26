@@ -88,6 +88,7 @@ def _deps(**overrides):
         read_new_session_defaults=lambda: {"backend": "codex"},
         tmux_available=lambda: True,
         tmux_session_name="codoxear",
+        note_listing_generation=None,
         metrics_snapshot=lambda: {"api_sessions_ms": {"count": 1}},
         record_metric=lambda name, value: metrics.append((name, value)),
         perf_counter=lambda: next(counter),
