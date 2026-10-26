@@ -102,7 +102,7 @@ function harness(respond = () => listing([directory])) {
 def run_js(body: str) -> None:
     script = "const SOURCES = " + json.dumps(SOURCES) + ";\n" + HARNESS
     script += "\n(async () => {\n" + body + "\n})().catch((error) => { console.error(error); process.exit(1); });"
-    result = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True, timeout=20)
+    result = subprocess.run(["node"], input=script, cwd=ROOT, text=True, capture_output=True, timeout=20)
     assert result.returncode == 0, result.stderr
 
 
