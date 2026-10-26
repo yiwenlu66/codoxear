@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real browser file chooser + real HTTP fault verification in an owned Docker.
+"""Real paperclip/file-input activation + HTTP fault verification in Docker.
 
 Run via docker_upload_robustness_verify.sh. All API traffic uses its Docker-only
 proxy port. The fake broker is a log/read fixture; no provider credentials or
@@ -75,7 +75,26 @@ def choose(name):
     path = art / name
     payload = bytes(range(256)) * 4096
     path.write_bytes(payload)
+    # Observe the real trusted paperclip click and its production input.click()
+    # before assigning files. This proves the activation path, not an OS dialog:
+    # agent-browser's upload command then supplies the input's selected files.
+    js('''(() => {
+      window.__uploadPickerEvidence = [];
+      if (window.__uploadPickerObserverInstalled) return;
+      window.__uploadPickerObserverInstalled = true;
+      document.addEventListener("click", event => {
+        const target = event.target.closest?.("#attachBtn, #imgInput");
+        if (target) window.__uploadPickerEvidence.push({id: target.id, trusted: event.isTrusted});
+      }, true);
+    })()''')
+    ab('click', '#attachBtn')
+    activation = js('window.__uploadPickerEvidence')
+    assert activation == [{'id': 'attachBtn', 'trusted': True}, {'id': 'imgInput', 'trusted': False}], activation
     ab('upload', '#imgInput', str(path))
+    check('picker_activation', report.get('picker_activation', []) + [{
+        'file': name, 'events': activation, 'assignment': 'agent-browser input files',
+        'os_dialog_observed': False,
+    }])
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -95,7 +114,7 @@ wait(lambda: len(chips()) == 1 and not chips()[0]['pending'])
 wire = http('/__fault')['uploads']
 assert len(wire) == 1 and wire[0]['bytes'] == 1048576 and wire[0]['sha256'] == digest
 assert wire[0]['type'] == 'application/octet-stream'
-check('raw_filechooser', {'wire': wire, 'chips': chips(), 'resource': resource()})
+check('raw_paperclip_upload', {'wire': wire, 'chips': chips(), 'resource': resource()})
 http('/__fault', {'stale_catalog': True})
 # Real HTTP stale catalog response is delivered through the real SW/API path.
 js('fetch("/api/sessions",{cache:"reload"}).then(r=>r.json()).then(v=>v.sessions.length)')

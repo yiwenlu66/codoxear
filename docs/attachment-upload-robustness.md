@@ -147,7 +147,10 @@ image; set `CODOXEAR_UPLOAD_VERIFY_IMAGE` to a compatible Python application
 image if that base is unavailable. `CODOXEAR_UPLOAD_VERIFY_PORT` chooses the
 loopback browser port (default 19881; 8743 is forbidden). The harness serves a committed snapshot in an owned
 container behind a test-only HTTP proxy; it requires no provider credentials.
-It uses the real file input, raw HTTP body, production catalog and worker,
+It observes a trusted paperclip-button click and the resulting production
+file-input click before agent-browser assigns the files. This verifies the
+activation path; the harness does not observe an operating-system chooser
+dialog. It uses the real input events, raw HTTP body, production catalog and worker,
 truncated committed responses, failed status reads, partial request bodies and
 slow catalog responses. JSON metadata, screenshots and server logs are retained
 under `/tmp/codoxear-upload-results.*`; file contents and auth cookies are not
