@@ -18,6 +18,8 @@ Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you l
 
 Not affiliated with OpenAI, the Pi Coding Agent project, or Anthropic. "Codex", "Pi", and "Claude" are referenced only for CLI compatibility.
 
+Attachment upload API, interrupted-transfer recovery, storage migration and explicit downgrade instructions are documented in [Attachment uploads: consistency and recovery](docs/attachment-upload-robustness.md).
+
 ## Platform support
 
 Supported:
