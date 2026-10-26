@@ -135,6 +135,12 @@ build_context="$root/build-context"
 mkdir -p "$build_context/docker"
 git -C "$repo_root" archive --format=tar "$target_commit" | tar -x -C "$build_context"
 install -m 644 "$repo_root/docker/verify.Dockerfile" "$build_context/docker/verify.Dockerfile"
+# The browser loads dist/app.bundle.js, and the tracked copy is only rebuilt by
+# deploy. Rebuild it from this commit's sources in the archive context so the
+# verifier exercises the commit under test.
+npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
+  --outfile="$build_context/codoxear/static/dist/app.bundle.js" --format=esm \
+  > "$artifacts/esbuild.log" 2>&1 || fail "esbuild bundle rebuild failed; see $artifacts/esbuild.log"
 if "${docker[@]}" image inspect "$image" >/dev/null 2>&1; then
   printf 'reused image %s\n' "$image" > "$artifacts/docker-image.txt"
 else
@@ -220,6 +226,7 @@ PROBE='(() => {
   const row = document.querySelector(".composerInputRow");
   const wrap = document.querySelector(".composer .inputWrap");
   const clear = document.getElementById("clearBtn");
+  const strip = document.querySelector(".composerStrip");
   return {
     sid, appH, innerHeight,
     height: c ? c.dataset.height : null,
@@ -238,10 +245,11 @@ PROBE='(() => {
     topbar: r(tb), topbarVisible: Boolean(tb && getComputedStyle(tb).display !== "none" && tb.getBoundingClientRect().height > 0),
     interruptReachable,
     composer: r(c), textarea: r(t), expandRect: r(b),
-    formRect: r(form), inputRowRect: r(row), inputWrapRect: r(wrap),
+    formRect: r(form), inputRowRect: r(row), inputWrapRect: r(wrap), stripRect: r(strip),
     expandInInputRow: Boolean(b && b.closest(".composerInputRow")),
-    expandParentIsForm: Boolean(b && form && b.parentElement === form),
-    expandIsFirstFormChild: Boolean(b && form && form.firstElementChild === b),
+    expandInStrip: Boolean(b && strip && b.parentElement === strip),
+    stripParentIsForm: Boolean(strip && form && strip.parentElement === form),
+    stripIsFirstFormChild: Boolean(strip && form && form.firstElementChild === strip),
     expandCursor: b ? getComputedStyle(b).cursor : null,
     expandTouchAction: b ? getComputedStyle(b).touchAction : null,
     pillBg, pillRect: r(pill), accentRgb: resolveVar("--accent"), borderRgb: resolveVar("--border"),
@@ -439,6 +447,16 @@ browser eval '(() => { document.getElementById("expandBtn").click(); return true
 settle
 probe i3-second-click-reuses-committed
 
+# j. phone viewport: the same room rule and centering at 390x844.
+browser set viewport 390 844 > /dev/null 2>&1 || true
+browser open "http://127.0.0.1:${port}/" > /dev/null 2>&1 || fail "phone browser could not open app"
+browser wait 3500 > /dev/null 2>&1
+select_session "$SID_B"
+browser fill '#msg' "$DRAFT_FOUR_LINES" > /dev/null 2>&1 || fail "could not type the four-line draft on the phone viewport"
+settle
+probe j1-phone-four-lines
+shot 07-phone-four-lines
+
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
 browser console --json > "$artifacts/browser-console.json" 2>&1 || true
 capture_container_diagnostics
@@ -463,6 +481,7 @@ names = [
     "h2-synthetic-drag-down", "h2b-click-after-drag-suppressed", "h2c-next-click-cycles",
     "h3a-back-to-normal", "h3b-drag-past-full", "h4-drag-down-normal",
     "i0-seeded-tall", "i1-aborted-drag-lands-normal", "i2-first-click-suppressed", "i3-second-click-reuses-committed",
+    "j1-phone-four-lines",
 ]
 p = {n: load(n) for n in names}
 sid_a = (artifacts / "session-order.txt").read_text().split()[0]
@@ -490,7 +509,7 @@ checks = {
     "c_tall_textarea_is_55_percent_of_app_height": near(c["textareaH"], 0.55 * c["appH"], 0.10),
     "c_tall_keeps_transcript_visible": c["chatWrapDisplay"] != "none" and c["chatWrapH"] > 50,
     "c_tall_persists_mode_only": stored(c) == {"mode": "tall"},
-    "d_second_click_enters_full": d["height"] == "full" and d["expandLabel"] == "Restore composer height",
+    "d_second_click_enters_full": d["height"] == "full" and d["expandLabel"] == "Restore draft height",
     "d_full_hides_transcript": d["chatWrapDisplay"] == "none",
     "d_full_textarea_fills_below_topbar": d["textareaH"] >= 0.75 * below_topbar(d) and d["textarea"]["top"] >= d["topbar"]["bottom"] and d["composer"]["bottom"] <= d["appH"] + 1,
     "d_full_keeps_topbar_and_interrupt_reachable": d["topbarVisible"] is True and d["topbar"]["top"] >= 0 and d["interruptReachable"] is True,
@@ -520,16 +539,25 @@ checks["i_seed_loads_committed_tall_500"] = i0["height"] == "tall" and i0["tallV
 checks["i_aborted_drag_lands_normal_keeps_committed_preference"] = i1["height"] == "normal"
 checks["i_first_click_after_abort_suppressed"] = i2["height"] == "normal"
 checks["i_second_click_reuses_committed_500px"] = i3["height"] == "tall" and i3["tallVar"] == "500px" and (json.loads(i3["storedAll"].get(key_a) or "null") == {"mode": "tall", "height": 500})
-# Vertically centered controls: every visible control in the input row centers
-# on the row's cross axis (the textarea's middle), send included. Queue is only
-# rendered with positive depth, so only visible controls are compared.
-def centered_controls(x, required=("sendRect", "attachRect")):
+# Vertically centered controls: send centers on the row's cross axis (the
+# textarea's middle) by itself, and the stacked control column centers as one
+# group — its member buttons cannot each be centered, the column can.
+def row_middle(x):
     ta = x["textarea"]
-    middle = (ta["top"] + ta["bottom"]) / 2
-    visible = [k for k in ("sendRect", "attachRect", "queueRect", "clearRect") if x[k] and x[k]["height"] > 0]
-    if not all(x[k] and x[k]["height"] > 0 for k in required):
+    return (ta["top"] + ta["bottom"]) / 2
+
+def centered_controls(x):
+    send = x["sendRect"]
+    if not (send and send["height"] > 0):
         return False
-    return all(abs((x[k]["top"] + x[k]["bottom"]) / 2 - middle) <= 2 for k in visible)
+    if abs((send["top"] + send["bottom"]) / 2 - row_middle(x)) > 2:
+        return False
+    column = [x[k] for k in ("clearRect", "attachRect", "queueRect") if x[k] and x[k]["height"] > 0]
+    if not column:
+        return False
+    top = min(rect["top"] for rect in column)
+    bottom = max(rect["bottom"] for rect in column)
+    return abs((top + bottom) / 2 - row_middle(x)) <= 2
 checks["overflow_controls_vertically_centered"] = centered_controls(b)
 checks["tall_controls_vertically_centered"] = centered_controls(c)
 checks["full_controls_vertically_centered"] = centered_controls(d)
@@ -552,13 +580,14 @@ checks["four_line_draft_shows_clear_before_the_grabber"] = bool(
 # same edges as the input row, covering >= 95% of the form's border box), first
 # child of the form, above the textarea's top edge and outside the input row.
 def strip_ok(x):
-    s, f, t, row = x["expandRect"], x["formRect"], x["textarea"], x["inputRowRect"]
+    s, f, t, row = x["stripRect"], x["formRect"], x["textarea"], x["inputRowRect"]
     return bool(
         x["expandVisible"] and s and f and row
         and abs(s["left"] - row["left"]) <= 1 and abs(s["right"] - row["right"]) <= 1
         and s["width"] >= 0.95 * f["width"]
         and s["bottom"] <= t["top"] + 0.5 and s["height"] > 0
-        and x["expandParentIsForm"] and x["expandIsFirstFormChild"] and not x["expandInInputRow"]
+        and x["expandInStrip"] and x["stripParentIsForm"] and x["stripIsFirstFormChild"]
+        and not x["expandInInputRow"]
     )
 for label, x in (("normal", b), ("tall", c), ("full", d)):
     checks[f"strip_{label}_spans_form_width_above_textarea_outside_input_row"] = strip_ok(x)
@@ -580,6 +609,11 @@ checks["strip_appearing_does_not_shrink_input_wrap"] = (
     and abs(b["inputRowRect"]["width"] - a["inputRowRect"]["width"]) <= 0.5
     and abs(b["textarea"]["width"] - a["textarea"]["width"]) <= 0.5
 )
+j1 = p["j1-phone-four-lines"]
+checks["phone_four_line_draft_shows_clear_without_the_grabber"] = bool(
+    j1["controlLayout"] == "stack" and j1["clearDisplay"] != "none" and j1["expandVisible"] is False
+)
+checks["phone_controls_vertically_centered"] = centered_controls(j1)
 errors = json.loads((artifacts / "browser-errors.json").read_text(encoding="utf-8")).get("data", {}).get("errors", [])
 checks["no_page_errors"] = errors == []
 summary = {"pass": all(checks.values()), "checks": checks, "probes": p, "pageErrors": errors}
