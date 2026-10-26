@@ -219,9 +219,12 @@ PROBE='(() => {
   const form = c ? c.querySelector("form") : null;
   const row = document.querySelector(".composerInputRow");
   const wrap = document.querySelector(".composer .inputWrap");
+  const clear = document.getElementById("clearBtn");
   return {
     sid, appH, innerHeight,
     height: c ? c.dataset.height : null,
+    controlLayout: c ? c.dataset.controls || null : null,
+    clearDisplay: clear ? getComputedStyle(clear).display : null,
     tallVar: c ? c.style.getPropertyValue("--composer-tall-h") : null,
     expandDisplay: bd,
     expandVisible: Boolean(b && bd !== "none" && b.getBoundingClientRect().height > 0),
@@ -243,6 +246,7 @@ PROBE='(() => {
     expandTouchAction: b ? getComputedStyle(b).touchAction : null,
     pillBg, pillRect: r(pill), accentRgb: resolveVar("--accent"), borderRgb: resolveVar("--border"),
     sendRect: r(document.getElementById("sendBtn")), attachRect: r(document.getElementById("attachBtn")), queueRect: r(document.getElementById("queueBtn")),
+    clearRect: r(clear),
     storageKeys: keys,
     storedForSession: sid ? localStorage.getItem("codexweb.composerHeight." + sid) : null,
     storedAll: Object.fromEntries(keys.map((k) => [k, localStorage.getItem(k)])),
@@ -318,6 +322,22 @@ browser eval '(() => { for (const k of Object.keys(localStorage)) if (k.startsWi
 browser fill '#msg' 'hello' > /dev/null 2>&1 || fail "could not type a short draft"
 settle
 probe a-short-draft
+
+# a2. a four-line draft has room for the stacked control column (and Clear) while
+# the draft still fits the normal cap, so the grabber is not involved.
+DRAFT_TWO_LINES=$'first line\nsecond line'
+DRAFT_THREE_LINES=$'one\ntwo\nthree'
+DRAFT_FOUR_LINES=$'one\ntwo\nthree\nfour'
+browser fill '#msg' "$DRAFT_TWO_LINES" > /dev/null 2>&1 || fail "could not type a two-line draft"
+settle
+probe a2-two-lines
+browser fill '#msg' "$DRAFT_THREE_LINES" > /dev/null 2>&1 || fail "could not type a three-line draft"
+settle
+probe a3-three-lines
+browser fill '#msg' "$DRAFT_FOUR_LINES" > /dev/null 2>&1 || fail "could not type a four-line draft"
+settle
+probe a4-four-lines
+shot 00-clear-without-grabber
 
 # b. long draft: button appears, normal textarea stays capped
 browser fill '#msg' "$LONG_DRAFT" > /dev/null 2>&1 || fail "could not type a long draft"
@@ -437,7 +457,7 @@ def load(name):
     return payload["data"]["result"]
 
 names = [
-    "a-short-draft", "b-long-draft", "c-tall", "d-full", "e-normal-again",
+    "a-short-draft", "a2-two-lines", "a3-three-lines", "a4-four-lines", "b-long-draft", "c-tall", "d-full", "e-normal-again",
     "f1-tall-before-reload", "f2-tall-after-reload", "f3-other-session", "f4-back-on-first",
     "g1-before-send", "g2-after-send", "h0-normal-long-again", "h1-real-drag-up", "h1b-dragged-after-reload",
     "h2-synthetic-drag-down", "h2b-click-after-drag-suppressed", "h2c-next-click-cycles",
@@ -500,12 +520,34 @@ checks["i_seed_loads_committed_tall_500"] = i0["height"] == "tall" and i0["tallV
 checks["i_aborted_drag_lands_normal_keeps_committed_preference"] = i1["height"] == "normal"
 checks["i_first_click_after_abort_suppressed"] = i2["height"] == "normal"
 checks["i_second_click_reuses_committed_500px"] = i3["height"] == "tall" and i3["tallVar"] == "500px" and (json.loads(i3["storedAll"].get(key_a) or "null") == {"mode": "tall", "height": 500})
-# Bottom-aligned controls: in tall and full, send/attach/queue sit at the textarea bottom edge.
-def bottom_aligned(x):
-    ta = x["textarea"]["bottom"]
-    return all(x[k] and x[k]["height"] > 0 and abs(x[k]["bottom"] - ta) <= 24 for k in ("sendRect", "attachRect", "queueRect"))
-checks["tall_controls_bottom_aligned"] = bottom_aligned(c)
-checks["full_controls_bottom_aligned"] = bottom_aligned(d)
+# Vertically centered controls: every visible control in the input row centers
+# on the row's cross axis (the textarea's middle), send included. Queue is only
+# rendered with positive depth, so only visible controls are compared.
+def centered_controls(x, required=("sendRect", "attachRect")):
+    ta = x["textarea"]
+    middle = (ta["top"] + ta["bottom"]) / 2
+    visible = [k for k in ("sendRect", "attachRect", "queueRect", "clearRect") if x[k] and x[k]["height"] > 0]
+    if not all(x[k] and x[k]["height"] > 0 for k in required):
+        return False
+    return all(abs((x[k]["top"] + x[k]["bottom"]) / 2 - middle) <= 2 for k in visible)
+checks["overflow_controls_vertically_centered"] = centered_controls(b)
+checks["tall_controls_vertically_centered"] = centered_controls(c)
+checks["full_controls_vertically_centered"] = centered_controls(d)
+checks["send_centered_clear_of_the_foot"] = bool(
+    c["sendRect"] and c["textarea"]["bottom"] - c["sendRect"]["bottom"] > 20
+    and abs((c["sendRect"]["top"] + c["sendRect"]["bottom"]) / 2 - (c["textarea"]["top"] + c["textarea"]["bottom"]) / 2) <= 2
+)
+# Room-based Clear: the control column needs two control heights (2 x 32px), the
+# 12px stack gap and a 4px margin each side = 84px. A normal auto-grown draft
+# reaches 72px at three lines and 92px at four, so Clear arrives at the fourth
+# line — while the draft still fits the cap, i.e. before the grabber exists.
+a2, a3, a4 = p["a2-two-lines"], p["a3-three-lines"], p["a4-four-lines"]
+checks["two_line_draft_has_no_control_column"] = a2["controlLayout"] is None and a2["clearDisplay"] == "none" and a2["expandVisible"] is False
+checks["three_line_draft_has_no_control_column"] = a3["controlLayout"] is None and a3["clearDisplay"] == "none" and a3["expandVisible"] is False
+checks["four_line_draft_shows_clear_before_the_grabber"] = bool(
+    a4["controlLayout"] == "stack" and a4["clearDisplay"] != "none" and a4["clearRect"] and a4["clearRect"]["height"] > 0
+    and a4["expandVisible"] is False
+)
 # Grabber strip placement: a full-width strip (the form's content box, i.e. the
 # same edges as the input row, covering >= 95% of the form's border box), first
 # child of the form, above the textarea's top edge and outside the input row.

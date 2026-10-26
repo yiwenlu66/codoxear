@@ -722,21 +722,59 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       return normalCapPx;
     }
 
-    // One writer for stack, clear control and strip contents. The stack uses
-    // exactly the grabber's height condition, even while undo replaces it.
+    // One writer for the control column, the clear control and the strip
+    // contents. Two independent height questions:
+    //  - the strip is the height control, so it appears exactly with the
+    //    grabber's condition (overflow, fixed mode, an active drag) or while
+    //    undo replaces it;
+    //  - the stacked column and the clear control answer "does the input row
+    //    have room for two control heights plus a margin", which a normal
+    //    auto-grown draft reaches at its fourth line — long before the strip.
+    const FALLBACK_CTL_PX = 32;
+    const FALLBACK_STACK_GAP_PX = 12;
+    const FALLBACK_CONTROL_MARGIN_PX = 4;
+    function cssPx(style, name, fallback) {
+      const raw = style && typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : "";
+      const parsed = parseFloat(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
+    // Shortest input row that can hold the stacked clear + attach column: two
+    // control heights, the stack's gap between them, and a margin on each side.
+    // The numbers are read from the same CSS tokens that build the composer
+    // (`--composerCtl`, `--space-5`, `--space-1`), so retuning a control or the
+    // spacing ladder moves the threshold with it. They are plain lengths; a
+    // calc() custom property would not parse back to a number here.
+    function stackRoomPx() {
+      const style = composerEl ? getComputedStyleFn(composerEl) : null;
+      return 2 * cssPx(style, "--composerCtl", FALLBACK_CTL_PX)
+        + cssPx(style, "--space-5", FALLBACK_STACK_GAP_PX)
+        + 2 * cssPx(style, "--space-1", FALLBACK_CONTROL_MARGIN_PX);
+    }
+
+    // The row's usable height is the rendered textarea height: in normal mode
+    // the textarea is the tallest row item, and in the fixed modes it fills the
+    // row. Without a clear control there is no second icon to place, so the
+    // measurement is not taken at all.
+    function columnHasRoom() {
+      return Boolean(clearBtn) && measureTextareaHeight() >= stackRoomPx();
+    }
+
     function syncExpandBtn() {
       const expanded = heightMode !== "normal";
-      const stacked = expanded || normalOverflow || heightDragActive;
+      const stripCondition = expanded || normalOverflow || heightDragActive;
+      // An overflowing or fixed-height draft always keeps the column: its
+      // controls must not fall back to a row that no longer fits them.
+      const roomForColumn = stripCondition || columnHasRoom();
       const undoVisible = clearedDraft !== null;
       if (composerEl) {
-        if (stacked) composerEl.dataset.controls = "stack";
+        if (roomForColumn) composerEl.dataset.controls = "stack";
         else delete composerEl.dataset.controls;
       }
-      if (clearBtn) clearBtn.style.display = stacked && textarea.value.length > 0 ? "" : "none";
+      if (clearBtn) clearBtn.style.display = roomForColumn && textarea.value.length > 0 ? "" : "none";
       if (draftUndoBtn) draftUndoBtn.style.display = undoVisible ? "inline-flex" : "none";
-      if (composerStrip) composerStrip.style.display = stacked || undoVisible ? "flex" : "none";
+      if (composerStrip) composerStrip.style.display = stripCondition || undoVisible ? "flex" : "none";
       if (!expandBtn) return;
-      expandBtn.style.display = stacked && !undoVisible ? "" : "none";
+      expandBtn.style.display = stripCondition && !undoVisible ? "" : "none";
       expandBtn.classList.toggle("expanded", expanded);
       const label = heightMode === "normal" ? "Expand draft" : heightMode === "tall" ? "Expand draft fully" : "Restore draft height";
       expandBtn.title = label;

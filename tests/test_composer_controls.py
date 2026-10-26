@@ -96,3 +96,24 @@ def test_failed_submissions_keep_undo_and_clear_never_mutates_attachments():
     ''')
     assert result == {"staged": [{"id": "attachment", "path": "photo.png"}], "sent": False,
                       "afterSend": "inline-flex", "afterQueue": "inline-flex", "text": "saved"}
+
+
+def test_clear_control_arrives_with_row_room_not_with_the_grabber():
+    result = run_scenario('''
+      const probe = (h) => ({controls: h.composer.dataset.controls || null, clear: h.clearBtn.style.display,
+        strip: h.composerStrip.style.display, grab: h.expandBtn.style.display});
+      const twoLines = harness({ textareaHeight: 52 });
+      twoLines.textarea.value = "a\\nb"; twoLines.textarea.emit("input"); const cramped = probe(twoLines);
+      const fourLines = harness({ textareaHeight: 92 });
+      fourLines.textarea.value = "a\\nb\\nc\\nd"; fourLines.textarea.emit("input"); const roomy = probe(fourLines);
+      fourLines.textarea.value = ""; fourLines.textarea.emit("input"); const emptied = probe(fourLines);
+      process.stdout.write(JSON.stringify({cramped, roomy, emptied}));
+    ''')
+    # Two icons need 2*32px + the 12px stack gap plus a 4px margin each side (84px):
+    # a two-line draft has no room, a four-line draft does, and the height
+    # control (grabber strip) only appears when the draft overflows the cap.
+    assert result == {
+        "cramped": {"controls": None, "clear": "none", "strip": "none", "grab": "none"},
+        "roomy": {"controls": "stack", "clear": "", "strip": "none", "grab": "none"},
+        "emptied": {"controls": "stack", "clear": "none", "strip": "none", "grab": "none"},
+    }

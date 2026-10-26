@@ -73,7 +73,7 @@ PRELUDE = textwrap.dedent(
     }}
 
     // One composer wired to an in-memory storage. Returns the nodes and probes.
-    function harness({{ stored = {{}}, running = false, textareaHeight = 100, appHeight = 1000, staged = [], sendOk = true, queueOk = true, quickSession = null }} = {{}}) {{
+    function harness({{ stored = {{}}, running = false, textareaHeight = 32, appHeight = 1000, staged = [], sendOk = true, queueOk = true, quickSession = null }} = {{}}) {{
       const storage = new Map(Object.entries(stored));
       const writes = [];
       const captures = [];
@@ -293,7 +293,7 @@ def test_successful_send_and_enqueue_reset_height_mode_but_clear_composer_does_n
 def test_drag_resizes_continuously_with_snap_gravity_and_suppresses_the_click() -> None:
     result = run_scenario(
         """
-        // start height 100px, app height 1000px, normal cap 180px:
+        // start height 100px (textareaHeight), app height 1000px, normal cap 180px:
         // snap-to-normal below 234px, snap-to-full above 900px.
         const drag = (h, moves, finish = "pointerup") => {
           h.expandBtn.emit("pointerdown", pointer(500));
@@ -303,7 +303,7 @@ def test_drag_resizes_continuously_with_snap_gravity_and_suppresses_the_click() 
           return frames;
         };
 
-        const tallRun = harness();
+        const tallRun = harness({ textareaHeight: 100 });
         const tallFrames = drag(tallRun, [495, 300]);
         const tallAfterDrag = tallRun.snapshot();
         tallRun.expandBtn.emit("click");               // the click that follows a real drag
@@ -311,22 +311,22 @@ def test_drag_resizes_continuously_with_snap_gravity_and_suppresses_the_click() 
         tallRun.expandBtn.emit("click");               // a genuine click cycles again
         const tallNextClick = tallRun.snapshot();
 
-        const normalRun = harness({ stored: { "codexweb.composerHeight.sid": '{"mode":"tall","height":500}' } });
+        const normalRun = harness({ textareaHeight: 100, stored: { "codexweb.composerHeight.sid": '{"mode":"tall","height":500}' } });
         const normalFrames = drag(normalRun, [450]);
         const normalAfter = normalRun.snapshot();
 
-        const fullRun = harness();
+        const fullRun = harness({ textareaHeight: 100 });
         const fullFrames = drag(fullRun, [-450]);
         const fullAfter = fullRun.snapshot();
 
-        const shortClick = harness();
+        const shortClick = harness({ textareaHeight: 100 });
         shortClick.expandBtn.emit("pointerdown", pointer(500));
         shortClick.expandBtn.emit("pointermove", pointer(494));
         shortClick.expandBtn.emit("pointerup", pointer(494));
         shortClick.expandBtn.emit("click");
         const shortClickAfter = shortClick.snapshot();
 
-        const cancelRun = harness();
+        const cancelRun = harness({ textareaHeight: 100 });
         drag(cancelRun, [300], "pointercancel");
         const cancelAfter = cancelRun.snapshot();
         cancelRun.expandBtn.emit("click");
