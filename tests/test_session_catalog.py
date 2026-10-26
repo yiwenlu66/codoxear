@@ -182,3 +182,102 @@ def test_catalog_subscriptions_change_only_and_isolate_errors() -> None:
         "calls": [[True, "tmuxAvailable"]],
         "errors": ["failed subscriber", "failed subscriber"],
     }
+
+
+def test_attachment_revision_rejects_old_and_legacy_reads_but_accepts_newer_delete() -> None:
+    result = evaluate(
+        """
+        const catalog = createSessionCatalog({ storage: null });
+        const initial = { session_id: "a", start_ts: 10, busy: true, queue_len: 4,
+          attachments_revision: 0, staged_attachments: [], pending_attachment: false };
+        catalog.set("latestSessions", [initial]);
+        catalog.patchSession("a", { attachments_revision: 2, staged_attachments: [{ id: "file" }], pending_attachment: true });
+        catalog.set("latestSessions", [{ ...initial, busy: false, queue_len: 0, attachments_revision: 1, staged_attachments: [], pending_attachment: false }]);
+        const stale = JSON.parse(JSON.stringify(catalog.get("sessionIndex").get("a")));
+        catalog.patchSession("a", { pending_attachment: false, staged_attachments: [], model: "new" });
+        const legacy = JSON.parse(JSON.stringify(catalog.get("sessionIndex").get("a")));
+        catalog.set("latestSessions", [{ session_id: "a", start_ts: 10, attachments_revision: 3, staged_attachments: [], pending_attachment: false }]);
+        const deleted = catalog.get("sessionIndex").get("a");
+        process.stdout.write(JSON.stringify({ stale, legacy, deleted }));
+        """
+    )
+    assert result["stale"]["staged_attachments"] == [{"id": "file"}]
+    assert result["stale"]["attachments_revision"] == 2
+    assert result["stale"]["pending_attachment"] is True
+    assert result["stale"]["busy"] is False
+    assert result["stale"]["queue_len"] == 0
+    assert result["legacy"]["pending_attachment"] is True
+    assert result["legacy"]["model"] == "new"
+    assert result["deleted"]["attachments_revision"] == 3
+    assert result["deleted"]["staged_attachments"] == []
+    assert result["deleted"]["pending_attachment"] is False
+
+
+def test_reload_checkpoint_preserves_ack_and_deletion_against_old_http_cache() -> None:
+    result = evaluate(
+        """
+        const saved = new Map();
+        const storage = { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value) };
+        const cached = { session_id: "a", start_ts: 11, attachments_revision: 0, staged_attachments: [], pending_attachment: false };
+        let catalog = createSessionCatalog({ storage });
+        catalog.set("latestSessions", [{ ...cached }]);
+        catalog.patchSession("a", { attachments_revision: 1, staged_attachments: [{ id: "f", display_name: "report", private_path: "/secret", data: "bytes" }], pending_attachment: true });
+        const stored = JSON.parse(Array.from(saved.values())[0]);
+        catalog = createSessionCatalog({ storage });
+        catalog.set("latestSessions", [{ ...cached, busy: false }]);
+        const reloaded = JSON.parse(JSON.stringify(catalog.get("sessionIndex").get("a")));
+        catalog.patchSession("a", { attachments_revision: 2, staged_attachments: [], pending_attachment: false });
+        catalog = createSessionCatalog({ storage });
+        catalog.set("latestSessions", [{ ...cached, attachments_revision: 1, staged_attachments: [{ id: "f" }], pending_attachment: true }]);
+        const deleted = JSON.parse(JSON.stringify(catalog.get("sessionIndex").get("a")));
+        catalog.set("latestSessions", [{ ...cached, start_ts: 12 }]);
+        const reusedPid = catalog.get("sessionIndex").get("a");
+        process.stdout.write(JSON.stringify({ stored, reloaded, deleted, reusedPid }));
+        """
+    )
+    assert result["stored"][0]["staged_attachments"] == [{"id": "f", "display_name": "report"}]
+    assert result["reloaded"]["staged_attachments"] == [{"id": "f", "display_name": "report"}]
+    assert result["reloaded"]["pending_attachment"] is True
+    assert result["reloaded"]["busy"] is False
+    assert result["deleted"]["attachments_revision"] == 2
+    assert result["deleted"]["staged_attachments"] == []
+    assert result["reusedPid"]["attachments_revision"] == 0
+    assert result["reusedPid"]["staged_attachments"] == []
+
+
+def test_checkpoint_storage_denial_and_corruption_leave_live_revision_reducer_usable() -> None:
+    result = evaluate(
+        """
+        const results = [];
+        for (const storage of [
+          { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } },
+          { getItem: () => "corrupt", setItem: () => { throw new Error("quota"); } },
+        ]) {
+          const catalog = createSessionCatalog({ storage });
+          catalog.set("latestSessions", [{ session_id: "a", start_ts: 11, attachments_revision: 1, staged_attachments: [{ id: "f" }] }]);
+          catalog.set("latestSessions", [{ session_id: "a", start_ts: 11, attachments_revision: 0, staged_attachments: [] }]);
+          results.push(catalog.get("sessionIndex").get("a").staged_attachments);
+        }
+        process.stdout.write(JSON.stringify({ results }));
+        """
+    )
+    assert result["results"] == [[{"id": "f"}], [{"id": "f"}]]
+
+
+def test_checkpoint_is_bounded_and_only_reuses_matching_incarnation() -> None:
+    result = evaluate(
+        """
+        let text = "[]";
+        const storage = { getItem: () => text, setItem: (key, value) => { text = value; } };
+        const catalog = createSessionCatalog({ storage });
+        catalog.set("latestSessions", Array.from({ length: 110 }, (_, i) => ({ session_id: `s${i}`, start_ts: i, attachments_revision: 2, staged_attachments: [{ id: "f" }] })));
+        const saved = JSON.parse(text);
+        const reloaded = createSessionCatalog({ storage });
+        reloaded.set("latestSessions", [{ session_id: "s109", attachments_revision: 0, staged_attachments: [] }]);
+        process.stdout.write(JSON.stringify({ count: saved.length, first: saved[0].session_id, size: text.length, unscoped: reloaded.get("latestSessions")[0] }));
+        """
+    )
+    assert result["count"] == 100
+    assert result["first"] == "s10"
+    assert result["size"] <= 262144
+    assert result["unscoped"]["staged_attachments"] == []

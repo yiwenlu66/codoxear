@@ -69,6 +69,8 @@
             ? data.recent_cwds.filter((cwd, index, values) => typeof cwd === "string" && cwd.trim() && values.indexOf(cwd) === index)
             : [],
         });
+        // Catalog may retain newer attachment knowledge than this HTTP feed.
+        latestSessions = sessionCatalog.get("latestSessions");
         clearFileDiscoveryCaches();
       }
       // The server owns sidebar order: `session_listing.sort_session_rows`

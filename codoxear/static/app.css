@@ -4205,3 +4205,25 @@ select {
       .session.desktop .swipeHint {
         display: none;
       }
+
+/* Upload recovery stays readable and actionable on touch, without hover. */
+.stagedAttachmentChip[data-failed] {
+  height: auto;
+  min-height: var(--ctl-chrome);
+  padding-block: var(--space-1);
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.stagedAttachmentChip[data-failed] .stagedAttachmentPhase {
+  flex-basis: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  order: 1;
+}
+.stagedAttachmentRetry {
+  position: relative;
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-sm);
+}

@@ -21,9 +21,75 @@ const INITIAL_STATE = Object.freeze({
   tmuxAvailable: false,
 });
 
+const ATTACHMENT_FIELDS = ["attachments_revision", "staged_attachments", "pending_attachment"];
+const CHECKPOINT_KEY = "codoxear.attachment-resources.v1";
+
+function attachmentRevision(row) {
+  return row && Number.isSafeInteger(row.attachments_revision) && row.attachments_revision >= 0
+    ? row.attachments_revision : null;
+}
+
+function sameIncarnation(a, b) {
+  return a && b && a.start_ts != null && b.start_ts != null && a.start_ts === b.start_ts;
+}
+
+function reconcileAttachmentResource(current, incoming) {
+  const revision = attachmentRevision(current);
+  const nextRevision = attachmentRevision(incoming);
+  if (revision === null || (nextRevision !== null && nextRevision >= revision)) return incoming;
+  const result = { ...incoming };
+  for (const field of ATTACHMENT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(current, field)) result[field] = current[field];
+    else delete result[field];
+  }
+  return result;
+}
+
 function createSessionCatalog(options = {}) {
   const consoleError = options.consoleError === undefined ? console.error : options.consoleError;
   if (typeof consoleError !== "function") throw new TypeError("session catalog dependency missing: consoleError");
+
+  // A bounded metadata checkpoint survives reload into an older HTTP cache.
+  // It is an input to this reducer, never an independent rendered-state writer.
+  let storage = null;
+  let checkpoints = [];
+  try {
+    storage = options.storage === undefined ? globalThis.localStorage : options.storage;
+    const text = storage && storage.getItem(CHECKPOINT_KEY);
+    const saved = text && text.length <= 262144 ? JSON.parse(text) : [];
+    if (Array.isArray(saved)) checkpoints = saved.filter((row) => row && row.session_id && row.start_ts != null &&
+      attachmentRevision(row) !== null && Array.isArray(row.staged_attachments)).slice(-100);
+  } catch (_) { /* Storage denial/corruption must not block the live catalog. */ }
+
+  function checkpoint(row) {
+    if (!row || row.start_ts == null || attachmentRevision(row) === null || !Array.isArray(row.staged_attachments)) return;
+    const resource = {
+      session_id: row.session_id, start_ts: row.start_ts,
+      attachments_revision: row.attachments_revision, pending_attachment: Boolean(row.pending_attachment),
+      staged_attachments: row.staged_attachments.filter((item) => item && typeof item.id === "string").map((item) => ({
+        id: item.id, display_name: item.display_name, filename: item.filename,
+        size: item.size, created_ts: item.created_ts,
+      })),
+    };
+    const previous = checkpoints.find((item) => item.session_id === row.session_id);
+    if (previous && JSON.stringify(previous) === JSON.stringify(resource)) return;
+    checkpoints = checkpoints.filter((item) => item.session_id !== row.session_id);
+    // Never persist a truncated resource. Oversized metadata stays memory-only.
+    if (JSON.stringify(resource).length <= 32768) checkpoints.push(resource);
+    checkpoints = checkpoints.slice(-100);
+    while (checkpoints.length && JSON.stringify(checkpoints).length > 262144) checkpoints.shift();
+    try { if (storage) storage.setItem(CHECKPOINT_KEY, JSON.stringify(checkpoints)); } catch (_) { /* Best effort. */ }
+  }
+
+  function reconcileRow(row) {
+    if (!row || typeof row !== "object") return row;
+    const live = values.sessionIndex.get(row.session_id);
+    const saved = checkpoints.find((item) => item.session_id === row.session_id && sameIncarnation(item, row));
+    const current = live && (sameIncarnation(live, row) || (live.start_ts == null && row.start_ts == null)) ? live : saved;
+    const reconciled = reconcileAttachmentResource(current, row);
+    checkpoint(reconciled);
+    return reconciled;
+  }
 
   const values = {
     latestSessions: [],
@@ -71,7 +137,7 @@ function createSessionCatalog(options = {}) {
   function normalizedFieldValue(field, value) {
     if (field === "latestSessions") {
       if (!Array.isArray(value)) throw new TypeError("session catalog latestSessions must be an array");
-      return value.slice();
+      return value.map(reconcileRow);
     }
     if (field === "recentCwds") {
       if (!Array.isArray(value)) throw new TypeError("session catalog recentCwds must be an array");
@@ -133,7 +199,10 @@ function createSessionCatalog(options = {}) {
     }
     const session = values.sessionIndex.get(sessionId);
     if (!session) return null;
-    Object.assign(session, patch);
+    // Missing revision is not permission to rewrite a versioned resource.
+    const reconciled = reconcileAttachmentResource(session, patch);
+    Object.assign(session, reconciled);
+    checkpoint(session);
     // Both views expose the same record. Notify both fields atomically so a
     // callback subscribed to either view observes the complete optimistic patch.
     notify(["sessionIndex", "latestSessions"]);

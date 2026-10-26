@@ -16,6 +16,7 @@ def run_attachments(body: str) -> dict:
     source = APP_ATTACHMENTS_JS.read_text(encoding="utf-8")
     state_source = APP_SESSION_STATE_JS.read_text(encoding="utf-8")
     catalog_source = APP_SESSION_CATALOG_JS.read_text(encoding="utf-8")
+    refresh_source = module_path("app_session_refresh.js").read_text(encoding="utf-8")
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -68,6 +69,7 @@ def run_attachments(body: str) -> dict:
         vm.runInContext({json.dumps(state_source)}, ctx, {{ filename: "app_session_state.js" }});
         vm.runInContext({json.dumps(catalog_source)}, ctx, {{ filename: "app_session_catalog.js" }});
         vm.runInContext({json.dumps(source)}, ctx, {{ filename: "app_attachments.js" }});
+        vm.runInContext({json.dumps(refresh_source)}, ctx, {{ filename: "app_session_refresh.js" }});
         function el(tag, attrs = {{}}) {{
           const out = node(tag);
           out.tag = tag;
@@ -85,7 +87,7 @@ def run_attachments(body: str) -> dict:
         sessionState.set("selected", selected);
         const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: () => {{}} }});
         sessionCatalog.set("latestSessions", Array.from(sessions.values()));
-        let apiImpl = async () => ({{ ok: true, attachments: [
+        let apiImpl = async () => ({{ ok: true, attachment: {{ id: "att-1" }}, attachments: [
           {{ id: "att-1", display_name: "report.txt", filename: "server-report.txt", size: "5", created_ts: "8" }},
           {{ id: "att-1", display_name: "duplicate.txt", size: 10 }},
           {{ id: "", display_name: "invalid.txt" }},
@@ -97,7 +99,7 @@ def run_attachments(body: str) -> dict:
           sessionIsOrphanRecovery: (info) => !!(info && info.orphan_recovery),
           sessionHasOrphanQueueRecovery: (info) => !!(info && info.queue_recovery),
           api: async (path, options) => {{
-            apiCalls.push({{ path, body: options.body }});
+            apiCalls.push({{ path, body: options && options.body, rawName: options && options.rawBody && options.rawBody.name, headers: options && options.headers, cache: options && options.cache }});
             return apiImpl(path, options);
           }},
           setToast: (text) => toasts.push(text), handleAppAuthLoss: () => toasts.push("auth-loss"),
@@ -130,7 +132,7 @@ def run_attachments(body: str) -> dict:
     return json.loads(completed.stdout)
 
 
-def test_stage_files_normalizes_dedupes_projects_badge_and_uploads_base64() -> None:
+def test_stage_files_normalizes_dedupes_projects_badge_and_uploads_raw_blob() -> None:
     result = run_attachments(
         """
         const file = { name: "notes.txt", size: 5, type: "text/plain", arrayBuffer: async () => new Uint8Array([104, 101, 108, 108, 111]).buffer };
@@ -149,10 +151,12 @@ def test_stage_files_normalizes_dedupes_projects_badge_and_uploads_base64() -> N
         """
     )
     assert result["staged"] is True
-    assert result["upload"] == {
-        "path": "/api/sessions/sid/inject_file",
-        "body": {"filename": "notes.txt", "data_b64": "aGVsbG8="},
-    }
+    assert result["upload"]["path"] == "/api/sessions/sid/inject_file"
+    assert result["upload"]["rawName"] == "notes.txt"
+    assert "body" not in result["upload"]
+    assert result["upload"]["headers"]["Content-Type"] == "application/octet-stream"
+    assert result["upload"]["headers"]["X-Codoxear-Filename"] == "notes.txt"
+    assert result["upload"]["headers"]["X-Codoxear-Upload-Id"]
     assert result["attachments"] == [
         {"id": "att-1", "display_name": "report.txt", "filename": "server-report.txt", "size": 5, "created_ts": 8}
     ]
@@ -213,8 +217,8 @@ def test_pending_chip_shows_synchronously_and_swaps_to_staged_with_thumbnail() -
     result = run_attachments(
         """
         apiImpl = (path, options) => new Promise((resolve) => {
-          setTimeout(() => resolve({ ok: true, attachments: [
-            { id: "att-9", display_name: options.body.filename, filename: options.body.filename, size: 3, created_ts: 1 },
+          setTimeout(() => resolve({ ok: true, attachment: { id: "att-9" }, attachments: [
+            { id: "att-9", display_name: decodeURIComponent(options.headers["X-Codoxear-Filename"]), filename: decodeURIComponent(options.headers["X-Codoxear-Filename"]), size: 3, created_ts: 1 },
           ] }), 0);
         });
         const file = { name: "shot.png", size: 3, type: "image/png", arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
@@ -266,7 +270,7 @@ def test_pending_chip_shows_synchronously_and_swaps_to_staged_with_thumbnail() -
     assert result["toasts"] == ["file staged"]
 
 
-def test_failed_upload_holds_error_chip_then_timer_removes_it() -> None:
+def test_unknown_upload_keeps_visible_reason_and_retry_cancel_without_expiry() -> None:
     result = run_attachments(
         """
         apiImpl = async () => { throw new Error("file too large (max 1.0 KB)"); };
@@ -279,6 +283,9 @@ def test_failed_upload_holds_error_chip_then_timer_removes_it() -> None:
             staged,
             failedShown: Boolean(failedChip),
             failTitle: failedChip ? failedChip.title : "",
+            visibleReason: failedChip && failedChip.children.find((c) => c.className === "stagedAttachmentPhase").textContent,
+            retry: Boolean(failedChip && failedChip.children.find((c) => c.textContent === "Retry")),
+            failureTimers: failureTimers.length,
             hasPendingWhileFailed: controller.hasPendingUploads(),
             chipsAfterTimer: tray.children.length,
             trayDisplayAfterTimer: tray.style.display,
@@ -290,16 +297,21 @@ def test_failed_upload_holds_error_chip_then_timer_removes_it() -> None:
     assert result["staged"] is False
     assert result["failedShown"] is True
     assert result["failTitle"] == "file too large (max 1.0 KB)"
-    assert result["hasPendingWhileFailed"] is False
-    assert result["chipsAfterTimer"] == 0
-    assert result["trayDisplayAfterTimer"] == "none"
+    assert "Upload outcome unknown: file too large" in result["visibleReason"]
+    assert result["retry"] is True
+    assert result["failureTimers"] == 0
+    assert result["hasPendingWhileFailed"] is True
+    assert result["chipsAfterTimer"] == 1
+    assert result["trayDisplayAfterTimer"] == "flex"
     assert result["toasts"] == ["attach error: big.png: file too large (max 1.0 KB)"]
 
 
 def test_cancel_pending_upload_aborts_and_clears_without_error_toast() -> None:
     result = run_attachments(
         """
-        apiImpl = (path, options) => new Promise((resolve, reject) => {
+        apiImpl = (path, options) => path.endsWith("upload-cancel")
+          ? Promise.resolve({ ok: true, state: "cancelled", attachments: [], pending_attachment: false, attachments_revision: 2 })
+          : new Promise((resolve, reject) => {
           options.signal.listeners.push(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
         });
         const file = { name: "shot.png", size: 3, type: "image/png", arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
@@ -307,8 +319,8 @@ def test_cancel_pending_upload_aborts_and_clears_without_error_toast() -> None:
         const pendingChip = tray.children[0];
         const cancelBtn = pendingChip.children.find((c) => c.className === "stagedAttachmentRemove");
         const hasBefore = controller.hasPendingUploads();
-        cancelBtn.onclick();
-        stagedPromise.then((staged) => {
+        const cancelled = cancelBtn.onclick();
+        Promise.all([stagedPromise, cancelled]).then(([staged]) => {
           process.stdout.write(JSON.stringify({
             staged,
             hasBefore,
@@ -326,14 +338,16 @@ def test_cancel_pending_upload_aborts_and_clears_without_error_toast() -> None:
     assert result["hasAfter"] is False
     assert result["chips"] == 0
     assert result["trayDisplay"] == "none"
-    assert result["refreshed"] == 1
+    assert result["refreshed"] >= 1
     assert result["toasts"] == []
 
 
 def test_session_switch_aborts_pending_upload_without_touching_old_session() -> None:
     result = run_attachments(
         """
-        apiImpl = (path, options) => new Promise((resolve, reject) => {
+        apiImpl = (path, options) => path.endsWith("upload-cancel")
+          ? Promise.resolve({ ok: true, state: "cancelled", attachments: [], pending_attachment: false, attachments_revision: 2 })
+          : new Promise((resolve, reject) => {
           options.signal.listeners.push(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
         });
         sessions.set("other", { session_id: "other", launch_state: "ready" });
