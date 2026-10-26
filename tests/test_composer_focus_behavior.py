@@ -19,7 +19,7 @@ SESSION_CATALOG_SOURCE = module_path("app_session_catalog.js").read_text(encodin
 
 
 def _run_node(script: str) -> dict:
-    result = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False, timeout=20)
+    result = subprocess.run(["node"], input=script, cwd=ROOT, text=True, capture_output=True, check=False, timeout=20)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 

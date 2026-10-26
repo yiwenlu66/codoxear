@@ -428,7 +428,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "stale direct prompt")
         self.assertTrue(mgr._sessions[sid].pending_attachment)
 
-        self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
+        self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0, "attachments": [], "pending_attachment": False})
         self.assertEqual(seen, [{"cmd": "send", "text": "Attachment 1: /tmp/uploads/s1/1_one.txt\nintended prompt", "sync": True}])
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotContains(sid, mgr._pending_attachment_ids)
@@ -488,7 +488,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
         cleanup_calls: list[tuple[str, bool]] = []
 
-        def clear_staged(clear_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+        def clear_staged(clear_sid: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, object]:
+            self.assertEqual(attachment_ids, ["a1", "a2"])
             cleanup_calls.append((clear_sid, delete_files))
             mgr._staged_attachments.pop(clear_sid, None)
             mgr._sessions[clear_sid].pending_attachment = False
@@ -505,7 +506,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         mgr._sock_call = sock_call  # type: ignore[method-assign]
 
-        self.assertEqual(SessionManager.send(mgr, sid, "use these", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
+        self.assertEqual(SessionManager.send(mgr, sid, "use these", allow_pending_attachment=True), {"queued": False, "queue_len": 0, "attachments": [], "pending_attachment": False})
         committed_text = "Attachment 1: /tmp/uploads/s1/1_one.txt\nAttachment 2: /tmp/uploads/s1/2_two.txt\nuse these"
         self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
         self.assertEqual(recorded, [committed_text])
@@ -531,7 +532,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = fail_prelog  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def clear_staged(clear_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+        def clear_staged(clear_sid: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, object]:
+            self.assertEqual(attachment_ids, ["a1"])
             cleanup_calls.append(clear_sid)
             mgr._staged_attachments.pop(clear_sid, None)
             mgr._sessions[clear_sid].pending_attachment = False
@@ -554,7 +556,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
         self.assertEqual(recorded, [committed_text])
         self.assertEqual(cleanup_calls, [sid])
-        self.assertEqual(response, {"queued": False, "queue_len": 0, "busy": True, "send_state_cleanup_error": "prelog_user_message: launch ledger invalid"})
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "busy": True, "send_state_cleanup_error": "prelog_user_message: launch ledger invalid", "attachments": [], "pending_attachment": False})
         self.assertEqual(mgr._staged_attachments, {})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotContains(sid, mgr._pending_attachment_ids)
@@ -573,7 +575,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, object]:
+            self.assertEqual(attachment_ids, ["a1"])
             cleanup_calls.append(cleanup_sid)
             raise ValueError("staged_path outside session uploads")
 
@@ -619,7 +622,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, object]:
+            self.assertEqual(attachment_ids, ["a1"])
             cleanup_calls.append(cleanup_sid)
             raise OSError("unlink failed")
 
@@ -655,7 +659,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._staged_attachments[sid] = [dict(entry)]
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
-        def fail_cleanup(_cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+        def fail_cleanup(_cleanup_sid: str, *, delete_files: bool = True, attachment_ids: list[str] | None = None) -> dict[str, object]:
+            self.assertEqual(attachment_ids, ["a1"])
             raise KeyError("unknown session")
 
         mgr.clear_staged_attachments = fail_cleanup  # type: ignore[method-assign]
@@ -1007,7 +1012,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid].pending_attachment = True
         mgr._pending_attachment_ids.add(sid)
 
-        self.assertEqual(SessionManager.clear_pending_attachment(mgr, sid), {"ok": True, "pending_attachment": False})
+        self.assertEqual(SessionManager.clear_pending_attachment(mgr, sid), {"ok": True, "attachments": [], "pending_attachment": False, "attachments_revision": 1, "removed_count": 0})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotContains(sid, mgr._pending_attachment_ids)
 
