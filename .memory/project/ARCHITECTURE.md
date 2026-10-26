@@ -112,26 +112,39 @@ not visual size. Full design-language rules are in AGENTS.md.
 
 ## Backend
 
-### Sidebar order and the tmux window mirror
+### Sidebar order and the tmux window layout
 
 Sidebar order has one writer: `session_listing.sort_session_rows`, key
 `(group rank, -final_priority, -updated_ts, -start_ts, session_id)`. The group
 rank (Now → Waiting → Later, blocked before snoozed) is part of the key because
 the renderer emits blocks and both deferred groups carry `final_priority 0`
-after clamping; sorting by priority alone interleaved them. The browser renders
-the server's array order verbatim (`app_session_refresh.js` does not re-sort;
-`sidebarSessionEntries` only partitions).
+after clamping. The browser renders the server's array order verbatim. A
+session's *name* has one definition too: `session_display.sidebar_display_name`
+(trimmed alias, else cwd basename), carried on the row as `display_name` and
+rendered by `app_display.js`.
 
-`codoxear/tmux_order.py` (pure planning) + `codoxear/tmux_order_sync.py`
-(schedule) mirror that order into the window indices of
-`CODEX_WEB_TMUX_SESSION`. The listing route hands each `/api/sessions`
-generation — the exact array a client renders — to a coalescing single-flight
-worker (`TmuxOrderSync.tick`, driven by a 1s daemon loop). The pass swaps only
-codoxear windows among the indices they already occupy, so a window no session
-names never moves and no window is created, killed, renamed or selected.
+`codoxear/tmux_order.py` (planning) + `codoxear/tmux_order_sync.py` (schedule)
+mirror that order into the window list of `CODEX_WEB_TMUX_SESSION`, in both
+dimensions a user can see:
+
+- **position** — window `base-index + k` is sidebar row `k`. Codoxear windows
+  are kept contiguous at the head in sidebar order, windows no session names
+  follow in their existing relative order, and index gaps left by closed windows
+  are closed with `move-window -r` (which respects `base-index`).
+- **name** — each window is titled with the session's `display_name`, so a
+  status-bar entry and a sidebar row are the same string.
+
+Ordering alone is not usable (you match windows to rows by position only) and
+naming alone leaves the two in different orders; both are required.
 
 Load-bearing details (measured, not assumed):
 
+- Identity must survive a rename, so every window carries `@codoxear_nonce`
+  (broker `spawn_nonce`, else a digest of the launch name) stamped *before* the
+  first rename; a tmux that cannot expand user-option formats returns the
+  literal format text, which parses as "no token", and such a window is never
+  renamed. Name matching remains the first-contact fallback for windows created
+  before the stamp existed.
 - `swap-window -d` is unusable as a viewer guard: on tmux 3.5a it is ignored for
   a swapped current window, while on 3.8 it keeps the viewer's pane there but
   moves the viewer to the swap source when neither swapped window is current.
@@ -143,14 +156,11 @@ Load-bearing details (measured, not assumed):
 - Work is driven by listing generations, never a timer: with nobody polling,
   `list_sessions` never runs and `updated_ts` never advances, so a timer would
   reorder against stale priorities.
-- Window identity is `(row.tmux_session, row.tmux_window)`: `new-window -n`
-  pins the name (`automatic-rename` off per window), so it survives the backend
-  running. Ambiguous or missing names are skipped and logged, never guessed.
 
 Behavioral contracts: `tests/test_tmux_order.py`,
 `tests/test_tmux_order_sync.py`, `tests/test_tmux_runtime.py`,
-`tests/test_sidebar_render_order.py` (order is rendered, not re-derived);
-Docker acceptance: `scripts/docker_tmux_order_verify.sh`.
+`tests/test_sidebar_render_order.py`; Docker acceptance:
+`scripts/docker_tmux_order_verify.sh`.
 
 ### Log-derived session projection
 
