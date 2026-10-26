@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .session_display import sidebar_display_name
 from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachments
@@ -292,6 +293,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "unattended_cooldown_minutes": facts.unattended_cooldown_minutes,
         "unattended_remaining_injections": facts.unattended_remaining_injections,
         "alias": facts.alias,
+        "display_name": sidebar_display_name({"alias": facts.alias, "cwd": facts.cwd}),
         "draft_updated_ts": float(facts.draft_updated_ts),
         "files": list(facts.files),
         "_cwd_path_obj": facts.cwd_path,

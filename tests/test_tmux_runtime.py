@@ -111,12 +111,22 @@ def test_tmux_pane_snapshot_uses_exit_status_when_error_streams_empty() -> None:
 def test_parse_window_rows_keeps_window_names_containing_tabs() -> None:
     from codoxear.tmux_runtime import parse_window_rows
 
-    rows = parse_window_rows("2\t@5\t1\tmy\twindow\n0\t@7\t0\tplain\n\nbogus\n")
+    rows = parse_window_rows("2\t@5\t1\t\tmy\twindow\n0\t@7\t0\tabc123abc123\tplain\n\nbogus\n")
 
     assert rows == [
-        {"index": 0, "id": "@7", "active": False, "name": "plain"},
-        {"index": 2, "id": "@5", "active": True, "name": "my\twindow"},
+        {"index": 0, "id": "@7", "active": False, "nonce": "abc123abc123", "name": "plain"},
+        {"index": 2, "id": "@5", "active": True, "nonce": None, "name": "my\twindow"},
     ]
+
+
+def test_parse_window_rows_rejects_an_unexpanded_user_option_as_identity() -> None:
+    # A tmux that cannot expand user options returns the format text verbatim;
+    # treating that as a token would make every window claim the same identity.
+    from codoxear.tmux_runtime import parse_window_rows
+
+    rows = parse_window_rows("0\t@1\t0\t#{@codoxear_nonce}\tplain\n")
+
+    assert rows == [{"index": 0, "id": "@1", "active": False, "nonce": None, "name": "plain"}]
 
 
 def test_tmux_list_windows_raises_with_the_tmux_diagnostic() -> None:
@@ -137,7 +147,16 @@ def test_tmux_list_windows_raises_with_the_tmux_diagnostic() -> None:
     else:  # pragma: no cover - the call must fail loudly
         raise AssertionError("expected TmuxCommandError")
 
-    assert calls == [["/usr/bin/tmux", "list-windows", "-t", "codoxear", "-F", "#{window_index}\t#{window_id}\t#{window_active}\t#{window_name}"]]
+    assert calls == [
+        [
+            "/usr/bin/tmux",
+            "list-windows",
+            "-t",
+            "codoxear",
+            "-F",
+            "#{window_index}\t#{window_id}\t#{window_active}\t#{@codoxear_nonce}\t#{window_name}",
+        ]
+    ]
 
 
 def test_tmux_swap_windows_never_passes_a_detach_flag() -> None:
@@ -197,3 +216,44 @@ def test_tmux_select_window_fails_loudly_when_the_window_is_gone() -> None:
         assert exc.command == "select-window"
     else:  # pragma: no cover
         raise AssertionError("expected TmuxCommandError")
+
+
+def test_tmux_window_naming_and_identity_commands() -> None:
+    from codoxear.tmux_runtime import tmux_rename_window, tmux_renumber_windows, tmux_stamp_window_nonce
+
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    tmux_stamp_window_nonce("tmux", window_id="@3", nonce="abc123", run=run)
+    tmux_rename_window("tmux", window_id="@3", name="my session", run=run)
+    tmux_renumber_windows("tmux", tmux_session_name="codoxear", run=run)
+
+    assert calls == [
+        ["tmux", "set-option", "-w", "-t", "@3", "@codoxear_nonce", "abc123"],
+        ["tmux", "rename-window", "-t", "@3", "my session"],
+        ["tmux", "move-window", "-r", "-t", "codoxear"],
+    ]
+
+
+def test_tmux_base_index_prefers_the_session_value_and_tolerates_failure() -> None:
+    from codoxear.tmux_runtime import tmux_base_index
+
+    def run_session_override(argv: list[str], **kwargs):
+        if argv[1:3] == ["show-options", "-v"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="1\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="0\n", stderr="")
+
+    def run_global_only(argv: list[str], **kwargs):
+        if argv[1:3] == ["show-options", "-v"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="2\n", stderr="")
+
+    def run_broken(argv: list[str], **kwargs):
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unknown option")
+
+    assert tmux_base_index("tmux", tmux_session_name="codoxear", run=run_session_override) == 1
+    assert tmux_base_index("tmux", tmux_session_name="codoxear", run=run_global_only) == 2
+    assert tmux_base_index("tmux", tmux_session_name="codoxear", run=run_broken) is None

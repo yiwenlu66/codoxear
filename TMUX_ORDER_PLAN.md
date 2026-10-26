@@ -3,7 +3,16 @@
 Feature request: *automatically rearrange sessions in tmux; follow the same
 order as in sidebar.*
 
-Status: plan only. Nothing in this document is implemented.
+Status: implemented (commits `f024d3c1`.. ) in two steps. Two decisions below were
+superseded once the first live run showed the feature was not usable as planned:
+
+- section 6.2 identifies windows by name (`tmux_window`); the shipped mirror
+  **titles** each window with the sidebar name, so identity is the
+  `@codoxear_nonce` window option stamped before the first rename;
+- section 3 keeps non-codoxear windows in place; the shipped mirror moves them
+  **after** the codoxear block so window `k` is sidebar row `k`.
+
+See AGENTS.md ("Sidebar order is server-owned…") for the contract as shipped.
 
 ---
 

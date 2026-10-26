@@ -8,14 +8,15 @@ listing rows are all produced by the production path; only the agent binary is a
 stub (`PI_BIN`) that prints its working directory forever.
 
 Verified contracts:
-  1. codoxear windows end up in the same relative order as `/api/sessions`
-     (which is what the browser renders).
-  2. a tmux window codoxear does not own keeps its index through every reorder.
-  3. the viewer keeps looking at the same pane content while its window's index
-     changes (this is what the `-d` decision exists for).
-  4. snoozing and un-snoozing a session — a real ordering change, not a prompt
-     to re-sort — is followed by tmux.
-  5. the order is stable afterwards (no oscillation).
+  1. window `k` *is* sidebar row `k`: codoxear windows occupy consecutive
+     indices from `base-index` in sidebar order, and a window no session names
+     follows them.
+  2. each window is titled with the name the sidebar shows for that session,
+     and follows an alias change.
+  3. the viewer keeps looking at the same pane content while its window is
+     renumbered.
+  4. snoozing and un-snoozing a session — a real ordering change — is followed.
+  5. the layout is stable afterwards (no oscillation).
 """
 
 from __future__ import annotations
@@ -141,8 +142,12 @@ def sessions(opener: urllib.request.OpenerDirector) -> list[dict[str, object]]:
 
 
 def sidebar_order(rows: list[dict[str, object]]) -> list[str]:
-    """The rendered order, reduced to the windows it names."""
-    return [str(row["tmux_window"]) for row in rows if isinstance(row.get("tmux_window"), str) and row["tmux_window"]]
+    """The rendered order, reduced to the titles its tmux-backed rows carry."""
+    return [
+        str(row.get("display_name") or row.get("tmux_window"))
+        for row in rows
+        if isinstance(row.get("tmux_window"), str) and row["tmux_window"]
+    ]
 
 
 # -- setup --------------------------------------------------------------
@@ -204,6 +209,21 @@ def wait_for_server() -> None:
 # -- the verification ---------------------------------------------------
 
 
+def check_layout(note: str) -> None:
+    """Contract: codoxear windows are the first consecutive slots, titled in order."""
+    listing = windows()
+    codoxear = codoxear_windows()
+    check(bool(codoxear), f"no codoxear windows {note}: {listing}")
+    check(
+        [window["index"] for window in codoxear] == list(range(len(codoxear))),
+        f"codoxear windows are not the leading consecutive slots {note}: {listing}",
+    )
+    check(
+        [window["index"] for window in listing] == list(range(len(listing))),
+        f"window indices are not consecutive {note}: {listing}",
+    )
+
+
 def wait_for_convergence(opener: urllib.request.OpenerDirector, *, expected: list[str] | None = None, note: str = "") -> list[dict[str, object]]:
     deadline = time.time() + CONVERGE_TIMEOUT
     observed: tuple[list[str], list[str]] | None = None
@@ -261,16 +281,19 @@ def main() -> int:
         rows = wait_for_rows(opener, len(WORKSPACES))
         expected = sidebar_order(rows)
         check(len(expected) == len(WORKSPACES), f"unexpected sidebar order: {expected}")
+        # The sidebar names are plain directory names here ("alpha", "beta", …),
+        # which is what a status-bar entry must read as.
+        check(all("-" not in name for name in expected), f"sidebar names are not the session names: {expected}")
 
         rows = wait_for_convergence(opener, expected=expected, note="after launch")
-        check(foreign_index() == 0, f"foreign window moved during the first convergence: {windows()}")
+        check_layout("after launch")
         order_after_launch = codoxear_window_order()
-        log(f"PASS initial order: sidebar={expected} tmux={order_after_launch}")
+        log(f"PASS layout: sidebar={expected} tmux={order_after_launch} indices={[w['index'] for w in windows()]}")
 
         # A real ordering change: snooze the session the sidebar ranks first.
         top_session = str(rows[0]["session_id"])
-        moving_window = str(rows[-1]["tmux_window"])
-        target = next(window for window in codoxear_windows() if window["name"] == moving_window)
+        moving_title = str(rows[-1].get("display_name") or rows[-1]["tmux_window"])
+        target = next(window for window in codoxear_windows() if window["name"] == moving_title)
         tmux("select-window", "-t", f"{TMUX_SESSION}:{target['index']}")
         window_id_before = current_window_id()
         marker_before = current_pane_marker()
@@ -289,7 +312,7 @@ def main() -> int:
             bool(snoozed_rows[-1].get("snoozed")) and str(snoozed_rows[-1]["session_id"]) == top_session,
             f"snoozed session is not ranked last: {[(row.get('session_id'), row.get('snoozed')) for row in snoozed_rows]}",
         )
-        check(foreign_index() == 0, f"foreign window moved while snoozing: {windows()}")
+        check_layout("after snoozing")
         check(current_window_id() == window_id_before, "the viewer's window changed during the reorder")
         check(current_pane_marker() == marker_before, "the viewer's pane content changed during the reorder")
         log(f"PASS snooze reorder: order={codoxear_window_order()} viewer kept {marker_before}")
@@ -305,15 +328,36 @@ def main() -> int:
         wait_for_convergence(opener, note="after un-snoozing")
         check(codoxear_window_order() == order_after_launch, f"un-snooze did not restore the original order: {codoxear_window_order()}")
         check(len(windows()) == len(WORKSPACES) + 1, f"the reorder changed the window set: {windows()}")
+        check_layout("after un-snoozing")
         log(f"PASS restore order: order={codoxear_window_order()}")
+
+        # A rename is a real sidebar change and must reach the window title.
+        status, body = call(
+            opener,
+            "POST",
+            f"/api/sessions/{urllib.parse.quote(top_session)}/edit",
+            {"name": "renamed by test", "priority_offset": 0, "snooze_until": None},
+        )
+        check(status == 200, f"renaming the session failed: {status} {body}")
+        wait_for_convergence(opener, note="after renaming")
+        check(
+            "renamed by test" in codoxear_window_order(),
+            f"a renamed session did not retitle its window: {codoxear_window_order()}",
+        )
+        check_layout("after renaming")
+        log(f"PASS rename reached the window title: order={codoxear_window_order()}")
 
         # Stability: keep generating listing generations and confirm nothing drifts.
         for _ in range(6):
             sessions(opener)
             time.sleep(2.0)
-        check(codoxear_window_order() == order_after_launch, f"order drifted while idle: {codoxear_window_order()}")
-        check(foreign_index() == 0, "foreign window moved while idle")
-        log("PASS stable while idle")
+        settled = codoxear_window_order()
+        for _ in range(6):
+            sessions(opener)
+            time.sleep(2.0)
+        check(codoxear_window_order() == settled, f"layout drifted while idle: {codoxear_window_order()} != {settled}")
+        check_layout("while idle")
+        log(f"PASS stable while idle: order={settled}")
 
         log("TMUX ORDER VERIFY: PASS")
         return 0

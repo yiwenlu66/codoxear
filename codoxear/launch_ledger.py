@@ -11,6 +11,7 @@ from .broker_turn_state import _strip_ansi
 from .launch_config import provider_choice_for_settings
 from .post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
 from .post_log_recovery import record_is_post_log_bound_recovery
+from .session_display import sidebar_display_name
 from .util import append_launch_attempt
 from .util import read_launch_attempts
 from .util import redacted_launch_attempt_persist_record
@@ -340,6 +341,7 @@ def launch_attempt_row(
         "unattended_cooldown_minutes": unattended_default_idle_minutes,
         "unattended_remaining_injections": unattended_default_max_injections,
         "alias": "",
+        "display_name": sidebar_display_name({"cwd": record.get("cwd")}),
         "draft_updated_ts": 0.0,
         "files": [],
         "git_branch": "",

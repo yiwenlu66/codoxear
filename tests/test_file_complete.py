@@ -59,6 +59,31 @@ def test_completion_lists_visible_children_and_marks_directories(tmp_path: Path)
     assert hidden.entries == [{"name": ".secret", "completion": "./.secret", "is_dir": False}]
 
 
+def test_completion_accepts_a_slash_less_cwd_fragment(tmp_path: Path) -> None:
+    (tmp_path / "adir").mkdir()
+    (tmp_path / "afile.txt").write_text("file", encoding="utf-8")
+    (tmp_path / ".secret").write_text("hidden", encoding="utf-8")
+
+    fragment = complete_session_path(tmp_path, token="a")
+    assert fragment.directory == tmp_path.resolve()
+    assert fragment.entries == [
+        {"name": "adir", "completion": "adir/", "is_dir": True},
+        {"name": "afile.txt", "completion": "afile.txt", "is_dir": False},
+    ]
+
+    # An empty token is the cwd listing itself: the composer sends it for a bare
+    # `@` mention before any name character exists.
+    listing = complete_session_path(tmp_path, token="")
+    assert _entry_names(listing) == ["adir", "afile.txt"]
+    assert listing.entries[0]["completion"] == "adir/"
+    assert listing.entries[1]["completion"] == "afile.txt"
+
+    assert complete_session_path(tmp_path, token=".s").entries == [
+        {"name": ".secret", "completion": ".secret", "is_dir": False},
+    ]
+    assert complete_session_path(tmp_path, token="qqq").entries == []
+
+
 def test_completion_preserves_each_typed_prefix_style(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     session = tmp_path / "session"
     parent = session.parent
@@ -252,7 +277,62 @@ def test_complete_route_returns_session_completion_and_validates_request(tmp_pat
         deps=deps,
         match_session_route=_match_session_route,
     )
-    assert responses == [(400, {"error": "path must be a non-empty slash-containing token"})]
+    assert responses == [(400, {"error": "limit must be an integer"})]
+
+    # A slash-less token is a fragment in the session cwd (the composer's `@`
+    # mention sends exactly this form), and an empty token lists the cwd itself.
+    responses.clear()
+    handle_file_get_route(
+        handler,
+        path="/api/sessions/s/file/complete",
+        query="path=b-f",
+        manager=_Manager(tmp_path),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert responses == [
+        (
+            200,
+            {
+                "ok": True,
+                "dir": str(tmp_path.resolve()),
+                "entries": [{"name": "b-file", "completion": "b-file", "is_dir": False}],
+                "truncated": False,
+            },
+        )
+    ]
+
+    responses.clear()
+    handle_file_get_route(
+        handler,
+        path="/api/sessions/s/file/complete",
+        query="path=&limit=1",
+        manager=_Manager(tmp_path),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert responses == [
+        (
+            200,
+            {
+                "ok": True,
+                "dir": str(tmp_path.resolve()),
+                "entries": [{"name": "a-dir", "completion": "a-dir/", "is_dir": True}],
+                "truncated": True,
+            },
+        )
+    ]
+
+    responses.clear()
+    handle_file_get_route(
+        handler,
+        path="/api/sessions/s/file/complete",
+        query="limit=50",
+        manager=_Manager(tmp_path),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert responses == [(400, {"error": "path required"})]
 
     responses.clear()
     handle_file_get_route(

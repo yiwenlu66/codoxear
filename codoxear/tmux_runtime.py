@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import threading
 import time
@@ -23,8 +24,23 @@ class TmuxCommandError(RuntimeError):
 
 
 # Window name goes last so it can contain tabs without shifting the fields the
-# order mirror parses; the index is what defines the displayed order.
-TMUX_WINDOW_FORMAT = "#{window_index}\t#{window_id}\t#{window_active}\t#{window_name}"
+# order mirror parses; the index is what defines the displayed order. The
+# `@codoxear_nonce` user option is the mirror's rename-proof identity for a
+# window (its launch name stops matching as soon as the mirror titles it).
+TMUX_WINDOW_FORMAT = "#{window_index}\t#{window_id}\t#{window_active}\t#{@codoxear_nonce}\t#{window_name}"
+
+_NONCE_RE = re.compile(r"^[0-9a-f]{6,64}$")
+
+
+def parse_window_nonce(raw: str) -> str | None:
+    """A valid stamp value, or None.
+
+    A tmux that cannot expand user options returns the literal format string, so
+    only hex-shaped values are accepted: anything else means "no stamp", and an
+    un-stamped window is never renamed (its name is the only way back to it).
+    """
+    value = raw.strip()
+    return value if _NONCE_RE.match(value) else None
 
 
 def parse_window_rows(text: str | None) -> list[dict[str, Any]]:
@@ -37,10 +53,10 @@ def parse_window_rows(text: str | None) -> list[dict[str, Any]]:
     for line in (text or "").splitlines():
         if not line.strip():
             continue
-        parts = line.split("\t", 3)
-        if len(parts) != 4:
+        parts = line.split("\t", 4)
+        if len(parts) != 5:
             continue
-        index_raw, window_id, active_raw, name = parts
+        index_raw, window_id, active_raw, nonce_raw, name = parts
         try:
             index = int(index_raw)
         except ValueError:
@@ -48,7 +64,15 @@ def parse_window_rows(text: str | None) -> list[dict[str, Any]]:
         window_id = window_id.strip()
         if not window_id:
             continue
-        rows.append({"index": index, "id": window_id, "active": active_raw.strip() == "1", "name": name})
+        rows.append(
+            {
+                "index": index,
+                "id": window_id,
+                "active": active_raw.strip() == "1",
+                "nonce": parse_window_nonce(nonce_raw),
+                "name": name,
+            }
+        )
     rows.sort(key=lambda row: row["index"])
     return rows
 
@@ -183,3 +207,85 @@ def tmux_pane_snapshot(
     else:
         out["tmux_capture_error"] = (cap.stderr or cap.stdout or f"exit status {cap.returncode}").strip()
     return out
+
+
+def tmux_stamp_window_nonce(
+    tmux_bin: str,
+    *,
+    window_id: str,
+    nonce: str,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> None:
+    """Record the launch nonce on a window so a rename cannot lose its identity."""
+    proc = run(
+        [tmux_bin, "set-option", "-w", "-t", window_id, "@codoxear_nonce", nonce],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or f"exit status {proc.returncode}").strip()
+        raise TmuxCommandError("set-option", detail)
+
+
+def tmux_rename_window(
+    tmux_bin: str,
+    *,
+    window_id: str,
+    name: str,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> None:
+    """Title a window with the name the sidebar shows."""
+    proc = run(
+        [tmux_bin, "rename-window", "-t", window_id, name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or f"exit status {proc.returncode}").strip()
+        raise TmuxCommandError("rename-window", detail)
+
+
+def tmux_renumber_windows(
+    tmux_bin: str,
+    *,
+    tmux_session_name: str,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> None:
+    """Close index gaps: `move-window -r` renumbers the session from base-index."""
+    proc = run(
+        [tmux_bin, "move-window", "-r", "-t", tmux_session_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or f"exit status {proc.returncode}").strip()
+        raise TmuxCommandError("move-window", detail)
+
+
+def tmux_base_index(
+    tmux_bin: str,
+    *,
+    tmux_session_name: str,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> int | None:
+    """The session's first window index, falling back to the global option.
+
+    Read-only and best effort: an unreadable/older tmux returns None, and the
+    mirror then skips renumbering rather than guessing a base.
+    """
+    for argv in (
+        [tmux_bin, "show-options", "-v", "-t", tmux_session_name, "base-index"],
+        [tmux_bin, "show-options", "-g", "-v", "base-index"],
+    ):
+        proc = run(argv, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            continue
+        raw = (proc.stdout or "").strip()
+        try:
+            return int(raw)
+        except ValueError:
+            continue
+    return None

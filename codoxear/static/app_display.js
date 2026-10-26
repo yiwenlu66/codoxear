@@ -74,6 +74,12 @@
 
   function sessionDisplayName(s) {
     if (!s || typeof s !== "object") return "";
+    // The server computes this from alias/cwd (`session_display.
+    // sidebar_display_name`) because the tmux window mirror titles windows with
+    // it; the local derivation below is the fallback for rows that predate the
+    // field or never come from the listing.
+    const displayName = typeof s.display_name === "string" ? s.display_name.trim() : "";
+    if (displayName) return displayName;
     const alias = typeof s.alias === "string" ? s.alias.trim() : "";
     if (alias) return alias;
     const cwdName = baseName(s.cwd);

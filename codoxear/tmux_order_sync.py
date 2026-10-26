@@ -18,8 +18,16 @@ import threading
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .tmux_order import WindowTarget, reconcile, target_signature, window_targets
-from .tmux_runtime import tmux_list_windows, tmux_select_window, tmux_swap_windows
+from .tmux_order import TmuxOps, WindowTarget, reconcile, target_signature, window_targets
+from .tmux_runtime import (
+    tmux_base_index,
+    tmux_list_windows,
+    tmux_rename_window,
+    tmux_renumber_windows,
+    tmux_select_window,
+    tmux_stamp_window_nonce,
+    tmux_swap_windows,
+)
 
 # A burst of listing generations (an agent streaming, several clients polling)
 # must settle into one pass instead of one pass per generation. The window is
@@ -170,25 +178,53 @@ class TmuxOrderSync:
         if tmux_bin is None:
             return [], False
 
-        def list_windows(session_name: str) -> list[dict[str, Any]]:
-            return tmux_list_windows(tmux_bin, tmux_session_name=session_name, run=self._run)
-
-        def swap(session_name: str, step: Any) -> None:
-            tmux_swap_windows(
+        ops = TmuxOps(
+            list_windows=lambda session_name: tmux_list_windows(tmux_bin, tmux_session_name=session_name, run=self._run),
+            swap=lambda session_name, step: tmux_swap_windows(
                 tmux_bin,
                 src_window_id=step.src,
                 dst_window_id=step.dst,
                 run=self._run,
-            )
+            ),
+            select=lambda session_name, window_id: tmux_select_window(
+                tmux_bin,
+                window_id=window_id,
+                tmux_session_name=session_name,
+                run=self._run,
+            ),
+            rename=lambda session_name, window_id, name: tmux_rename_window(
+                tmux_bin,
+                window_id=window_id,
+                name=name,
+                run=self._run,
+            ),
+            stamp=lambda session_name, window_id, token: tmux_stamp_window_nonce(
+                tmux_bin,
+                window_id=window_id,
+                nonce=token,
+                run=self._run,
+            ),
+            renumber=lambda session_name: tmux_renumber_windows(
+                tmux_bin,
+                tmux_session_name=session_name,
+                run=self._run,
+            ),
+            base_index=lambda session_name: tmux_base_index(
+                tmux_bin,
+                tmux_session_name=session_name,
+                run=self._run,
+            ),
+        )
 
-        def select(session_name: str, window_id: str) -> None:
-            tmux_select_window(tmux_bin, window_id=window_id, tmux_session_name=session_name, run=self._run)
-
-        summaries = reconcile(targets=targets, list_windows=list_windows, swap=swap, select=select)
+        summaries = reconcile(targets=targets, ops=ops)
         for summary in summaries:
-            if summary.get("swaps"):
+            if summary.get("swaps") or summary.get("renamed") or summary.get("renumbered"):
                 order = ",".join(str(name) for name in summary.get("order") or [])
-                self._log(f"tmux-order: session={summary['session']} swaps={summary['swaps']} order={order}")
+                self._log(
+                    f"tmux-order: session={summary['session']} swaps={summary['swaps']}"
+                    f" renamed={summary['renamed']} renumbered={int(bool(summary['renumbered']))}"
+                    f" restored={int(bool(summary['restored']))} order={order}"
+                )
             skipped = summary.get("skipped") or []
             if skipped:
                 detail = " ".join(f"{item['window']}({item['reason']})" for item in skipped)
