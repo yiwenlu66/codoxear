@@ -143,3 +143,24 @@ def test_no_store_and_upload_status_are_native_even_with_seeded_cache_and_prefix
       }
       assert.equal(fetches.length, 0);
     """)
+
+
+def test_conditional_and_unconditional_readers_never_share_a_304_response():
+    run_worker(r"""
+      const releases = new Map();
+      network = req => new Promise(resolve => {releases.set(req.headers.get('If-None-Match') || 'unconditional', resolve);});
+      const conditional = dispatch('fetch', {request: request('/api/sessions', {headers: {'If-None-Match': 'v1'}})});
+      const unconditional = dispatch('fetch', {request: request('/api/sessions')});
+      const equivalent = dispatch('fetch', {request: request('/api/sessions', {headers: {'if-none-match': 'v1'}})});
+      await flush();
+      assert.equal(fetches.length, 2, 'conditional headers are part of request equivalence');
+      releases.get('v1')(new Response(null, {status: 304}));
+      releases.get('unconditional')(Response.json({sessions: ['fresh']}));
+      assert.equal((await conditional.response).status, 304);
+      assert.equal((await equivalent.response).status, 304);
+      const response = await unconditional.response;
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {sessions: ['fresh']});
+      await Promise.all([conditional.finish(), unconditional.finish(), equivalent.finish()]);
+      assert.deepEqual(await (await cached('codoxear-api-v1', '/api/sessions')).json(), {sessions: ['fresh']});
+    """)
