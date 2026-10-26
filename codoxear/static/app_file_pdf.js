@@ -147,6 +147,7 @@
     const el = requireFunction(options.el, "el");
     const ensurePdfJs = requireFunction(options.ensurePdfJs, "ensurePdfJs");
     const fetchPreview = requireFunction(options.fetchPreview, "fetchPreview");
+    const retryFileOpen = requireFunction(options.retryFileOpen, "retryFileOpen");
     const handleAuthLoss = requireFunction(options.handleAuthLoss, "handleAuthLoss");
     const createCanvas = requireFunction(options.createCanvas, "createCanvas");
     const devicePixelRatio = requireFunction(options.devicePixelRatio, "devicePixelRatio");
@@ -214,14 +215,35 @@
       }
     }
 
+    function documentPreviewError(stage, message) {
+      const error = new Error(message);
+      error.documentPreviewStage = stage;
+      return error;
+    }
+
+    function documentPreviewFailure(error) {
+      const message = error && error.message ? error.message : "PDF renderer unavailable";
+      const stage = error && error.documentPreviewStage;
+      if (stage === "transport") return Object.freeze({ title: "Preview request failed", message });
+      if (stage === "conversion") return Object.freeze({ title: "Document conversion failed", message });
+      if (stage === "auth") return Object.freeze({ title: "Authentication required", message });
+      return Object.freeze({ title: "PDF renderer failed", message });
+    }
+
     // Conversion is demanded only by an opened preview. A one-byte Range
     // request waits for the derivative and exposes the server's JSON failure
     // reason before PDF.js (which otherwise reports only an HTTP status).
     async function prepareDocumentPreview(url, request) {
-      const response = await fetchPreview(url, { headers: { Range: "bytes=0-0" }, credentials: "same-origin", signal: request.signal });
+      let response;
+      try {
+        response = await fetchPreview(url, { headers: { Range: "bytes=0-0" }, credentials: "same-origin", signal: request.signal });
+      } catch (error) {
+        if (error && error.name === "AbortError") throw error;
+        throw documentPreviewError("transport", error && error.message ? error.message : "network request failed");
+      }
       if (response.status === 401) {
         handleAuthLoss();
-        throw new Error("authentication required");
+        throw documentPreviewError("auth", "authentication required");
       }
       if (!response.ok) {
         let detail = "";
@@ -229,7 +251,7 @@
           const body = await response.json();
           if (body && typeof body.error === "string") detail = body.error;
         } catch (_) {}
-        throw new Error(detail || `Document preview failed (${response.status})`);
+        throw documentPreviewError("conversion", detail || `Document preview failed (${response.status})`);
       }
       // A server ignoring Range must not make us buffer a whole PDF twice.
       if (response.body) await response.body.cancel();
@@ -296,8 +318,22 @@
         // This boundary also covers PDF.js loading/getPage failures, which used
         // to escape with an empty surface and reset the active file state.
         disposePdfRender();
-        renderDownloadFallback(rel, downloadUrl, reason);
-        return Object.freeze({ error: reason });
+        if (!prepareDocument) {
+          renderDownloadFallback(rel, downloadUrl, reason);
+          return Object.freeze({ error: reason });
+        }
+        const failure = documentPreviewFailure(e);
+        renderDownloadFallback(rel, downloadUrl, failure.message, {
+          title: failure.title,
+          onRetry: async () => {
+            // The old request is only a capability to retry while it still owns
+            // the surface. The normal open flow mints a fresh request and
+            // abort identity, so this can never resurrect a superseded file.
+            if (!isCurrentFileOpenRequest(request)) return false;
+            return await retryFileOpen(request);
+          },
+        });
+        return Object.freeze({ error: `${failure.title}: ${failure.message}` });
       }
     }
 

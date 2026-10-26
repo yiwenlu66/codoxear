@@ -275,13 +275,24 @@ function requireFunction(value, name) {
       return Object.freeze({ targetLine });
     }
 
-    function renderDownload(rel, url, reason = "Preview unavailable") {
+    function renderDownload(rel, url, reason = "Preview unavailable", { title = "Preview unavailable", onRetry = null } = {}) {
       host.innerHTML = "";
       const link = el("a", { href: url, download: "", target: "_blank", rel: "noopener", text: "Download original file" });
+      const actions = [];
+      if (typeof onRetry === "function") {
+        const retry = el("button", { class: "icon-btn text-btn", type: "button", text: "Retry preview" });
+        retry.onclick = (event) => {
+          if (event && typeof event.preventDefault === "function") event.preventDefault();
+          if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+          void onRetry();
+        };
+        actions.push(retry);
+      }
+      actions.push(link);
       const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
-        el("div", { class: "title", text: "Preview unavailable" }),
+        el("div", { class: "title", text: title }),
         el("p", { text: `${reason}. You can still open or download ${rel}.` }),
-        el("div", { class: "fileFallbackActions" }, [link]),
+        el("div", { class: "fileFallbackActions" }, actions),
       ]);
       host.appendChild(body);
       return true;
@@ -362,11 +373,11 @@ function requireFunction(value, name) {
       return renderPlainText(rel, text, lineNumber, reason);
     }
 
-    function applyDownload(rel, url, reason = "Preview unavailable") {
+    function applyDownload(rel, url, reason = "Preview unavailable", recovery = null) {
       const deps = applicationDeps();
       deps.disposePdfRender();
       prepareFallbackSurface(deps);
-      const result = renderDownload(rel, url, reason);
+      const result = renderDownload(rel, url, reason, recovery || {});
       deps.updateFileTouchToolbar();
       return result;
     }

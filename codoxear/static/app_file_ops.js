@@ -515,6 +515,12 @@ const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wirin
   el,
   ensurePdfJs: () => ensurePdfJs(),
   fetchPreview: (url, options) => fetch(url, options),
+  retryFileOpen: (request) => fileViewerController.openFilePath(request.path, {
+    line: request.line,
+    gitPath: request.gitPath,
+    apiPath: request.apiPath,
+    mode: "file",
+  }),
   handleAuthLoss: () => handleAppAuthLoss(),
   createCanvas: () => document.createElement("canvas"),
   devicePixelRatio: () => window.devicePixelRatio || 1,
@@ -522,7 +528,7 @@ const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wirin
   disposePdfRender: () => disposePdfRender(),
   clearFileVideo: () => clearFileVideo(),
   setFileRenderSurface: (surface) => setFileRenderSurface(surface),
-  renderDownloadFallback: (rel, url, reason) => renderDownloadFallback(rel, url, reason),
+  renderDownloadFallback: (rel, url, reason, recovery) => renderDownloadFallback(rel, url, reason, recovery),
   isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
   setActivePdfRenderState: (state) => fileViewerController.setActivePdfRenderState(state),
   isActivePdfRenderState: (state) => fileViewerController.isActivePdfRenderState(state),
@@ -789,8 +795,8 @@ function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich fi
   return fileFallbackRuntime.applyPlainText(rel, text, lineNumber, reason);
 }
 
-function renderDownloadFallback(rel, url, reason = "Preview unavailable") {
-  return fileFallbackRuntime.applyDownload(rel, url, reason);
+function renderDownloadFallback(rel, url, reason = "Preview unavailable", recovery = null) {
+  return fileFallbackRuntime.applyDownload(rel, url, reason, recovery);
 }
 
 async function ensurePdfJs() {

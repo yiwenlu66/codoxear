@@ -17,7 +17,8 @@ function node(tag, attrs = {}, children = []) {
     querySelectorAll() { return this.children.filter(child => child.attrs.class === 'filePdfPage'); } };
 }
 const host = node('div'); host.innerHTML = '';
-const request = { signal: { id: 'original-signal' } };
+const request = { path: 'report.docx', line: null, gitPath: false, apiPath: '', signal: { id: 'original-signal' } };
+let retryImpl = async request => { events.push(['retry', request.path, request.line, request.gitPath, request.apiPath]); return true; };
 const page = { getViewport: ({ scale }) => ({ width: 600 * scale, height: 800 * scale }),
   render() { events.push('page-render'); return { promise: Promise.resolve(), cancel() {} }; } };
 let fetchImpl = async (url, options) => { events.push(['fetch', url, options.headers.Range, options.signal === request.signal, options.credentials]);
@@ -26,6 +27,7 @@ let ensureImpl = async () => ({ getDocument(options) { events.push(['getDocument
   return { promise: Promise.resolve({ numPages: 2, getPage: async () => page }), destroy() {} }; } });
 const runtime = viewer.createFilePdfRenderRuntime({ host, el: node,
   ensurePdfJs: () => ensureImpl(), fetchPreview: (url, options) => fetchImpl(url, options),
+  retryFileOpen: request => retryImpl(request),
   handleAuthLoss: () => events.push('auth-loss'), createCanvas: () => ({ style: {}, getContext: () => ({}) }),
   devicePixelRatio: () => 1, disposeFileEditor() {}, disposePdfRender() { active = null; events.push('dispose'); },
   clearFileVideo() {}, setFileRenderSurface() {}, renderDownloadFallback: (...args) => fallbacks.push(args),
@@ -97,7 +99,14 @@ const runtime = viewer.createFileLoadResultRuntime({
         self.assertEqual(result['fallbacks'], [])
 
     def test_every_failure_uses_original_download(self):
-        for stage, expected in [('conversion', 'Encrypted document'), ('module', 'module failed'), ('loading', 'Invalid PDF'), ('page', 'page unavailable'), ('auth', 'authentication required')]:
+        cases = [
+            ('conversion', 'Encrypted document', 'Document conversion failed'),
+            ('module', 'module failed', 'PDF renderer failed'),
+            ('loading', 'Invalid PDF', 'PDF renderer failed'),
+            ('page', 'page unavailable', 'PDF renderer failed'),
+            ('auth', 'authentication required', 'Authentication required'),
+        ]
+        for stage, expected, title in cases:
             with self.subTest(stage=stage):
                 result = run_vm(PDF_HARNESS + '\nconst stage = ' + json.dumps(stage) + r""";
 if (stage === 'conversion') fetchImpl = async () => ({ ok: false, status: 422, json: async () => ({ error: 'Encrypted document' }) });
@@ -107,10 +116,36 @@ if (stage === 'loading') ensureImpl = async () => ({ getDocument: () => ({ promi
 if (stage === 'page') ensureImpl = async () => ({ getDocument: () => ({ promise: Promise.resolve({ getPage: async () => { throw new Error('page unavailable'); } }), destroy() {} }) });
 (async () => { const result = await runtime.render('report.docx', '/preview.pdf', request, preview); process.stdout.write(JSON.stringify({ result, events, fallbacks })); })();
 """)
-                self.assertEqual(result['result']['error'], expected)
-                self.assertEqual(result['fallbacks'], [['report.docx', '/source/report.docx', expected]])
+                self.assertEqual(result['result']['error'], f'{title}: {expected}')
+                self.assertEqual(result['fallbacks'][0][:3], ['report.docx', '/source/report.docx', expected])
+                self.assertEqual(result['fallbacks'][0][3], {'title': title})
                 if stage == 'auth':
                     self.assertIn('auth-loss', result['events'])
+
+    def test_transport_failure_retry_requires_the_same_current_file_request(self):
+        result = run_vm(PDF_HARNESS + r"""
+fetchImpl = async () => { throw new TypeError('socket closed'); };
+(async () => {
+ const failure = await runtime.render('report.docx', '/preview.pdf', request, preview);
+ const recovery = fallbacks[0][3];
+ const retried = await recovery.onRetry();
+ const retriesAfterCurrent = events.filter(event => Array.isArray(event) && event[0] === 'retry').length;
+ current = false;
+ const childrenBeforeStaleRetry = host.children.length;
+ const staleRetry = await recovery.onRetry();
+ process.stdout.write(JSON.stringify({ failure, retried, staleRetry, retriesAfterCurrent,
+   retryEvents: events.filter(event => Array.isArray(event) && event[0] === 'retry'),
+   fallbacks, childrenBeforeStaleRetry, childrenAfterStaleRetry: host.children.length }));
+})();
+""")
+        self.assertEqual(result['failure']['error'], 'Preview request failed: socket closed')
+        self.assertEqual(result['fallbacks'][0][:3], ['report.docx', '/source/report.docx', 'socket closed'])
+        self.assertEqual(result['fallbacks'][0][3], {'title': 'Preview request failed'})
+        self.assertTrue(result['retried'])
+        self.assertFalse(result['staleRetry'])
+        self.assertEqual(result['retriesAfterCurrent'], 1)
+        self.assertEqual(result['retryEvents'], [['retry', 'report.docx', None, False, '']])
+        self.assertEqual(result['childrenAfterStaleRetry'], result['childrenBeforeStaleRetry'])
 
     def test_aborted_or_replaced_preview_never_renders_fallback(self):
         for cancelled in (False, True):
