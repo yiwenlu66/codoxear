@@ -131,19 +131,41 @@ def json_response_with_etag(
     handler.wfile.write(body)
 
 
-def read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
-    content_length = handler.headers.get("Content-Length")
-    if content_length is None:
-        content_length = "0"
-    cleaned = str(content_length).strip()
-    if not cleaned:
-        cleaned = "0"
+def request_body_size(handler: http.server.BaseHTTPRequestHandler) -> int:
+    """Accept only unambiguous, fixed-length request framing."""
+    if handler.headers.get("Transfer-Encoding") is not None:
+        handler.close_connection = True
+        raise BadRequestError("unsupported transfer-encoding")
+    get_all = getattr(handler.headers, "get_all", None)
+    lengths = get_all("Content-Length", []) if get_all else [handler.headers.get("Content-Length")]
+    lengths = [value for value in lengths if value is not None]
+    if not lengths:
+        return 0
+    cleaned = str(lengths[0]).strip(" \t")
+    if len(lengths) != 1 or not cleaned or any(char not in "0123456789" for char in cleaned):
+        handler.close_connection = True
+        raise BadRequestError("invalid content-length")
     try:
-        size = int(cleaned)
-    except (TypeError, ValueError) as exc:
+        return int(cleaned)
+    except ValueError as exc:
+        handler.close_connection = True
         raise BadRequestError("invalid content-length") from exc
-    if size < 0:
-        raise BadRequestError(f"invalid content-length: {size}")
+
+
+def read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
+    size = request_body_size(handler)
+    remaining = getattr(handler, "_codoxear_body_remaining", size)
+    handler._codoxear_body_remaining = remaining
     if size > limit:
+        handler.close_connection = True
         raise RequestPayloadTooLargeError(f"request body too large (max {limit} bytes)")
-    return handler.rfile.read(size)
+    try:
+        body = handler.rfile.read(remaining)
+    except Exception:
+        handler.close_connection = True
+        raise
+    handler._codoxear_body_remaining = remaining - len(body)
+    if len(body) != remaining:
+        handler.close_connection = True
+        raise BadRequestError("incomplete request body")
+    return body

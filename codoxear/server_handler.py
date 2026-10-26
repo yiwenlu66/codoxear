@@ -23,6 +23,7 @@ from .message_routes import handle_messages_live_stream
 from .message_routes import handle_messages_get_route
 from .queue_routes import handle_queue_get_route
 from .queue_routes import handle_queue_post_route
+from .server_http import BadRequestError, request_body_size
 from .session_routes import handle_session_get_route
 from .session_routes import handle_session_post_route
 from .session_snapshot_routes import handle_snapshot_delete_route
@@ -67,13 +68,39 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
     server_version = "codoxear/0.1"
     deps: ServerHandlerDeps
 
+    def parse_request(self) -> bool:
+        # Reset per-request accounting before the stdlib parser can respond.
+        self._codoxear_body_remaining = 0
+        if not super().parse_request():
+            return False
+        try:
+            self._codoxear_body_remaining = request_body_size(self)
+        except BadRequestError as exc:
+            self.close_connection = True
+            self.deps.handle_route_exception(self, exc)
+            return False
+        return True
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        # An early route/auth/size response must never return unread bytes to
+        # the HTTP/1 parser. Closing avoids blocking on a rejected upload.
+        if code >= 200 and getattr(self, "_codoxear_body_remaining", 0):
+            self.close_connection = True
+        super().send_response(code, message)
+        if code >= 200 and self.close_connection:
+            self.send_header("Connection", "close")
+
     def handle_one_request(self) -> None:
         try:
             super().handle_one_request()
         except Exception as exc:
+            self.close_connection = True
             if self.deps.is_client_disconnect(exc):
                 return
             raise
+        finally:
+            if getattr(self, "_codoxear_body_remaining", 0):
+                self.close_connection = True
 
     def finish(self) -> None:
         try:
