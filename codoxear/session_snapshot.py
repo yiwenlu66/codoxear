@@ -215,6 +215,8 @@ class IdentityRemap:
     new_session_id: str
     old_thread_id: str
     new_thread_id: str
+    new_agent_backend: str | None = None
+    new_start_ts: float | None = None
 
 
 @dataclass(frozen=True)
@@ -283,8 +285,12 @@ def _parse_state(obj: Any) -> SnapshotState:
     for raw in raw_intents:
         if not isinstance(raw, dict):
             raise SnapshotCorrupt("snapshot remap intent must be an object")
-        intents.append(IdentityRemap(**{key: _required_text(raw, key) for key in (
-            "old_session_id", "new_session_id", "old_thread_id", "new_thread_id")}))
+        intents.append(IdentityRemap(
+            **{key: _required_text(raw, key) for key in (
+                "old_session_id", "new_session_id", "old_thread_id", "new_thread_id")},
+            new_agent_backend=_clean_text(raw.get("new_agent_backend")),
+            new_start_ts=_float_or_none(raw.get("new_start_ts")),
+        ))
     return SnapshotState(saved_at=_float_or_none(obj.get("saved_at")), entries=entries, remap_intents=tuple(intents))
 
 
@@ -298,6 +304,7 @@ def _serialize_state(state: SnapshotState) -> dict[str, Any]:
         payload["remap_intents"] = [dict(
             old_session_id=remap.old_session_id, new_session_id=remap.new_session_id,
             old_thread_id=remap.old_thread_id, new_thread_id=remap.new_thread_id,
+            new_agent_backend=remap.new_agent_backend, new_start_ts=remap.new_start_ts,
         ) for remap in state.remap_intents]
     return payload
 
@@ -384,6 +391,8 @@ class SessionSnapshotStore:
                                 new_session_id=entry.session_id,
                                 old_thread_id=stored.thread_id,
                                 new_thread_id=entry.thread_id,
+                                new_agent_backend=entry.agent_backend,
+                                new_start_ts=entry.start_ts,
                             )
                         )
                 for key in moved_on:
@@ -395,6 +404,8 @@ class SessionSnapshotStore:
                             new_session_id=entry.session_id,
                             old_thread_id=current.thread_id,
                             new_thread_id=entry.thread_id,
+                            new_agent_backend=entry.agent_backend,
+                            new_start_ts=entry.start_ts,
                         )
                     )
                 unchanged = (

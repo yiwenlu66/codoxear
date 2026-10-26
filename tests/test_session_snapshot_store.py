@@ -117,7 +117,7 @@ def test_rule_a_same_transcript_new_registry_id_updates_in_place_and_reports_rem
     result = store.upsert([resumed])
 
     assert result.changed == [("pi", "t1")]
-    assert result.remaps == [IdentityRemap(old_session_id="broker-1", new_session_id="broker-2", old_thread_id="t1", new_thread_id="t1")]
+    assert result.remaps == [IdentityRemap(old_session_id="broker-1", new_session_id="broker-2", old_thread_id="t1", new_thread_id="t1", new_agent_backend="pi", new_start_ts=2.0)]
     state = store.read()
     assert _keys(store) == {("pi", "t1"), ("pi", "thread-broker-9")}
     assert state.entries[("pi", "t1")].session_id == "broker-2"
@@ -155,12 +155,12 @@ def test_rule_c_resume_target_or_shared_log_continues_under_a_new_thread_id(tmp_
 
     by_resume = _entry("broker-2", thread_id="t1-renamed", log_path="/logs/t1-new.jsonl", agent_backend="codex", resume_session_id="t1", start_ts=2.0)
     result = store.upsert([by_resume])
-    assert result.remaps == [IdentityRemap(old_session_id="broker-1", new_session_id="broker-2", old_thread_id="t1", new_thread_id="t1-renamed")]
+    assert result.remaps == [IdentityRemap(old_session_id="broker-1", new_session_id="broker-2", old_thread_id="t1", new_thread_id="t1-renamed", new_agent_backend="codex", new_start_ts=2.0)]
     assert _keys(store) == {("codex", "t1-renamed"), ("pi", "thread-broker-9")}
 
     by_log = _entry("broker-3", thread_id="t1-again", log_path="/logs/t1-new.jsonl", agent_backend="codex", start_ts=3.0)
     result = store.upsert([by_log])
-    assert result.remaps == [IdentityRemap(old_session_id="broker-2", new_session_id="broker-3", old_thread_id="t1-renamed", new_thread_id="t1-again")]
+    assert result.remaps == [IdentityRemap(old_session_id="broker-2", new_session_id="broker-3", old_thread_id="t1-renamed", new_thread_id="t1-again", new_agent_backend="codex", new_start_ts=3.0)]
     assert _keys(store) == {("codex", "t1-again"), ("pi", "thread-broker-9")}
 
     other_backend = _entry("broker-4", thread_id="t1-again", log_path="/logs/t1-new.jsonl", agent_backend="pi", start_ts=4.0)

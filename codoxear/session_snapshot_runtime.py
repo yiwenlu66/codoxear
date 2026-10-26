@@ -403,7 +403,13 @@ class SessionSnapshotCoordinator:
                 self._protect_warned = True
             return None
         self._protect_warned = False
-        return {entry.session_id for entry in state.entries.values()}
+        # A published snapshot may name only the destination while its state
+        # still lives at a source/intermediate id. Keep every endpoint until
+        # the complete transfer is acknowledged, including deferred intents.
+        protected = {entry.session_id for entry in state.entries.values()}
+        for remap in state.remap_intents:
+            protected.update((remap.old_session_id, remap.new_session_id))
+        return protected
 
     # ------------------------------------------------------------------ #
     # Removal triggers
@@ -467,10 +473,24 @@ class SessionSnapshotCoordinator:
             mark=RestoringMark(broker_pid=broker_pid, launched_at=self.now()),
         )
 
-    def _old_id_reused(self, remap: IdentityRemap) -> bool:
+    def _require_remap_destination_locked(self, remap: IdentityRemap) -> None:
+        """A registry id alone cannot authorize moving state or queued prompts."""
+        if remap.new_agent_backend is None or remap.new_start_ts is None or remap.new_start_ts <= 0:
+            raise ValueError("remap destination identity unavailable; transfer deferred")
+        current = self.sessions().get(remap.new_session_id)
+        if not (
+            isinstance(current, Session)
+            and not current.lost
+            and current.agent_backend == remap.new_agent_backend
+            and current.thread_id == remap.new_thread_id
+            and float(current.start_ts) == remap.new_start_ts
+            and self.pid_alive(int(current.broker_pid))
+        ):
+            raise ValueError("remap destination no longer matches intended transcript and incarnation; transfer deferred")
+
+    def _old_id_reused_locked(self, remap: IdentityRemap) -> bool:
         """The old registry id currently names a live session on some other transcript (pid reuse)."""
-        with self.lock:
-            current = self.sessions().get(remap.old_session_id)
+        current = self.sessions().get(remap.old_session_id)
         if not isinstance(current, Session):
             return False
         if current.thread_id == remap.old_thread_id or current.resume_session_id == remap.old_thread_id:
@@ -486,16 +506,17 @@ class SessionSnapshotCoordinator:
         """
         if remap.old_session_id == remap.new_session_id and remap.old_thread_id == remap.new_thread_id:
             return RemapResult(queues_moved=False, draft_moved=False, unattended_moved=False)
-        if self._old_id_reused(remap):
-            self._log(
-                f"session snapshot: not moving state from {remap.old_session_id} to {remap.new_session_id}; "
-                f"the old registry id now belongs to a live session on another transcript"
-            )
-            return RemapResult(queues_moved=False, draft_moved=False, unattended_moved=False, skipped_reused_id=True)
         old, new = remap.old_session_id, remap.new_session_id
         queues_moved = draft_moved = unattended_moved = alias_moved = sidebar_moved = False
         dependencies = 0
         with self.lock:
+            self._require_remap_destination_locked(remap)
+            if self._old_id_reused_locked(remap):
+                self._log(
+                    f"session snapshot: not moving state from {remap.old_session_id} to {remap.new_session_id}; "
+                    f"the old registry id now belongs to a live session on another transcript"
+                )
+                return RemapResult(queues_moved=False, draft_moved=False, unattended_moved=False, skipped_reused_id=True)
             store = self.session_store()
             if old != new:
                 store.remap_attachment_resource(old, new)
