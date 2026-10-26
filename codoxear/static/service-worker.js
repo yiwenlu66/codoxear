@@ -123,12 +123,25 @@ function markStale(response, reason) {
   });
 }
 
-async function networkFirst(event, cacheName, matchOptions, onFallback) {
+function networkFirst(event, cacheName, matchOptions, onFallback) {
+  // Register the lifetime before any cache await or fetch settlement. The
+  // response path below resolves it with the retained network + body-storage
+  // work; early cache hits and setup failures settle it immediately.
+  let retainLifetime = () => {};
+  event.waitUntil(new Promise((resolve) => { retainLifetime = resolve; }));
+  return networkFirstResponse(event, cacheName, matchOptions, onFallback, retainLifetime).catch((error) => {
+    retainLifetime();
+    throw error;
+  });
+}
+
+async function networkFirstResponse(event, cacheName, matchOptions, onFallback, retainLifetime) {
   const request = event.request;
   const cache = await caches.open(cacheName);
   if (self.navigator && self.navigator.onLine === false) {
     const cached = await cache.match(request, matchOptions);
     if (cached) {
+      retainLifetime();
       onFallback?.();
       return markStale(cached, "offline");
     }
@@ -138,7 +151,7 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     if (cached) {
       onFallback?.();
       const startedAt = Date.now();
-      event.waitUntil(fetchAndCache(request, cache).then(() => {
+      retainLifetime(fetchAndCache(request, cache).then(() => {
         recordFetchLatency(Date.now() - startedAt);
         networkSuspectUntil = 0;
         unsettledNetworkSince = 0;
@@ -153,7 +166,15 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
   // adaptive race bound. Losing the race itself arms nothing.
   const startedAt = Date.now();
   let rejected = false;
-  const network = fetchAndCache(request, cache).then((response) => {
+  let cacheWrite = Promise.resolve();
+  const network = fetch(request).then((response) => {
+    if (response.status === 200) {
+      // Clone in the fetch continuation, before the consumer can read or
+      // disturb the body. Cache failures must not fail a live network answer.
+      try {
+        cacheWrite = cache.put(request, response.clone()).catch(() => {});
+      } catch (_) {}
+    }
     recordFetchLatency(Date.now() - startedAt);
     networkSuspectUntil = 0;
     unsettledNetworkSince = 0;
@@ -164,7 +185,9 @@ async function networkFirst(event, cacheName, matchOptions, onFallback) {
     unsettledNetworkSince = 0;
     throw error;
   });
-  event.waitUntil(network.catch(() => {}));
+  // Delivery settles at response headers; the event remains alive until the
+  // retained clone has finished storing, including after a fallback response.
+  retainLifetime(network.then(() => cacheWrite).catch(() => {}));
   let timer;
   try {
     return await Promise.race([
@@ -240,6 +263,13 @@ self.addEventListener("fetch", (event) => {
   const scopePath = new URL(self.registration.scope).pathname;
   if (request.method !== "GET" || url.origin !== self.location.origin || !url.pathname.startsWith(scopePath)) return;
   const pathname = `/${url.pathname.slice(scopePath.length)}`;
+  // Native media/derivative clients own streaming and Range semantics. These
+  // conversions can spend unbounded time before headers, so a reachability
+  // race or cached full response is the wrong transport policy for them.
+  if (/^\/api\/(?:sessions\/[^/]+\/file|files)\/(?:office|video)_preview$/.test(pathname)) return;
+  // Cache.match has no partial-response semantics: never answer a Range
+  // request with a cached full 200, and never bring 206 into a cache write.
+  if (request.headers && typeof request.headers.has === "function" && request.headers.has("range")) return;
   // This is the SSE stream, not the JSON /messages/live polling route.
   if (/^\/api\/sessions\/[^/]+\/live$/.test(pathname)) return;
   if (request.mode === "navigate") {

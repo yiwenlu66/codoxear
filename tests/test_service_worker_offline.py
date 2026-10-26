@@ -68,7 +68,8 @@ function dispatch(type, extra = {}) {
   return { response, waits, async finish() { await Promise.all(waits); } };
 }
 function request(path, options = {}) {
-  return { url: new URL(path, origin).href, method: options.method || 'GET', mode: options.mode || 'cors' };
+  return { url: new URL(path, origin).href, method: options.method || 'GET', mode: options.mode || 'cors',
+    headers: options.headers instanceof Headers ? options.headers : new Headers(options.headers || {}) };
 }
 async function get(path, options = {}) {
   const event = dispatch('fetch', { request: request(path, options) });
@@ -457,6 +458,126 @@ def test_network_first_hanging_fetch_times_out_but_late_success_refreshes_cache(
         await nextEvent.finish();
         assert.equal(timers.size, 0);
       }
+    """)
+
+
+def test_derivative_and_range_requests_bypass_interception_at_root_and_prefix() -> None:
+    run_worker("""
+      for (const scope of [origin + '/', origin + '/codoxear/']) {
+        self.registration.scope = scope;
+        const base = new URL(scope).pathname;
+        const derivativePaths = [
+          '/api/sessions/s1/file/office_preview?path=deck.pptx',
+          '/api/sessions/s1/file/video_preview?path=clip.mkv',
+          '/api/files/office_preview?path=/tmp/deck.pptx',
+          '/api/files/video_preview?path=/tmp/clip.mkv',
+        ];
+        for (const path of derivativePaths) {
+          const event = dispatch('fetch', { request: request(base.slice(0, -1) + path) });
+          assert.equal(event.response, undefined, path);
+          assert.equal(event.waits.length, 0, path);
+        }
+        const blobPath = base + 'api/sessions/s1/file/blob?path=large.bin';
+        network = async () => new Response('complete bytes');
+        await get(blobPath);
+        assert.ok(await cached('codoxear-api-v1', blobPath), 'non-Range blob caching stays intact');
+        const before = fetches.length;
+        for (const path of [blobPath, base + 'api/sessions', base + 'static/app.js?v=1']) {
+          const event = dispatch('fetch', { request: request(path, { headers: { Range: 'bytes=0-0' } }) });
+          assert.equal(event.response, undefined, 'Range must not receive cached full 200: ' + path);
+          assert.equal(event.waits.length, 0);
+        }
+        assert.equal(fetches.length, before, 'bypassed requests are left to the browser');
+        network = async () => new Response('partial', { status: 206, headers: { 'Content-Range': 'bytes 0-6/14' } });
+        const partial = await get(blobPath + '&partial=1');
+        assert.equal(partial.status, 206);
+        assert.equal(await cached('codoxear-api-v1', blobPath + '&partial=1'), undefined, '206 is never stored');
+      }
+      assert.equal(puts > 0, true, 'control requests did populate caches');
+    """)
+
+
+def test_network_first_delivers_headers_before_gated_cache_put_and_finish_owns_storage() -> None:
+    run_worker("""
+      const openCache = caches.open;
+      let releasePut, putStarted = false;
+      caches.open = async (name) => {
+        const cache = await openCache(name);
+        if (name !== 'codoxear-api-v1') return cache;
+        return { ...cache, async put(request, response) {
+          putStarted = true;
+          await new Promise(resolve => { releasePut = resolve; });
+          return cache.put(request, response);
+        } };
+      };
+      network = async () => new Response('large response body');
+      const event = dispatch('fetch', { request: request('/api/sessions') });
+      assert.equal(event.waits.length, 1, 'waitUntil is registered synchronously');
+      let delivered = false;
+      event.response.then(() => { delivered = true; });
+      await flush();
+      assert.equal(delivered, true, 'headers do not wait for body storage');
+      assert.equal(putStarted, true);
+      const response = await event.response;
+      assert.equal(response.headers.get('X-Codoxear-Stale'), null);
+      assert.equal(await response.text(), 'large response body', 'delivered body is independent of its clone');
+      let finished = false;
+      event.finish().then(() => { finished = true; });
+      await flush();
+      assert.equal(finished, false, 'event lifetime covers the gated cache write');
+      assert.equal(await cached('codoxear-api-v1', '/api/sessions'), undefined);
+      releasePut();
+      await event.finish();
+      assert.equal(await (await cached('codoxear-api-v1', '/api/sessions')).text(), 'large response body');
+      assert.equal(timers.size, 0);
+    """)
+
+
+def test_network_first_cache_write_failures_do_not_reject_live_responses() -> None:
+    run_worker("""
+      const openCache = caches.open;
+      for (const failureKind of ['throw', 'reject']) {
+        caches.open = async (name) => {
+          const cache = await openCache(name);
+          if (name !== 'codoxear-api-v1') return cache;
+          return { ...cache, put() {
+            if (failureKind === 'throw') throw new Error('quota');
+            return Promise.reject(new Error('quota'));
+          } };
+        };
+        network = async () => new Response('live ' + failureKind);
+        const event = dispatch('fetch', { request: request('/api/cache-failure-' + failureKind) });
+        const response = await event.response;
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), 'live ' + failureKind);
+        await event.finish();
+        assert.equal(response.headers.get('X-Codoxear-Stale'), null);
+      }
+    """)
+
+
+def test_versioned_static_delivery_still_awaits_cache_storage() -> None:
+    run_worker("""
+      const openCache = caches.open;
+      let releasePut;
+      caches.open = async (name) => {
+        const cache = await openCache(name);
+        if (name !== 'codoxear-static-v1') return cache;
+        return { ...cache, async put(request, response) {
+          await new Promise(resolve => { releasePut = resolve; });
+          return cache.put(request, response);
+        } };
+      };
+      network = async () => new Response('static body');
+      const event = dispatch('fetch', { request: request('/static/app.js?v=1') });
+      let delivered = false;
+      event.response.then(() => { delivered = true; });
+      await flush();
+      assert.equal(delivered, false, 'static policy keeps its awaited write');
+      releasePut();
+      assert.equal(await (await event.response).text(), 'static body');
+      await event.finish();
+      assert.equal(await (await cached('codoxear-static-v1', '/static/app.js?v=1')).text(), 'static body');
     """)
 
 
