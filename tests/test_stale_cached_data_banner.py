@@ -39,7 +39,7 @@ def test_api_surfaces_stale_mark_without_polluting_payload() -> None:
         f"""
         const vm = require("vm");
         let staleHeader = null;
-        const ctx = {{
+        const ctx = {{ AbortController, setTimeout, clearTimeout,
           URL, console, JSON,
           performance: {{ now: () => 0 }},
           fetch: async () => ({{
@@ -104,7 +104,7 @@ def test_network_status_stale_state() -> None:
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{ window: {{}}, console }};
+        const ctx = {{ AbortController, setTimeout, clearTimeout, window: {{}}, console }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(APP_NETWORK_JS.read_text(encoding="utf-8"))}, ctx);
 {NETWORK_STATUS_STUB_JS}
@@ -149,7 +149,7 @@ def test_api_responses_report_client_transport_state() -> None:
         f"""
         const vm = require("vm");
         let responses = [];
-        const ctx = {{
+        const ctx = {{ AbortController, setTimeout, clearTimeout,
           URL, console, JSON,
           performance: {{ now: () => 0 }},
           fetch: async () => {{

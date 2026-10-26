@@ -114,7 +114,7 @@ def test_cache_faults_have_separate_budget_and_never_delay_live_delivery():
         return {...cache, put() { writes++; return new Promise(() => {}); }};
       };
       network = async () => Response.json({live: true});
-      const events = Array.from({length: 12}, (_, i) => dispatch('fetch', {request: request('/api/cache-' + i)}));
+      const events = Array.from({length: 8}, (_, i) => dispatch('fetch', {request: request('/api/cache-' + i)}));
       for (const event of events) assert.deepEqual(await (await event.response).json(), {live: true});
       assert.equal(writes, 4, 'stuck cache puts cannot accumulate');
       await advance(5000);

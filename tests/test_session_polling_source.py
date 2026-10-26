@@ -17,7 +17,7 @@ def eval_polling_and_cache() -> dict:
         f"""
         const vm = require("vm");
         const requests = []; let responseNo = 0;
-        const ctx = {{ window: {{ CodoxearUrls: {{resolveAppUrl:p=>"http://host"+p}}, CodoxearPerf: {{pushSample:()=>{{}}}} }}, performance: {{now:()=>1}},
+        const ctx = {{ AbortController, setTimeout, clearTimeout, window: {{ CodoxearUrls: {{resolveAppUrl:p=>"http://host"+p}}, CodoxearPerf: {{pushSample:()=>{{}}}} }}, performance: {{now:()=>1}},
           fetch: async (url, options) => {{ requests.push([url, options.headers["If-None-Match"] || null]); responseNo += 1;
             const notModified=responseNo===2; return {{status:notModified?304:200, ok:true, headers:{{get:(name)=>name==='ETag'&&!notModified?'"sessions-v1"':null}}, text:async()=>JSON.stringify({{sessions:["one"]}})}}; }} }};
         vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);

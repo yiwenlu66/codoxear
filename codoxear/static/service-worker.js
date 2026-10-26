@@ -17,7 +17,7 @@ const STALE_HEADER = "X-Codoxear-Stale";
 const pendingReads = new Map();
 const refreshBackoff = new Map();
 const cacheWrites = new Map();
-let cacheReads = 0;
+const cacheReads = new Map();
 let backgroundReads = 0;
 let activeReads = 0;
 let fetchLatencyEwmaMs = 0;
@@ -38,11 +38,15 @@ function withinBudget(work, ms) {
 }
 
 async function matchCached(cacheName, request, options) {
-  if (cacheReads >= MAX_CACHE_READS) return undefined;
-  cacheReads++;
-  const work = Promise.resolve().then(async () => (await caches.open(cacheName)).match(request, options))
-    .finally(() => { cacheReads--; });
-  return withinBudget(work, CACHE_WORK_TIMEOUT_MS).catch(() => undefined);
+  const key = `${readKey(cacheName, request)}:${JSON.stringify(options)}`;
+  if (!cacheReads.has(key)) {
+    if (cacheReads.size >= MAX_CACHE_READS) return undefined;
+    const work = Promise.resolve().then(async () => (await caches.open(cacheName)).match(request, options))
+      .finally(() => cacheReads.delete(key));
+    cacheReads.set(key, work);
+  }
+  const response = await withinBudget(cacheReads.get(key), CACHE_WORK_TIMEOUT_MS).catch(() => undefined);
+  return response?.clone();
 }
 
 function storeResponse(cacheName, request, response) {
@@ -304,10 +308,11 @@ function recordNavigation(request, offline) {
   const marker = JSON.stringify({ ts: Date.now(), offline, url: request.url });
   const markerNames = ["last-navigation"];
   if (offline) markerNames.push("last-offline-navigation");
-  return caches.open(SW_META_CACHE).then((cache) => Promise.all(markerNames.map((name) => cache.put(
+  return Promise.all(markerNames.map((name) => storeResponse(
+    SW_META_CACHE,
     new Request(new URL(`sw-meta/${name}`, self.registration.scope)),
     new Response(marker, { headers: { "content-type": "application/json" } })
-  ))));
+  )));
 }
 
 function startNavigationMarker(event, request) {

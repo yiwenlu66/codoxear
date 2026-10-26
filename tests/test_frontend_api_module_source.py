@@ -33,7 +33,7 @@ def eval_api_module_real_order() -> dict:
           {{ status: 200, ok: true, etag: null, text: '{{"messages":[]}}' }},
           {{ status: 200, ok: true, etag: null, text: '{{"messages":[{{"kind":"init"}}]}}' }},
         ];
-        const ctx = {{
+        const ctx = {{ AbortController, setTimeout, clearTimeout,
           URL,
           console,
           performance: {{ now() {{ now += 17; return now; }} }},
@@ -93,7 +93,7 @@ def eval_api_error_contract() -> dict:
           {{ status: 418, ok: false, etag: null, text: '{{"error":"teapot","detail":"short"}}' }},
           {{ status: 200, ok: true, etag: null, text: 'not json' }},
         ];
-        const ctx = {{
+        const ctx = {{ AbortController, setTimeout, clearTimeout,
           URL,
           console: {{
             error: (...args) => consoleErrors.push(args.map((arg) => typeof arg === "string" ? arg : JSON.stringify(arg)).join(" ")),

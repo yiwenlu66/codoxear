@@ -31,7 +31,7 @@ def run_idle_traffic_window() -> dict:
           "/api/settings/voice": {{ tts_enabled_for_narration: false, audio: {{}}, notifications: {{}}, vapid_public_key: "key", subscriptions: [] }},
           "/api/notifications/feed?since=0": {{ items: [] }},
         }};
-        const ctx = {{
+        const ctx = {{ AbortController, setTimeout, clearTimeout,
           window: {{
             CodoxearUrls: {{ resolveAppUrl: (path) => "http://traffic.test" + path }},
             CodoxearPerf: {{ pushSample() {{}} }},

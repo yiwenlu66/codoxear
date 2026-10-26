@@ -117,28 +117,29 @@ const perfWindow = 200;
       opts.body = rawBody;
     }
     const url = CodoxearUrls.resolveAppUrl(path);
-    // No default total deadline: uploading a file may legitimately take minutes.
-    // The finite response-body budget starts only after response headers arrive.
-    const controller = typeof AbortController === "undefined" ? null : new AbortController();
-    if (controller) opts.signal = controller.signal;
+    // GET reads have a finite total lifecycle. Uploads may take minutes: their
+    // default response-body budget starts only after response headers arrive.
+    const controller = new AbortController();
+    opts.signal = controller.signal;
     let timer, timedOut = false, rejectDeadline;
     const deadline = new Promise((_resolve, reject) => { rejectDeadline = reject; });
     const armDeadline = (ms) => {
       timer = setTimeout(() => {
         timedOut = true;
         rejectDeadline(requestTimeout());
-        controller?.abort();
+        controller.abort();
       }, ms);
     };
     const cancel = () => {
-      controller?.abort();
+      controller.abort();
       rejectDeadline(Object.assign(new Error("Request cancelled"), { name: "AbortError" }));
     };
     if (signal) {
       signal.addEventListener("abort", cancel, { once: true });
       if (signal.aborted) cancel();
     }
-    if (timeoutMs !== undefined) armDeadline(timeoutMs);
+    const totalTimeoutMs = timeoutMs ?? (method === "GET" ? RESPONSE_BODY_TIMEOUT_MS : undefined);
+    if (totalTimeoutMs !== undefined) armDeadline(totalTimeoutMs);
     let res, stale, responseComplete = false;
     try {
       res = await Promise.race([fetch(url, opts), deadline]);
@@ -148,7 +149,7 @@ const perfWindow = 200;
         if (transport === "deadline") throw requestTimeout();
         throw Object.assign(new Error("Retained read capacity exhausted"), { name: "ReadCapacityError", code: "READ_CAPACITY" });
       }
-      if (timeoutMs === undefined && res.body) armDeadline(RESPONSE_BODY_TIMEOUT_MS);
+      if (totalTimeoutMs === undefined && res.body) armDeadline(RESPONSE_BODY_TIMEOUT_MS);
       const txt = await Promise.race([res.text(), deadline]);
       responseComplete = true;
       // Complete bytes prove contact, regardless of HTTP status or JSON validity.
@@ -183,7 +184,7 @@ const perfWindow = 200;
       // Body stream failures count just like fetch failures; HTTP/JSON errors,
       // caller cancellation and our own delivery deadline do not imply outage.
       if (timedOut) throw requestTimeout();
-      if (!responseComplete && !signal?.aborted && error?.name !== "AbortError" && error?.name !== "TimeoutError"
+      if (!responseComplete && !stale && !signal?.aborted && error?.name !== "AbortError" && error?.name !== "TimeoutError"
           && error?.name !== "ReadCapacityError" && !error?.status && error?.name !== "SyntaxError") {
         reportTransport(API_TRANSPORT_FAILED);
       }
