@@ -447,11 +447,14 @@ browser eval '(() => { document.getElementById("expandBtn").click(); return true
 settle
 probe i3-second-click-reuses-committed
 
-# j. phone viewport: the same room rule and centering at 390x844.
+# j. phone viewport: the same room rule and centering at 390x844. The layout
+# switch happens in place (the sidebar collapses into a drawer, so a session
+# re-selection would need the drawer opened first); the height mode is cycled
+# back to normal instead.
 browser set viewport 390 844 > /dev/null 2>&1 || true
-browser open "http://127.0.0.1:${port}/" > /dev/null 2>&1 || fail "phone browser could not open app"
-browser wait 3500 > /dev/null 2>&1
-select_session "$SID_B"
+settle 900
+browser eval '(() => { const c = document.querySelector(".composer"); let n = 0; while (c.dataset.height !== "normal" && n < 4) { document.getElementById("expandBtn").click(); n += 1; } return c.dataset.height; })()' --json > "$artifacts/phone-normal-mode.json" 2>&1 || fail "could not return the phone composer to normal mode"
+settle
 browser fill '#msg' "$DRAFT_FOUR_LINES" > /dev/null 2>&1 || fail "could not type the four-line draft on the phone viewport"
 settle
 probe j1-phone-four-lines
