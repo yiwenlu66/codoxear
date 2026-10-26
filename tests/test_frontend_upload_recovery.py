@@ -98,12 +98,12 @@ def test_committed_inactive_status_is_terminal_and_never_restages_removed_file()
             if (path.endsWith("inject_file")) throw new Error("lost response");
             return { ok: true, state: "committed", active: false, attachments: [], pending_attachment: false, attachments_revision: 8 };
           };
-          await controller.stageFiles([{ name: "removed.txt", size: 3 }]);
-          process.stdout.write(JSON.stringify({ calls: apiCalls.length, list: controller.getStagedAttachments(), chips: tray.children.length, toasts }));
+          const staged = await controller.stageFiles([{ name: "removed.txt", size: 3 }]);
+          process.stdout.write(JSON.stringify({ staged, calls: apiCalls.length, list: controller.getStagedAttachments(), chips: tray.children.length, toasts }));
         })();
         """
     )
-    assert result == {"calls": 2, "list": [], "chips": 0, "toasts": ["upload already removed or sent"]}
+    assert result == {"staged": False, "calls": 2, "list": [], "chips": 0, "toasts": ["upload already removed or sent"]}
 
 
 def test_late_upload_ack_cannot_reverse_newer_deletion() -> None:
@@ -398,3 +398,74 @@ def test_successful_http_pending_response_reconciles_until_commit_instead_of_fin
     assert result["paths"][1].split("?")[0].endswith("upload-status")
     assert [item["id"] for item in result["list"]] == ["a"]
     assert result["pending"] is False
+
+
+def test_repeated_local_decode_failure_never_becomes_unknown_or_blocks_send() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          ctx.Image = class Image { async decode() { throw new Error("image decode failed"); } };
+          const staged = await controller.stageFiles([{ name: "broken.png", type: "image/png", size: 2048 }]);
+          const first = {
+            pending: controller.hasPendingUploads(), calls: apiCalls.length,
+            phase: tray.children[0].children.find((c) => c.className === "stagedAttachmentPhase").textContent,
+          };
+          const retry = await tray.children[0].children.find((c) => c.className === "stagedAttachmentRetry").onclick();
+          process.stdout.write(JSON.stringify({
+            staged, retry, first, calls: apiCalls.length, pending: controller.hasPendingUploads(), chips: tray.children.length,
+            phase: tray.children[0].children.find((c) => c.className === "stagedAttachmentPhase").textContent,
+            badge: attachBtn.children[0].textContent, badgeDisplay: attachBtn.children[0].style.display,
+          }));
+        })();
+        """
+    )
+    assert result["staged"] is False
+    assert result["retry"] is False
+    assert result["first"] == {"pending": False, "calls": 0, "phase": "compressing: image decode failed"}
+    assert result["calls"] == 0
+    assert result["pending"] is False
+    assert result["chips"] == 1
+    assert result["phase"] == "compressing: image decode failed"
+    assert result["badge"] == ""
+    assert result["badgeDisplay"] == "none"
+
+
+def test_badge_counts_unknown_upload_but_not_definite_rejection() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          apiImpl = async () => { throw Object.assign(new Error("rejected"), { status: 413 }); };
+          await controller.stageFiles([{ name: "rejected.txt", size: 3 }]);
+          const rejected = { badge: attachBtn.children[0].textContent, pending: controller.hasPendingUploads(), chips: tray.children.length };
+          apiImpl = async () => { throw new Error("unreachable"); };
+          await controller.stageFiles([{ name: "unknown.txt", size: 3 }]);
+          process.stdout.write(JSON.stringify({ rejected, badge: attachBtn.children[0].textContent, pending: controller.hasPendingUploads(), chips: tray.children.length }));
+        })();
+        """
+    )
+    assert result["rejected"] == {"badge": "", "pending": False, "chips": 1}
+    assert result["badge"] == "1"
+    assert result["pending"] is True
+    assert result["chips"] == 2
+
+
+def test_retry_status_failure_preserves_real_prior_commit_uncertainty() -> None:
+    result = run_attachments(
+        """
+        (async () => {
+          apiImpl = async () => { throw new Error("connection interrupted"); };
+          await controller.stageFiles([{ name: "uncertain.txt", size: 3 }]);
+          await tray.children[0].children.find((c) => c.className === "stagedAttachmentRetry").onclick();
+          process.stdout.write(JSON.stringify({
+            paths: apiCalls.map((call) => call.path), pending: controller.hasPendingUploads(), badge: attachBtn.children[0].textContent,
+            phase: tray.children[0].children.find((c) => c.className === "stagedAttachmentPhase").textContent,
+          }));
+        })();
+        """
+    )
+    assert len(result["paths"]) == 3
+    assert result["paths"][0].endswith("inject_file")
+    assert result["paths"][1] == result["paths"][2]
+    assert result["pending"] is True
+    assert result["badge"] == "1"
+    assert result["phase"] == "Upload outcome unknown: connection interrupted"

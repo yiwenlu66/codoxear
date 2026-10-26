@@ -181,8 +181,12 @@
       projectSelectedAttachmentIndicator();
     }
 
+    function isActivePendingUpload(entry) {
+      return !entry.done && !entry.canceled && (!entry.failed || entry.unknown);
+    }
+
     function hasPendingUploads() {
-      return pendingUploads.some((entry) => !entry.done && (!entry.failed || entry.unknown));
+      return pendingUploads.some(isActivePendingUpload);
     }
 
     async function cancelPendingUpload(key) {
@@ -371,7 +375,7 @@
       const sessionInfo = sessionId ? getSessionInfo(sessionId) : null;
       const serverListCount = sessionInfo && Array.isArray(sessionInfo.staged_attachments) ? normalizedStagedAttachments(sessionInfo.staged_attachments).length : 0;
       const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
-      const pendingActive = pendingUploads.filter((entry) => !entry.done).length;
+      const pendingActive = pendingUploads.filter(isActivePendingUpload).length;
       const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0) + pendingActive;
       if (visible > 0) {
         attachBadgeEl.textContent = String(visible);
@@ -495,15 +499,16 @@
       applyAttachmentResource(entry.sessionId, response);
       // A committed-but-retired identity is terminal: never recreate the file.
       const matched = response.active === false ? null : response.attachment;
-      if (matched && stagedAttachments.some((item) => item.id === matched.id) && entry.thumbUrl) {
+      const staged = Boolean(matched && stagedAttachments.some((item) => item.id === matched.id));
+      if (staged && entry.thumbUrl) {
         localThumbs.set(matched.id, entry.thumbUrl);
         entry.thumbUrl = "";
         markFreshStaged(matched.id);
       }
       entry.done = true;
       removePendingUpload(entry.key);
-      setToast(response.active === false ? "upload already removed or sent" : "file staged");
-      return true;
+      setToast(staged ? "file staged" : "upload already removed or sent");
+      return staged;
     }
 
     function waitForStatus(entry, ms) {
@@ -562,16 +567,22 @@
       const blocker = latestAttachmentBlockerForSession(entry.sessionId);
       if (blocker) { failEntry(entry, new Error(blocker), entry.unknown); return false; }
       entry.working = true;
+      // Retry is intent, not evidence of a possible server commit. Preserve
+      // prior uncertainty, but a file that never reached submission can fail
+      // preparation repeatedly without becoming an unknown server outcome.
+      let outcomeUnknown = entry.unknown;
+      let reconcile = reconcileFirst && entry.submitted;
       entry.failed = false;
       entry.unknown = false;
       entry.abortController = AbortCtor ? new AbortCtor() : null;
-      let outcomeUnknown = reconcileFirst;
       try {
         await prepareUpload(entry);
         for (let attempt = 0; attempt <= 2; attempt += 1) {
           if (!entryIsCurrent(entry) || entry.cancelRequested) return false;
-          if (outcomeUnknown) {
+          if (outcomeUnknown || reconcile) {
+            outcomeUnknown = true;
             const status = await lookupUpload(entry);
+            reconcile = false;
             if (!status) return false;
             if (status.state === "committed") return finishUpload(entry, status);
             if (status.state === "cancelled") { removePendingUpload(entry.key); return false; }
@@ -584,10 +595,11 @@
           if (attempt === 2) throw new Error("upload not committed after two attempts; retry when ready");
           entry.phase = "uploading";
           renderStagedAttachments();
+          const headers = { "Content-Type": "application/octet-stream", "X-Codoxear-Upload-Id": entry.key, "X-Codoxear-Filename": encodeURIComponent(entry.name) };
           try {
+            entry.submitted = true;
             const response = await api(`/api/sessions/${entry.sessionId}/inject_file`, {
-              method: "POST", rawBody: entry.blob,
-              headers: { "Content-Type": "application/octet-stream", "X-Codoxear-Upload-Id": entry.key, "X-Codoxear-Filename": encodeURIComponent(entry.name) },
+              method: "POST", rawBody: entry.blob, headers,
               ...(entry.abortController ? { signal: entry.abortController.signal } : {}),
             });
             if (!entryIsCurrent(entry) || entry.cancelRequested) return false;
@@ -633,7 +645,7 @@
         name: file.name || (source === "paste" ? pastedFileName(file, index, seed) : "file"),
         size: Number(file.size) || 0,
         phase: looksLikeImage(file) && (file.size > uploadMaxBytes || isLikelyHeic(file)) ? "compressing" : "uploading",
-        done: false, failed: false, unknown: false, failReason: "", canceled: false,
+        done: false, failed: false, unknown: false, submitted: false, failReason: "", canceled: false,
         cancelRequested: false, canceling: false, working: false,
         thumbUrl: looksLikeImage(file) ? createThumbUrl(file) : "", abortController: null,
       }));
