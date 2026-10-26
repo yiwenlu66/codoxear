@@ -13,6 +13,7 @@ import * as CodoxearIOSViewport from "./app_ios_viewport.js";
 import * as CodoxearMessageHistory from "./app_message_history.js";
 import * as CodoxearModal from "./app_modal.js";
 import * as CodoxearQueue from "./app_queue.js";
+import * as CodoxearQuickSession from "./app_quick_session.js";
 import * as CodoxearSendLifecycle from "./app_send_lifecycle.js";
 import * as CodoxearSessionLifecycle from "./app_session_lifecycle.js";
 import * as CodoxearSessionCatalog from "./app_session_catalog.js";
@@ -202,6 +203,7 @@ import * as CodoxearWiring from "./app_wiring.js";
         let draftSyncController = null;
         let messageFlowController = null;
         let sessionLifecycleController = null;
+        let quickSessionController = null;
         let sessionRefreshController = null;
         function resizeComposer() {
           if (composerController) composerController.autoGrow();
@@ -274,6 +276,7 @@ import * as CodoxearWiring from "./app_wiring.js";
             newSessionDialogController.close();
             newSessionDialogController.dispose();
           }
+          if (quickSessionController) quickSessionController.dispose();
           if (voiceController) voiceController.dispose();
           if (settingsDialogController) settingsDialogController.dispose();
           if (unattendedController) unattendedController.dispose();
@@ -1061,6 +1064,22 @@ import * as CodoxearWiring from "./app_wiring.js";
           consoleError: (...args) => console.error(...args),
         }));
 
+        quickSessionController = CodoxearQuickSession.createQuickSessionController(wiring.createQuickSessionOptions({
+          el, iconSvg,
+          sidebarHeaderActions: $("#newBtn").parentElement,
+          emptyActions: chatEmptyState.querySelector(".chatEmptyActions"),
+          emptyCopy: chatEmptyState.querySelector(".chatEmptyCopy"),
+          textarea, sessionState, sessionCatalog, eventBindings, document,
+          deselectSession: () => sessionLifecycleController.deselectSession(),
+          selectSession: (id) => sessionLifecycleController.selectSession(id),
+          spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
+          restoreDraft: restoreUndeliveredDraft,
+          openDialog: (options) => newSessionDialogController.open(options),
+          closeSidebar: () => { if (isMobile()) setSidebarOpen(false); },
+          shortcutBlocked: () => isTextEntryElement(document.activeElement)
+            || modalIsolationTargets.some(isModalTargetOpen) || hintModeController.isActive(),
+        }));
+
         sessionRefreshController = CodoxearSessionRefresh.createSessionRefreshController(wiring.createSessionRefreshOptions({
           api,
           isDisposed: () => appDisposed,
@@ -1227,6 +1246,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           sessionState,
           sessionCatalog,
           sessionLaunchFailed,
+          quickSession: quickSessionController,
           getStagedAttachments: () => attachmentsController.getStagedAttachments(),
           isModalOpen: () => modalIsolationTargets.some(isModalTargetOpen),
           api,

@@ -132,6 +132,14 @@
       return true;
     }
 
+    function deselectSession() {
+      const id = sessionState.get("selected");
+      if (id) saveComposerDraft(id);
+      clearSelectedSessionAfterRemoval(id, { incrementPollGen: true, clearPollState: true });
+      messageFlow().prepareSessionOpen();
+      loadComposerDraft(null);
+    }
+
     function clearDeletedSessionClientState(sessionId) {
       const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
       clearSessionScrollPosition(sessionId);
@@ -326,7 +334,7 @@
       }
     }
 
-    async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
+    async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex", selectLaunchedSession = selectSession) {
       if (!cwd || !String(cwd).trim()) {
         setToast("cwd unavailable");
         return null;
@@ -371,7 +379,7 @@
               const renamed = await refreshSessions();
               found = (renamed || []).find((x) => x.session_id === found.session_id) || found;
             }
-            selectSession(found.session_id);
+            void selectLaunchedSession(found.session_id);
             return brokerPid;
           }
           await sleep(250);
@@ -390,6 +398,7 @@
     return Object.freeze({
       openSession,
       selectSession,
+      deselectSession,
       clearSelectedSessionAfterRemoval,
       selectSessionFromHash,
       clearDeletedSessionClientState,

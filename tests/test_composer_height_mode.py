@@ -73,7 +73,7 @@ PRELUDE = textwrap.dedent(
     }}
 
     // One composer wired to an in-memory storage. Returns the nodes and probes.
-    function harness({{ stored = {{}}, running = false, textareaHeight = 100, appHeight = 1000, staged = [], sendOk = true, queueOk = true }} = {{}}) {{
+    function harness({{ stored = {{}}, running = false, textareaHeight = 100, appHeight = 1000, staged = [], sendOk = true, queueOk = true, quickSession = null }} = {{}}) {{
       const storage = new Map(Object.entries(stored));
       const writes = [];
       const captures = [];
@@ -92,6 +92,7 @@ PRELUDE = textwrap.dedent(
         setPointerCapture(id) {{ captures.push(["set", id]); }},
         releasePointerCapture(id) {{ captures.push(["release", id]); }},
       }});
+      const sendBtn = node();
       const sendChoiceNowBtn = node();
       const sendChoiceLaterBtn = node();
       const sessionState = ctx.window.CodoxearSessionState.createSessionState({{ consoleError: noop }});
@@ -99,7 +100,7 @@ PRELUDE = textwrap.dedent(
       const sessionCatalog = ctx.window.CodoxearSessionCatalog.createSessionCatalog({{ consoleError: noop }});
       sessionCatalog.set("latestSessions", [{{ session_id: "sid", launch_state: "ready" }}, {{ session_id: "other", launch_state: "ready" }}]);
       const controller = ctx.window.CodoxearComposer.createComposerController({{
-        form, textarea, msgPh: node(), sendBtn: node(), sendChoice: node(), sendChoiceBackdrop: node(),
+        form, textarea, msgPh: node(), sendBtn, quickSession, sendChoice: node(), sendChoiceBackdrop: node(),
         sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn: node(),
         composer, expandBtn, clearBtn, draftUndoBtn, composerStrip,
         onDraftEdited: (text) => edits.push(text),
@@ -130,7 +131,7 @@ PRELUDE = textwrap.dedent(
         tallVar: composer.style.props["--composer-tall-h"] ?? null,
         stored: storage.get("codexweb.composerHeight.sid") ?? null,
       }});
-      return {{ clearBtn, draftUndoBtn, composerStrip, edits, storage, writes, captures, calls, hookCalls, form, textarea, composer, expandBtn, sendChoiceNowBtn, sendChoiceLaterBtn, sessionState, controller, snapshot }};
+      return {{ clearBtn, draftUndoBtn, composerStrip, sendBtn, edits, storage, writes, captures, calls, hookCalls, form, textarea, composer, expandBtn, sendChoiceNowBtn, sendChoiceLaterBtn, sessionState, controller, snapshot }};
     }}
     const pointer = (clientY, extra = {{}}) => ({{ pointerId: 7, pointerType: "touch", button: 0, clientY, preventDefault: noop, ...extra }});
     """

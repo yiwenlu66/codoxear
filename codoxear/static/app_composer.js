@@ -38,6 +38,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
     const kickPoll = requireFunction(options.kickPoll, "kickPoll");
     const sendTextRequest = requireFunction(options.sendText, "sendText");
+    const quickSession = options.quickSession || { isStarting: () => false, subscribe: () => () => {} };
     const enqueueComposerTextRequest = requireFunction(options.enqueueComposerText, "enqueueComposerText");
     const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
     const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
@@ -686,8 +687,9 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     function syncComposerState() {
       const sessionId = sessionState.get("selected");
       const launchFailed = selectedSessionLaunchFailed();
-      const blocked = !sessionId || launchFailed;
-      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Message";
+      const starting = quickSession.isStarting();
+      const blocked = (!sessionId && !starting) || launchFailed;
+      const label = starting ? "Session starting…" : !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Message";
       textarea.disabled = blocked;
       textarea.setAttribute("aria-label", label);
       textarea.title = blocked ? label : "";
@@ -697,8 +699,9 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     function syncSendButtonState() {
       const sessionId = sessionState.get("selected");
       const launchFailed = selectedSessionLaunchFailed();
-      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
-      sendBtn.disabled = Boolean(sessionState.get("sending") || !sessionId || launchFailed);
+      const starting = quickSession.isStarting();
+      const label = starting ? "Session starting…" : !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
+      sendBtn.disabled = Boolean(starting || sessionState.get("sending") || !sessionId || launchFailed);
       sendBtn.title = label;
       sendBtn.setAttribute("aria-label", label);
       syncComposerState();
@@ -896,6 +899,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     }
 
     async function sendText(raw, options) {
+      if (quickSession.isStarting()) { setToast("Session starting…"); return false; }
       const sessionId = (options && options.sid) || sessionState.get("selected");
       const ok = await sendTextRequest(raw, options);
       if (ok && sessionId === sessionState.get("selected")) dismissDraftUndo();
@@ -1049,6 +1053,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
 
     form.onsubmit = async (event) => {
       event.preventDefault();
+      if (quickSession.isStarting()) { setToast("Session starting…"); return; }
       const sessionId = sessionState.get("selected");
       if (!sessionId) { setToast("select a session first"); return; }
       if (sessionLaunchFailed(getSessionInfo(sessionId))) { setToast("failed session cannot receive messages"); return; }
@@ -1103,6 +1108,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
     const unsubscribeSessionState = [
+      quickSession.subscribe(syncSendButtonState),
       sessionState.subscribe("selected", () => { dismissDraftUndo(); hideModelPicker(); loadHeightMode(sessionState.get("selected")); syncSendButtonState(); }),
       sessionState.subscribe("sending", syncSendButtonState),
       sessionCatalog.subscribe("sessionIndex", syncSendButtonState),

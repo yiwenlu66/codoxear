@@ -1214,6 +1214,10 @@
       .chatEmptyCopy {
         font-size: var(--font-lg);
       }
+      .chatEmptyActions {
+        display: flex;
+        gap: var(--space-3);
+      }
       .chat {
         order: 1;
         flex: 1 1 auto;

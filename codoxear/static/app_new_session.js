@@ -1127,17 +1127,27 @@ function requireFunction(value, name) {
       if (wasOpen && target && target.isConnected && typeof target.focus === "function" && !target.disabled) win.requestAnimationFrame(() => { if (!isModalTargetOpen(viewer)) target.focus({ preventScroll: true }); });
     }
 
-    function open({ cwd = null, statusText = "", likeSession = null, returnFocusEl: opener = null } = {}) {
+    function open({ cwd = null, statusText = "", likeSession = null, launchPreset = null, returnFocusEl: opener = null } = {}) {
       const active = sessionState.get("selected");
       const current = active ? sessionForId(active) : null;
       const like = likeSession && typeof likeSession === "object" ? likeSession : null;
       returnFocusEl = opener instanceof HTMLElement ? opener : doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
       prepareModalOpen();
       const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : like && like.cwd && like.cwd !== "?" ? like.cwd : current && current.cwd && current.cwd !== "?" ? current.cwd : "";
-      const initialBackend = (like ? CodoxearLaunch.sessionAgentBackend(like) : current ? CodoxearLaunch.sessionAgentBackend(current) : "") || CodoxearLaunch.loadRememberedBackendChoice() || CodoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
+      const initialBackend = (launchPreset ? launchPreset.backend : "") || (like ? CodoxearLaunch.sessionAgentBackend(like) : current ? CodoxearLaunch.sessionAgentBackend(current) : "") || CodoxearLaunch.loadRememberedBackendChoice() || CodoxearLaunch.normalizeAgentBackendName(defaultsSource().default_backend);
       status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false; browseRestoreText = null; modelQueryDirty = false; cwdBrowseRestore = null; cwdQueryDirty = false;
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
+      if (launchPreset) {
+        controller.setNewSessionProvider(launchPreset.providerAbsent ? "" : launchPreset.providerChoice);
+        modelInput.value = controller.newSessionProviderModelDisplay(launchPreset.model, launchPreset.providerAbsent ? "" : launchPreset.providerChoice);
+        literalModelInputValue = launchPreset.providerAbsent ? modelInput.value : "";
+        launchPresetProviderAbsent = !!launchPreset.providerAbsent;
+        controller.setNewSessionReasoningEffort(launchPreset.reasoningEffort);
+        fast = !!launchPreset.fast; fastToggle.checked = fast;
+        tmuxToggle.checked = !!launchPreset.tmux;
+        syncRunConfigUi(); renderReasoningMenu(); renderModelMenu();
+      }
       backdrop.style.display = "block"; viewer.style.display = "flex"; afterModalVisibilityChanged(); controller.scheduleNewSessionResumeLoad(); controller.syncNewSessionTmuxUi(); controller.syncNewSessionWorktreeUi();
       win.requestAnimationFrame(() => { if (!isModalTargetOpen(viewer)) return; const target = isMobile() ? viewer : cwdInput; target.focus({ preventScroll: true }); if (target === cwdInput) { const end = cwdInput.value.length; try { cwdInput.setSelectionRange(end, end); } catch (_) {} } });
     }
@@ -1158,9 +1168,10 @@ function requireFunction(value, name) {
       CodoxearLaunch.rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsed.providerAbsent) });
       const resumeSessionId = (controller.currentResumeSelection() || {}).session_id || null; const createInTmux = !!tmuxToggle.checked; const worktreeBranch = !resumeSessionId && worktreeToggle.checked ? String(worktreeInput.value || "").trim() : null;
       if (worktreeToggle.checked && !worktreeBranch) { status.textContent = "Branch name is required."; return; }
+      const launchRecord = { backend: agentBackend, providerChoice, model, providerAbsent: Boolean(parsed.providerAbsent), reasoningEffort, fast, tmux: createInTmux };
       status.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
       let cwdStartError = false; let startErrorText = ""; startBusy = true; startBtn.disabled = true;
-      Promise.resolve(spawnSession(cwd, resumeSessionId, worktreeBranch, String(nameInput.value || "").trim(), providerChoice, model, reasoningEffort, fast, createInTmux, (error) => { if (error && error.obj && error.obj.field === "cwd") { cwdStartError = true; status.textContent = ""; controller.setNewSessionCwdError(error.message); return; } const launchId = error && error.obj && error.obj.launch_id ? String(error.obj.launch_id) : ""; startErrorText = launchId ? `${error.message} (${launchId})` : error && error.message ? error.message : "Start failed."; }, agentBackend)).then((brokerPid) => { if (brokerPid) close(); else if (!cwdStartError) status.textContent = startErrorText || "Start failed."; }).finally(() => { startBusy = false; startBtn.disabled = false; });
+      Promise.resolve(spawnSession(cwd, resumeSessionId, worktreeBranch, String(nameInput.value || "").trim(), providerChoice, model, reasoningEffort, fast, createInTmux, (error) => { if (error && error.obj && error.obj.field === "cwd") { cwdStartError = true; status.textContent = ""; controller.setNewSessionCwdError(error.message); return; } const launchId = error && error.obj && error.obj.launch_id ? String(error.obj.launch_id) : ""; startErrorText = launchId ? `${error.message} (${launchId})` : error && error.message ? error.message : "Start failed."; }, agentBackend)).then((brokerPid) => { if (brokerPid) { CodoxearLaunch.rememberLastLaunch(launchRecord); close(); } else if (!cwdStartError) status.textContent = startErrorText || "Start failed."; }).finally(() => { startBusy = false; startBtn.disabled = false; });
     }
 
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();

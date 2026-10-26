@@ -17,6 +17,51 @@ function resolveAppUrl(path) {
   }
 
   const LAST_BACKEND_KEY = "codoxear.newSessionBackend";
+  const LAST_LAUNCH_KEY = "codoxear.lastLaunch";
+
+  // The dialog's successful launch is the only writer. Opening a dialog or
+  // browsing backend tabs must never change the quick-start contract.
+  function rememberLastLaunch(record) {
+    storageSetItem(LAST_LAUNCH_KEY, JSON.stringify(record));
+  }
+
+  function loadLastLaunch(defaultsSource = {}, tmuxAvailable = false) {
+    let record;
+    try { record = JSON.parse(storageGetItem(LAST_LAUNCH_KEY)); } catch (_) {}
+    if (record && ["codex", "pi", "cc"].includes(record.backend)
+        && typeof record.model === "string" && typeof record.providerChoice === "string"
+        && typeof record.reasoningEffort === "string"
+        && typeof record.fast === "boolean" && typeof record.tmux === "boolean"
+        && typeof record.providerAbsent === "boolean") {
+      return { backend: record.backend, providerChoice: record.providerAbsent ? "" : record.providerChoice,
+        model: record.model || "default", providerAbsent: record.providerAbsent,
+        reasoningEffort: record.reasoningEffort, fast: record.fast, tmux: record.tmux };
+    }
+    const backend = loadRememberedBackendChoice() || normalizeAgentBackendName(defaultsSource.default_backend || "pi");
+    const defaults = defaultsForAgentBackend(backend, defaultsSource);
+    const providers = providerChoicesForBackend(backend, defaultsSource);
+    const rememberedProvider = loadRememberedProviderChoice(backend);
+    let providerChoice = (providers.includes(rememberedProvider) ? rememberedProvider : "") || String(defaults.provider_choice || "") || providers[0] || "";
+    let model = String(defaults.model || "default");
+    let providerAbsent = false;
+    const remembered = loadRememberedProviderModelChoice(backend);
+    const absent = rememberedProviderModelAbsentChoice(remembered);
+    if (absent) { model = absent.model; providerChoice = ""; providerAbsent = true; }
+    else if (remembered) {
+      const slash = remembered.indexOf("/");
+      if (slash > 0 && (providers.length || backend === "pi")) {
+        const candidate = remembered.slice(0, slash);
+        if (providers.includes(candidate) || backend === "pi") {
+          providerChoice = candidate; model = remembered.slice(slash + 1) || model;
+        }
+      } else model = remembered;
+    }
+    const choices = reasoningChoicesForBackend(backend, defaultsSource, { provider: providerChoice, model });
+    const effort = String(defaults.reasoning_effort || "").toLowerCase();
+    return { backend, providerChoice, model, providerAbsent,
+      reasoningEffort: choices.includes(effort) ? effort : choices[0] || "high",
+      fast: !!defaults.supports_fast && defaults.service_tier === "fast", tmux: !!tmuxAvailable };
+  }
   const NO_PROVIDER_MODEL_PREFIX = "__codoxear_no_provider__:";
 
   function lastProviderKey(backend) {
@@ -261,4 +306,4 @@ function resolveAppUrl(path) {
     return text;
   }
 
-export { lastProviderKey, lastProviderModelKey, loadRememberedBackendChoice, rememberBackendChoice, loadRememberedProviderChoice, rememberProviderChoice, loadRememberedProviderModelChoice, rememberedProviderModelAbsentChoice, rememberProviderModelChoice, normalizeAgentBackendName, agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults, emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend, reasoningChoicesForBackend, backendSupportsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches, providerModelDisplay, redactedLaunchErrorText };
+export { loadLastLaunch, rememberLastLaunch, lastProviderKey, lastProviderModelKey, loadRememberedBackendChoice, rememberBackendChoice, loadRememberedProviderChoice, rememberProviderChoice, loadRememberedProviderModelChoice, rememberedProviderModelAbsentChoice, rememberProviderModelChoice, normalizeAgentBackendName, agentBackendDisplayName, agentBackendLogoPath, sessionAgentBackend, legacyCodexLaunchDefaults, emptyPiLaunchDefaults, emptyCcLaunchDefaults, defaultsForAgentBackend, providerChoicesForBackend, reasoningChoicesForBackend, backendSupportsFast, providerChoiceToSettings, sessionProviderChoice, modelOptionMatches, providerModelDisplay, redactedLaunchErrorText };
