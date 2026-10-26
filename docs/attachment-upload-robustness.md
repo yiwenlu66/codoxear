@@ -153,6 +153,14 @@ the native request rather than retaining obsolete queries in the read pool.
 
 ## Verification
 
+For the unfiltered unit suite, run
+`CODOXEAR_UNIT_VERIFY_IMAGE=<test-image> scripts/docker_unit_clone_verify.sh upload-robustness-integration`.
+The image must provide git, Python, pytest, tinycss2, Node and esbuild. The runner
+bundles a real branch ref, explicitly clones that branch, asserts its exact HEAD
+and prints cloned Python/helper paths plus source/VM hashes before running
+pytest. Optional arguments after the branch select focused pytest cases. This
+avoids both raw-SHA empty bundles and accidentally testing an image's old code.
+
 Run `scripts/docker_upload_robustness_verify.sh <commit>` with Docker and
 agent-browser installed. It uses the standard `codoxear-iso3:latest` sandbox
 image; set `CODOXEAR_UPLOAD_VERIFY_IMAGE` to a compatible Python application
