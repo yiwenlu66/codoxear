@@ -223,7 +223,7 @@ class TmuxOrderSync:
                 self._log(
                     f"tmux-order: session={summary['session']} swaps={summary['swaps']}"
                     f" renamed={summary['renamed']} renumbered={int(bool(summary['renumbered']))}"
-                    f" order={order}"
+                    f" restored={int(bool(summary['restored']))} order={order}"
                 )
             skipped = summary.get("skipped") or []
             if skipped:

@@ -331,6 +331,9 @@ def test_a_pass_logs_the_order_it_applied() -> None:
     sync.tick()
 
     assert any("session=codoxear swaps=" in line and "order=c,b,a" in line for line in log)
+    # The viewer-restore outcome is part of the line: it is the property most
+    # likely to regress silently on somebody else's terminal.
+    assert any("restored=" in line for line in log)
 
 
 def test_fast_polling_cannot_starve_the_mirror() -> None:
