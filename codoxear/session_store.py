@@ -463,6 +463,8 @@ class SessionStore:
                 self.attachment_resources[sid] = {
                     "revision": revision, "pending": bool(value.get("pending")), "uploads": uploads,
                 }
+                if isinstance(value.get("remapped_to"), str):
+                    self.attachment_resources[sid]["remapped_to"] = value["remapped_to"]
                 arr = value.get("attachments", [])
             else:
                 arr = value
@@ -518,6 +520,13 @@ class SessionStore:
         links: list[Path] = []
         try:
             old_resource = self.attachment_resource(old)
+            if old_resource.get("remapped_to") == new and not self.staged_attachments.get(old) and not old_resource["pending"] and not any(
+                record["state"] == "pending" for record in old_resource["uploads"].values()
+            ):
+                # Transfer may already have published before a directory fsync
+                # or a later queue/draft save failed. Reconfirm durability only.
+                self.save_staged_attachments()
+                return
             target = self.attachment_resource(new)
             pending = old_resource["pending"] or target["pending"]
             for upload_id, record in old_resource["uploads"].items():
@@ -561,6 +570,7 @@ class SessionStore:
                     record.update(state="cancelled", retryable=False)
             self.advance_attachments(old, pending=False)
             self.advance_attachments(new, pending=bool(self.staged_attachments.get(new)) or pending)
+            old_resource["remapped_to"] = new
             self.save_staged_attachments()
         except AttachmentPersistenceUncertain:
             raise

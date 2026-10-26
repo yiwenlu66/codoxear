@@ -152,6 +152,7 @@ class SessionSnapshotCoordinator:
     _protect_warned: bool = field(init=False, default=False, repr=False)
     # Serializes restore runs: two concurrent restores must not both spawn one entry.
     restore_lock: threading.Lock = field(init=False, default_factory=threading.Lock, repr=False)
+    _remap_lock: threading.Lock = field(init=False, default_factory=threading.Lock, repr=False)
 
     # ------------------------------------------------------------------ #
     # Discovery trigger
@@ -218,17 +219,27 @@ class SessionSnapshotCoordinator:
             self._schedule_flush_locked(self.debounce_seconds * FLUSH_RETRY_MULTIPLIER)
 
     def _upsert(self, entries: list[SnapshotEntry]) -> set[str]:
-        """Upsert and apply resulting identity remaps; returns the ids whose write failed."""
-        if not entries:
-            return set()
-        try:
-            result = self.store.upsert(entries)
-        except (SnapshotCorrupt, SnapshotWriteRefused, OSError) as exc:
-            self._log(f"session snapshot upsert failed: {type(exc).__name__}: {exc}")
-            return {entry.session_id for entry in entries}
-        for remap in result.remaps:
-            self.remap_session_identity(remap)
-        return set()
+        """Publish identities with durable remap intent, then replay transfers."""
+        with self._remap_lock:
+            try:
+                self.store.upsert(entries)
+            except (SnapshotCorrupt, SnapshotWriteRefused, OSError) as exc:
+                self._log(f"session snapshot upsert failed: {type(exc).__name__}: {exc}")
+                return {entry.session_id for entry in entries}
+            return self._replay_remaps()
+
+    def _replay_remaps(self) -> set[str]:
+        failed = set()
+        for remap in self.store.read().remap_intents:
+            try:
+                self.remap_session_identity(remap)
+                self.store.complete_remap(remap)
+            except (OSError, ValueError) as exc:
+                self._log(f"session snapshot remap failed: {type(exc).__name__}: {exc}")
+                failed.add(remap.new_session_id)
+                # Preserve causal order if another intent continues this one.
+                break
+        return failed
 
     def _log(self, message: str) -> None:
         try:
@@ -314,10 +325,13 @@ class SessionSnapshotCoordinator:
         if timer is not None:
             timer.cancel()
         entries = self._entries_for_sessions(self._live_sessions())
-        result = self.store.upsert(entries)
-        for remap in result.remaps:
-            self.remap_session_identity(remap)
-        return self.store.read()
+        with self._remap_lock:
+            self.store.upsert(entries)
+            failed = self._replay_remaps()
+            if failed:
+                self._after_flush(failed)
+                raise OSError("session state transfer incomplete; remap retained for retry")
+            return self.store.read()
 
     def read(self) -> SnapshotState:
         return self.store.read()
@@ -523,15 +537,15 @@ class SessionSnapshotCoordinator:
                 if isinstance(legacy, dict) and new_key not in unattended:
                     unattended[new_key] = legacy
                     unattended_moved = True
-        if queues_moved:
+        # Replay may find in-memory state already moved by a failed save.
+        # Re-save every participant before acknowledging the durable intent;
+        # after restart each atomic store independently resumes from disk.
+        if old != new:
             self.save_queues()
-        if draft_moved:
             self.save_drafts()
-        if unattended_moved:
-            self.save_unattended()
-        if alias_moved:
+        self.save_unattended()
+        if old != new:
             self.save_aliases()
-        if sidebar_moved or dependencies:
             self.save_sidebar_meta()
         return RemapResult(
             queues_moved=queues_moved,

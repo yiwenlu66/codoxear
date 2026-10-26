@@ -227,6 +227,7 @@ class UpsertResult:
 class SnapshotState:
     saved_at: float | None
     entries: dict[EntryKey, SnapshotEntry]
+    remap_intents: tuple[IdentityRemap, ...] = ()
 
     @classmethod
     def empty(cls) -> "SnapshotState":
@@ -275,15 +276,30 @@ def _parse_state(obj: Any) -> SnapshotState:
     for raw in raw_entries:
         entry = SnapshotEntry.from_dict(raw)
         entries[entry.key] = entry
-    return SnapshotState(saved_at=_float_or_none(obj.get("saved_at")), entries=entries)
+    intents = []
+    raw_intents = obj.get("remap_intents", [])
+    if not isinstance(raw_intents, list):
+        raise SnapshotCorrupt("snapshot remap intents must be a list")
+    for raw in raw_intents:
+        if not isinstance(raw, dict):
+            raise SnapshotCorrupt("snapshot remap intent must be an object")
+        intents.append(IdentityRemap(**{key: _required_text(raw, key) for key in (
+            "old_session_id", "new_session_id", "old_thread_id", "new_thread_id")}))
+    return SnapshotState(saved_at=_float_or_none(obj.get("saved_at")), entries=entries, remap_intents=tuple(intents))
 
 
 def _serialize_state(state: SnapshotState) -> dict[str, Any]:
-    return {
+    payload = {
         "version": SNAPSHOT_VERSION,
         "saved_at": state.saved_at,
         "entries": [entry.to_dict() for entry in state.entries.values()],
     }
+    if state.remap_intents:
+        payload["remap_intents"] = [dict(
+            old_session_id=remap.old_session_id, new_session_id=remap.new_session_id,
+            old_thread_id=remap.old_thread_id, new_thread_id=remap.new_thread_id,
+        ) for remap in state.remap_intents]
+    return payload
 
 
 def _write_private_json(path: Path, obj: Any) -> None:
@@ -394,9 +410,18 @@ class SessionSnapshotStore:
                 changed.append(entry.key)
             if not changed:
                 return UpsertResult(changed=[], remaps=[])
-            state = SnapshotState(saved_at=self._now(), entries=merged)
+            intents = tuple(dict.fromkeys((*previous.remap_intents, *remaps)))
+            state = SnapshotState(saved_at=self._now(), entries=merged, remap_intents=intents)
             self._write(previous, state, allow_empty=False)
             return UpsertResult(changed=changed, remaps=remaps)
+
+    def complete_remap(self, remap: IdentityRemap) -> None:
+        """Acknowledge only after every per-session state writer succeeded."""
+        with self._lock:
+            previous = self.read()
+            intents = tuple(item for item in previous.remap_intents if item != remap)
+            if intents != previous.remap_intents:
+                self._write(previous, replace(previous, remap_intents=intents), allow_empty=True)
 
     def remove(self, keys: Iterable[EntryKey]) -> list[EntryKey]:
         wanted = [key for key in keys if isinstance(key, tuple) and len(key) == 2]
@@ -406,7 +431,7 @@ class SessionSnapshotStore:
             if not removed:
                 return []
             merged = {key: entry for key, entry in previous.entries.items() if key not in removed}
-            self._write(previous, SnapshotState(saved_at=previous.saved_at, entries=merged), allow_empty=True)
+            self._write(previous, replace(previous, entries=merged), allow_empty=True)
             return removed
 
     def remove_matching(self, identifier: str) -> list[EntryKey]:
@@ -430,5 +455,5 @@ class SessionSnapshotStore:
                 return False
             merged = dict(previous.entries)
             merged[key] = replace(current, restoring=mark)
-            self._write(previous, SnapshotState(saved_at=previous.saved_at, entries=merged), allow_empty=True)
+            self._write(previous, replace(previous, entries=merged), allow_empty=True)
             return True

@@ -139,18 +139,39 @@ class SessionPendingStateCoordinator:
 
     def begin_upload(self, session_id: str, upload_id: str, *, filename: str, size: int) -> dict[str, Any]:
         upload_id_value(upload_id)
-        with self._attachment_mutation(session_id) as store:
-            uploads = store.attachment_resource(session_id)["uploads"]
-            record = uploads.get(upload_id)
-            if record and record.get("filename") is not None and (record["filename"] != filename or record["size"] != size):
-                raise ValueError("upload_id reused with incompatible file")
-            owner = record is None or (record["state"] == "failed" and record.get("retryable"))
+        owner = False
+        try:
+            with self._attachment_mutation(session_id) as store:
+                uploads = store.attachment_resource(session_id)["uploads"]
+                record = uploads.get(upload_id)
+                if record and record.get("filename") is not None and (record["filename"] != filename or record["size"] != size):
+                    raise ValueError("upload_id reused with incompatible file")
+                owner = record is None or (record["state"] == "failed" and record.get("retryable"))
+                if owner:
+                    uploads[upload_id] = {"state": "pending", "filename": filename, "size": size}
+                    store.advance_attachments(session_id)
+                # Do not reacquire self.lock (test doubles may use a non-reentrant lock).
+                result = dict(store.attachment_snapshot(session_id), upload_id=upload_id,
+                              state=uploads[upload_id]["state"], writer=bool(owner))
+        except AttachmentPersistenceUncertain:
             if owner:
-                uploads[upload_id] = {"state": "pending", "filename": filename, "size": size}
-                store.advance_attachments(session_id)
-            # Do not reacquire self.lock (test doubles may use a non-reentrant lock).
-            result = dict(store.attachment_snapshot(session_id), upload_id=upload_id,
-                          state=uploads[upload_id]["state"], writer=bool(owner))
+                # Publication succeeded but this request never received writer
+                # ownership. Retire only its own new reservation; a duplicate's
+                # failed save must never retire another request's live writer.
+                with self.input_lock_for_session(session_id), self.lock:
+                    store = self.store()
+                    record = store.attachment_resource(session_id)["uploads"].get(upload_id)
+                    if record is not None and record["state"] == "pending":
+                        record.update(state="failed", retryable=True)
+                        store.advance_attachments(session_id)
+                        try:
+                            store.save_staged_attachments()
+                        except OSError:
+                            # Keep failed in memory. If the disk still holds
+                            # pending, restart also interprets it as failed.
+                            # The original uncertainty is propagated to caller.
+                            pass
+            raise
         return result
 
     def finish_upload(self, session_id: str, upload_id: str, *, filename: str, raw: bytes, stage: Callable[[], Path]) -> dict[str, Any]:

@@ -460,6 +460,10 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
             try:
                 res = manager.add_staged_attachment(session_id, display_name=filename, filename=out_path.name,
                                                     path=out_path, size=len(raw), created_ts=time.time())
+            except AttachmentPersistenceUncertain:
+                # The envelope already references these bytes, even though its
+                # directory fsync could not confirm crash durability.
+                raise
             except Exception:
                 out_path.unlink(missing_ok=True)
                 raise
