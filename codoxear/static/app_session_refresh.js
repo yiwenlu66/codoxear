@@ -71,15 +71,12 @@
         });
         clearFileDiscoveryCaches();
       }
-      const sessions = latestSessions.slice().sort((a, b) => {
-        const priority = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-        if (priority) return priority;
-        const updated = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-        if (updated) return updated;
-        const started = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-        if (started) return started;
-        return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-      });
+      // The server owns sidebar order: `session_listing.sort_session_rows`
+      // applies the rendered group rank (Now → Waiting → Later) and then
+      // priority/recency/id. Re-sorting here would be a second order writer and
+      // would diverge from the tmux window mirror, which consumes this same
+      // array. Render the server's order verbatim.
+      const sessions = latestSessions;
       const sessionIndex = sessionCatalog.get("sessionIndex");
       let selected = sessionState.get("selected");
       if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);

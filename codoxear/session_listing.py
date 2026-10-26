@@ -630,9 +630,45 @@ def build_public_session_row(staged_row: Mapping[str, Any], *, git_branch: str |
     return row
 
 
+# Rendered sidebar group order. The browser renders these as blocks in this
+# order and never reorders rows inside a block, so this rank is part of the
+# ordering contract rather than a presentation detail: `Waiting` and `Later`
+# rows both carry final_priority 0, which would otherwise interleave them.
+SIDEBAR_GROUP_RANKS = {"now": 0, "waiting": 1, "later": 2}
+
+
+def sidebar_group_key(row: Mapping[str, Any]) -> str:
+    """The rendered sidebar group of one listing row.
+
+    Precedence is blocked → snoozed → now, matching the client's partition: a
+    session waiting on a dependency is deferred even if it is also snoozed.
+    """
+    if row.get("blocked"):
+        return "waiting"
+    if row.get("snoozed"):
+        return "later"
+    return "now"
+
+
+def sidebar_group_rank(row: Mapping[str, Any]) -> int:
+    return SIDEBAR_GROUP_RANKS[sidebar_group_key(row)]
+
+
 def sort_session_rows(rows: list[dict[str, Any]]) -> None:
+    """Sort rows into rendered sidebar order, in place.
+
+    This is the single ordering authority for the sidebar: the browser renders
+    this array order verbatim, and the tmux window mirror
+    (`tmux_order.window_targets`) consumes the same order, so priority, snooze,
+    dependency and recency are resolved in exactly one place.
+
+    Key order is (group rank, -final_priority, -updated_ts, -start_ts,
+    session_id); the id tiebreak keeps the order total, which the tmux mirror
+    depends on to detect that nothing changed.
+    """
     rows.sort(
         key=lambda item: (
+            sidebar_group_rank(item),
             -float(item.get("final_priority", 0.0)),
             -float(item.get("updated_ts", item.get("start_ts", 0.0))),
             -float(item.get("start_ts", 0.0)),

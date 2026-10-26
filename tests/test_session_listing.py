@@ -428,6 +428,41 @@ def test_sort_session_rows_orders_by_priority_recency_start_and_id() -> None:
     assert [row["session_id"] for row in rows] == ["newer", "later-start", "a", "b", "z"]
 
 
+def test_sort_session_rows_renders_group_blocks_before_priority() -> None:
+    rows = [
+        {"session_id": "snoozed-new", "final_priority": 0.0, "updated_ts": 90.0, "start_ts": 1.0, "snoozed": True},
+        {"session_id": "blocked", "final_priority": 0.0, "updated_ts": 80.0, "start_ts": 1.0, "blocked": True},
+        {"session_id": "active", "final_priority": 0.4, "updated_ts": 10.0, "start_ts": 1.0},
+        # Blocked wins over snoozed, exactly like the client's group partition.
+        {"session_id": "blocked-and-snoozed", "final_priority": 0.0, "updated_ts": 95.0, "start_ts": 1.0, "blocked": True, "snoozed": True},
+        {"session_id": "starting", "final_priority": 1.0, "updated_ts": 1.0, "start_ts": 1.0},
+        {"session_id": "active-older", "final_priority": 0.4, "updated_ts": 5.0, "start_ts": 1.0},
+    ]
+
+    sort_session_rows(rows)
+
+    # Now → Waiting → Later. Both Waiting and Later rows carry final_priority 0,
+    # so a priority-only sort would interleave the two rendered blocks.
+    assert [row["session_id"] for row in rows] == [
+        "starting",
+        "active",
+        "active-older",
+        "blocked-and-snoozed",
+        "blocked",
+        "snoozed-new",
+    ]
+
+
+def test_sidebar_group_key_prefers_blocked_then_snoozed() -> None:
+    from codoxear.session_listing import sidebar_group_key, sidebar_group_rank
+
+    assert sidebar_group_key({}) == "now"
+    assert sidebar_group_key({"snoozed": True}) == "later"
+    assert sidebar_group_key({"blocked": True}) == "waiting"
+    assert sidebar_group_key({"blocked": True, "snoozed": True}) == "waiting"
+    assert [sidebar_group_rank({"blocked": True}), sidebar_group_rank({"snoozed": True}), sidebar_group_rank({})] == [1, 2, 0]
+
+
 def test_build_launch_attempt_rows_filters_hidden_and_active_identity() -> None:
     records = [
         {"id": "hidden"},
