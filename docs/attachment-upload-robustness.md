@@ -147,7 +147,9 @@ The worker bounds retained reads (8), background reads (3), cache reads (8) and
 cache writes (4), and applies per-key refresh backoff. Late healthy responses
 can refresh caches; cache write faults do not invalidate a valid live response.
 Streaming/range/live routes retain their passthrough behavior. No-store status
-reads never reconcile against an offline cache.
+reads never reconcile against an offline cache. File-path completion queries
+are live, ephemeral reads: they bypass offline caching so cancellation controls
+the native request rather than retaining obsolete queries in the read pool.
 
 ## Verification
 
