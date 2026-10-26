@@ -329,3 +329,30 @@ def test_a_pass_records_the_generation_it_applied() -> None:
     clock.advance(SETTLE_SECONDS)
     assert sync.tick() is None
     assert sync._unapplied_since is None
+
+
+def test_a_generation_that_arrives_during_a_pass_is_still_applied() -> None:
+    clock = Clock()
+    tmux = FakeTmuxBin(["a", "b", "c"])
+    sync = make_sync(tmux, clock)
+
+    # The swap itself is the moment a new listing generation can land: a client
+    # polls while the pass is running. That generation must survive the pass.
+    original_swap = tmux.run
+
+    def swap_then_note(argv: list[str], **kwargs):
+        result = original_swap(argv, **kwargs)
+        if argv[1] == "swap-window":
+            sync.note_generation(rows("b", "a", "c"))
+        return result
+
+    sync._run = swap_then_note
+
+    sync.note_generation(rows("c", "b", "a"))
+    clock.advance(SETTLE_SECONDS)
+    sync.tick()
+    assert tmux.order() == ["c", "b", "a"]
+
+    clock.advance(MIN_INTERVAL_SECONDS)
+    assert sync.tick() is not None
+    assert tmux.order() == ["b", "a", "c"]

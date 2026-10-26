@@ -140,12 +140,21 @@ class TmuxOrderSync:
         unconverged = any(s.get("converged") is False for s in summaries if not s.get("error"))
         if unconverged:
             self._log_once("tmux-order: order did not converge; retrying on the next generation")
+        if problem is None and not unconverged and not any(summary.get("skipped") for summary in summaries):
+            with self._lock:
+                # A fully clean pass clears the deduplication marker, so a
+                # problem that recurs later is reported again.
+                self._last_problem = None
         with self._lock:
             # Recording the generation on failure is deliberate: retries are
             # driven by the next generation (bounded by the floor), never by
             # spinning on the same one inside `tick`.
             self._applied_generation = generation
-            self._unapplied_since = None
+            # A generation that arrived while this pass was running must stay
+            # marked unapplied, or it would wait for yet another generation
+            # (which, with a client that has since stopped polling, never comes).
+            if self._pending is None or self._pending[0] == generation:
+                self._unapplied_since = None
             self._applied_signature = signature
             self._applied_ok = problem is None and not unconverged
             if listed:
