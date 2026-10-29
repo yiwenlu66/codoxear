@@ -21,6 +21,7 @@ from .pi_log import pi_log_row_is_transcript_excluded
 from .pi_log import pi_user_text
 from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _codex_event_text
+from .rollout_events import _codex_user_item_text
 from .rollout_events import _event_ts
 from .rollout_events import _strip_oai_mem_citation_tail
 from .subagent_events import is_subagent_event_id
@@ -216,6 +217,11 @@ def _detect_codex_no_response_closes(records: list[Any]) -> list[tuple[int, int,
             if isinstance(payload.get("message"), str) and payload["message"].strip():
                 user_byte = record.start
             continue
+        if pt == "item_completed":
+            user_text = _codex_user_item_text(obj)
+            if isinstance(user_text, str) and user_text.strip():
+                user_byte = record.start
+            continue
         if pt in ("task_complete", "turn_complete"):
             if user_byte is not None:
                 closes.append((user_byte, record.start, obj))
@@ -302,6 +308,12 @@ def _inject_no_response_events(
             pt = payload.get("type")
             if pt == "user_message":
                 if isinstance(payload.get("message"), str) and payload["message"].strip():
+                    user_byte = record.start
+                    user_from_prior = False
+                continue
+            if pt == "item_completed":
+                user_text = _codex_user_item_text(obj)
+                if isinstance(user_text, str) and user_text.strip():
                     user_byte = record.start
                     user_from_prior = False
                 continue
