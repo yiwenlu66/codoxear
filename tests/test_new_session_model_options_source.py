@@ -182,6 +182,15 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         )
         self.assertEqual(result["completion"], "/srv/projects/alpine")
 
+    def test_a_picked_row_that_equals_the_value_never_swallows_the_key(self) -> None:
+        # The highlight can sit on a row whose path is already the field text.
+        # Taking it would change nothing, so Tab must still do something real:
+        # the filesystem listing adds the separator and drills into it.
+        result = eval_cwd_tab_completion(
+            ["alpha", "alpine"], cwd_value="/srv/projects/alpha", focus=0
+        )
+        self.assertEqual(result["completion"], "/srv/projects/alpha/")
+
 
 class TestNewSessionModelOptionsBehavior(unittest.TestCase):
     def test_options_merge_defaults_and_backend_matched_recent_models(self) -> None:

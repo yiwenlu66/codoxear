@@ -609,7 +609,9 @@ function requireFunction(value, name) {
       if (focus >= 0) {
         const picked = cwdMenuOptions(raw)[focus];
         const cwd = picked && typeof picked.cwd === "string" ? picked.cwd : "";
-        if (cwd) return cwd;
+        // Taking the row that already is the value would change nothing while
+        // still swallowing the key, so that case stays a plain focus move.
+        if (cwd && cwd !== raw) return cwd;
       }
       if (!raw || cwdSuggestLoaded !== raw) return null;
       const plan = CodoxearPathCompletion.completionPlan({
