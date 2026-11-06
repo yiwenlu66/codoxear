@@ -792,7 +792,8 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       // One row left is an unambiguous answer even when it is not a prefix of
       // what was typed, and a menu with a single item that Tab cannot take reads
       // as broken.
-      if (next === null && current.trim() && rows && rows.length === 1 && rows[0] && typeof rows[0].path === "string") {
+      if (next === null && current.trim() && rows && rows.length === 1 && rows[0]
+          && !rows[0].createNew && typeof rows[0].path === "string") {
         next = rows[0].path;
       }
       if (next === null || next === current) {

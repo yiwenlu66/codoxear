@@ -587,6 +587,17 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           await settle();
           events.splice(0);
 
+          // A lone "create this path" row is not a completion: taking it would
+          // rewrite the text the user typed, so Tab stays native.
+          rows = [{{ path: "zzzz.js", createNew: true }}];
+          menuState.setFocus(-1);
+          completion = {{ query: "zzzz", names: [], truncated: false }};
+          input.value = "zzzz";
+          const tabDraftResult = runtime.keydown(tabKey());
+          const tabDraftValue = input.value;
+          await settle();
+          events.splice(0);
+
           // A capped listing cannot answer a partial prefix: Tab stays native,
           // and the list is closed first so the focus move cannot land on a row.
           rows = [];
@@ -606,7 +617,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabIdleResult, tabIdlePrevented, tabIdleEvents, tabShiftResult, tabShiftPrevented, tabPrefixResult, tabPrefixPrevented, tabPrefixValue, tabPrefixScheduled, tabDirResult, tabDirValue, tabRowResult, tabRowValue, tabRowFocus, tabSingleResult, tabSingleValue, tabCappedResult, tabCappedPrevented, tabCappedEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabIdleResult, tabIdlePrevented, tabIdleEvents, tabShiftResult, tabShiftPrevented, tabPrefixResult, tabPrefixPrevented, tabPrefixValue, tabPrefixScheduled, tabDirResult, tabDirValue, tabRowResult, tabRowValue, tabRowFocus, tabSingleResult, tabSingleValue, tabDraftResult, tabDraftValue, tabCappedResult, tabCappedPrevented, tabCappedEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -936,6 +947,8 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["tabRowFocus"], -1)
         self.assertTrue(result["tabSingleResult"])
         self.assertEqual(result["tabSingleValue"], "src/only-match.js")
+        self.assertFalse(result["tabDraftResult"])
+        self.assertEqual(result["tabDraftValue"], "zzzz")
         self.assertFalse(result["tabCappedResult"])
         self.assertEqual(result["tabCappedPrevented"], 0)
         self.assertEqual(result["tabCappedEvents"], [["close", None], ["ensure"], ["render"]])

@@ -91,6 +91,22 @@ def run_controller_harness() -> dict:
           windowTarget: { innerHeight: 600, visualViewport: null },
         });
         dialogMenuController.positionDialogMenu(menu, anchor);
+        // A dialog field sits far inside the viewport: the list must be flush
+        // with its own field instead of being inset by the viewport margin and
+        // narrowed by twice it (which made every dialog list look detached).
+        const dialogHost = { getBoundingClientRect: () => ({ left: 376, top: 150, width: 508 }) };
+        const dialogMenu = { parentElement: dialogHost, scrollHeight: 76, style: {} };
+        const dialogAnchor = { getBoundingClientRect: () => ({ left: 376, top: 202, bottom: 246, width: 508 }) };
+        const wideViewportController = ctx.window.CodoxearDialogMenu.createDialogMenuController({
+          windowTarget: { innerWidth: 1280, innerHeight: 900, visualViewport: null },
+        });
+        wideViewportController.positionDialogMenu(dialogMenu, dialogAnchor);
+        // …and on a narrow viewport it must shrink to fit rather than overflow.
+        const narrowViewportController = ctx.window.CodoxearDialogMenu.createDialogMenuController({
+          windowTarget: { innerWidth: 420, innerHeight: 900, visualViewport: null },
+        });
+        const narrowMenu = { parentElement: dialogHost, scrollHeight: 76, style: {} };
+        narrowViewportController.positionDialogMenu(narrowMenu, dialogAnchor);
 
         let now = 1000;
         const scheduled = [];
@@ -147,6 +163,8 @@ def run_controller_harness() -> dict:
             title: { disabledTitle, displayedTitle, enabled: { cursor: title.style.cursor, tabIndex: title.tabIndex, role: title.attributes.role }, opened, prevented },
             unsaved: { choice, dialogCalls, viewerCalls },
             menu: { top: menu.style.top, maxHeight: menu.style.maxHeight, left: menu.style.left },
+            dialogMenu: { left: dialogMenu.style.left, width: dialogMenu.style.width, top: dialogMenu.style.top },
+            narrowMenu: { left: narrowMenu.style.left, width: narrowMenu.style.width },
             ios: { isIOS: iosController.isIOS(), guardActiveAfterFocus, guardActiveAfterAlternateFocus, viewportCalls, scheduledDelays: scheduled.map((item) => item.delay) },
           }));
         });
@@ -178,6 +196,10 @@ def test_extracted_controller_behavior() -> None:
     }
 
     assert result["menu"] == {"top": "192px", "maxHeight": "440px", "left": "20px"}
+    # Flush with the field: left 0 (not the 12px margin), full field width.
+    assert result["dialogMenu"] == {"left": "0px", "width": "508px", "top": "104px"}
+    # 420px viewport, field starts at 376: only 32px of room, floored at 160px.
+    assert result["narrowMenu"] == {"left": "0px", "width": "160px"}
 
     assert result["ios"]["isIOS"] is True
     assert result["ios"]["guardActiveAfterFocus"] is True
