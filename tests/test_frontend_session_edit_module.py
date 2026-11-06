@@ -62,7 +62,7 @@ def eval_session_edit_lifecycle() -> dict:
           button.appendChild(makeNode());
           return button;
         }}
-        function makeController({{ alias, snoozeUntil = 0, selected = "session-1" }}) {{
+        function makeController({{ alias, snoozeUntil = 0, selected = "session-1", propagation = null }}) {{
           const editCloseBtn = makeNode();
           const editStatus = makeNode();
           const editNameInput = makeNode();
@@ -94,7 +94,11 @@ def eval_session_edit_lifecycle() -> dict:
             getSessions: () => [session], sessionState: {{ get: () => selected }},
             sessionDisplayName: (entry) => entry.alias || "Conversation title", baseName: (value) => value.split("/").pop(),
             formatPriorityOffset: (value) => `+${{Number(value).toFixed(2)}}`, setPickerButtonContent: () => {{}},
-            api: async (path, request) => {{ calls.push({{ path, body: request.body }}); session.alias = request.body.name; return {{}}; }},
+            api: async (path, request) => {{
+              calls.push({{ path, body: request.body }});
+              session.alias = request.body.name;
+              return propagation ? {{ name_propagation: propagation }} : {{}};
+            }},
             refreshSessions: async () => [session], setToast: (value) => calls.push({{ toast: value }}),
             prepareModalOpen: () => {{}}, afterModalVisibilityChanged: () => {{}}, positionDialogMenu: () => {{}},
             addAppEvent: () => {{}}, now: () => Date.UTC(2026, 0, 1, 12, 0, 0), HTMLElementCtor: ElementStub,
@@ -113,6 +117,19 @@ def eval_session_edit_lifecycle() -> dict:
         vm.runInContext(source, ctx);
 
         const save = makeController({{ alias: "Original" }});
+        const projectMiss = makeController({{
+          alias: "Original",
+          propagation: {{ ok: false, backend: "pi", reason: "unsupported" }},
+        }});
+        const projectHit = makeController({{
+          alias: "Original",
+          propagation: {{ ok: true, backend: "pi", reason: "applied", name: "Renamed" }},
+        }});
+        for (const attempt of [projectMiss, projectHit]) {{
+          attempt.controller.openEditSession("session-1");
+          attempt.editNameInput.value = "Renamed";
+          attempt.editSaveBtn.onclick();
+        }}
         save.controller.openEditSession("session-1");
         save.editNameInput.value = "Renamed";
         save.editSaveBtn.onclick();
@@ -135,6 +152,8 @@ def eval_session_edit_lifecycle() -> dict:
         Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve()).then(() => {{
           process.stdout.write(JSON.stringify({{
             save: {{ alias: save.alias(), closed: !save.editViewer.open, calls: save.calls }},
+            projectMiss: {{ calls: projectMiss.calls }},
+            projectHit: {{ calls: projectHit.calls }},
             evening: {{ calls: evening.calls }},
             cancel: {{ alias: cancel.alias(), closed: !cancel.editViewer.open, calls: cancel.calls }},
             recognition: {{
@@ -176,6 +195,19 @@ class TestFrontendSessionEditModule(unittest.TestCase):
             },
         )
         self.assertIn({"toast": "conversation updated"}, save["calls"])
+
+    def test_a_missed_backend_title_is_reported_without_failing_the_rename(self) -> None:
+        calls = self.result["projectMiss"]["calls"]
+        self.assertEqual(calls[0]["path"], "/api/sessions/session-1/edit")
+        self.assertIn(
+            {"toast": "renamed — Pi needs /reload before it can adopt the title"},
+            calls,
+        )
+        self.assertNotIn({"toast": "conversation updated"}, calls)
+
+    def test_an_applied_backend_title_keeps_the_plain_confirmation(self) -> None:
+        calls = self.result["projectHit"]["calls"]
+        self.assertIn({"toast": "conversation updated"}, calls)
 
     def test_cancel_discards_draft_without_mutating_title(self) -> None:
         cancel = self.result["cancel"]
