@@ -559,6 +559,8 @@ function requireFunction(value, name) {
     });
     const editDependencyMenu = el("div", { id: "editDependencyMenu", class: "filePickerMenu dialogPickerMenu" });
     const editDependencyField = el("div", { class: "pickerField" }, [editDependencyBtn]);
+    const editUuidValue = el("span", { class: "editUuidValue", id: "editUuidValue", text: "" });
+    const editUuidCopyBtn = el("button", { id: "editUuidCopyBtn", class: "icon-btn text-btn subtleBtn", type: "button", text: "Copy" });
     const editSaveBtn = el("button", { class: "primary", id: "editSaveBtn", type: "button", text: "Save" });
     const editViewer = el("dialog", { class: "formViewer formDialog", id: "editViewer", "aria-label": "Edit conversation" }, [
       el("div", { class: "queueHeader" }, [
@@ -567,6 +569,10 @@ function requireFunction(value, name) {
       ]),
       editStatus,
       el("div", { class: "formBody" }, [
+        el("div", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Session UUID" }),
+          el("div", { class: "editUuidRow" }, [editUuidValue, editUuidCopyBtn]),
+        ]),
         el("label", { class: "field" }, [
           el("span", { class: "fieldLabel", text: "Conversation name" }),
           editNameInput,
@@ -622,6 +628,7 @@ function requireFunction(value, name) {
       editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
       editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
       editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
+      editUuidValue, editUuidCopyBtn,
       editSaveBtn, editViewer, announceBtn, liveAudio, voiceSettingsSection,
       voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
       voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,

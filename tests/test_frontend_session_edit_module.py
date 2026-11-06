@@ -62,7 +62,7 @@ def eval_session_edit_lifecycle() -> dict:
           button.appendChild(makeNode());
           return button;
         }}
-        function makeController({{ alias, snoozeUntil = 0, selected = "session-1" }}) {{
+        function makeController({{ alias, snoozeUntil = 0, selected = "session-1", threadId = "uuid-1234" }}) {{
           const editCloseBtn = makeNode();
           const editStatus = makeNode();
           const editNameInput = makeNode();
@@ -77,12 +77,14 @@ def eval_session_edit_lifecycle() -> dict:
           const editSaveBtn = makeNode();
           const editCancelBtn = makeNode();
           const editViewer = makeNode();
+          const editUuidValue = makeNode();
+          const editUuidCopyBtn = makeNode();
           const snoozeButtons = new Map([
             ["none", makeSnoozeButton()], ["evening", makeSnoozeButton()],
             ["tomorrow", makeSnoozeButton()], ["weekend", makeSnoozeButton()],
             ["nextWeek", makeSnoozeButton()], ["custom", makeSnoozeButton()],
           ]);
-          const session = {{ session_id: "session-1", alias, priority_offset: 0, snooze_until: snoozeUntil, dependency_session_id: "", cwd: "/repo" }};
+          const session = {{ session_id: "session-1", thread_id: threadId, alias, priority_offset: 0, snooze_until: snoozeUntil, dependency_session_id: "", cwd: "/repo" }};
           const calls = [];
           const controller = ctx.window.CodoxearSessionEdit.createSessionEditController({{
             documentTarget: {{ activeElement: makeNode() }}, ElementCtor: ElementStub, el,
@@ -90,6 +92,7 @@ def eval_session_edit_lifecycle() -> dict:
             editPriorityResetBtn, editSnoozeModeButtons: snoozeButtons, editSnoozeCustomDate,
             editSnoozeCustomTime, editSnoozeCustomRow, editDependencyBtn, editDependencyMenu,
             editSaveBtn, editCancelBtn, editViewer,
+            editUuidValue, editUuidCopyBtn, copyText: (value) => calls.push({{ copy: value }}),
             getSessionInfo: (sid) => sid === session.session_id ? session : null,
             getSessions: () => [session], sessionState: {{ get: () => selected }},
             sessionDisplayName: (entry) => entry.alias || "Conversation title", baseName: (value) => value.split("/").pop(),
@@ -102,6 +105,7 @@ def eval_session_edit_lifecycle() -> dict:
           return {{
             controller, editNameInput, editSaveBtn, editCancelBtn, editViewer, calls,
             snoozeButtons, editSnoozeCustomRow, alias: () => session.alias,
+            editUuidValue, editUuidCopyBtn,
           }};
         }}
         function active(button) {{
@@ -132,6 +136,12 @@ def eval_session_edit_lifecycle() -> dict:
         const custom = makeController({{ alias: "Original", snoozeUntil: Date.UTC(2026, 0, 3, 11, 0, 0) / 1000 }});
         custom.controller.openEditSession("session-1");
 
+        const uuid = makeController({{ alias: "Original" }});
+        uuid.controller.openEditSession("session-1");
+        uuid.editUuidCopyBtn.onclick({{ preventDefault() {{}} }});
+        const noBind = makeController({{ alias: "Original", threadId: null }});
+        noBind.controller.openEditSession("session-1");
+
         Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve()).then(() => {{
           process.stdout.write(JSON.stringify({{
             save: {{ alias: save.alias(), closed: !save.editViewer.open, calls: save.calls }},
@@ -147,6 +157,8 @@ def eval_session_edit_lifecycle() -> dict:
               eveningLabel: save.snoozeButtons.get("evening").children[0].textContent,
               eveningTime: save.snoozeButtons.get("evening").children[1].textContent,
             }},
+            uuid: {{ text: uuid.editUuidValue.textContent, copyDisabled: uuid.editUuidCopyBtn.disabled, calls: uuid.calls }},
+            noBind: {{ text: noBind.editUuidValue.textContent, copyDisabled: noBind.editUuidCopyBtn.disabled }},
           }}));
         }});
         """
@@ -201,6 +213,17 @@ class TestFrontendSessionEditModule(unittest.TestCase):
             self.result["chips"],
             {"eveningLabel": "This evening", "eveningTime": "· 6pm"},
         )
+
+    def test_session_uuid_row_shows_thread_id_and_copies(self) -> None:
+        uuid = self.result["uuid"]
+        self.assertEqual(uuid["text"], "uuid-1234")
+        self.assertFalse(uuid["copyDisabled"])
+        self.assertIn({"copy": "uuid-1234"}, uuid["calls"])
+
+    def test_session_uuid_row_marks_unbound_sessions(self) -> None:
+        no_bind = self.result["noBind"]
+        self.assertEqual(no_bind["text"], "not bound yet")
+        self.assertTrue(no_bind["copyDisabled"])
 
 
 if __name__ == "__main__":

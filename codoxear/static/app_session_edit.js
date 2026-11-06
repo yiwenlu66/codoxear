@@ -23,6 +23,9 @@ const global = window;
       editSaveBtn,
       editCancelBtn,
       editViewer,
+      editUuidValue = null,
+      editUuidCopyBtn = null,
+      copyText = null,
       getSessionInfo,
       getSessions,
       sessionState,
@@ -45,6 +48,7 @@ const global = window;
       throw new Error("Codoxear session edit controller missing edit dialog dependencies");
     }
     let editSessionId = null;
+    let editThreadId = "";
     let dependencyMenuOpen = false;
     let snoozeMode = "none";
 
@@ -141,6 +145,11 @@ const global = window;
       editSessionId = sid;
       editStatus.textContent = "";
       editSaveBtn.disabled = false;
+      // The backend thread UUID (pi/codex session id) is null until the
+      // session log first binds; show that state instead of an empty row.
+      editThreadId = typeof session.thread_id === "string" && session.thread_id ? session.thread_id : "";
+      if (editUuidValue) editUuidValue.textContent = editThreadId || "not bound yet";
+      if (editUuidCopyBtn) editUuidCopyBtn.disabled = !editThreadId;
       editNameInput.value = typeof session.alias === "string" ? session.alias : "";
       editNameInput.placeholder = sessionDisplayName(session) || "Conversation title";
       editPriorityRange.value = String(Number(session.priority_offset || 0));
@@ -217,6 +226,12 @@ const global = window;
     editViewer.addEventListener("cancel", (event) => { event.preventDefault(); hideEditSession(); });
     editViewer.onclick = (event) => { if (event.target === editViewer) hideEditSession(); };
     editSaveBtn.onclick = () => { void saveEditSession(); };
+    if (editUuidCopyBtn) editUuidCopyBtn.onclick = (event) => {
+      event.preventDefault();
+      if (!editThreadId || typeof copyText !== "function") return;
+      copyText(editThreadId);
+      setToast("session UUID copied");
+    };
     addAppEvent(documentTarget, "click", (event) => {
       const target = event.target instanceof ElementCtor ? event.target : null;
       if (target && dependencyMenuOpen && !target.closest("#editDependencyBtn") && !target.closest("#editDependencyMenu")) closeDependencyMenu();

@@ -3398,6 +3398,21 @@ select {
         #editViewer.formDialog {
           width: min(92vw, 480px);
         }
+        /* Read-only backend thread id: mono, meta-toned, wraps instead of
+           pushing the dialog wider; the copy button stays compact. */
+        .editUuidRow {
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+        }
+        .editUuidValue {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-family: var(--font-mono);
+          font-size: var(--font-sm);
+          color: var(--muted);
+          overflow-wrap: anywhere;
+        }
         #editViewer .editPriorityField {
           width: 100%;
         }
