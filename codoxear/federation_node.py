@@ -46,59 +46,6 @@ class FederationNodeConfig:
     watch_poll_s: float = WATCH_POLL_SECONDS
 
 
-def _split_host_port(raw: str) -> tuple[str, int]:
-    text = raw.strip()
-    if not text:
-        raise ValueError("empty hub address")
-    if text.startswith("["):
-        host, _, rest = text[1:].partition("]")
-        if not rest.startswith(":"):
-            return host, DEFAULT_HUB_PORT
-        return host, int(rest[1:])
-    if ":" in text:
-        host, _, port_text = text.rpartition(":")
-        return host, int(port_text)
-    return text, DEFAULT_HUB_PORT
-
-
-def node_config_from_env(
-    environ: MutableMapping[str, str] | None = None,
-    *,
-    http_port: int,
-    sock_dir: Path,
-) -> FederationNodeConfig | None:
-    """Return the node config when CODEX_WEB_FEDERATION_HUB+TOKEN are set."""
-    env = os.environ if environ is None else environ
-    hub = (env.get(ENV_FEDERATION_HUB) or "").strip()
-    secret = (env.get(ENV_FEDERATION_TOKEN) or "").strip()
-    if not hub or not secret:
-        return None
-    host, port = _split_host_port(hub)
-    name = (env.get(ENV_NODE_NAME) or "").strip() or socket.gethostname()
-    return FederationNodeConfig(
-        hub_host=host,
-        hub_port=port,
-        secret=secret,
-        node_name=name,
-        http_port=int(http_port),
-        sock_dir=sock_dir,
-    )
-
-
-def expected_incoming_token(environ: MutableMapping[str, str] | None = None) -> str | None:
-    """Token a hub must present on proxied HTTP requests to this node.
-
-    Returns None when this server is not configured as a federation node.
-    """
-    env = os.environ if environ is None else environ
-    hub = (env.get(ENV_FEDERATION_HUB) or "").strip()
-    secret = (env.get(ENV_FEDERATION_TOKEN) or "").strip()
-    if not hub or not secret:
-        return None
-    name = (env.get(ENV_NODE_NAME) or "").strip() or socket.gethostname()
-    return federation_proto.federation_token(secret, name)
-
-
 def _meta_fingerprint(meta: dict[str, Any]) -> str:
     canonical = json.dumps(meta, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -132,8 +79,16 @@ class FederationNode:
         self._announced: dict[str, str] = {}
         self._stems: dict[str, str] = {}
         self._stems_lock = threading.Lock()
+        self._last_error: str | None = None
         self._connect_thread: threading.Thread | None = None
         self._watch_thread: threading.Thread | None = None
+
+    def status(self) -> dict[str, Any]:
+        """Live node status for /api/federation."""
+        return {
+            "state": "connected" if self._connected.is_set() else "connecting",
+            "error": self._last_error,
+        }
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -185,8 +140,10 @@ class FederationNode:
         while not self._stop.is_set():
             try:
                 self._run_connection()
-            except (ConnectionError, federation_proto.FederationProtocolError, OSError):
-                pass
+            except (ConnectionError, federation_proto.FederationProtocolError, OSError) as exc:
+                # Never log the token: connection errors reference hosts and
+                # errno text only.
+                self._last_error = f"{type(exc).__name__}: {exc}"
             finally:
                 self._close_conn()
             if self._stop.is_set():
@@ -209,6 +166,7 @@ class FederationNode:
             reply = federation_proto.recv_frame(conn)
             if reply.get("type") != federation_proto.WELCOME:
                 raise ConnectionError("federation hub rejected the hello handshake")
+            self._last_error = None
             with self._send_lock:
                 self._conn = conn
                 self._connected.set()

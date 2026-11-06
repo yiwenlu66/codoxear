@@ -494,6 +494,12 @@ import * as CodoxearWiring from "./app_wiring.js";
           focusModalSurface,
           isModalTargetOpen,
           restoreModalFocus,
+          fetchFederation: () => api("/api/federation"),
+          saveFederation: (config) => api("/api/federation", { method: "POST", body: config }),
+          rotateFederationToken: () => api("/api/federation/token", { method: "POST", body: {} }),
+          fetchNodes: () => api("/api/nodes"),
+          copyText: (text) => copyToClipboard(text),
+          setToast,
         }));
 
         modalIsolationTargets = [

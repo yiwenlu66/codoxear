@@ -121,13 +121,38 @@ v1 deviations from the original sketch:
 
 ## Config
 
+Federation is configured from the web UI (Settings → Federation) and persisted
+in `APP_DIR/federation.json`:
+
+```json
+{
+  "hub":  {"enabled": true, "listen": "0.0.0.0:8744", "token": "<24 hex>"},
+  "node": {"enabled": true, "hub": "hub-host:8744", "token": "<hub token>", "name": "display name"}
+}
+```
+
+Routes (normal UI auth; applied at runtime, no restart):
+
+- `GET /api/federation` — effective config (tokens included: the UI is
+  password-protected and admins copy the hub token to nodes) plus live status
+  (hub listening address; node state connected/connecting/off + last error).
+- `POST /api/federation` — replace config; the file is persisted first, then
+  the hub listener / node client are reconciled (bind conflict → 409 with the
+  saved state still reported). Enabling a hub with no token mints one.
+- `POST /api/federation/token` — rotate the hub token (fresh random 24 hex),
+  persist, and restart the listener under it.
+
+Env vars remain as fallback when no saved file exists (a section present in
+the file wins for that section; missing fields fall back to env per field):
+
 - Hub: `CODEX_WEB_FEDERATION_LISTEN=0.0.0.0:8744`,
   `CODEX_WEB_FEDERATION_TOKEN=<shared secret>`
 - Node: `CODEX_WEB_FEDERATION_HUB=<hub-host>:8744`,
   `CODEX_WEB_FEDERATION_TOKEN=<same>`, `CODEX_WEB_NODE_NAME=<display name>`
   (default: hostname)
 
-Absence of these vars = standalone behavior, zero overhead.
+Absence of both file and vars = standalone behavior, zero overhead. The token
+is never logged.
 
 ## Files
 

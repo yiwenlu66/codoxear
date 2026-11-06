@@ -13,6 +13,8 @@ from .control_routes import handle_control_post_route
 from .diagnostics_routes import handle_diagnostics_get_route
 from .draft_routes import handle_draft_get_route
 from .draft_routes import handle_draft_post_route
+from .federation_routes import handle_federation_get_route
+from .federation_routes import handle_federation_post_route
 from .file_routes import handle_absolute_file_preview_route
 from .file_routes import handle_file_get_route
 from .file_routes import handle_file_write_post_route
@@ -61,6 +63,7 @@ class ServerHandlerDeps:
     message_route_deps: Callable[[], Any]
     control_route_deps: Callable[[], Any]
     hook_route_deps: Callable[[], Any]
+    federation_route_deps: Callable[[], Any]
     # Federation: reverse-proxies /api/sessions/<id>/... for hub-remote
     # sessions to the owning node; None when no federation hub is active.
     federation_proxy: Callable[[Any, str, str], bool] | None = None
@@ -213,6 +216,8 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 match_session_route=self.deps.match_session_route,
             ):
                 return
+            if handle_federation_get_route(self, path=path, deps=self.deps.federation_route_deps()):
+                return
             if handle_control_get_route(
                 self,
                 path=path,
@@ -310,6 +315,8 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 deps=self.deps.session_route_deps(),
                 match_session_route=self.deps.match_session_route,
             ):
+                return
+            if handle_federation_post_route(self, path=path, deps=self.deps.federation_route_deps()):
                 return
             if handle_global_file_post_route(
                 self,
@@ -420,6 +427,7 @@ def make_server_handler(server: Any) -> type[CodoxearHandler]:
             message_route_deps=lambda: server._route_deps_factory().message_route_deps(),
             control_route_deps=lambda: server._route_deps_factory().control_route_deps(),
             hook_route_deps=lambda: server._route_deps_factory().hook_route_deps(),
+            federation_route_deps=lambda: server._route_deps_factory().federation_route_deps(),
             federation_proxy=server._federation_proxy_request,
         )
     )

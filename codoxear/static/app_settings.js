@@ -49,6 +49,14 @@ function createSettingsDialogController(options = {}) {
   const focusModalSurface = options.focusModalSurface || CodoxearModal.focusModalSurface;
   const isModalTargetOpen = options.isModalTargetOpen || CodoxearModal.isModalTargetOpen;
   const restoreModalFocus = options.restoreModalFocus || CodoxearModal.restoreModalFocus;
+  // Federation section deps are optional: without them (tests, stripped-down
+  // embeds) the section hides itself instead of breaking the dialog.
+  const fetchFederation = typeof options.fetchFederation === "function" ? options.fetchFederation : null;
+  const saveFederation = typeof options.saveFederation === "function" ? options.saveFederation : null;
+  const rotateFederationToken = typeof options.rotateFederationToken === "function" ? options.rotateFederationToken : null;
+  const fetchFederationNodes = typeof options.fetchNodes === "function" ? options.fetchNodes : null;
+  const copyText = typeof options.copyText === "function" ? options.copyText : null;
+  const setToast = typeof options.setToast === "function" ? options.setToast : () => {};
 
   const backdrop = el("div", { class: "modalBackdrop", id: "settingsBackdrop" });
   const closeButton = el("button", {
@@ -112,6 +120,55 @@ function createSettingsDialogController(options = {}) {
     "aria-describedby": "settingsCustomCssHint",
   });
 
+  // Federation: hub card (listener + token + attached nodes) and node card
+  // (upstream hub address, token, display name, live status). One Save posts
+  // both cards; the server applies the change without a restart.
+  const textInputAttrs = { type: "text", autocomplete: "off", spellcheck: "false", autocorrect: "off", autocapitalize: "off" };
+  const hubEnabledToggle = el("input", { id: "federationHubEnabled", type: "checkbox" });
+  const hubListenInput = el("input", { id: "federationHubListen", placeholder: "0.0.0.0:8744", ...textInputAttrs });
+  const hubTokenInput = el("input", { id: "federationHubToken", class: "federationTokenInput", readonly: "readonly", ...textInputAttrs });
+  const hubTokenCopyBtn = el("button", { id: "federationHubTokenCopyBtn", class: "text-btn", type: "button", text: "Copy" });
+  const hubTokenRotateBtn = el("button", { id: "federationHubTokenRotateBtn", class: "text-btn", type: "button", text: "Regenerate" });
+  const hubNodesList = el("div", { class: "federationNodesList", id: "federationHubNodesList" });
+  const hubStatusLine = el("span", { class: "fieldHint", id: "federationHubStatus", text: "" });
+  const nodeEnabledToggle = el("input", { id: "federationNodeEnabled", type: "checkbox" });
+  const nodeHubInput = el("input", { id: "federationNodeHub", placeholder: "hub-host:8744", ...textInputAttrs });
+  const nodeTokenInput = el("input", { id: "federationNodeToken", ...textInputAttrs });
+  const nodeNameInput = el("input", { id: "federationNodeName", placeholder: "this-machine", ...textInputAttrs });
+  const nodeConnectBtn = el("button", { id: "federationNodeConnectBtn", class: "text-btn", type: "button", text: "Connect" });
+  const federationSaveBtn = el("button", { id: "federationSaveBtn", class: "primary", type: "button", text: "Save federation" });
+  const nodeStatusLine = el("span", { class: "fieldHint", id: "federationNodeStatus", text: "" });
+  const federationSection = el("section", { class: "settingsSection", id: "federationSettingsSection", "aria-labelledby": "federationSettingsHeading" }, [
+    el("h3", { class: "settingsSectionTitle", id: "federationSettingsHeading", text: "Federation" }),
+    el("div", { class: "field" }, [
+      el("span", { class: "fieldLabel", text: "Hub" }),
+      el("label", { class: "checkField" }, [hubEnabledToggle, el("span", { text: "Accept nodes on this machine" })]),
+    ]),
+    el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Listen address" }), hubListenInput]),
+    el("div", { class: "field" }, [
+      el("span", { class: "fieldLabel", text: "Hub token" }),
+      el("div", { class: "federationTokenRow" }, [hubTokenInput, hubTokenCopyBtn, hubTokenRotateBtn]),
+      el("span", { class: "fieldHint", text: "Copy this token into each node's settings." }),
+    ]),
+    el("div", { class: "field" }, [
+      el("span", { class: "fieldLabel", text: "Attached nodes" }),
+      hubNodesList,
+      hubStatusLine,
+    ]),
+    el("div", { class: "field" }, [
+      el("span", { class: "fieldLabel", text: "Node" }),
+      el("label", { class: "checkField" }, [nodeEnabledToggle, el("span", { text: "Publish this machine's sessions to a hub" })]),
+    ]),
+    el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Hub address" }), nodeHubInput]),
+    el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Hub token" }), nodeTokenInput]),
+    el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Display name" }), nodeNameInput]),
+    el("div", { class: "field" }, [
+      el("div", { class: "federationActions" }, [nodeConnectBtn, federationSaveBtn]),
+      nodeStatusLine,
+    ]),
+  ]);
+  if (!fetchFederation || !saveFederation) federationSection.style.display = "none";
+
   const viewer = el("dialog", { class: "formViewer formDialog", id: "settingsViewer", "aria-label": "Settings", tabindex: "-1" }, [
     el("div", { class: "queueHeader" }, [
       el("div", { class: "title", text: "Settings" }),
@@ -135,6 +192,7 @@ function createSettingsDialogController(options = {}) {
           el("span", { class: "fieldHint", id: "settingsCustomCssHint", text: "Applied live on this device after the theme stylesheet. Stored in this browser only." }),
         ]),
       ]),
+      federationSection,
       voiceSection,
     ]),
   ]);
@@ -167,6 +225,123 @@ function createSettingsDialogController(options = {}) {
 
   const unsubscribe = themeController.subscribe(render);
 
+  let federationBusy = false;
+
+  function renderFederation(config, nodes) {
+    const hub = config && config.hub ? config.hub : {};
+    const node = config && config.node ? config.node : {};
+    const status = config && config.status ? config.status : {};
+    hubEnabledToggle.checked = !!hub.enabled;
+    hubListenInput.value = String(hub.listen || "");
+    hubTokenInput.value = String(hub.token || "");
+    nodeEnabledToggle.checked = !!node.enabled;
+    nodeHubInput.value = String(node.hub || "");
+    nodeTokenInput.value = String(node.token || "");
+    nodeNameInput.value = String(node.name || "");
+    const listening = status.hub && status.hub.listening;
+    hubStatusLine.textContent = hub.enabled ? (listening ? `listening on ${listening}` : "not listening") : "";
+    const nodeStatus = status.node || {};
+    nodeStatusLine.textContent = node.enabled
+      ? `node ${nodeStatus.state || "off"}${nodeStatus.error ? ` — ${nodeStatus.error}` : ""}`
+      : "";
+    nodeConnectBtn.textContent = nodeEnabledToggle.checked ? "Disconnect" : "Connect";
+    hubNodesList.innerHTML = "";
+    if (!nodes.length) {
+      hubNodesList.appendChild(el("span", { class: "fieldHint", text: "No nodes attached." }));
+    }
+    for (const entry of nodes) {
+      const count = Number(entry.session_count || 0);
+      hubNodesList.appendChild(el("div", { class: "federationNodeRow" }, [
+        el("span", { class: "federationNodeName", text: String(entry.name || "") }),
+        el("span", { class: "fieldHint", text: `${count} session${count === 1 ? "" : "s"}` }),
+      ]));
+    }
+  }
+
+  async function refreshFederation() {
+    if (!fetchFederation) return;
+    try {
+      const [config, nodesRes] = await Promise.all([
+        fetchFederation(),
+        fetchFederationNodes ? fetchFederationNodes() : Promise.resolve({ nodes: [] }),
+      ]);
+      renderFederation(config, Array.isArray(nodesRes && nodesRes.nodes) ? nodesRes.nodes : []);
+    } catch (error) {
+      setToast(`federation load error: ${error && error.message ? error.message : "unknown error"}`);
+    }
+  }
+
+  function federationErrorText(error) {
+    if (error && error.obj && typeof error.obj.error === "string") return error.obj.error;
+    return error && error.message ? error.message : "unknown error";
+  }
+
+  async function saveFederationSettings() {
+    if (!saveFederation || federationBusy) return;
+    federationBusy = true;
+    federationSaveBtn.disabled = true;
+    try {
+      const res = await saveFederation({
+        hub: {
+          enabled: hubEnabledToggle.checked,
+          listen: String(hubListenInput.value || "").trim(),
+          token: String(hubTokenInput.value || "").trim(),
+        },
+        node: {
+          enabled: nodeEnabledToggle.checked,
+          hub: String(nodeHubInput.value || "").trim(),
+          token: String(nodeTokenInput.value || "").trim(),
+          name: String(nodeNameInput.value || "").trim(),
+        },
+      });
+      setToast(res && res.ok ? "federation saved" : `federation error: ${res && res.error ? res.error : "unknown error"}`);
+    } catch (error) {
+      setToast(`federation error: ${federationErrorText(error)}`);
+    } finally {
+      federationBusy = false;
+      federationSaveBtn.disabled = false;
+    }
+    void refreshFederation();
+  }
+
+  async function regenerateHubToken() {
+    if (!rotateFederationToken || federationBusy) return;
+    federationBusy = true;
+    hubTokenRotateBtn.disabled = true;
+    try {
+      const res = await rotateFederationToken();
+      if (res && res.token) {
+        hubTokenInput.value = String(res.token);
+        setToast("new hub token generated");
+      }
+    } catch (error) {
+      setToast(`token rotation error: ${federationErrorText(error)}`);
+    } finally {
+      federationBusy = false;
+      hubTokenRotateBtn.disabled = false;
+    }
+    void refreshFederation();
+  }
+
+  function copyHubToken() {
+    const value = String(hubTokenInput.value || "");
+    if (!value || !copyText) return;
+    copyText(value);
+    setToast("hub token copied");
+  }
+
+  addEvent(hubTokenCopyBtn, "click", (event) => { event.preventDefault(); copyHubToken(); });
+  addEvent(hubTokenRotateBtn, "click", (event) => { event.preventDefault(); void regenerateHubToken(); });
+  addEvent(federationSaveBtn, "click", (event) => { event.preventDefault(); void saveFederationSettings(); });
+  addEvent(nodeConnectBtn, "click", (event) => {
+    event.preventDefault();
+    nodeEnabledToggle.checked = !nodeEnabledToggle.checked;
+    void saveFederationSettings();
+  });
+  addEvent(nodeEnabledToggle, "change", () => {
+    nodeConnectBtn.textContent = nodeEnabledToggle.checked ? "Disconnect" : "Connect";
+  });
+
   function flushCustomCss() {
     if (customCssTimer !== null) {
       clearTimeoutFn(customCssTimer);
@@ -196,6 +371,7 @@ function createSettingsDialogController(options = {}) {
     afterModalVisibilityChanged();
     focusModalSurface(viewer);
     activateVoiceSection();
+    void refreshFederation();
   }
 
   function hide() {

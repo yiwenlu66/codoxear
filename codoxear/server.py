@@ -39,6 +39,7 @@ from .control_socket import call_control_socket as _call_control_socket_impl
 from . import federation_hub
 from . import federation_node
 from . import federation_proto
+from . import federation_config
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_complete import complete_session_path as _complete_session_path_impl
 from .file_lock_runtime import file_write_lock as _file_write_lock_impl
@@ -536,18 +537,22 @@ def _decode_message_cursor_target(token: str, *, kind: str, session: "Session") 
 def _federation_header_auth_ok(handler: http.server.BaseHTTPRequestHandler) -> bool:
     """Accept hub-proxied requests carrying a valid X-Federation-Token.
 
-    Only active when this server is configured as a federation node
-    (CODEX_WEB_FEDERATION_HUB + CODEX_WEB_FEDERATION_TOKEN). The expected
-    token is sha256(secret + ":" + own node name), matching the token the hub
-    computed for this node at handshake time.
+    Only active when this server is enabled as a federation node (saved
+    federation.json or CODEX_WEB_FEDERATION_HUB + CODEX_WEB_FEDERATION_TOKEN).
+    The expected token is sha256(secret + ":" + own node name), matching the
+    token the hub computed for this node at handshake time. A malformed
+    config file simply disables this path — it must never break auth.
     """
-    token = federation_node.expected_incoming_token()
-    if token is None:
+    try:
+        config = _federation_effective_config()
+    except Exception:
+        return False
+    if not (config.node_enabled and config.node_token):
         return False
     presented = handler.headers.get(federation_proto.FEDERATION_AUTH_HEADER)
     if not isinstance(presented, str) or not presented:
         return False
-    return hmac.compare_digest(presented, token)
+    return hmac.compare_digest(presented, federation_proto.federation_token(config.node_token, config.node_name))
 
 
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
@@ -1580,9 +1585,22 @@ class SessionManager:
 # Federation (optional; inactive unless CODEX_WEB_FEDERATION_* env is set)
 # --------------------------------------------------------------------- #
 
+FEDERATION_CONFIG_PATH = APP_DIR / "federation.json"
+
 _FEDERATION_STATE_LOCK = threading.Lock()
 _FEDERATION_HUB: federation_hub.FederationHub | None = None
 _FEDERATION_NODE: federation_node.FederationNode | None = None
+# The server's bound HTTP port, captured at startup; the node client
+# advertises it in its hello so the hub can reverse-proxy content routes.
+_FEDERATION_HTTP_PORT: int | None = None
+
+
+class FederationApplyError(RuntimeError):
+    """A federation settings change was saved but could not be applied."""
+
+    def __init__(self, message: str, *, status: int = 500):
+        super().__init__(message)
+        self.status = int(status)
 
 
 def _federation_hub_active() -> bool:
@@ -1593,6 +1611,202 @@ def _federation_node_rows() -> list[dict[str, Any]]:
     """Connected federation node rows for /api/nodes; empty without a hub."""
     hub = federation_hub.active_hub()
     return hub.node_rows() if hub is not None else []
+
+
+def _federation_effective_config() -> federation_config.EffectiveFederationConfig:
+    saved = federation_config.load_federation_settings(FEDERATION_CONFIG_PATH)
+    return federation_config.resolve_effective_config(saved)
+
+
+def _apply_federation_config(*, http_port: int | None = None, node_watch_poll_s: float | None = None) -> federation_config.EffectiveFederationConfig:
+    """Reconcile the running hub listener / node client with the effective config.
+
+    Idempotent: an unchanged config leaves running components alone; a changed
+    one stops and replaces it. Hub bind failures raise FederationApplyError
+    (409 on EADDRINUSE) with the previous hub already stopped if it differed.
+    """
+    global _FEDERATION_HUB, _FEDERATION_NODE, _FEDERATION_HTTP_PORT
+    if http_port is not None:
+        _FEDERATION_HTTP_PORT = int(http_port)
+    config = _federation_effective_config()
+    with _FEDERATION_STATE_LOCK:
+        desired_hub: federation_hub.FederationHubConfig | None = None
+        if config.hub_enabled and config.hub_token:
+            try:
+                host, port = federation_proto.parse_host_port(config.hub_listen)
+            except (ValueError, TypeError) as exc:
+                raise FederationApplyError(f"invalid hub listen address {config.hub_listen!r}: {exc}", status=400) from exc
+            desired_hub = federation_hub.FederationHubConfig(
+                listen_host=host,
+                listen_port=port,
+                secret=config.hub_token,
+                sock_dir=SOCK_DIR,
+            )
+        current_hub = _FEDERATION_HUB
+        if current_hub is not None and current_hub.config != desired_hub:
+            _FEDERATION_HUB = None
+            federation_hub.set_active_hub(None)
+            current_hub.stop()
+        if desired_hub is not None and _FEDERATION_HUB is None:
+            hub = federation_hub.FederationHub(desired_hub, drop_sessions=_drop_federation_sessions)
+            try:
+                hub.start()
+            except OSError as exc:
+                status = 409 if exc.errno == errno.EADDRINUSE else 500
+                raise FederationApplyError(
+                    f"cannot bind federation hub listener {config.hub_listen}: {exc.strerror or exc}",
+                    status=status,
+                ) from exc
+            _FEDERATION_HUB = hub
+            federation_hub.set_active_hub(hub)
+
+        desired_node: federation_node.FederationNodeConfig | None = None
+        if config.node_enabled and config.node_hub and config.node_token:
+            try:
+                host, port = federation_proto.parse_host_port(config.node_hub)
+            except (ValueError, TypeError) as exc:
+                raise FederationApplyError(f"invalid hub address {config.node_hub!r}: {exc}", status=400) from exc
+            desired_node = federation_node.FederationNodeConfig(
+                hub_host=host,
+                hub_port=port,
+                secret=config.node_token,
+                node_name=config.node_name,
+                http_port=_FEDERATION_HTTP_PORT or DEFAULT_PORT,
+                sock_dir=SOCK_DIR,
+                watch_poll_s=node_watch_poll_s if node_watch_poll_s is not None else federation_node.WATCH_POLL_SECONDS,
+            )
+        current_node = _FEDERATION_NODE
+        if current_node is not None and current_node.config != desired_node:
+            _FEDERATION_NODE = None
+            current_node.stop()
+        if desired_node is not None and _FEDERATION_NODE is None:
+            node = federation_node.FederationNode(
+                desired_node,
+                launch_session=_federation_launch_session,
+                is_mirrored_session=federation_hub.is_mirrored_session,
+            )
+            node.start()
+            _FEDERATION_NODE = node
+    return config
+
+
+def _federation_status_payload() -> dict[str, Any]:
+    """Effective config plus live hub/node status for GET /api/federation."""
+    try:
+        config = _federation_effective_config()
+        config_error = None
+    except Exception as exc:
+        # A malformed federation.json must not 500 the settings UI: report the
+        # env-only fallback plus the error so the user can fix the file.
+        config = federation_config.resolve_effective_config(None)
+        config_error = f"{type(exc).__name__}: {exc}"
+    with _FEDERATION_STATE_LOCK:
+        hub, node = _FEDERATION_HUB, _FEDERATION_NODE
+    hub_status: dict[str, Any] = {
+        "listening": f"{hub.config.listen_host}:{hub.port}" if hub is not None else None,
+    }
+    node_status: dict[str, Any] = {"state": "off", "error": None, "name": config.node_name}
+    if node is not None:
+        live = node.status()
+        node_status = {"state": live["state"], "error": live["error"], "name": config.node_name}
+    elif config.node_enabled:
+        node_status = {"state": "off", "error": "node enabled but missing hub address or token", "name": config.node_name}
+    payload = federation_config.public_config_payload(config)
+    payload["status"] = {"hub": hub_status, "node": node_status}
+    if config_error:
+        payload["config_error"] = config_error
+    return payload
+
+
+def _clean_federation_field(value: Any) -> str:
+    return str(value).strip() if isinstance(value, str) else ""
+
+
+def _federation_apply_settings(obj: dict[str, Any], *, node_watch_poll_s: float | None = None) -> None:
+    """Validate, persist, and apply a replacement federation config.
+
+    Omitted token fields retain the current effective token, so the UI never
+    accidentally wipes a secret by posting a partial form.
+    """
+    current = _federation_effective_config()
+    hub_in = obj.get("hub") if isinstance(obj.get("hub"), dict) else {}
+    node_in = obj.get("node") if isinstance(obj.get("node"), dict) else {}
+
+    hub_enabled = bool(hub_in.get("enabled", current.hub_enabled))
+    hub_listen = _clean_federation_field(hub_in.get("listen")) or current.hub_listen
+    hub_token = _clean_federation_field(hub_in.get("token")) or current.hub_token
+    if hub_enabled and not hub_token:
+        # Enabling a hub without any token would reject every node; mint one.
+        hub_token = federation_config.generate_token()
+    if hub_enabled:
+        try:
+            federation_proto.parse_host_port(hub_listen)
+        except (ValueError, TypeError) as exc:
+            raise FederationApplyError(f"invalid hub listen address {hub_listen!r}: {exc}", status=400) from exc
+
+    node_enabled = bool(node_in.get("enabled", current.node_enabled))
+    node_hub = _clean_federation_field(node_in.get("hub")) or current.node_hub
+    node_token = _clean_federation_field(node_in.get("token")) or current.node_token
+    node_name = _clean_federation_field(node_in.get("name")) or current.node_name
+    if node_enabled:
+        if not node_hub or not node_token:
+            raise FederationApplyError("node enable requires a hub address and token", status=400)
+        try:
+            federation_proto.parse_host_port(node_hub)
+        except (ValueError, TypeError) as exc:
+            raise FederationApplyError(f"invalid hub address {node_hub!r}: {exc}", status=400) from exc
+
+    # Persist first, then apply; the route reports the saved state even when
+    # apply raises.
+    federation_config.save_federation_settings(FEDERATION_CONFIG_PATH, {
+        "hub": {"enabled": hub_enabled, "listen": hub_listen, "token": hub_token},
+        "node": {"enabled": node_enabled, "hub": node_hub, "token": node_token, "name": node_name},
+    })
+    _apply_federation_config(node_watch_poll_s=node_watch_poll_s)
+
+
+def _federation_rotate_token() -> dict[str, Any]:
+    """Generate a fresh hub token, persist it, and restart the hub listener."""
+    current = _federation_effective_config()
+    token = federation_config.generate_token()
+    federation_config.save_federation_settings(FEDERATION_CONFIG_PATH, {
+        "hub": {"enabled": current.hub_enabled, "listen": current.hub_listen, "token": token},
+        "node": {
+            "enabled": current.node_enabled,
+            "hub": current.node_hub,
+            "token": current.node_token,
+            "name": current.node_name,
+        },
+    })
+    _apply_federation_config()
+    return {"token": token}
+
+
+def _start_federation(http_port: int) -> None:
+    """Apply the effective federation config at server startup.
+
+    *http_port* is the server's actual bound port, advertised in the node
+    hello so the hub can reverse-proxy content routes back here. A bad saved
+    config (e.g. a stale listen port) is logged and skipped — the server must
+    still come up so the user can fix the config from the UI.
+    """
+    try:
+        _apply_federation_config(http_port=http_port)
+    except FederationApplyError as exc:
+        sys.stderr.write(f"error: federation: {exc}\n")
+
+
+def _stop_federation() -> None:
+    global _FEDERATION_HUB, _FEDERATION_NODE
+    with _FEDERATION_STATE_LOCK:
+        node, hub = _FEDERATION_NODE, _FEDERATION_HUB
+        _FEDERATION_NODE = None
+        _FEDERATION_HUB = None
+        federation_hub.set_active_hub(None)
+    if node is not None:
+        node.stop()
+    if hub is not None:
+        hub.stop()
 
 
 def _drop_federation_sessions(session_ids: list[str]) -> None:
@@ -1655,44 +1869,6 @@ def _federation_proxy_request(handler: http.server.BaseHTTPRequestHandler, path:
         query=query,
         read_body=_read_body,
     )
-
-
-def _start_federation(http_port: int) -> None:
-    """Start the hub listener and/or node client from CODEX_WEB_FEDERATION_*.
-
-    *http_port* is the server's actual bound port, advertised in the node
-    hello so the hub can reverse-proxy content routes back here.
-    """
-    global _FEDERATION_HUB, _FEDERATION_NODE
-    with _FEDERATION_STATE_LOCK:
-        hub_config = federation_hub.hub_config_from_env(sock_dir=SOCK_DIR)
-        if hub_config is not None and _FEDERATION_HUB is None:
-            hub = federation_hub.FederationHub(hub_config, drop_sessions=_drop_federation_sessions)
-            hub.start()
-            _FEDERATION_HUB = hub
-            federation_hub.set_active_hub(hub)
-        node_config = federation_node.node_config_from_env(http_port=http_port, sock_dir=SOCK_DIR)
-        if node_config is not None and _FEDERATION_NODE is None:
-            node = federation_node.FederationNode(
-                node_config,
-                launch_session=_federation_launch_session,
-                is_mirrored_session=federation_hub.is_mirrored_session,
-            )
-            node.start()
-            _FEDERATION_NODE = node
-
-
-def _stop_federation() -> None:
-    global _FEDERATION_HUB, _FEDERATION_NODE
-    with _FEDERATION_STATE_LOCK:
-        node, hub = _FEDERATION_NODE, _FEDERATION_HUB
-        _FEDERATION_NODE = None
-        _FEDERATION_HUB = None
-        federation_hub.set_active_hub(None)
-    if node is not None:
-        node.stop()
-    if hub is not None:
-        hub.stop()
 
 
 MANAGER: Any = None

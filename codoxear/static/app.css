@@ -3719,6 +3719,43 @@ select {
         font-weight: 600;
         color: var(--text);
       }
+      /* Federation settings: token row keeps a mono readout beside compact
+         actions; node rows mirror the file-menu path/hint split. */
+      .federationTokenRow {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .federationTokenRow .federationTokenInput {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: var(--font-sm);
+      }
+      .federationTokenRow .text-btn {
+        flex: 0 0 auto;
+      }
+      .federationNodesList {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+      }
+      .federationNodeRow {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-3);
+      }
+      .federationNodeRow .federationNodeName {
+        font-family: var(--font-mono);
+        font-size: var(--font-sm);
+        color: var(--text);
+      }
+      .federationActions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
       #voiceSettingsStatus:empty {
         display: none;
       }

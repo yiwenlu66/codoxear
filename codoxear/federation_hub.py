@@ -52,36 +52,6 @@ class FederationHubConfig:
     sock_dir: Path
 
 
-def _split_host_port(raw: str, *, default_port: int) -> tuple[str, int]:
-    text = raw.strip()
-    if not text:
-        raise ValueError("empty host:port")
-    if text.startswith("["):  # [::1]:8744
-        host, _, rest = text[1:].partition("]")
-        if not rest.startswith(":"):
-            return host, default_port
-        return host, int(rest[1:])
-    if ":" in text:
-        host, _, port_text = text.rpartition(":")
-        return host, int(port_text)
-    return text, default_port
-
-
-def hub_config_from_env(
-    environ: MutableMapping[str, str] | None = None,
-    *,
-    sock_dir: Path,
-) -> FederationHubConfig | None:
-    """Return the hub config when CODEX_WEB_FEDERATION_LISTEN+TOKEN are set."""
-    env = os.environ if environ is None else environ
-    listen = (env.get(ENV_FEDERATION_LISTEN) or "").strip()
-    secret = (env.get(ENV_FEDERATION_TOKEN) or "").strip()
-    if not listen or not secret:
-        return None
-    host, port = _split_host_port(listen, default_port=8744)
-    return FederationHubConfig(listen_host=host, listen_port=port, secret=secret, sock_dir=sock_dir)
-
-
 class _PendingCall:
     def __init__(self) -> None:
         self.event = threading.Event()

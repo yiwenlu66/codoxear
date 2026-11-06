@@ -227,6 +227,7 @@ def _hub_path_patches(app: Path) -> dict[str, Any]:
         "CC_SETTINGS_PATH": app / "cc_home" / "settings.json",
         "SESSION_SNAPSHOT_PATH": app / "session_snapshot.json",
         "HMAC_SECRET": _TEST_SECRET,
+        "FEDERATION_CONFIG_PATH": app / "federation.json",
     }
 
 
@@ -493,8 +494,9 @@ def test_nodes_endpoint_empty_without_federation(monkeypatch):
         thread.join(timeout=3)
 
 
-def test_federation_token_auth_acceptance_on_node(monkeypatch):
+def test_federation_token_auth_acceptance_on_node(monkeypatch, tmp_path):
     """Node-side auth: X-Federation-Token unlocks API routes when node-configured."""
+    monkeypatch.setattr(server, "FEDERATION_CONFIG_PATH", tmp_path / "federation.json")
     monkeypatch.setenv(federation_node.ENV_FEDERATION_HUB, "127.0.0.1:8744")
     monkeypatch.setenv(federation_node.ENV_FEDERATION_TOKEN, SECRET)
     monkeypatch.setenv(federation_node.ENV_NODE_NAME, NODE_NAME)

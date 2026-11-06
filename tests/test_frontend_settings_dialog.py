@@ -171,8 +171,8 @@ def test_dialog_is_a_form_viewer_with_appearance_then_voice_sections() -> None:
     # Appearance is reversible through the swatches, mode chips, and clearing
     # the CSS field; there is no dedicated reset control. The swatch row order
     # is clay (default), slate, paper.
-    assert data["buttons"] == ["settingsCloseBtn", "clay", "slate", "paper", "system", "light", "dark"]
-    assert data["sections"] == [["SECTION", "appearanceSettingsSection", "Appearance"], ["SECTION", "voiceSettingsSection", None]]
+    assert data["buttons"] == ["settingsCloseBtn", "clay", "slate", "paper", "system", "light", "dark", "federationHubTokenCopyBtn", "federationHubTokenRotateBtn", "federationNodeConnectBtn", "federationSaveBtn"]
+    assert data["sections"] == [["SECTION", "appearanceSettingsSection", "Appearance"], ["SECTION", "federationSettingsSection", "Federation"], ["SECTION", "voiceSettingsSection", None]]
     assert data["voiceMountedInBody"] is True
     assert data["mounted"] == ["settingsBackdrop", "settingsViewer"]
     assert data["initial"] == {"family": ["clay"], "mode": ["system"], "swatchMode": "light", "checked": "truefalsefalse"}

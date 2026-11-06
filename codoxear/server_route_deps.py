@@ -11,6 +11,7 @@ from .server_config import ServerConfig
 from .control_routes import ControlRouteDeps
 from .diagnostics_routes import DiagnosticsRouteDeps
 from .draft_routes import DraftRouteDeps
+from .federation_routes import FederationRouteDeps
 from .file_routes import FileGetRouteDeps
 from .file_routes import FileWriteRouteDeps
 from .file_routes import GlobalFileRouteDeps
@@ -175,6 +176,18 @@ class ServerRouteDepsFactory:
             session_launch_error=server.SessionLaunchError,
             federation_launch=server._federation_launch_on_node if server._federation_hub_active() else None,
             list_federation_nodes=server._federation_node_rows,
+        )
+
+    def federation_route_deps(self) -> FederationRouteDeps:
+        server = self.server
+        return FederationRouteDeps(
+            require_auth=server._require_auth,
+            json_response=server._json_response,
+            read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+            status_payload=server._federation_status_payload,
+            apply_settings=server._federation_apply_settings,
+            rotate_token=server._federation_rotate_token,
+            apply_error=server.FederationApplyError,
         )
 
     def snapshot_route_deps(self) -> SnapshotRouteDeps:

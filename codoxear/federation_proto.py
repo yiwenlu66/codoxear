@@ -39,6 +39,22 @@ def federation_token(secret: str, node_name: str) -> str:
     return hashlib.sha256(f"{secret}:{node_name}".encode("utf-8")).hexdigest()
 
 
+def parse_host_port(raw: str, *, default_port: int = 8744) -> tuple[str, int]:
+    """Parse "host:port" / "host" / "[v6]:port" federation addresses."""
+    text = str(raw).strip()
+    if not text:
+        raise ValueError("empty host:port")
+    if text.startswith("["):  # [::1]:8744
+        host, _, rest = text[1:].partition("]")
+        if not rest.startswith(":"):
+            return host, default_port
+        return host, int(rest[1:])
+    if ":" in text:
+        host, _, port_text = text.rpartition(":")
+        return host, int(port_text)
+    return text, default_port
+
+
 def token_matches(secret: str, node_name: str, token: Any) -> bool:
     """Constant-time check of *token* against the expected node token."""
     if not isinstance(token, str) or not token:
