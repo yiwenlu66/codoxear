@@ -40,11 +40,20 @@ def run_main(server: Any) -> None:
     else:
         httpd = ThreadingHTTPServer((host, server.DEFAULT_PORT), server.Handler)
 
+    # Optional federation: hub listener and/or node client, driven entirely by
+    # CODEX_WEB_FEDERATION_* env vars; a no-op when they are absent. The node
+    # advertises the actual bound HTTP port to its hub.
+    server._start_federation(httpd.server_address[1])
+
     def _sigterm(_signo: int, _frame: Any) -> None:
+        server._stop_federation()
         server.MANAGER.stop()
         threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, _sigterm)
     signal.signal(signal.SIGINT, _sigterm)
 
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    finally:
+        server._stop_federation()

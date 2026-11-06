@@ -1,6 +1,8 @@
 from frontend_module_loader import module_path
 import json
+import os
 import subprocess
+import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -11,6 +13,20 @@ LAUNCH = module_path("app_launch.js")
 DISPLAY = module_path("app_display.js")
 NEW_SESSION = module_path("app_new_session.js")
 SESSION_CATALOG = module_path("app_session_catalog.js")
+
+
+def _run_node_script(script: str) -> str:
+    # The script embeds several frontend sources; once their combined size
+    # crosses the kernel per-argument limit (MAX_ARG_STRLEN, 128 KiB) `node -e`
+    # fails with E2BIG, so execute the script from a temp file instead.
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+        handle.write(script)
+        script_path = handle.name
+    try:
+        proc = subprocess.run(["node", script_path], check=True, text=True, capture_output=True)
+        return proc.stdout
+    finally:
+        os.unlink(script_path)
 
 
 def eval_model_options(
@@ -54,8 +70,7 @@ def eval_model_options(
         process.stdout.write(JSON.stringify({{options,filtered,parsed,input:selectedInput,provider,literal,absent,longDisplay,longParsed}}));
         """
     )
-    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
-    return json.loads(proc.stdout)
+    return json.loads(_run_node_script(script))
 
 
 def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None, cwd_value: str = "") -> dict:
@@ -85,8 +100,7 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
         process.stdout.write(JSON.stringify({{recent:c.filteredRecentCwdOptions(),menu:c.cwdMenuOptions("")}}));
         """
     )
-    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
-    return json.loads(proc.stdout)
+    return json.loads(_run_node_script(script))
 
 
 class TestNewSessionModelOptionsBehavior(unittest.TestCase):

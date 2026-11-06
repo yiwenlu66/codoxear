@@ -36,6 +36,9 @@ from .client_file_paths import resolve_unique_bare_filename as _resolve_unique_b
 from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
+from . import federation_hub
+from . import federation_node
+from . import federation_proto
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_complete import complete_session_path as _complete_session_path_impl
 from .file_lock_runtime import file_write_lock as _file_write_lock_impl
@@ -530,7 +533,26 @@ def _decode_message_cursor_target(token: str, *, kind: str, session: "Session") 
         secret=HMAC_SECRET,
     )
 
+def _federation_header_auth_ok(handler: http.server.BaseHTTPRequestHandler) -> bool:
+    """Accept hub-proxied requests carrying a valid X-Federation-Token.
+
+    Only active when this server is configured as a federation node
+    (CODEX_WEB_FEDERATION_HUB + CODEX_WEB_FEDERATION_TOKEN). The expected
+    token is sha256(secret + ":" + own node name), matching the token the hub
+    computed for this node at handshake time.
+    """
+    token = federation_node.expected_incoming_token()
+    if token is None:
+        return False
+    presented = handler.headers.get(federation_proto.FEDERATION_AUTH_HEADER)
+    if not isinstance(presented, str) or not presented:
+        return False
+    return hmac.compare_digest(presented, token)
+
+
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
+    if _federation_header_auth_ok(handler):
+        return True
     return _require_auth_impl(handler, settings=_cookie_auth_settings(), verify=_verify_cookie)
 
 
@@ -1562,6 +1584,125 @@ class SessionManager:
             track_request_sent=track_request_sent,
             interrupt=interrupt,
         )
+
+
+# --------------------------------------------------------------------- #
+# Federation (optional; inactive unless CODEX_WEB_FEDERATION_* env is set)
+# --------------------------------------------------------------------- #
+
+_FEDERATION_STATE_LOCK = threading.Lock()
+_FEDERATION_HUB: federation_hub.FederationHub | None = None
+_FEDERATION_NODE: federation_node.FederationNode | None = None
+
+
+def _federation_hub_active() -> bool:
+    return federation_hub.active_hub() is not None
+
+
+def _federation_node_rows() -> list[dict[str, Any]]:
+    """Connected federation node rows for /api/nodes; empty without a hub."""
+    hub = federation_hub.active_hub()
+    return hub.node_rows() if hub is not None else []
+
+
+def _drop_federation_sessions(session_ids: list[str]) -> None:
+    """Remove hub-mirrored sessions from the registry when their node leaves.
+
+    Mirrored sidecars point broker_pid/codex_pid at this process, so the
+    watchdog's dead-pid rules can never tombstone them; the hub removes the
+    registry rows directly when it removes the mirror files.
+    """
+    manager = MANAGER
+    if manager is None:
+        return
+    with manager._lock:
+        for session_id in session_ids:
+            manager._sessions.pop(session_id, None)
+
+
+def _federation_launch_session(params: dict[str, Any]) -> dict[str, Any]:
+    """Node side: spawn a session for a hub launch frame via the manager."""
+    manager = MANAGER
+    if manager is None:
+        raise RuntimeError("session manager not initialized")
+    args = params.get("args")
+    return manager.spawn_web_session(
+        cwd=str(params.get("cwd") or ""),
+        args=[str(x) for x in args if x] if isinstance(args, list) else None,
+        agent_backend=str(params.get("agent_backend") or DEFAULT_AGENT_BACKEND),
+        resume_session_id=params.get("resume_session_id"),
+        worktree_branch=params.get("worktree_branch"),
+        model_provider=params.get("model_provider"),
+        preferred_auth_method=params.get("preferred_auth_method"),
+        model=params.get("model"),
+        reasoning_effort=params.get("reasoning_effort"),
+        service_tier=params.get("service_tier"),
+        create_in_tmux=bool(params.get("create_in_tmux")),
+    )
+
+
+def _federation_launch_on_node(node_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    hub = federation_hub.active_hub()
+    if hub is None:
+        raise RuntimeError("federation hub is not active")
+    return hub.launch_on_node(node_name, params)
+
+
+def _federation_proxy_request(handler: http.server.BaseHTTPRequestHandler, path: str, query: str) -> bool:
+    """Reverse-proxy a hub request for a federation-remote session to its node."""
+    if federation_hub.active_hub() is None:
+        return False
+    session_id = federation_hub.remote_session_id_for_path(path)
+    if session_id is None:
+        return False
+    if not _require_auth(handler):
+        handler._unauthorized()
+        return True
+    return federation_hub.proxy_request_to_node(
+        handler,
+        session_id=session_id,
+        path=path,
+        query=query,
+        read_body=_read_body,
+    )
+
+
+def _start_federation(http_port: int) -> None:
+    """Start the hub listener and/or node client from CODEX_WEB_FEDERATION_*.
+
+    *http_port* is the server's actual bound port, advertised in the node
+    hello so the hub can reverse-proxy content routes back here.
+    """
+    global _FEDERATION_HUB, _FEDERATION_NODE
+    with _FEDERATION_STATE_LOCK:
+        hub_config = federation_hub.hub_config_from_env(sock_dir=SOCK_DIR)
+        if hub_config is not None and _FEDERATION_HUB is None:
+            hub = federation_hub.FederationHub(hub_config, drop_sessions=_drop_federation_sessions)
+            hub.start()
+            _FEDERATION_HUB = hub
+            federation_hub.set_active_hub(hub)
+        node_config = federation_node.node_config_from_env(http_port=http_port, sock_dir=SOCK_DIR)
+        if node_config is not None and _FEDERATION_NODE is None:
+            node = federation_node.FederationNode(
+                node_config,
+                launch_session=_federation_launch_session,
+                is_mirrored_session=federation_hub.is_mirrored_session,
+            )
+            node.start()
+            _FEDERATION_NODE = node
+
+
+def _stop_federation() -> None:
+    global _FEDERATION_HUB, _FEDERATION_NODE
+    with _FEDERATION_STATE_LOCK:
+        node, hub = _FEDERATION_NODE, _FEDERATION_HUB
+        _FEDERATION_NODE = None
+        _FEDERATION_HUB = None
+        federation_hub.set_active_hub(None)
+    if node is not None:
+        node.stop()
+    if hub is not None:
+        hub.stop()
 
 
 MANAGER: Any = None

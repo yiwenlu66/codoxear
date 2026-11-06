@@ -102,6 +102,8 @@ class ActiveSessionRowFacts:
     subagent_details: list[dict[str, Any]] = field(default_factory=list)
     attachments_revision: int = 0
     run_settings_log_revision: tuple[int, int, int, int] | None = None
+    # Federation: owning node display name for mirrored sessions.
+    node_name: str | None = None
 
 
 def clip01(value: float) -> float:
@@ -253,7 +255,7 @@ def _public_subagent_details(runs: Sequence[Mapping[str, Any]]) -> list[dict[str
 
 def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
     commit_unknown = facts.commit_unknown_send if isinstance(facts.commit_unknown_send, Mapping) else None
-    return {
+    row = {
         "session_id": facts.session_id,
         "thread_id": facts.thread_id,
         "pid": facts.pid,
@@ -325,6 +327,9 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "subagents_running": max(0, int(facts.subagents_running)),
         "subagent_details": _public_subagent_details(facts.subagent_details),
     }
+    if facts.node_name:
+        row["node"] = facts.node_name
+    return row
 
 
 def _log_revision(log_path: Path | None) -> tuple[int, int, int, int] | None:
@@ -517,6 +522,7 @@ def build_active_session_rows_snapshot(
                     subagents_running=len(matching_subagents),
                     subagent_details=[dict(run) for run in matching_subagents if isinstance(run, Mapping)],
                     run_settings_log_revision=log_revision,
+                    node_name=s.node_name,
                 )
             )
         )

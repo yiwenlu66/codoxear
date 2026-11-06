@@ -849,6 +849,10 @@ function requireFunction(value, name) {
     const setPickerButtonContent = requireFunction(options.setPickerButtonContent, "setPickerButtonContent");
     const fetchResumeCandidates = requireFunction(options.fetchResumeCandidates, "fetchResumeCandidates");
     const spawnSession = requireFunction(options.spawnSession, "spawnSession");
+    // Federation is optional: without a hub the dialog simply hides the host
+    // row, so a missing fetchNodes (tests, standalone servers) degrades to
+    // "This machine" only.
+    const fetchNodes = typeof options.fetchNodes === "function" ? options.fetchNodes : async () => ({ nodes: [] });
 
     let backend = "pi";
     let provider = "chatgpt";
@@ -877,6 +881,12 @@ function requireFunction(value, name) {
     let resumeMenuOpen = false;
     let startBusy = false;
     let returnFocusEl = null;
+    // Federation host picker: "" means launch on this machine. federationNodes
+    // is refreshed from /api/nodes on each dialog open.
+    let selectedHost = "";
+    let federationNodes = [];
+    let hostMenuOpen = false;
+    let hostLoadSeq = 0;
 
     const backdrop = el("div", { class: "modalBackdrop", id: "newSessionBackdrop" });
     const closeBtn = el("button", { id: "newSessionCloseBtn", class: "icon-btn", title: "Close", "aria-label": "Close", type: "button", html: iconSvg("x") });
@@ -897,6 +907,11 @@ function requireFunction(value, name) {
     const reasoningField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionReasoningField" }, [el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }), reasoningBtn]);
     const resumeBtn = el("button", { id: "newSessionResumeBtn", class: "filePickerBtn dialogPickerBtn sidePickerBtn", type: "button", "aria-label": "Choose a conversation to resume", "aria-haspopup": "menu", "aria-expanded": "false" });
     const resumeMenu = el("div", { id: "newSessionResumeMenu", class: "filePickerMenu dialogPickerMenu" });
+    const hostBtn = el("button", { id: "newSessionHostBtn", class: "filePickerBtn dialogPickerBtn sidePickerBtn", type: "button", "aria-label": "Choose host", "aria-haspopup": "menu", "aria-expanded": "false" });
+    const hostMenu = el("div", { id: "newSessionHostMenu", class: "filePickerMenu dialogPickerMenu" });
+    const hostField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionHostField" }, [el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }), hostBtn]);
+    const hostRow = el("label", { class: "field", id: "newSessionHostRow" }, [el("span", { class: "fieldLabel", text: "Host" }), hostField]);
+    hostRow.style.display = "none";
     const tmuxToggle = el("input", { id: "newSessionTmuxToggle", type: "checkbox" });
     const tmuxField = el("div", { class: "field", id: "newSessionTmuxField" }, [el("span", { class: "fieldLabel", text: "Launch mode" }), el("label", { class: "checkField" }, [tmuxToggle, el("span", { text: "Create in tmux" })])]);
     const fastToggle = el("input", { id: "newSessionFastToggle", type: "checkbox" });
@@ -910,6 +925,7 @@ function requireFunction(value, name) {
       el("div", { class: "queueHeader" }, [el("div", { class: "newSessionHeaderLead" }, [el("div", { class: "title", text: "New session" }), backendTabs, backendName]), el("div", { class: "actions" }, [closeBtn])]),
       status,
       el("div", { class: "formBody" }, [
+        hostRow,
         el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Working directory" }), cwdField, cwdHint]),
         el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Session name" }), nameInput]),
         el("div", { class: "formGrid newSessionRunConfigRow" }, [el("label", { class: "field" }, [modelLabel, modelField]), el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Reasoning effort" }), reasoningField]), fastField]),
@@ -924,12 +940,51 @@ function requireFunction(value, name) {
     viewer.appendChild(modelMenu);
     viewer.appendChild(reasoningMenu);
     viewer.appendChild(resumeMenu);
+    viewer.appendChild(hostMenu);
 
     function closeMenus() {
       dismissCwdPicker();
       dismissModelPicker();
       reasoningMenuOpen = false;
       resumeMenuOpen = false;
+      hostMenuOpen = false;
+    }
+
+    function hostOptions() {
+      return [{ value: "", label: "This machine" }].concat(
+        federationNodes.map((node) => ({ value: node.name, label: node.name })),
+      );
+    }
+
+    function syncHostUi() {
+      if (selectedHost && !federationNodes.some((node) => node.name === selectedHost)) selectedHost = "";
+      hostRow.style.display = federationNodes.length ? "" : "none";
+      const current = hostOptions().find((option) => option.value === selectedHost) || hostOptions()[0];
+      setPickerButtonContent(hostBtn, current.label);
+    }
+
+    function renderHostMenu() {
+      hostMenu.innerHTML = "";
+      for (const option of hostOptions()) {
+        const btn = el("button", { class: "fileMenuItem" + (selectedHost === option.value ? " active" : ""), type: "button", title: option.label, role: "option", "aria-selected": selectedHost === option.value ? "true" : "false" });
+        btn.appendChild(el("span", { class: "fileMenuPath", text: option.label }));
+        btn.onclick = () => { selectedHost = option.value; hostMenuOpen = false; syncHostUi(); applyDialogMenus(); };
+        hostMenu.appendChild(btn);
+      }
+    }
+
+    async function refreshHosts() {
+      const seq = ++hostLoadSeq;
+      let nodes = [];
+      try {
+        const res = await fetchNodes();
+        nodes = Array.isArray(res && res.nodes) ? res.nodes.filter((node) => node && typeof node.name === "string" && node.name.trim()) : [];
+      } catch (_) {
+        nodes = [];
+      }
+      if (seq !== hostLoadSeq) return;
+      federationNodes = nodes;
+      syncHostUi();
     }
 
     function renderReasoningMenu() {
@@ -1113,11 +1168,11 @@ function requireFunction(value, name) {
     }
 
     function applyMenus() {
-      cwdMenu.classList.toggle("open", cwdMenuOpen); modelMenu.classList.toggle("open", modelMenuOpen); reasoningMenu.classList.toggle("open", reasoningMenuOpen); resumeMenu.classList.toggle("open", resumeMenuOpen);
+      cwdMenu.classList.toggle("open", cwdMenuOpen); modelMenu.classList.toggle("open", modelMenuOpen); reasoningMenu.classList.toggle("open", reasoningMenuOpen); resumeMenu.classList.toggle("open", resumeMenuOpen); hostMenu.classList.toggle("open", hostMenuOpen);
       cwdInput.setAttribute("aria-expanded", cwdMenuOpen ? "true" : "false"); if (!cwdMenuOpen && cwdMenuFocus < 0) cwdInput.removeAttribute("aria-activedescendant");
       modelInput.setAttribute("aria-expanded", modelMenuOpen ? "true" : "false"); if (!modelMenuOpen && modelMenuFocus < 0) modelInput.removeAttribute("aria-activedescendant");
-      reasoningBtn.setAttribute("aria-expanded", reasoningMenuOpen ? "true" : "false"); resumeBtn.setAttribute("aria-expanded", resumeMenuOpen ? "true" : "false");
-      if (cwdMenuOpen) positionDialogMenu(cwdMenu, cwdInput); if (modelMenuOpen) positionDialogMenu(modelMenu, modelInput); if (reasoningMenuOpen) positionDialogMenu(reasoningMenu, reasoningBtn); if (resumeMenuOpen) positionDialogMenu(resumeMenu, resumeBtn);
+      reasoningBtn.setAttribute("aria-expanded", reasoningMenuOpen ? "true" : "false"); resumeBtn.setAttribute("aria-expanded", resumeMenuOpen ? "true" : "false"); hostBtn.setAttribute("aria-expanded", hostMenuOpen ? "true" : "false");
+      if (cwdMenuOpen) positionDialogMenu(cwdMenu, cwdInput); if (modelMenuOpen) positionDialogMenu(modelMenu, modelInput); if (reasoningMenuOpen) positionDialogMenu(reasoningMenu, reasoningBtn); if (resumeMenuOpen) positionDialogMenu(resumeMenu, resumeBtn); if (hostMenuOpen) positionDialogMenu(hostMenu, hostBtn);
     }
 
     function close() {
@@ -1138,6 +1193,8 @@ function requireFunction(value, name) {
       status.textContent = String(statusText || controller.newSessionDefaultsWarningText() || ""); cwdInput.value = initialCwd; nameInput.value = ""; modelInput.value = ""; literalModelInputValue = ""; launchPresetProviderAbsent = false; browseRestoreText = null; modelQueryDirty = false; cwdBrowseRestore = null; cwdQueryDirty = false;
       controller.syncNewSessionNamePlaceholder(); controller.clearNewSessionResumeCandidates(); controller.setNewSessionResumeSelection(null); controller.setNewSessionCwdError(""); controller.clearNewSessionCwdInfo();
       tmuxToggle.checked = tmuxAvailable(); worktreeToggle.checked = false; worktreeInput.value = ""; worktreeInput.disabled = true; worktreeInput.style.display = "none"; worktreeField.style.display = "none"; closeMenus(); controller.renderRecentCwdMenu(); setBackend(initialBackend, { resetSelections: true }); if (like) controller.applyNewSessionLaunchPreset(like); controller.renderNewSessionResumeMenu();
+      selectedHost = "";
+      void refreshHosts();
       if (launchPreset) {
         controller.setNewSessionProvider(launchPreset.providerAbsent ? "" : launchPreset.providerChoice);
         modelInput.value = controller.newSessionProviderModelDisplay(launchPreset.model, launchPreset.providerAbsent ? "" : launchPreset.providerChoice);
@@ -1171,7 +1228,7 @@ function requireFunction(value, name) {
       const launchRecord = { backend: agentBackend, providerChoice, model, providerAbsent: Boolean(parsed.providerAbsent), reasoningEffort, fast, tmux: createInTmux };
       status.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
       let cwdStartError = false; let startErrorText = ""; startBusy = true; startBtn.disabled = true;
-      Promise.resolve(spawnSession(cwd, resumeSessionId, worktreeBranch, String(nameInput.value || "").trim(), providerChoice, model, reasoningEffort, fast, createInTmux, (error) => { if (error && error.obj && error.obj.field === "cwd") { cwdStartError = true; status.textContent = ""; controller.setNewSessionCwdError(error.message); return; } const launchId = error && error.obj && error.obj.launch_id ? String(error.obj.launch_id) : ""; startErrorText = launchId ? `${error.message} (${launchId})` : error && error.message ? error.message : "Start failed."; }, agentBackend)).then((brokerPid) => { if (brokerPid) { CodoxearLaunch.rememberLastLaunch(launchRecord); close(); } else if (!cwdStartError) status.textContent = startErrorText || "Start failed."; }).finally(() => { startBusy = false; startBtn.disabled = false; });
+      Promise.resolve(spawnSession(cwd, resumeSessionId, worktreeBranch, String(nameInput.value || "").trim(), providerChoice, model, reasoningEffort, fast, createInTmux, (error) => { if (error && error.obj && error.obj.field === "cwd") { cwdStartError = true; status.textContent = ""; controller.setNewSessionCwdError(error.message); return; } const launchId = error && error.obj && error.obj.launch_id ? String(error.obj.launch_id) : ""; startErrorText = launchId ? `${error.message} (${launchId})` : error && error.message ? error.message : "Start failed."; }, agentBackend, undefined, selectedHost)).then((brokerPid) => { if (brokerPid) { CodoxearLaunch.rememberLastLaunch(launchRecord); close(); } else if (!cwdStartError) status.textContent = startErrorText || "Start failed."; }).finally(() => { startBusy = false; startBtn.disabled = false; });
     }
 
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();
@@ -1195,15 +1252,16 @@ function requireFunction(value, name) {
     modelInput.onblur = () => win.requestAnimationFrame(() => { if (!modelField.contains(doc.activeElement)) { dismissModelPicker(); applyDialogMenus(); } });
     modelInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !modelMenuOpen) beginModelBrowse(); const items = renderModelMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; modelMenuFocus = modelMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (modelMenuFocus + delta + items.length) % items.length; renderModelMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionModelOption-${modelMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && modelMenuOpen && modelMenuFocus >= 0 && items[modelMenuFocus]) { event.preventDefault(); chooseModel(items[modelMenuFocus]); return; } if (event.key === "Escape" && modelMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); applyDialogMenus(); } else if (event.key === "Tab" && modelMenuOpen) { dismissModelPicker(); applyDialogMenus(); } };
     worktreeToggle.onchange = () => { controller.syncNewSessionWorktreeUi(); if (worktreeToggle.checked) worktreeInput.focus(); }; worktreeInput.oninput = () => controller.syncNewSessionWorktreeUi(); fastToggle.onchange = () => { fast = !!fastToggle.checked; };
-    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); dismissCwdPicker(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; resumeMenuOpen = false; applyDialogMenus(); };
+    reasoningBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); dismissCwdPicker(); renderReasoningMenu(); reasoningMenuOpen = !reasoningMenuOpen; resumeMenuOpen = false; hostMenuOpen = false; applyDialogMenus(); };
+    hostBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); dismissModelPicker(); dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; renderHostMenu(); hostMenuOpen = !hostMenuOpen; applyDialogMenus(); };
     startBtn.onclick = start;
-    addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
+    addEvent(doc, "mousedown", (event) => { if (!(cwdMenuOpen || modelMenuOpen || reasoningMenuOpen || resumeMenuOpen || hostMenuOpen)) return; const target = event.target; const anchors = [modelField, reasoningBtn, resumeBtn, cwdInput, hostBtn]; if (anchors.some((node) => node.contains(target)) || [modelMenu, reasoningMenu, resumeMenu, cwdMenu, hostMenu].some((node) => node.contains(target))) return; event.preventDefault(); event.stopPropagation(); closeMenus(); applyDialogMenus(); }, true);
     // A full model list is the first menu here whose tail a keyboard opening
     // after the tap can push out of the visual viewport; positionDialogMenu
     // only runs from applyDialogMenus.
     if (win.visualViewport) {
       addEvent(win.visualViewport, "resize", () => {
-        if (modelMenuOpen || cwdMenuOpen || reasoningMenuOpen || resumeMenuOpen) applyDialogMenus();
+        if (modelMenuOpen || cwdMenuOpen || reasoningMenuOpen || resumeMenuOpen || hostMenuOpen) applyDialogMenus();
       });
     }
 

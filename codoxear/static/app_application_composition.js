@@ -467,6 +467,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           setPickerButtonContent,
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
+          fetchNodes: () => api("/api/nodes"),
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
 
