@@ -130,6 +130,8 @@ class FederationNode:
         self._send_lock = threading.Lock()
         self._conn: socket.socket | None = None
         self._announced: dict[str, str] = {}
+        self._stems: dict[str, str] = {}
+        self._stems_lock = threading.Lock()
         self._connect_thread: threading.Thread | None = None
         self._watch_thread: threading.Thread | None = None
 
@@ -231,13 +233,29 @@ class FederationNode:
         request = message.get("request")
         if not isinstance(rid, int) or not isinstance(session_id, str) or not isinstance(request, dict):
             return
-        sock_path = self.config.sock_dir / f"{session_id}.sock"
+        sock_path = self._sock_for_session(session_id)
         try:
             response = call_control_socket(sock_path, request, timeout_s=SOCK_RPC_TIMEOUT_SECONDS)
             reply = federation_proto.sock_result_message(rid=rid, ok=True, response=response)
         except Exception as exc:
             reply = federation_proto.sock_result_message(rid=rid, ok=False, error=f"{type(exc).__name__}: {exc}")
         self._send(reply)
+
+    def _sock_for_session(self, session_id: str) -> Path:
+        """Resolve the local sock for a federation key.
+
+        The federation key is the bound session id once known, but the sock
+        file keeps the launch-time stem (e.g. broker-<pid>), so map through
+        the latest scan; fall back to the literal name for never-renamed
+        sessions.
+        """
+        with self._stems_lock:
+            stem = self._stems.get(session_id)
+        if stem:
+            candidate = self.config.sock_dir / f"{stem}.sock"
+            if candidate.exists():
+                return candidate
+        return self.config.sock_dir / f"{session_id}.sock"
 
     def _handle_launch(self, message: dict[str, Any]) -> None:
         rid = message.get("rid")
@@ -260,8 +278,15 @@ class FederationNode:
     # Local sidecar watcher
 
     def _scan_sessions(self) -> dict[str, tuple[str, dict[str, Any]]]:
-        """session_id -> (fingerprint, meta) for every live local sidecar."""
+        """stem -> (fingerprint, meta) for every live local sidecar.
+
+        The federation key is the sidecar/sock FILE STEM (e.g. broker-<pid>),
+        matching how the server keys sessions (session_id; the meta's
+        "session_id" field is the backend thread id and changes at bind time).
+        Metas are announced unchanged, including a null session_id pre-bind.
+        """
         out: dict[str, tuple[str, dict[str, Any]]] = {}
+        stems: dict[str, str] = {}
         try:
             meta_paths = sorted(self.config.sock_dir.glob("*.json"))
         except OSError:
@@ -272,15 +297,16 @@ class FederationNode:
             meta = _read_sidecar_meta(meta_path)
             if meta is None:
                 continue
-            session_id = meta.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                session_id = meta_path.stem
-            if not session_id or self._is_mirrored_session(session_id):
+            stem = meta_path.stem
+            if self._is_mirrored_session(stem):
                 continue
-            sock_path = self.config.sock_dir / f"{session_id}.sock"
+            sock_path = self.config.sock_dir / f"{stem}.sock"
             if not sock_path.exists():
                 continue
-            out[session_id] = (_meta_fingerprint(meta), meta)
+            out[stem] = (_meta_fingerprint(meta), meta)
+            stems[stem] = stem
+        with self._stems_lock:
+            self._stems = stems
         return out
 
     def _watch_pass(self) -> None:
@@ -291,7 +317,7 @@ class FederationNode:
                 continue
             if not self._connected.is_set():
                 continue
-            if self._send({"type": federation_proto.REGISTER, "session": meta}):
+            if self._send({"type": federation_proto.REGISTER, "session": meta, "key": session_id}):
                 announced[session_id] = fingerprint
         for session_id in list(announced):
             if session_id in current:

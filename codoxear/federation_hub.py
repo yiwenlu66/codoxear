@@ -460,7 +460,12 @@ class FederationHub:
         meta = message.get("session")
         if not isinstance(meta, dict):
             return
-        session_id = meta.get("session_id")
+        # The federation key is the node's sidecar file stem (server session
+        # id convention); meta["session_id"] is the backend thread id and may
+        # be null before the first bind. Do not key mirrored files off it.
+        session_id = message.get("key")
+        if not isinstance(session_id, str) or not session_id:
+            session_id = meta.get("session_id")
         if not isinstance(session_id, str) or not session_id:
             return
         mirrored = self._rewrite_mirror_meta(meta)

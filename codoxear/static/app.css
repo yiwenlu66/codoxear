@@ -813,10 +813,14 @@
 	        border-color: var(--ink);
 	        background: var(--ink);
 	      }
-	      .badge.queue {
-	        color: var(--state-pending);
-	        border-color: var(--state-amber-border);
-	      }
+      .badge.queue {
+        color: var(--state-pending);
+        border-color: var(--state-amber-border);
+      }
+      .badge.fedNode {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
       button.badge {
         font: inherit;
         cursor: pointer;
