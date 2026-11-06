@@ -35,6 +35,14 @@ from .voice_runtime import VoiceRuntimeCoordinator
 from .system_dependencies import resolve_executable
 
 
+def _federation_node_name_for_session(session_id: str) -> str | None:
+    # Late import: federation_hub is only meaningfully active when the hub
+    # listener env vars are set; without a hub this always returns None.
+    from . import federation_hub
+
+    return federation_hub.node_name_for_session(session_id)
+
+
 def _registry_lock(manager: Any) -> Any:
     return session_registry_for_manager(manager).lock
 
@@ -208,6 +216,7 @@ class DiscoveryRegistryFactoryDeps:
     record_launch_attempt: Any
     stderr: Any
     unlink_quiet: Any
+    node_name_for_session: Any = lambda _sid: None
 
 
 @dataclass(frozen=True)
@@ -453,6 +462,7 @@ def session_manager_coordinator_deps(server: Any) -> SessionManagerCoordinatorDe
             record_launch_attempt=server._record_launch_attempt,
             stderr=server.sys.stderr,
             unlink_quiet=server._unlink_quiet,
+            node_name_for_session=_federation_node_name_for_session,
         ),
         prune_coordinator=PruneFactoryDeps(
             broker_interrupted_idle_from_state=server._broker_interrupted_idle_from_state,
@@ -901,6 +911,7 @@ def discovery_registry_for_manager(manager: Any, deps: DiscoveryRegistryFactoryD
         remember_recent_cwd=manager._remember_recent_cwd,
         save_recent_cwds=manager._save_recent_cwds,
         commit_log_observation=manager.commit_log_observation,
+        node_name_for_session=deps.node_name_for_session,
         stderr=deps.stderr,
     )
 

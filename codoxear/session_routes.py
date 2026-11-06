@@ -41,6 +41,9 @@ class SessionRouteDeps:
     parse_new_session_launch_request: Callable[[dict[str, Any]], Any]
     launch_request_validation_error: type[BaseException]
     session_launch_error: type[BaseException]
+    # Federation: (node_name, launch_params) -> launch result dict; None when
+    # this server runs no federation hub listener.
+    federation_launch: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
 
 
 def handle_session_get_route(
@@ -283,6 +286,47 @@ def _handle_quick_session_allocate(handler: Any, *, manager: Any, deps: SessionR
     deps.json_response(handler, 200, {"ok": True, **reserved})
 
 
+def _handle_session_create_on_node(
+    handler: Any,
+    *,
+    node_raw: Any,
+    launch_req: Any,
+    deps: SessionRouteDeps,
+) -> None:
+    """Route a create request with a ``node`` field to the federation hub."""
+    if not isinstance(node_raw, str) or not node_raw.strip():
+        deps.json_response(handler, 400, {"error": "node must be a non-empty string", "field": "node"})
+        return
+    if deps.federation_launch is None:
+        deps.json_response(handler, 400, {"error": "federation hub is not enabled on this server", "field": "node"})
+        return
+    params = {
+        "cwd": launch_req.cwd,
+        "args": launch_req.args,
+        "agent_backend": launch_req.agent_backend,
+        "resume_session_id": launch_req.resume_session_id,
+        "worktree_branch": launch_req.worktree_branch,
+        "model_provider": launch_req.model_provider,
+        "preferred_auth_method": launch_req.preferred_auth_method,
+        "model": launch_req.model,
+        "reasoning_effort": launch_req.reasoning_effort,
+        "service_tier": launch_req.service_tier,
+        "create_in_tmux": launch_req.create_in_tmux,
+    }
+    try:
+        res = deps.federation_launch(node_raw.strip(), params)
+    except KeyError as e:
+        deps.json_response(handler, 404, {"error": str(e), "field": "node"})
+        return
+    except TimeoutError as e:
+        deps.json_response(handler, 504, {"error": str(e)})
+        return
+    except Exception as e:
+        deps.json_response(handler, 502, {"error": str(e)})
+        return
+    deps.json_response(handler, 200, {"ok": True, **res})
+
+
 def _handle_session_create(handler: Any, *, manager: Any, deps: SessionRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
@@ -298,6 +342,10 @@ def _handle_session_create(handler: Any, *, manager: Any, deps: SessionRouteDeps
         return
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
+        return
+    node_raw = obj.get("node")
+    if node_raw is not None:
+        _handle_session_create_on_node(handler, node_raw=node_raw, launch_req=launch_req, deps=deps)
         return
     try:
         res = manager.spawn_web_session(

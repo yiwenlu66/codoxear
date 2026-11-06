@@ -89,3 +89,6 @@ class Session:
     # sidecar after grace.
     lost: bool = False
     lost_since: float | None = None
+    # Federation: display name of the node this session was mirrored from;
+    # None for local sessions.
+    node_name: str | None = None

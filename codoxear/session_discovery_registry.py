@@ -26,6 +26,9 @@ class SessionDiscoveryRegistryCoordinator:
     remember_recent_cwd: Callable[..., bool]
     save_recent_cwds: Callable[[], None]
     commit_log_observation: Callable[[str, LogDerivedSessionObservation], bool] = lambda _sid, _observation: False
+    # Federation: maps a session id to the owning node's display name when the
+    # discovered sidecar is a hub-side federation mirror; None otherwise.
+    node_name_for_session: Callable[[str], str | None] = lambda _sid: None
     stderr: Any = sys.stderr
 
     def apply_result(self, result: DiscoveryResult) -> None:
@@ -110,6 +113,8 @@ class SessionDiscoveryRegistryCoordinator:
             lost=bool(registration.lost),
         )
         should_commit_log = False
+        node_name = self.node_name_for_session(registration.session_id)
+        session.node_name = node_name
         with self.lock:
             previous = self.sessions().get(registration.session_id)
             if not previous:
@@ -182,6 +187,7 @@ class SessionDiscoveryRegistryCoordinator:
                 previous.lost = bool(registration.lost)
                 if not previous.lost:
                     previous.lost_since = None
+                previous.node_name = node_name
                 previous.pi_thinking_command = bool(registration.pi_thinking_command)
         if should_commit_log and registration.log_revision is not None and registration.log_path is not None:
             self.commit_log_observation(
