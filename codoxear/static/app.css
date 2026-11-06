@@ -2559,11 +2559,24 @@ select {
       .filePickerInput {
         padding-right: 40px;
       }
-      /* A picker field with its list open is one surface: the field border goes
-         to ink and nothing else decorates it. The list is the affordance, and an
-         extra 2px ring here stacked a second, louder border on a box that keeps
-         keyboard focus after Tab completes into it. */
-      .pickerField.active input[type="text"] {
+      /* A picker field's focus ring is ours in every state, and every state
+         declares one. Leaving a state undeclared is what lets an engine fall back
+         to its own focus ring — the UA ring is blue on WebKit/Blink (and on a
+         pointer-focused field, where the keyboard-modality rule deliberately says
+         nothing), which reads as a stray blue border around the input.
+           closed + keyboard -> accent ring
+           closed + pointer  -> none
+           list open         -> ink border, no ring (the list is the affordance,
+                                and a 2px outline stacked a second, louder border
+                                on the box that keeps focus after Tab completes) */
+      .pickerField input[type="text"]:focus {
+        outline: none;
+      }
+      :where(html[data-input-modality="keyboard"]) .pickerField input[type="text"]:focus {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 1px;
+      }
+      .pickerField.active input[type="text"]:focus {
         border-color: var(--ink);
         outline: none;
       }

@@ -195,9 +195,10 @@ def test_extracted_controller_behavior() -> None:
         "viewerCalls": ["maybe", "save", "discard", "cancel"],
     }
 
-    assert result["menu"] == {"top": "192px", "maxHeight": "440px", "left": "20px"}
+    # 6px from the anchor, matching the file picker list's own gap.
+    assert result["menu"] == {"top": "194px", "maxHeight": "440px", "left": "20px"}
     # Flush with the field: left 0 (not the 12px margin), full field width.
-    assert result["dialogMenu"] == {"left": "0px", "width": "508px", "top": "104px"}
+    assert result["dialogMenu"] == {"left": "0px", "width": "508px", "top": "102px"}
     # 420px viewport, field starts at 376: only 32px of room, floored at 160px.
     assert result["narrowMenu"] == {"left": "0px", "width": "160px"}
 

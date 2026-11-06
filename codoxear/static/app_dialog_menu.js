@@ -68,12 +68,12 @@ const global = window;
       if (openAbove) {
         const maxHeight = Math.max(120, spaceAbove - 8);
         menu.style.maxHeight = `${maxHeight}px`;
-        const top = Math.max(viewportTop + margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 8);
+        const top = Math.max(viewportTop + margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 6);
         menu.style.top = `${top}px`;
       } else {
         const maxHeight = Math.max(120, spaceBelow - 8);
         menu.style.maxHeight = `${maxHeight}px`;
-        const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
+        const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 6);
         menu.style.top = `${top}px`;
       }
     }
