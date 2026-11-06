@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import TimeoutError as FutureTimeoutError
+import dataclasses
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -240,6 +241,33 @@ def _route_deps(responses: list[tuple[int, dict[str, object]]]) -> FileGetRouteD
     )
 
 
+def test_complete_route_forwards_the_prefix_only_query_flag(tmp_path: Path) -> None:
+    (tmp_path / "alpha.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "xalpha.log").write_text("b", encoding="utf-8")
+    responses: list[tuple[int, dict[str, object]]] = []
+    seen: list[bool] = []
+
+    def spy(base: Path, *, token: str, limit: int, prefix_only: bool = False):
+        seen.append(prefix_only)
+        return complete_session_path(base, token=token, limit=limit, prefix_only=prefix_only)
+
+    deps = dataclasses.replace(_route_deps(responses), complete_session_path=spy)
+    for query in ("path=al&prefix_only=1", "path=al"):
+        handle_file_get_route(
+            _Handler(),
+            path="/api/sessions/s/file/complete",
+            query=query,
+            manager=_Manager(tmp_path),
+            deps=deps,
+            match_session_route=_match_session_route,
+        )
+    assert seen == [True, False]
+    prefix_entry_names = [entry["name"] for entry in responses[0][1]["entries"]]
+    fuzzy_entry_names = [entry["name"] for entry in responses[1][1]["entries"]]
+    assert prefix_entry_names == ["alpha.txt"]
+    assert "xalpha.log" in fuzzy_entry_names
+
+
 def test_complete_route_returns_session_completion_and_validates_request(tmp_path: Path) -> None:
     (tmp_path / "a-dir").mkdir()
     (tmp_path / "b-file").write_text("b", encoding="utf-8")
@@ -389,3 +417,19 @@ def test_prefix_only_completion_truncates_over_matches_not_over_fuzzy_score(tmp_
     whole = complete_session_path(tmp_path, token="app", prefix_only=True, limit=999)
     assert _entry_names(whole) == [f"app-{index}.js" for index in range(5)]
     assert whole.truncated is False
+
+
+def test_server_adapter_forwards_the_prefix_only_flag(tmp_path: Path) -> None:
+    # The route reaches the completer through codoxear.server's adapter, so the
+    # flag must survive that hop: a wrapper that drops it silently turns Tab
+    # completion back into fuzzy matching (or raises).
+    from codoxear.server import _complete_session_path
+
+    (tmp_path / "alpha.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "xalpha.log").write_text("b", encoding="utf-8")
+
+    forwarded = _complete_session_path(tmp_path, token="al", limit=20, prefix_only=True)
+    assert _entry_names(forwarded) == ["alpha.txt"]
+
+    fuzzy = _complete_session_path(tmp_path, token="al", limit=20)
+    assert "xalpha.log" in _entry_names(fuzzy)

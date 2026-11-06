@@ -644,8 +644,8 @@ def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_
     return _search_session_relative_files_impl(base, query=query, limit=limit, git_root_func=_git_repo_root)
 
 
-def _complete_session_path(base: Path, *, token: str, limit: int):
-    return _complete_session_path_impl(base, token=token, limit=limit)
+def _complete_session_path(base: Path, *, token: str, limit: int, prefix_only: bool = False):
+    return _complete_session_path_impl(base, token=token, limit=limit, prefix_only=prefix_only)
 
 
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
