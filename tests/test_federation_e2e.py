@@ -293,6 +293,12 @@ class _HubWorld:
         assert isinstance(payload, dict)
         return list(payload["sessions"])
 
+    def list_nodes(self) -> list[dict[str, Any]]:
+        status, payload = _http_request(self.address, "GET", "/api/nodes")
+        assert status == 200, payload
+        assert isinstance(payload, dict)
+        return list(payload["nodes"])
+
     def stop(self) -> None:
         server._stop_federation()
         self.httpd.shutdown()
@@ -392,6 +398,15 @@ def test_federation_end_to_end(worlds, tmp_path):
     row = next(row for row in rows if row["session_id"] == SESSION_ID)
     assert row["node"] == NODE_NAME
 
+    # -- /api/nodes lists the connected node with its session count. -------- #
+    nodes = hub_world.list_nodes()
+    assert nodes == [{
+        "name": NODE_NAME,
+        "http_port": node_world.http_port,
+        "session_count": 1,
+        "connected": True,
+    }]
+
     # -- Hub sock_call path: state/send/keys/tail through the relay socket. - #
     relay_sock = hub_world.sock_dir / f"{SESSION_ID}.sock"
     state = call_control_socket(relay_sock, {"cmd": "state"}, timeout_s=5.0)
@@ -440,6 +455,7 @@ def test_federation_end_to_end(worlds, tmp_path):
     assert _wait_for(lambda: not (hub_world.sock_dir / f"{SESSION_ID}.json").exists()
                      and not (hub_world.sock_dir / f"{SESSION_ID}.sock").exists())
     assert _wait_for(lambda: all(row.get("session_id") != SESSION_ID for row in hub_world.list_sessions()))
+    assert _wait_for(lambda: hub_world.list_nodes() == [])
 
     # -- Reconnect: the session is re-registered and reappears. ------------- #
     node_world.start_client(hub_world.hub.port)
@@ -450,8 +466,31 @@ def test_federation_end_to_end(worlds, tmp_path):
                    for row in hub_world.list_sessions())
 
     assert _wait_for(listed_again)
+    assert _wait_for(lambda: [node["name"] for node in hub_world.list_nodes()] == [NODE_NAME])
     state = call_control_socket(hub_world.sock_dir / f"{SESSION_ID}.sock", {"cmd": "state"}, timeout_s=5.0)
     assert state["busy"] is False
+
+
+def test_nodes_endpoint_empty_without_federation(monkeypatch):
+    """Without a federation listener, /api/nodes is an empty authenticated list."""
+    federation_hub.set_active_hub(None)
+    handler = make_server_handler(server)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=10)
+        cookie = sign_cookie({"v": 1}, secret=server.HMAC_SECRET)
+        conn.request("GET", "/api/nodes", headers={"Cookie": f"{server.COOKIE_NAME}={cookie}"})
+        response = conn.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        conn.close()
+        assert response.status == 200
+        assert payload == {"nodes": []}
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=3)
 
 
 def test_federation_token_auth_acceptance_on_node(monkeypatch):

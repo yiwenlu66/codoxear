@@ -174,6 +174,7 @@ class ServerRouteDepsFactory:
             launch_request_validation_error=server.LaunchRequestValidationError,
             session_launch_error=server.SessionLaunchError,
             federation_launch=server._federation_launch_on_node if server._federation_hub_active() else None,
+            list_federation_nodes=server._federation_node_rows,
         )
 
     def snapshot_route_deps(self) -> SnapshotRouteDeps:

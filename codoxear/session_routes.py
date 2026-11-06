@@ -44,6 +44,8 @@ class SessionRouteDeps:
     # Federation: (node_name, launch_params) -> launch result dict; None when
     # this server runs no federation hub listener.
     federation_launch: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+    # Federation: connected-node rows for /api/nodes; None/empty when no hub.
+    list_federation_nodes: Callable[[], list[dict[str, Any]]] | None = None
 
 
 def handle_session_get_route(
@@ -66,6 +68,9 @@ def handle_session_get_route(
         return True
     if path == "/api/metrics":
         _handle_metrics(handler, deps=deps)
+        return True
+    if path == "/api/nodes":
+        _handle_nodes_list(handler, deps=deps)
         return True
 
     session_id = match_session_route(path, "unread")
@@ -244,6 +249,13 @@ def _handle_metrics(handler: Any, *, deps: SessionRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
     deps.json_response(handler, 200, {"metrics": deps.metrics_snapshot()})
+
+
+def _handle_nodes_list(handler: Any, *, deps: SessionRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    nodes = deps.list_federation_nodes() if deps.list_federation_nodes is not None else []
+    deps.json_response(handler, 200, {"nodes": nodes})
 
 
 def _handle_tail(handler: Any, *, session_id: str, manager: Any, deps: SessionRouteDeps) -> None:

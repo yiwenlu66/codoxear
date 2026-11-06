@@ -334,14 +334,15 @@
       }
     }
 
-    async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex", selectLaunchedSession = selectSession) {
+    async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex", selectLaunchedSession = selectSession, nodeName = "") {
       if (!cwd || !String(cwd).trim()) {
         setToast("cwd unavailable");
         return null;
       }
       try {
         const backend = normalizeAgentBackendName(agentBackend);
-        const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
+        const hostName = String(nodeName || "").trim();
+        const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : hostName ? `starting on ${hostName}...` : "starting...";
         const alias = String(sessionName || "").trim();
         const providerName = String(providerChoice || "").trim();
         const providerSettings = providerChoiceToSettings(providerName, backend);
@@ -357,7 +358,29 @@
         if (effortName) body.reasoning_effort = effortName;
         if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
         if (createInTmux) body.create_in_tmux = true;
+        if (hostName) body.node = hostName;
         const res = await api("/api/sessions", { method: "POST", body });
+        if (hostName) {
+          // A node launch returns the node's broker pid, which never matches
+          // the hub-side mirrored rows (their pids are rewritten to the hub
+          // process). Poll for the mirrored row by host + cwd instead.
+          for (let i = 0; i < 40; i++) {
+            const sessions = await refreshSessions();
+            const found = (sessions || []).find((x) => x && String(x.node || "") === hostName && String(x.cwd || "") === String(cwd));
+            if (found) {
+              if (alias && String(found.alias || "").trim() !== alias) {
+                await api(`/api/sessions/${found.session_id}/rename`, { method: "POST", body: { name: alias } });
+                await refreshSessions();
+              }
+              setToast(`started on ${hostName}`);
+              void selectLaunchedSession(found.session_id);
+              return 1;
+            }
+            await sleep(250);
+          }
+          setToast(`started on ${hostName}; session will appear once registered`);
+          return 1;
+        }
         if (res && res.pending && res.launch_id) {
           setToast(createInTmux ? "tmux session still starting" : "session still starting");
           await refreshSessions();

@@ -357,6 +357,20 @@ class FederationHub:
         with self._lock:
             return sorted(self._nodes)
 
+    def node_rows(self) -> list[dict[str, Any]]:
+        """Public /api/nodes rows for every currently connected node."""
+        with self._lock:
+            nodes = sorted(self._nodes.values(), key=lambda node: node.name)
+            return [
+                {
+                    "name": node.name,
+                    "http_port": node.http_port,
+                    "session_count": len(node.sessions),
+                    "connected": not node.closed.is_set(),
+                }
+                for node in nodes
+            ]
+
     def node_for_session(self, session_id: str) -> _NodeConnection | None:
         with self._lock:
             return self._session_nodes.get(session_id)

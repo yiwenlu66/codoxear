@@ -40,6 +40,9 @@ Design consequences:
    changes to message/file/git handlers.
 3. Session rows carry `node: <name>`; the sidebar shows a small host badge and
    the create dialog offers a host selector (only when nodes are attached).
+   The selector is fed by `GET /api/nodes` (normal hub auth), returning
+   `{"nodes": [{"name", "http_port", "session_count", "connected"}]}` —
+   `{"nodes": []}` when no federation listener is active.
 
 ## Sidecar mirror rewrites (validated against discovery + watchdog)
 

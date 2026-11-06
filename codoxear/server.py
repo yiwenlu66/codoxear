@@ -1589,6 +1589,12 @@ def _federation_hub_active() -> bool:
     return federation_hub.active_hub() is not None
 
 
+def _federation_node_rows() -> list[dict[str, Any]]:
+    """Connected federation node rows for /api/nodes; empty without a hub."""
+    hub = federation_hub.active_hub()
+    return hub.node_rows() if hub is not None else []
+
+
 def _drop_federation_sessions(session_ids: list[str]) -> None:
     """Remove hub-mirrored sessions from the registry when their node leaves.
 
