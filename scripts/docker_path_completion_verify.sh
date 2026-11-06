@@ -651,7 +651,7 @@ checks = {
     "tab_picker_drill_lists_children": any("child.txt" in str(row) for row in picker_complete.get("rows") or []),
     "tab_completes_picker_file": picker_file.get("value") == "plain.txt" and picker_file.get("focused") is True,
     "tab_completed_file_opens": picker_opened.get("viewer") not in {None, "none"} and str(picker_opened.get("path", "")).endswith("plain.txt"),
-    "tab_without_completion_moves_focus": picker_nomatch.get("focused") is False,
+    "tab_without_completion_moves_focus": picker_nomatch.get("focused") is False and picker_nomatch.get("menuOpen") is False,
     "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_complete.get("focused") is True,
     "tab_cwd_drill_lists_children": any(str(row).endswith("/alpha/inner") for row in cwd_complete.get("rows") or []),
     "tab_cwd_shared_prefix": cwd_shared.get("value") == "/home/tester/tab-cwd-fixture/alp",

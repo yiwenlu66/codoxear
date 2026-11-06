@@ -533,7 +533,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const tabIdleResult = runtime.keydown(tabIdleEvent);
           await settle();
           const tabIdlePrevented = tabIdleEvent.prevented;
-          events.splice(0);
+          const tabIdleEvents = events.splice(0);
 
           // Shift+Tab is never completion: it always moves focus backwards.
           const tabShiftEvent = tabKey({{ shiftKey: true }});
@@ -577,15 +577,28 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           await settle();
           events.splice(0);
 
-          // A capped listing cannot answer a partial prefix: Tab stays native.
+          // One visible row is an unambiguous answer: Tab takes it as text.
+          rows = [{{ path: "src/only-match.js" }}];
           menuState.setFocus(-1);
+          completion = {{ query: "only", names: [], truncated: false }};
+          input.value = "only";
+          const tabSingleResult = runtime.keydown(tabKey());
+          const tabSingleValue = input.value;
+          await settle();
+          events.splice(0);
+
+          // A capped listing cannot answer a partial prefix: Tab stays native,
+          // and the list is closed first so the focus move cannot land on a row.
+          rows = [];
+          menuState.setFocus(-1);
+          menuState.setOpen(true);
           completion = {{ query: "al", truncated: true, names: [{{ name: "alpha", isDir: true }}, {{ name: "alpine", isDir: true }}] }};
           input.value = "al";
           const tabCappedEvent = tabKey();
           const tabCappedResult = runtime.keydown(tabCappedEvent);
           await settle();
           const tabCappedPrevented = tabCappedEvent.prevented;
-          events.splice(0);
+          const tabCappedEvents = events.splice(0);
           focusInside = false;
           const blurResult = runtime.blur();
           const blurScheduledEvents = events.splice(0);
@@ -593,7 +606,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabIdleResult, tabIdlePrevented, tabShiftResult, tabShiftPrevented, tabPrefixResult, tabPrefixPrevented, tabPrefixValue, tabPrefixScheduled, tabDirResult, tabDirValue, tabRowResult, tabRowValue, tabRowFocus, tabCappedResult, tabCappedPrevented, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabIdleResult, tabIdlePrevented, tabIdleEvents, tabShiftResult, tabShiftPrevented, tabPrefixResult, tabPrefixPrevented, tabPrefixValue, tabPrefixScheduled, tabDirResult, tabDirValue, tabRowResult, tabRowValue, tabRowFocus, tabSingleResult, tabSingleValue, tabCappedResult, tabCappedPrevented, tabCappedEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -906,6 +919,10 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         # listing refuses to guess.
         self.assertFalse(result["tabIdleResult"])
         self.assertEqual(result["tabIdlePrevented"], 0)
+        # With nothing to complete the list is closed first: its rows are real
+        # controls, so leaving it open would let the focus move land on a row
+        # that the blur then removes.
+        self.assertEqual(result["tabIdleEvents"], [["close", None], ["ensure"], ["render"]])
         self.assertFalse(result["tabShiftResult"])
         self.assertEqual(result["tabShiftPrevented"], 0)
         self.assertTrue(result["tabPrefixResult"])
@@ -917,8 +934,11 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertTrue(result["tabRowResult"])
         self.assertEqual(result["tabRowValue"], "lib/picked.py")
         self.assertEqual(result["tabRowFocus"], -1)
+        self.assertTrue(result["tabSingleResult"])
+        self.assertEqual(result["tabSingleValue"], "src/only-match.js")
         self.assertFalse(result["tabCappedResult"])
         self.assertEqual(result["tabCappedPrevented"], 0)
+        self.assertEqual(result["tabCappedEvents"], [["close", None], ["ensure"], ["render"]])
         self.assertTrue(result["blurResult"])
         self.assertEqual(result["blurScheduledEvents"], [["raf"]])
         self.assertEqual(result["blurEvents"], [["close", {"restoreInput": True}]])

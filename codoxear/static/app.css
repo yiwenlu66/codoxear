@@ -2559,10 +2559,13 @@ select {
       .filePickerInput {
         padding-right: 40px;
       }
-      .filePickerField.active .filePickerInput {
+      /* A picker field with its list open is one surface: the field border goes
+         to ink and nothing else decorates it. The list is the affordance, and an
+         extra 2px ring here stacked a second, louder border on a box that keeps
+         keyboard focus after Tab completes into it. */
+      .pickerField.active input[type="text"] {
         border-color: var(--ink);
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 1px;
+        outline: none;
       }
       .filePickerIcon {
         position: absolute;
@@ -2640,6 +2643,16 @@ select {
       .fileMenuItem.active {
         background: var(--ink);
         color: var(--paper);
+      }
+      /* Rows of a combobox list are selection surfaces: the field keeps focus and
+         aria-activedescendant names the row, so a row must never paint a border
+         around itself. Scoped to the two path lists — the button-triggered menus
+         (reasoning, resume) are still reached with Tab and keep their ring. */
+      #filePickerMenu .fileMenuItem:focus,
+      #filePickerMenu .fileMenuItem:focus-visible,
+      #newSessionCwdMenu .fileMenuItem:focus,
+      #newSessionCwdMenu .fileMenuItem:focus-visible {
+        outline: none;
       }
       .fileMenuCreate {
         align-items: flex-start;

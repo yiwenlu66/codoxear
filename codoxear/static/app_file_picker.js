@@ -767,10 +767,10 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       if (!event || event.key !== "Tab") return false;
       if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return false;
       const current = String(input.value || "");
+      const rows = visibleEntries();
       let next = null;
       const focus = menuState.focusIndex();
       if (focus >= 0) {
-        const rows = visibleEntries();
         const row = rows && rows[focus] ? rows[focus] : null;
         const path = row && typeof row.path === "string" ? row.path : "";
         if (path) next = path;
@@ -789,7 +789,19 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
           if (plan) next = plan.value;
         }
       }
-      if (next === null || next === current) return false;
+      // One row left is an unambiguous answer even when it is not a prefix of
+      // what was typed, and a menu with a single item that Tab cannot take reads
+      // as broken.
+      if (next === null && current.trim() && rows && rows.length === 1 && rows[0] && typeof rows[0].path === "string") {
+        next = rows[0].path;
+      }
+      if (next === null || next === current) {
+        // Tab is about to move focus. Close the popup first: its rows are
+        // rendered controls, so an open menu would swallow the focus move and
+        // the row would vanish under the pointer.
+        if (menuState.isOpen()) closeMenu();
+        return false;
+      }
       if (typeof event.preventDefault === "function") event.preventDefault();
       input.value = next;
       menuState.setFocus(-1);

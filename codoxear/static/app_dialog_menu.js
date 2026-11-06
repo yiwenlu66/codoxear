@@ -47,11 +47,17 @@ const global = window;
       const viewportTop = visualViewport ? visualViewport.offsetTop : 0;
       const viewportBottom = viewportTop + (visualViewport ? visualViewport.height : windowTarget.innerHeight);
       const margin = 12;
-      const desiredWidth = Math.min(Math.max(rect.width, 280), viewportWidth - margin * 2);
+      // Align the list to the field it belongs to. The margin is a *viewport*
+      // guard, not an inset: a dialog field already sits well inside the
+      // viewport, and forcing it made every dialog list 12px narrower than its
+      // field on each side, so the list read as detached from the input.
+      const viewportLeft = Math.max(0, Number(windowTarget.innerWidth) || hostRect.width);
+      const minLeft = Math.max(0, margin - hostRect.left);
+      const left = Math.max(minLeft, rect.left - hostRect.left);
+      const width = Math.max(160, Math.min(Math.max(rect.width, 280), viewportLeft - margin - hostRect.left - left));
       menu.style.position = "absolute";
-      const left = Math.max(margin, Math.min(viewportWidth - margin - desiredWidth, rect.left - hostRect.left));
       menu.style.left = `${left}px`;
-      menu.style.width = `${desiredWidth}px`;
+      menu.style.width = `${width}px`;
       menu.style.right = "auto";
       menu.style.bottom = "auto";
       menu.style.maxHeight = "";

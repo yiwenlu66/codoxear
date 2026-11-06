@@ -95,6 +95,7 @@ def eval_cwd_tab_completion(
     cwd_value: str,
     focus: int = -1,
     settle: bool = True,
+    recent_cwds: list[str] | None = None,
 ) -> dict:
     """Ask the real controller what Tab should write into the cwd field.
 
@@ -129,7 +130,7 @@ def eval_cwd_tab_completion(
         const cwdInput={{value:{json.dumps(cwd_value)},focus(){{}},setSelectionRange(){{}},setAttribute(){{}},removeAttribute(){{}}}};
         const sessionCatalog=ctx.window.CodoxearSessionCatalog.createSessionCatalog({{consoleError:()=>{{}}}});
         sessionCatalog.set("newSessionDefaults",{{model:"gpt-5.4-mini",models:[],provider_choices:["chatgpt"],model_providers:["chatgpt"],provider_models:{{}},reasoning_efforts:["high"],reasoning_efforts_by_model:{{}}}});
-        sessionCatalog.set("latestSessions",[]); sessionCatalog.set("recentCwds",[]); sessionCatalog.set("tmuxAvailable",true);
+        sessionCatalog.set("latestSessions",[]); sessionCatalog.set("recentCwds",{json.dumps(recent_cwds or [])}); sessionCatalog.set("tmuxAvailable",true);
         const c=ctx.window.CodoxearNewSession.createNewSessionController({{
           backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
           sessionCatalog,
@@ -170,11 +171,36 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         unsettled = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=False)
         self.assertIsNone(unsettled["completion"])
 
-    def test_empty_fragment_and_empty_field_leave_tab_alone(self) -> None:
+    def test_one_listed_row_is_taken_even_with_an_empty_fragment(self) -> None:
+        # A directory with a single child: Tab takes it (one row is an
+        # unambiguous answer), which is also what makes a one-item list usable.
         trailing = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/")
-        self.assertIsNone(trailing["completion"])
+        self.assertEqual(trailing["completion"], "/srv/projects/alpha")
+        # …but two children are ambiguous again: no fragment to extend, so Tab
+        # must fall through to the next field instead of picking one.
+        ambiguous = eval_cwd_tab_completion(["alpha", "beta"], cwd_value="/srv/projects/")
+        self.assertIsNone(ambiguous["completion"])
+
+    def test_empty_field_leaves_tab_alone(self) -> None:
         empty = eval_cwd_tab_completion(["alpha"], cwd_value="")
         self.assertIsNone(empty["completion"])
+
+    def test_a_single_listed_row_is_taken_when_it_is_not_a_prefix_completion(self) -> None:
+        # The list holds exactly one row (a recent path matching what was typed)
+        # while the filesystem listing for this value holds nothing to extend, so
+        # the unambiguous row is the completion. Without it, a one-item list could
+        # not be chosen with Tab at all.
+        result = eval_cwd_tab_completion(
+            [], cwd_value="/srv/rec", recent_cwds=["/srv/recent-project"]
+        )
+        self.assertEqual(result["completion"], "/srv/recent-project")
+        self.assertEqual(result["menu"], ["/srv/recent-project"])
+
+    def test_two_listed_rows_without_a_completion_leave_tab_alone(self) -> None:
+        result = eval_cwd_tab_completion(
+            [], cwd_value="/srv/pro", recent_cwds=["/srv/project-a", "/srv/project-b"]
+        )
+        self.assertIsNone(result["completion"])
 
     def test_an_arrow_picked_row_is_taken_instead_of_the_typed_text(self) -> None:
         result = eval_cwd_tab_completion(
