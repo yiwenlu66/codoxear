@@ -11,6 +11,7 @@ from .unread_store import UnreadStore
 def session_store_paths_for_server(server: Any) -> Any:
     return server._session_store_paths_impl(
         aliases=server.ALIAS_PATH,
+        session_names=server.SESSION_NAMES_PATH,
         sidebar_meta=server.SIDEBAR_META_PATH,
         hidden_sessions=server.HIDDEN_SESSIONS_PATH,
         files=server.FILE_HISTORY_PATH,

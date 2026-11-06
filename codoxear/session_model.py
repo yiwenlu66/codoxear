@@ -21,6 +21,11 @@ class Session:
     queue_len: int = 0
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
+    # Live session-title control (bridge socket / typed app-server / native
+    # command) and the backend's own recorded title, which is never the
+    # authority but is adopted when the session has no alias.
+    session_name_control: bool = False
+    backend_session_name: str = ""
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     last_turn_id: str | None = None
     last_chat_ts: float | None = None

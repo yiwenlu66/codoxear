@@ -606,3 +606,58 @@ def test_session_store_clear_deleted_without_uploads_root_skips_upload_cleanup()
         store.clear_deleted_session_state("s1")
 
         assert (root / "uploads" / "s1").exists()
+
+
+def test_session_names_store_round_trips_projection_records(tmp_path: Path) -> None:
+    from codoxear.session_store import SessionStore
+    from codoxear.session_store import SessionStorePaths
+
+    store = SessionStore(
+        paths=SessionStorePaths(
+            aliases=tmp_path / "aliases.json",
+            sidebar_meta=tmp_path / "sidebar.json",
+            hidden_sessions=tmp_path / "hidden.json",
+            files=tmp_path / "files.json",
+            queues=tmp_path / "queues.json",
+            pending_attachments=tmp_path / "pending.json",
+            commit_unknown_sends=tmp_path / "unknown.json",
+            recent_cwds=tmp_path / "cwds.json",
+            unattended=tmp_path / "unattended.json",
+            session_names=tmp_path / "session_names.json",
+        ),
+        file_history_max=10,
+        recent_cwd_max=10,
+        unattended_default_idle_minutes=10,
+        unattended_default_max_injections=1,
+        clean_alias=lambda value: value,
+        clean_priority_offset=lambda value: value,
+        clean_snooze_until=lambda value: value,
+        clean_dependency_session_id=lambda value: value,
+        clean_recent_cwd=lambda value: value,
+        clean_commit_unknown_send_record=lambda value: value,
+    )
+
+    store.session_names = {
+        "pi:thread-1": {"state": "applied", "name": "auth refactor", "attempts": 1, "ts": 10.0, "control": True},
+        "cc:thread-2": {"state": "pending", "name": "", "attempts": 0, "ts": 11.0, "control": False},
+    }
+    store.save_session_names(store.session_names)
+    assert store.load_session_names() == store.session_names
+
+    # Malformed or unknown-state records are dropped rather than replayed.
+    (tmp_path / "session_names.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "applied": {
+                    "pi:thread-1": {"state": "bogus", "name": "x"},
+                    "pi:thread-2": {"state": "cleared", "name": "", "attempts": -1, "ts": "later"},
+                    "pi:thread-3": "not-a-record",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert store.load_session_names() == {
+        "pi:thread-2": {"state": "cleared", "name": "", "attempts": 0, "ts": 0.0, "control": False}
+    }

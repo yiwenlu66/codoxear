@@ -153,6 +153,16 @@ def _handle_delete(handler: Any, *, session_id: str, manager: Any, deps: Control
     deps.json_response(handler, 200, {"ok": True})
 
 
+def _propagate_session_name(manager: Any, session_id: str) -> dict[str, Any]:
+    """Report what happened to the backend-side title, never masking the rename."""
+    try:
+        return manager.reconcile_session_name(session_id)
+    except KeyError:
+        return {"ok": False, "reason": "unknown-session"}
+    except Exception as exc:
+        return {"ok": False, "reason": "error", "detail": f"{type(exc).__name__}: {exc}"}
+
+
 def _handle_edit(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
@@ -175,7 +185,11 @@ def _handle_edit(handler: Any, *, session_id: str, manager: Any, deps: ControlRo
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
         return
-    deps.json_response(handler, 200, {"ok": True, "alias": alias, **sidebar_meta})
+    deps.json_response(
+        handler,
+        200,
+        {"ok": True, "alias": alias, **sidebar_meta, "name_propagation": _propagate_session_name(manager, session_id)},
+    )
 
 
 def _handle_rename(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
@@ -191,7 +205,15 @@ def _handle_rename(handler: Any, *, session_id: str, manager: Any, deps: Control
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
-    deps.json_response(handler, 200, {"ok": True, "alias": alias})
+    deps.json_response(
+        handler,
+        200,
+        {
+            "ok": True,
+            "alias": alias,
+            "name_propagation": _propagate_session_name(manager, session_id),
+        },
+    )
 
 
 def _handle_pending_attachment_clear(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:

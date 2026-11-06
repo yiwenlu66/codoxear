@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -20,6 +22,8 @@ from .session_prune import SessionPruneCoordinator
 from .session_queue import SessionQueueCoordinator
 from .session_readiness import SessionReadinessCoordinator
 from .session_recent_cwd import SessionRecentCwdCoordinator
+from .session_name_projection import SessionNameProjection
+from .session_name_projection import SessionNameProjectionDeps
 from .session_refresh import SessionRefreshCoordinator
 from .session_registry import session_registry_for_manager
 from .session_runtime import ListingRuntimeProbes
@@ -665,6 +669,7 @@ def refresh_coordinator_for_manager(manager: Any, deps: RefreshFactoryDeps) -> A
         commit_log_observation=manager.commit_log_observation,
         queue_len=manager._queue_len,
         maybe_drain_session_queue=manager._maybe_drain_session_queue,
+        reconcile_session_name=manager.reconcile_session_name,
     )
 
 
@@ -759,6 +764,23 @@ def log_runtime_for_manager(manager: Any, deps: LogRuntimeFactoryDeps) -> Any:
         compute_idle_from_log=deps.compute_idle_from_log,
         read_jsonl_from_offset=deps.read_jsonl_from_offset,
         find_latest_token_update=deps.find_latest_token_update,
+    )
+
+
+def session_name_projection_for_manager(manager: Any) -> SessionNameProjection:
+    return SessionNameProjection(
+        SessionNameProjectionDeps(
+            lock=_registry_lock(manager),
+            sessions=lambda: _registry_sessions(manager),
+            alias_get=manager.alias_get,
+            alias_set=manager.alias_set,
+            sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
+            applied=lambda: manager._session_names,
+            set_applied=lambda value: setattr(manager, "_session_names", value),
+            save_applied=manager._save_session_names,
+            now=time.time,
+            stderr=sys.stderr,
+        )
     )
 
 
@@ -1039,6 +1061,7 @@ class SessionManagerCoordinatorGraph:
     control: SessionControlCoordinator
     listing: SessionListCoordinator
     refresh: SessionRefreshCoordinator
+    session_name: SessionNameProjection
     readiness: SessionReadinessCoordinator
     unattended_sweep: UnattendedSweepCoordinator
     queue_sweep: QueueSweepCoordinator
@@ -1072,6 +1095,7 @@ def build_session_manager_coordinator_graph(
         control=control_coordinator_for_manager(manager, deps.control_coordinator),
         listing=list_coordinator_for_manager(manager, deps.list_coordinator),
         refresh=refresh_coordinator_for_manager(manager, deps.refresh_coordinator),
+        session_name=session_name_projection_for_manager(manager),
         readiness=readiness_coordinator_for_manager(manager, deps.readiness_coordinator),
         unattended_sweep=unattended_sweep_coordinator_for_manager(manager, deps.unattended_sweep_coordinator),
         queue_sweep=queue_sweep_coordinator_for_manager(manager, deps.queue_sweep_coordinator),

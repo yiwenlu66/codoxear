@@ -1008,6 +1008,7 @@ class SessionManager:
     _store = _registry_backed_attr("store")
     _unattended = _store_backed_attr("unattended")
     _aliases = _store_backed_attr("aliases")
+    _session_names = _store_backed_attr("session_names")
     _sidebar_meta = _store_backed_attr("sidebar_meta")
     _hidden_sessions = _store_backed_attr("hidden_sessions")
     _files = _store_backed_attr("files")
@@ -1021,6 +1022,8 @@ class SessionManager:
     _save_unattended = _save_dict_store_attr("_unattended", "save_unattended")
     _load_aliases = _load_store_attr("_aliases", "load_aliases")
     _save_aliases = _save_dict_store_attr("_aliases", "save_aliases")
+    _load_session_names = _load_store_attr("_session_names", "load_session_names")
+    _save_session_names = _save_dict_store_attr("_session_names", "save_session_names")
     _load_sidebar_meta = _load_store_attr("_sidebar_meta", "load_sidebar_meta")
     _save_sidebar_meta = _save_dict_store_attr("_sidebar_meta", "save_sidebar_meta")
     _load_hidden_sessions = _load_store_attr("_hidden_sessions", "load_hidden_sessions")
@@ -1169,6 +1172,9 @@ class SessionManager:
     def _ui_state_coordinator_for_manager(self) -> Any:
         return self._coordinator_graph().ui_state
 
+    def _session_name_coordinator_for_manager(self) -> Any:
+        return self._coordinator_graph().session_name
+
     def _unattended_config_coordinator_for_manager(self) -> Any:
         return self._coordinator_graph().unattended_config
 
@@ -1257,6 +1263,10 @@ class SessionManager:
 
     def alias_get(self, session_id: str) -> str:
         return self._ui_state_coordinator_for_manager().alias_get(session_id)
+
+    def reconcile_session_name(self, session_id: str) -> dict[str, Any]:
+        """Project the alias store onto the backend's own session title."""
+        return self._session_name_coordinator_for_manager().reconcile(session_id)
 
     def alias_clear(self, session_id: str) -> None:
         return self._ui_state_coordinator_for_manager().alias_clear(session_id)

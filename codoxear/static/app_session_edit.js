@@ -47,6 +47,22 @@ const global = window;
     let editSessionId = null;
     let dependencyMenuOpen = false;
     let snoozeMode = "none";
+    function namePropagationNotice(propagation) {
+      // The alias store is authoritative: the rename already succeeded locally,
+      // and this only explains what happened to the backend's own title.
+      if (!propagation || typeof propagation !== "object" || propagation.ok === true) return "";
+      const backend = String(propagation.backend || "").toLowerCase();
+      const label = backend === "pi" ? "Pi" : backend === "codex" ? "Codex" : backend === "cc" ? "Claude Code" : "the backend";
+      const reason = String(propagation.reason || "");
+      if (reason === "unsupported") {
+        return backend === "pi"
+          ? "renamed — Pi needs /reload before it can adopt the title"
+          : `renamed — ${label} cannot update its title here`;
+      }
+      if (reason === "unsupported-clear") return `renamed — ${label} keeps its previous title`;
+      if (reason === "pending" || reason === "no-thread") return "";
+      return `renamed — ${label} title not updated`;
+    }
 
     function applyMenus() {
       editDependencyMenu.classList.toggle("open", dependencyMenuOpen);
@@ -186,7 +202,7 @@ const global = window;
       try {
         editSaveBtn.disabled = true;
         editStatus.textContent = "Saving...";
-        await api(`/api/sessions/${sid}/edit`, { method: "POST", body: {
+        const editResponse = await api(`/api/sessions/${sid}/edit`, { method: "POST", body: {
           name: String(editNameInput.value || ""),
           priority_offset: Number(editPriorityRange.value || 0),
           snooze_until: snoozeUntil,
@@ -195,7 +211,7 @@ const global = window;
         await refreshSessions();
         if (editSessionId !== sid) return;
         hideEditSession();
-        setToast("conversation updated");
+        setToast(namePropagationNotice(editResponse && editResponse.name_propagation) || "conversation updated");
       } catch (error) {
         if (editSessionId === sid) editStatus.textContent = error && error.message ? error.message : "Save failed";
       } finally {

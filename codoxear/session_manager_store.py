@@ -10,6 +10,7 @@ from .session_store import SessionStorePaths
 def session_store_paths(
     *,
     aliases: Path,
+    session_names: Path | None = None,
     sidebar_meta: Path,
     hidden_sessions: Path,
     files: Path,
@@ -24,6 +25,7 @@ def session_store_paths(
 ) -> SessionStorePaths:
     return SessionStorePaths(
         aliases=aliases,
+        session_names=session_names,
         sidebar_meta=sidebar_meta,
         hidden_sessions=hidden_sessions,
         files=files,

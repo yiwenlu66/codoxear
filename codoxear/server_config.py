@@ -25,6 +25,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "SEND_JOURNAL_DIR",
     "UNATTENDED_PATH",
     "ALIAS_PATH",
+    "SESSION_NAMES_PATH",
     "SIDEBAR_META_PATH",
     "HIDDEN_SESSIONS_PATH",
     "FILE_HISTORY_PATH",
@@ -110,6 +111,7 @@ class ServerConfig:
     SEND_JOURNAL_DIR: Path
     UNATTENDED_PATH: Path
     ALIAS_PATH: Path
+    SESSION_NAMES_PATH: Path
     SIDEBAR_META_PATH: Path
     HIDDEN_SESSIONS_PATH: Path
     FILE_HISTORY_PATH: Path
@@ -276,6 +278,7 @@ def build_server_config(
         SEND_JOURNAL_DIR=app_dir / "send_journal",
         UNATTENDED_PATH=app_dir / "unattended.json",
         ALIAS_PATH=app_dir / "session_aliases.json",
+        SESSION_NAMES_PATH=app_dir / "session_names.json",
         SIDEBAR_META_PATH=app_dir / "session_sidebar.json",
         HIDDEN_SESSIONS_PATH=app_dir / "hidden_sessions.json",
         FILE_HISTORY_PATH=app_dir / "session_files.json",

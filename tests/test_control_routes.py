@@ -50,6 +50,16 @@ class Manager:
         self.calls.append(("rename", session_id, name))
         return name.strip()
 
+    def reconcile_session_name(self, session_id):
+        self.calls.append(("reconcile_name", session_id))
+        return {"ok": True, "backend": "pi", "reason": "applied", "name": self.get_alias(session_id)}
+
+    def get_alias(self, session_id):
+        for call in reversed(self.calls):
+            if call[0] == "rename" and call[1] == session_id:
+                return call[2].strip()
+        return ""
+
     def clear_pending_attachment(self, session_id):
         self.calls.append(("clear_pending", session_id))
         return {"ok": True, "pending_attachment": False}
@@ -700,3 +710,49 @@ def test_inject_attachment_ready_check_precedes_base64_decode() -> None:
     manager.ready = False
     assert _post(_good_body(data_b64="!!!invalid!!!"), responses, manager=manager) is True
     assert responses == [(409, {"error": "wait for the current queue drain before attaching a file"})]
+
+
+def test_rename_route_reports_the_backend_title_projection() -> None:
+    responses = []
+    manager = Manager()
+    handled = handle_control_post_route(
+        Handler({"name": "auth refactor"}),
+        path="/api/sessions/s1/rename",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    )
+    assert handled is True
+    status, body = responses[-1]
+    assert status == 200
+    assert body["alias"] == "auth refactor"
+    assert body["name_propagation"] == {
+        "ok": True,
+        "backend": "pi",
+        "reason": "applied",
+        "name": "auth refactor",
+    }
+    assert ("rename", "s1", "auth refactor") in manager.calls
+    assert ("reconcile_name", "s1") in manager.calls
+
+
+def test_rename_succeeds_even_when_the_title_projection_raises() -> None:
+    class BrokenManager(Manager):
+        def reconcile_session_name(self, session_id):
+            raise RuntimeError("broker down")
+
+    responses = []
+    manager = BrokenManager()
+    handle_control_post_route(
+        Handler({"name": "still renamed"}),
+        path="/api/sessions/s1/rename",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    )
+    status, body = responses[-1]
+    assert status == 200
+    assert body["alias"] == "still renamed"
+    assert body["name_propagation"]["ok"] is False
+    assert body["name_propagation"]["reason"] == "error"
+    assert "broker down" in body["name_propagation"]["detail"]

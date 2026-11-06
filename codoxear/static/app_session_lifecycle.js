@@ -1,8 +1,24 @@
 
-
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`session lifecycle dependency missing: ${name}`);
     return value;
+  }
+
+  function namePropagationNotice(propagation) {
+    // The alias store is authoritative: the rename already succeeded locally,
+    // and this only explains what happened to the backend's own title.
+    if (!propagation || typeof propagation !== "object" || propagation.ok === true) return "";
+    const backend = String(propagation.backend || "").toLowerCase();
+    const label = backend === "pi" ? "Pi" : backend === "codex" ? "Codex" : backend === "cc" ? "Claude Code" : "the backend";
+    const reason = String(propagation.reason || "");
+    if (reason === "unsupported") {
+      return backend === "pi"
+        ? "renamed — Pi needs /reload before it can adopt the title"
+        : `renamed — ${label} cannot update its title here`;
+    }
+    if (reason === "unsupported-clear") return `renamed — ${label} keeps its previous title`;
+    if (reason === "pending" || reason === "no-thread") return "";
+    return `renamed — ${label} title not updated`;
   }
 
   function createInterruptController(options = {}) {
@@ -375,7 +391,9 @@
           let found = (sessions || []).find((x) => Number(x.broker_pid || 0) === brokerPid);
           if (found) {
             if (alias && String(found.alias || "").trim() !== alias) {
-              await api(`/api/sessions/${found.session_id}/rename`, { method: "POST", body: { name: alias } });
+              const renameResponse = await api(`/api/sessions/${found.session_id}/rename`, { method: "POST", body: { name: alias } });
+              const renameNotice = namePropagationNotice(renameResponse && renameResponse.name_propagation);
+              if (renameNotice) setToast(renameNotice);
               const renamed = await refreshSessions();
               found = (renamed || []).find((x) => x.session_id === found.session_id) || found;
             }

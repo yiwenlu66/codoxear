@@ -98,6 +98,7 @@ class SessionStorePaths:
     staged_attachments: Path | None = None
     uploads_root: Path | None = None
     drafts: Path | None = None
+    session_names: Path | None = None
 
 
 def _file_entry_path(entry: Any) -> str:
@@ -162,6 +163,7 @@ class SessionStore:
         self.clean_commit_unknown_send_record = clean_commit_unknown_send_record
         self.unattended: dict[str, dict[str, Any]] = {}
         self.aliases: dict[str, str] = {}
+        self.session_names: dict[str, dict[str, Any]] = {}
         self.sidebar_meta: dict[str, dict[str, Any]] = {}
         self.hidden_sessions: set[str] = set()
         self.files: dict[str, list[str]] = {}
@@ -183,6 +185,7 @@ class SessionStore:
     def reset_in_memory_state(self) -> None:
         self.unattended = {}
         self.aliases = {}
+        self.session_names = {}
         self.sidebar_meta = {}
         self.hidden_sessions = set()
         self.files = {}
@@ -197,6 +200,7 @@ class SessionStore:
     def load_persistent_state(self) -> None:
         self.unattended = self.load_unattended()
         self.aliases = self.load_aliases()
+        self.session_names = self.load_session_names()
         self.sidebar_meta = self.load_sidebar_meta()
         self.hidden_sessions = self.load_hidden_sessions()
         self.files = self.load_files()
@@ -235,6 +239,51 @@ class SessionStore:
 
     def save_aliases(self, obj: dict[str, str]) -> None:
         atomic_write_json(self.paths.aliases, dict(obj))
+
+    def load_session_names(self) -> dict[str, dict[str, Any]]:
+        """Projection bookkeeping: which name each transcript already received.
+
+        Keyed by ``<backend>:<transcript identity>`` because the registry session
+        id changes on resume while the transcript identity is what the backend
+        names.
+        """
+        path = self.paths.session_names
+        if path is None:
+            return {}
+        obj = load_json_file(path, default=None)
+        if obj is None:
+            return {}
+        if not isinstance(obj, dict):
+            raise ValueError("invalid session_names.json (expected object)")
+        raw = obj.get("applied")
+        if not isinstance(raw, dict):
+            return {}
+        cleaned: dict[str, dict[str, Any]] = {}
+        for key, value in raw.items():
+            if not isinstance(key, str) or not key:
+                continue
+            if not isinstance(value, dict):
+                continue
+            state = value.get("state")
+            if state not in ("applied", "adopted", "cleared", "unsupported", "pending", "failed"):
+                continue
+            name = value.get("name")
+            attempts = value.get("attempts")
+            ts = value.get("ts")
+            cleaned[key] = {
+                "state": state,
+                "name": "" if not isinstance(name, str) else name,
+                "attempts": attempts if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts >= 0 else 0,
+                "ts": ts if isinstance(ts, (int, float)) and not isinstance(ts, bool) else 0.0,
+                "control": value.get("control") is True,
+            }
+        return cleaned
+
+    def save_session_names(self, obj: dict[str, dict[str, Any]]) -> None:
+        path = self.paths.session_names
+        if path is None:
+            return
+        atomic_write_json(path, {"version": 1, "applied": dict(obj)})
 
     def load_sidebar_meta(self) -> dict[str, dict[str, Any]]:
         obj = load_json_file(self.paths.sidebar_meta, default=None)

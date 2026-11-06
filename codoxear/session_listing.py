@@ -93,6 +93,10 @@ class ActiveSessionRowFacts:
     snoozed: bool
     lost: bool = False
     pi_thinking_command: bool = False
+    # Live session-title control, and the backend's own recorded title. The
+    # display name stays `alias`; these are diagnostics plus the adoption source.
+    session_name_control: bool = False
+    backend_session_name: str = ""
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
     subagent_details: list[dict[str, Any]] = field(default_factory=list)
@@ -256,6 +260,8 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "broker_pid": facts.broker_pid,
         "agent_backend": facts.agent_backend,
         "pi_thinking_command": bool(facts.agent_backend == "pi" and facts.pi_thinking_command),
+        "session_name_control": bool(facts.session_name_control),
+        "backend_session_name": facts.backend_session_name,
         "slash_commands": slash_commands_for_backend(facts.agent_backend, facts.slash_commands, pi_bridge_capable=bool(facts.pi_thinking_command)),
         "owned": facts.owned,
         "transport": facts.transport,
@@ -505,6 +511,8 @@ def build_active_session_rows_snapshot(
                     snoozed=snoozed,
                     lost=bool(s.lost),
                     pi_thinking_command=bool(s.pi_thinking_command),
+                    session_name_control=bool(s.session_name_control),
+                    backend_session_name=s.backend_session_name,
                     slash_commands=list(s.slash_commands),
                     subagents_running=len(matching_subagents),
                     subagent_details=[dict(run) for run in matching_subagents if isinstance(run, Mapping)],
