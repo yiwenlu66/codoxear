@@ -143,10 +143,10 @@ p.write_text(json.dumps(settings))
 PYSETTINGS
 }
 
-wait_for_server() {
+wait_for_server() { # attempts
   local url="http://127.0.0.1:${port}/api/me"
   local status
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "${1:-120}"); do
     status="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
     [[ "$status" == "401" ]] && return 0
     sleep 1
@@ -279,7 +279,15 @@ npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
     exec python3 -m codoxear.server
   ' > "$artifacts/container-id.txt" || fail "container start failed"
 
-wait_for_server || fail "isolated server did not become reachable"
+# The container's own body boots an offline Pi session and a broker before it
+# execs the server, which occasionally needs longer than the first window; capture
+# its logs here, while it still exists, so a slow or failed boot is diagnosable
+# instead of just absent from the later cleanup capture.
+if ! wait_for_server 240; then
+  "${docker[@]}" logs "$container" > "$artifacts/container-start-logs.txt" 2>&1 || true
+  "${docker[@]}" ps -a --format '{{.Names}} {{.Status}}' > "$artifacts/container-start-ps.txt" 2>&1 || true
+  fail "isolated server did not become reachable"
+fi
 curl -fsS -c "$root/cookies.txt" -H 'Content-Type: application/json' \
   --data "$(python3 -c 'import json,sys; print(json.dumps({"password": sys.argv[1]}))' "$password")" \
   "http://127.0.0.1:${port}/api/login" > "$artifacts/login.json" || fail "API login failed"
