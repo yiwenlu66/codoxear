@@ -54,7 +54,7 @@ def eval_model_options(
         process.stdout.write(JSON.stringify({{options,filtered,parsed,input:selectedInput,provider,literal,absent,longDisplay,longParsed}}));
         """
     )
-    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    proc = subprocess.run(["node"], input=script, check=True, text=True, capture_output=True)
     return json.loads(proc.stdout)
 
 
@@ -85,7 +85,7 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
         process.stdout.write(JSON.stringify({{recent:c.filteredRecentCwdOptions(),menu:c.cwdMenuOptions("")}}));
         """
     )
-    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    proc = subprocess.run(["node"], input=script, check=True, text=True, capture_output=True)
     return json.loads(proc.stdout)
 
 

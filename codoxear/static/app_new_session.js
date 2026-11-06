@@ -1,5 +1,6 @@
 import * as CodoxearDisplay from "./app_display.js";
 import * as CodoxearLaunch from "./app_launch.js";
+import * as CodoxearPathCompletion from "./app_path_completion.js";
 
 
 
@@ -109,6 +110,11 @@ function requireFunction(value, name) {
     let cwdSuggestInput = null;
     let cwdSuggestLoadSeq = 0;
     let cwdSuggestTimer = null;
+    // The value whose filesystem listing has actually arrived, plus whether the
+    // server had to cap it. Tab completion is only allowed on a settled listing:
+    // completing from a half-known directory would insert a guess.
+    let cwdSuggestLoaded = null;
+    let filesystemCwdTruncated = false;
 
     const MODEL_PROVIDER_SEPARATOR = " · ";
 
@@ -547,11 +553,15 @@ function requireFunction(value, name) {
         filesystemCwdOptions = Array.isArray(result && result.directories)
           ? result.directories.filter((item) => item && typeof item.name === "string" && typeof item.path === "string")
           : [];
+        filesystemCwdTruncated = Boolean(result && result.truncated);
+        cwdSuggestLoaded = raw;
         renderRecentCwdMenu();
         applyDialogMenus();
       } catch (_) {
         if (seq !== cwdSuggestLoadSeq) return;
         filesystemCwdOptions = [];
+        filesystemCwdTruncated = false;
+        cwdSuggestLoaded = raw;
         renderRecentCwdMenu();
         applyDialogMenus();
       }
@@ -561,6 +571,8 @@ function requireFunction(value, name) {
       const raw = String(cwdInput.value || "").trim();
       if (raw === cwdSuggestInput) return;
       cwdSuggestInput = raw;
+      cwdSuggestLoaded = null;
+      filesystemCwdTruncated = false;
       filesystemCwdOptions = [];
       const seq = ++cwdSuggestLoadSeq;
       if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
@@ -585,6 +597,28 @@ function requireFunction(value, name) {
         recent.push({ cwd, source: "filesystem" });
       }
       return recent;
+    }
+
+    // Tab completion for the cwd field. The two sources follow the order a user
+    // expects: a row the arrow keys picked (takes it), then the filesystem
+    // listing of the text as typed (extends it). Returns the value to write, or
+    // null so the caller leaves Tab alone and focus moves as it always did.
+    function cwdTabCompletion() {
+      const raw = String(cwdInput.value || "").trim();
+      const focus = cwdMenuFocus();
+      if (focus >= 0) {
+        const picked = cwdMenuOptions(raw)[focus];
+        const cwd = picked && typeof picked.cwd === "string" ? picked.cwd : "";
+        if (cwd) return cwd;
+      }
+      if (!raw || cwdSuggestLoaded !== raw) return null;
+      const plan = CodoxearPathCompletion.completionPlan({
+        value: raw,
+        defaultDir: "/",
+        names: filesystemCwdOptions.map((item) => ({ name: String(item.name || ""), isDir: true })),
+        truncated: filesystemCwdTruncated,
+      });
+      return plan ? plan.value : null;
     }
 
     function renderRecentCwdMenu() {
@@ -755,6 +789,8 @@ function requireFunction(value, name) {
       if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
       cwdSuggestTimer = null;
       cwdSuggestInput = null;
+      cwdSuggestLoaded = null;
+      filesystemCwdTruncated = false;
       filesystemCwdOptions = [];
       cwdSuggestLoadSeq += 1;
     }
@@ -808,6 +844,7 @@ function requireFunction(value, name) {
       setNewSessionCwdError,
       clearNewSessionCwdInfo,
       applyNewSessionCwdSuggestion,
+      cwdTabCompletion,
       renderRecentCwdMenu,
       newSessionResumeLabel,
       setNewSessionResumeSelection,
@@ -992,6 +1029,25 @@ function requireFunction(value, name) {
       cwdInput.value = "";
       cwdMenuFocus = -1;
       controller.setNewSessionCwdError("");
+    }
+
+    // Tab wrote a value into the cwd field: run the same refresh the typed-input
+    // path performs (name placeholder, resume candidates, suggestion listing) and
+    // keep the menu open, so a completed directory immediately shows its children
+    // and the next Tab can drill into one of them.
+    function applyCwdCompletionValue(value) {
+      cwdInput.value = String(value == null ? "" : value);
+      cwdQueryDirty = true;
+      cwdBrowseRestore = null;
+      cwdMenuFocus = -1;
+      cwdMenuOpen = true;
+      controller.setNewSessionCwdError("");
+      controller.syncNewSessionNamePlaceholder();
+      controller.renderRecentCwdMenu();
+      controller.scheduleNewSessionResumeLoad();
+      applyDialogMenus();
+      const end = String(cwdInput.value || "").length;
+      try { cwdInput.setSelectionRange(end, end); } catch (_) {}
     }
 
     function restoreBrowseCwdSelection() {
@@ -1179,7 +1235,7 @@ function requireFunction(value, name) {
     cwdInput.onclick = () => { beginCwdBrowse(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
     cwdInput.oninput = () => { cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
     cwdInput.onblur = () => win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { dismissCwdPicker(); applyDialogMenus(); } });
-    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } else if (event.key === "Tab" && cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } };
+    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { const completed = controller.cwdTabCompletion(); if (completed !== null) { event.preventDefault(); applyCwdCompletionValue(completed); return; } } if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
     modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
     // The first edit of a committed pair replaces it: clearing here means the
     // typed character or paste lands in an empty field instead of appending to

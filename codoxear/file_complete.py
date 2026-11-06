@@ -31,7 +31,7 @@ def _resolve_directory(session_cwd: Path, dir_part: str) -> Path:
     return (session_cwd / dir_part).resolve()
 
 
-def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompletionResult:
+def _complete_path_token(session_cwd: Path, token: str, limit: int, *, prefix_only: bool = False) -> FileCompletionResult:
     # A token without a slash is a bare fragment in the session cwd. The
     # composer's `@` mention is sent in exactly that form (`@comp` -> `comp`,
     # `@` -> ``), and it is also the shape a user gets from completing the cwd
@@ -41,6 +41,7 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompl
     fragment = token[slash_index + 1 :] if slash_index >= 0 else token
     directory = _resolve_directory(session_cwd, dir_part)
     include_hidden = fragment.startswith(".")
+    folded_fragment = fragment.casefold()
     matches: list[tuple[int, str, bool]] = []
     try:
         with os.scandir(directory) as scan:
@@ -50,17 +51,23 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompl
                     continue
                 if path_has_surrogate_bytes(name):
                     continue
+                # Prefix mode answers "what is the complete set of names starting
+                # with this fragment" — the question tab completion asks. It
+                # filters before the cap so a large directory cannot hide the
+                # fragment, and it never reports a fuzzy-only name.
+                if prefix_only and folded_fragment and not name.casefold().startswith(folded_fragment):
+                    continue
                 try:
                     is_dir = entry.is_dir()
                 except OSError:
                     is_dir = False
-                score = 0 if not fragment else file_search_score(name, fragment)
+                score = 0 if not fragment or prefix_only else file_search_score(name, fragment)
                 if score >= 0:
                     matches.append((score, name, is_dir))
     except (OSError, ValueError):
         return FileCompletionResult(directory=directory, entries=[], truncated=False)
 
-    if fragment:
+    if fragment and not prefix_only:
         matches.sort(key=lambda item: (-item[0], not item[2], item[1].casefold()))
     else:
         matches.sort(key=lambda item: (not item[2], item[1].casefold()))
@@ -76,11 +83,17 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int) -> FileCompl
     return FileCompletionResult(directory=directory, entries=entries, truncated=truncated)
 
 
-def complete_session_path(session_cwd: Path, *, token: str, limit: int = FILE_COMPLETE_DEFAULT_LIMIT) -> FileCompletionResult:
+def complete_session_path(session_cwd: Path, *, token: str, limit: int = FILE_COMPLETE_DEFAULT_LIMIT, prefix_only: bool = False) -> FileCompletionResult:
     """Complete one composer path token without allowing a slow mount to stall HTTP.
 
     A token may carry a directory part (`./src/al`, `../be`, `~/ga`, `/etc/ho`)
     or be a bare cwd fragment (`alpha`, or empty for the cwd itself).
+
+    ``prefix_only`` switches the ranking from fuzzy (`file_search_score`, the
+    composer picker) to plain prefix matching, which is what tab completion in a
+    path field needs: the caller completes the typed fragment, so the listing
+    must be the complete set of names sharing that fragment, not the best fuzzy
+    matches.
 
     Resolution and directory enumeration both run in a bounded worker because
     either operation can block while a network mount is unavailable.  A path
@@ -88,7 +101,9 @@ def complete_session_path(session_cwd: Path, *, token: str, limit: int = FILE_CO
     accepting ordinary text even when a directory is unreachable.
     """
     clamped_limit = max(1, min(int(limit), FILE_COMPLETE_MAX_LIMIT))
-    future = _FILE_COMPLETE_EXECUTOR.submit(_complete_path_token, Path(session_cwd), str(token), clamped_limit)
+    future = _FILE_COMPLETE_EXECUTOR.submit(
+        _complete_path_token, Path(session_cwd), str(token), clamped_limit, prefix_only=prefix_only
+    )
     try:
         return future.result(timeout=FILE_COMPLETE_TIMEOUT_SECONDS)
     except FutureTimeoutError:

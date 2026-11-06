@@ -19,7 +19,8 @@ INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 def run_node_json(js: str) -> dict:
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

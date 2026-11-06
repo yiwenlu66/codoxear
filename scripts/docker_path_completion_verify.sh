@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Docker-isolated behavioral verifier for composer filesystem path completion.
+# Docker-isolated behavioral verifier for filesystem path completion: the
+# composer's path picker AND Tab completion in path *fields* (file viewer path,
+# New Session cwd).
 #
 # The application image is built from a Git archive of a committed ref (HEAD by
 # default), never the editable checkout. A throwaway container HOME holds both
@@ -252,6 +254,9 @@ npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
     export PYTHONPATH=/workspace
     fixture="$HOME/path-completion-fixture"
     mkdir -p "$fixture/subdir" "$fixture/my dir"
+    # Separate tree for the path-field Tab scenarios: a unique match, a shared
+    # prefix, and a sibling that must never be offered.
+    mkdir -p "$HOME/tab-cwd-fixture/alpha/inner" "$HOME/tab-cwd-fixture/alpine" "$HOME/tab-cwd-fixture/beta"
     : > "$fixture/plain.txt"
     : > "$fixture/.hidden"
     : > "$fixture/subdir/child.txt"
@@ -463,6 +468,106 @@ wait_js 'document.querySelector("#fileViewer") && getComputedStyle(document.quer
 browser eval '(() => ({ viewerDisplay: getComputedStyle(document.querySelector("#fileViewer")).display, path: document.querySelector("#filePickerInput").value, status: document.querySelector("#fileStatus").textContent }))()' --json > "$artifacts/ui-25-mention-viewer.json" 2>&1 || fail "could not read the viewer after the mention click"
 browser screenshot --full "$artifacts/ui-25-mention-viewer.png" > "$artifacts/ui-25-mention-viewer-screenshot.txt" 2>&1 || true
 
+# ---------------------------------------------------------------------------
+# TAB FIELD PHASE: Tab fills a path *field* (file viewer picker, New Session
+# cwd) from the listing that was prefetched while typing. It never opens a file,
+# never inserts a guess, and never traps the key: with nothing to complete the
+# browser's own focus move happens.
+# ---------------------------------------------------------------------------
+picker_field_eval='(() => {
+  const input = document.querySelector("#filePickerInput");
+  const active = document.activeElement;
+  const menu = document.querySelector("#filePickerMenu");
+  return {
+    value: input ? input.value : null,
+    focused: Boolean(input && active === input),
+    activeId: active ? (active.id || active.tagName) : null,
+    menuOpen: Boolean(menu && menu.classList.contains("open")),
+    rows: Array.from(menu ? menu.querySelectorAll(".fileMenuItem") : []).map((node) => node.textContent),
+  };
+})()'
+cwd_field_eval='(() => {
+  const input = document.querySelector("#newSessionCwdInput");
+  const active = document.activeElement;
+  const menu = document.querySelector("#newSessionCwdMenu");
+  return {
+    value: input ? input.value : null,
+    focused: Boolean(input && active === input),
+    activeId: active ? (active.id || active.tagName) : null,
+    rows: Array.from(menu ? menu.querySelectorAll("[role=option]") : []).map((node) => node.title),
+    activeRow: menu && menu.querySelector("[role=option].active") ? menu.querySelector("[role=option].active").title : null,
+  };
+})()'
+
+browser click '#fileCloseBtn' > "$artifacts/ui-tab-close-viewer.txt" 2>&1 || true
+browser click '#fileBtn' > "$artifacts/ui-tab-open-picker.txt" 2>&1 || fail "file picker button missing"
+browser wait 800 > /dev/null 2>&1 || true
+
+# A unique directory match completes and keeps focus in the field.
+browser fill '#filePickerInput' 'subd' > "$artifacts/ui-tab-picker-typed.txt" 2>&1 || fail "could not type a picker prefix"
+browser wait 700 > /dev/null 2>&1 || true
+browser eval "$picker_field_eval" --json > "$artifacts/ui-26-picker-typed.json" 2>&1 || fail "could not read typed picker state"
+browser press Tab > "$artifacts/ui-tab-picker-complete.txt" 2>&1 || fail "Tab in the picker failed"
+browser wait 800 > /dev/null 2>&1 || true
+browser eval "$picker_field_eval" --json > "$artifacts/ui-27-picker-complete.json" 2>&1 || fail "could not read completed picker state"
+browser screenshot --full "$artifacts/ui-27-picker-complete.png" > "$artifacts/ui-27-picker-complete-screenshot.txt" 2>&1 || true
+
+# A completed file name is a real path: Enter opens it.
+browser fill '#filePickerInput' 'plai' > "$artifacts/ui-tab-picker-file-typed.txt" 2>&1 || fail "could not type a file prefix"
+browser wait 700 > /dev/null 2>&1 || true
+browser press Tab > "$artifacts/ui-tab-picker-file-complete.txt" 2>&1 || fail "Tab on a file prefix failed"
+browser wait 500 > /dev/null 2>&1 || true
+browser eval "$picker_field_eval" --json > "$artifacts/ui-28-picker-file.json" 2>&1 || fail "could not read completed file state"
+browser press Enter > "$artifacts/ui-tab-picker-file-open.txt" 2>&1 || fail "Enter after Tab failed"
+browser wait 1500 > /dev/null 2>&1 || true
+browser eval '(() => ({ path: document.querySelector("#filePickerInput") ? document.querySelector("#filePickerInput").value : null, status: document.querySelector("#fileStatus") ? document.querySelector("#fileStatus").textContent : null, viewer: document.querySelector("#fileViewer") ? getComputedStyle(document.querySelector("#fileViewer")).display : null }))()' --json > "$artifacts/ui-29-picker-opened.json" 2>&1 || fail "could not read the opened file"
+
+# Nothing to complete: Tab stays native, so focus leaves the field.
+browser click '#filePickerInput' > "$artifacts/ui-tab-picker-refocus.txt" 2>&1 || true
+browser fill '#filePickerInput' 'zzzz' > "$artifacts/ui-tab-picker-nomatch.txt" 2>&1 || fail "could not type a no-match prefix"
+browser wait 700 > /dev/null 2>&1 || true
+browser press Tab > "$artifacts/ui-tab-picker-nomatch-tab.txt" 2>&1 || fail "Tab on a no-match prefix failed"
+browser wait 400 > /dev/null 2>&1 || true
+browser eval "$picker_field_eval" --json > "$artifacts/ui-30-picker-nomatch.json" 2>&1 || fail "could not read the no-match picker state"
+
+browser click '#fileCloseBtn' > "$artifacts/ui-tab-close-viewer-again.txt" 2>&1 || true
+browser click '#newBtn' > "$artifacts/ui-tab-new-session.txt" 2>&1 || fail "new session button missing"
+browser wait 700 > /dev/null 2>&1 || true
+
+# A unique directory completes with its separator, and the menu now lists what is
+# inside it: Tab is a drill, not just text entry.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/alph' > "$artifacts/ui-tab-cwd-typed.txt" 2>&1 || fail "could not type a cwd prefix"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-31-cwd-typed.json" 2>&1 || fail "could not read typed cwd state"
+browser press Tab > "$artifacts/ui-tab-cwd-complete.txt" 2>&1 || fail "Tab in the cwd field failed"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-32-cwd-complete.json" 2>&1 || fail "could not read completed cwd state"
+browser screenshot --full "$artifacts/ui-32-cwd-complete.png" > "$artifacts/ui-32-cwd-complete-screenshot.txt" 2>&1 || true
+
+# A shared prefix completes only as far as the names agree.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/al' > "$artifacts/ui-tab-cwd-shared-typed.txt" 2>&1 || fail "could not type a shared prefix"
+browser wait 900 > /dev/null 2>&1 || true
+browser press Tab > "$artifacts/ui-tab-cwd-shared.txt" 2>&1 || fail "Tab on a shared prefix failed"
+browser wait 500 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-33-cwd-shared.json" 2>&1 || fail "could not read the shared-prefix state"
+
+# Shift+Tab is never completion.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/alph' > "$artifacts/ui-tab-cwd-shift-typed.txt" 2>&1 || fail "could not type before Shift+Tab"
+browser wait 900 > /dev/null 2>&1 || true
+browser press Shift+Tab > "$artifacts/ui-tab-cwd-shift.txt" 2>&1 || fail "Shift+Tab failed"
+browser wait 400 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-34-cwd-shift.json" 2>&1 || fail "could not read the Shift+Tab state"
+
+# A row the arrow keys picked is taken, and the field keeps focus.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/' > "$artifacts/ui-tab-cwd-row-typed.txt" 2>&1 || fail "could not type a directory listing query"
+browser wait 900 > /dev/null 2>&1 || true
+browser press ArrowDown > "$artifacts/ui-tab-cwd-row-arrow.txt" 2>&1 || fail "ArrowDown in the cwd field failed"
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-35-cwd-row-armed.json" 2>&1 || fail "could not read the armed row"
+browser press Tab > "$artifacts/ui-tab-cwd-row.txt" 2>&1 || fail "Tab on a picked row failed"
+browser wait 500 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-36-cwd-row-taken.json" 2>&1 || fail "could not read the taken row"
+browser click '#newSessionCloseBtn' > "$artifacts/ui-tab-cwd-close.txt" 2>&1 || true
+
 browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
 browser console --json > "$artifacts/browser-console.json" 2>&1 || true
 
@@ -504,6 +609,17 @@ mention_nomatch = result("ui-22-mention-nomatch")
 mention_enter = result("ui-23-mention-enter")
 mention_link = result("ui-24-mention-link")
 mention_viewer = result("ui-25-mention-viewer")
+picker_typed = result("ui-26-picker-typed")
+picker_complete = result("ui-27-picker-complete")
+picker_file = result("ui-28-picker-file")
+picker_opened = result("ui-29-picker-opened")
+picker_nomatch = result("ui-30-picker-nomatch")
+cwd_typed = result("ui-31-cwd-typed")
+cwd_complete = result("ui-32-cwd-complete")
+cwd_shared = result("ui-33-cwd-shared")
+cwd_shift = result("ui-34-cwd-shift")
+cwd_row_armed = result("ui-35-cwd-row-armed")
+cwd_row_taken = result("ui-36-cwd-row-taken")
 
 checks = {
     "dot_slash_opens_fixture_picker": first.get("pickerVisible") is True and first.get("ariaLabel") == "Available paths" and first.get("header") == "/home/tester/path-completion-fixture" and {"my dir/", "subdir/", "plain.txt"}.issubset(set(texts(first))),
@@ -528,8 +644,21 @@ checks = {
     "mention_no_match_does_not_swallow_enter": mention_nomatch.get("pickerVisible") is True and str(mention_enter.get("value", "")).endswith("\n"),
     "mention_message_renders_a_link": mention_link.get("text") == "@plain.txt" and mention_link.get("kind") == "text" and str(mention_link.get("path", "")).endswith("/plain.txt") and not mention_link.get("pendingLink"),
     "mention_link_opens_the_file": mention_viewer.get("viewerDisplay") not in {None, "none"} and str(mention_viewer.get("path", "")).endswith("plain.txt"),
+    # Path *fields*: Tab completes from the listing prefetched while typing, keeps
+    # focus, drills into a completed directory, takes a row the arrows picked, and
+    # stays native when there is nothing to complete (Shift+Tab always native).
+    "tab_completes_picker_directory": picker_typed.get("value") == "subd" and picker_complete.get("value") == "subdir/" and picker_complete.get("focused") is True,
+    "tab_picker_drill_lists_children": any("child.txt" in str(row) for row in picker_complete.get("rows") or []),
+    "tab_completes_picker_file": picker_file.get("value") == "plain.txt" and picker_file.get("focused") is True,
+    "tab_completed_file_opens": picker_opened.get("viewer") not in {None, "none"} and str(picker_opened.get("path", "")).endswith("plain.txt"),
+    "tab_without_completion_moves_focus": picker_nomatch.get("focused") is False,
+    "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_complete.get("focused") is True,
+    "tab_cwd_drill_lists_children": any(str(row).endswith("/alpha/inner") for row in cwd_complete.get("rows") or []),
+    "tab_cwd_shared_prefix": cwd_shared.get("value") == "/home/tester/tab-cwd-fixture/alp",
+    "shift_tab_never_completes": cwd_shift.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_shift.get("focused") is False,
+    "tab_takes_the_picked_row": bool(cwd_row_armed.get("activeRow")) and cwd_row_taken.get("value") == cwd_row_armed.get("activeRow") and cwd_row_taken.get("focused") is True,
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"
@@ -547,4 +676,4 @@ if ! python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[
   echo "FAIL: path-completion verification failed; artifacts=$artifacts" >&2
   exit 1
 fi
-printf 'PASS: composer path completion verified at %s; artifacts=%s screenshots=%s\n' "$short_commit" "$artifacts" "$artifacts/ui-01-dot-slash.png,$artifacts/ui-05-subdir-children.png,$artifacts/ui-09-spacey-children.png,$artifacts/ui-11-mid-message-absolute.png,$artifacts/ui-17-after-caret-click.png,$artifacts/ui-18-mention-open.png,$artifacts/ui-20-mention-accepted.png,$artifacts/ui-24-mention-link.png,$artifacts/ui-25-mention-viewer.png"
+printf 'PASS: path completion verified (composer picker + path-field Tab) at %s; artifacts=%s screenshots=%s\n' "$short_commit" "$artifacts" "$artifacts/ui-01-dot-slash.png,$artifacts/ui-05-subdir-children.png,$artifacts/ui-09-spacey-children.png,$artifacts/ui-11-mid-message-absolute.png,$artifacts/ui-17-after-caret-click.png,$artifacts/ui-18-mention-open.png,$artifacts/ui-20-mention-accepted.png,$artifacts/ui-24-mention-link.png,$artifacts/ui-25-mention-viewer.png,$artifacts/ui-27-picker-complete.png,$artifacts/ui-32-cwd-complete.png"

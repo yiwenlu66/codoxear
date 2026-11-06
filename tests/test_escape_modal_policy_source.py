@@ -21,8 +21,12 @@ DISPLAY = module_path("app_display.js")
 
 
 def run_node(js: str) -> dict:
+    # Feed the program on stdin: the embedded controller sources (the New
+    # Session dialog now also carries the path-completion helper) exceed the
+    # kernel's per-argument limit when passed with -e.
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

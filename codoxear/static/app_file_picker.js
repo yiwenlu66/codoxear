@@ -1,4 +1,5 @@
 import * as CodoxearFileHelpers from "./app_file_helpers.js";
+import * as CodoxearPathCompletion from "./app_path_completion.js";
 
 
   function requireFunction(host, name) {
@@ -673,6 +674,8 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     const optionElementById = requireFunction(options, "optionElementById");
     const isFocusInsideField = requireFunction(options, "isFocusInsideField");
     const animationFrame = requireFunction(options, "requestAnimationFrame");
+    const searchSnapshot = requireFunction(options, "searchSnapshot");
+    const visibleEntries = requireFunction(options, "visibleEntries");
     const openSearchQueryState = requireFunction(menuState, "openSearchQuery");
     const takePreservedSearchOnFocus = requireFunction(menuState, "takePreservedSearchOnFocus");
     const setOpen = requireFunction(menuState, "setOpen");
@@ -755,7 +758,54 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       return true;
     }
 
-    async function keydown(event) {
+    // Tab completion, decided synchronously: the browser runs a key event's
+    // default action before any network round trip can call preventDefault, so
+    // this only ever answers from state already in hand — the listing prefetched
+    // by createSearchState, or the row the arrow keys picked. When neither gives
+    // a new value, Tab is left alone and focus moves as it always did.
+    function tabCompletion(event) {
+      if (!event || event.key !== "Tab") return false;
+      if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return false;
+      const current = String(input.value || "");
+      let next = null;
+      const focus = menuState.focusIndex();
+      if (focus >= 0) {
+        const rows = visibleEntries();
+        const row = rows && rows[focus] ? rows[focus] : null;
+        const path = row && typeof row.path === "string" ? row.path : "";
+        if (path) next = path;
+      }
+      if (next === null) {
+        const value = current.trim();
+        const state = searchSnapshot();
+        const listing = state && state.completion ? state.completion : null;
+        if (listing && listing.query && listing.query === value) {
+          const plan = CodoxearPathCompletion.completionPlan({
+            value,
+            defaultDir: "",
+            names: listing.names,
+            truncated: listing.truncated,
+          });
+          if (plan) next = plan.value;
+        }
+      }
+      if (next === null || next === current) return false;
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      input.value = next;
+      menuState.setFocus(-1);
+      // Re-run the ordinary input flow so the menu, the search and the draft
+      // state all follow the completed value (a completed directory immediately
+      // lists what is inside it).
+      void inputChanged();
+      return true;
+    }
+
+    function keydown(event) {
+      if (tabCompletion(event)) return true;
+      return keydownAsync(event);
+    }
+
+    async function keydownAsync(event) {
       if (!(await ensureCurrentSession())) return false;
       const entries = renderMenu();
       if (event && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -789,10 +839,6 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
         closeMenu({ restoreInput: true });
         return true;
       }
-      if (event && event.key === "Tab" && isOpen()) {
-        closeMenu({ restoreInput: true });
-        return true;
-      }
       return false;
     }
 
@@ -821,6 +867,15 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
     let seq = 0;
     let timer = null;
     let abort = null;
+    // Prefix listing for Tab completion of the typed path. It is fetched on the
+    // same keystroke debounce as the search because the browser cannot cancel
+    // Tab's focus move after a network round trip: the answer has to be in memory
+    // before the key is pressed. `query` names the settled value, so a listing for
+    // old text can never complete new text.
+    let completion = { query: "", names: [], truncated: false };
+    let completionPending = false;
+    let completionSeq = 0;
+    let completionAbort = null;
 
     function snapshot() {
       return {
@@ -831,6 +886,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
         error,
         truncatedQuery,
         sessionId,
+        completion: { query: completion.query, names: completion.names.slice(), truncated: completion.truncated },
       };
     }
 
@@ -838,6 +894,13 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       if (!abort || typeof abort.abort !== "function") return;
       try {
         abort.abort();
+      } catch (_) {}
+    }
+
+    function abortCompletion() {
+      if (!completionAbort || typeof completionAbort.abort !== "function") return;
+      try {
+        completionAbort.abort();
       } catch (_) {}
     }
 
@@ -857,6 +920,11 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       error = "";
       truncatedQuery = "";
       seq += 1;
+      abortCompletion();
+      completionAbort = null;
+      completion = { query: "", names: [], truncated: false };
+      completionPending = false;
+      completionSeq += 1;
     }
 
     function setSessionId(value) {
@@ -928,6 +996,48 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       }
     }
 
+    // Prefix listing for Tab completion. `prefix_only=1` makes the server return
+    // exactly the names sharing the typed fragment (never fuzzy matches), so the
+    // client can decide completion on a complete set — or refuse when the server
+    // reports it had to cap the listing.
+    async function requestCompletion(query) {
+      const trimmed = String(query || "").trim();
+      const sid = String(currentSessionId() || "");
+      if (!trimmed || !sid) {
+        completion = { query: "", names: [], truncated: false };
+        completionPending = false;
+        return completion;
+      }
+      if (completion.query === trimmed && !completionPending) return completion;
+      const requestSeq = ++completionSeq;
+      completionPending = true;
+      abortCompletion();
+      const controller = typeof AbortCtor === "function" ? new AbortCtor() : null;
+      completionAbort = controller;
+      try {
+        const res = await api(`/api/sessions/${sid}/file/complete?prefix_only=1&limit=120&path=${encodeURIComponent(trimmed)}`, {
+          signal: controller ? controller.signal : undefined,
+        });
+        if (requestSeq !== completionSeq || sessionId !== sid) return completion;
+        const entries = res && res.ok === true && Array.isArray(res.entries) ? res.entries : [];
+        completion = {
+          query: trimmed,
+          names: entries
+            .map((entry) => ({ name: String(entry && entry.name ? entry.name : ""), isDir: Boolean(entry && entry.is_dir) }))
+            .filter((entry) => entry.name !== ""),
+          truncated: Boolean(res && res.truncated),
+        };
+      } catch (_) {
+        if (controller && controller.signal && controller.signal.aborted) return completion;
+        if (requestSeq !== completionSeq) return completion;
+        completion = { query: trimmed, names: [], truncated: false };
+      } finally {
+        if (completionAbort === controller) completionAbort = null;
+        if (requestSeq === completionSeq) completionPending = false;
+      }
+      return completion;
+    }
+
     function schedule(query) {
       if (blocked()) return;
       const trimmed = String(query || "").trim();
@@ -950,6 +1060,7 @@ import * as CodoxearFileHelpers from "./app_file_helpers.js";
       truncatedQuery = "";
       timer = timerSet(() => {
         timer = null;
+        void requestCompletion(trimmed);
         void request(trimmed)
           .then(() => {
             if (!isMenuOpen()) return;

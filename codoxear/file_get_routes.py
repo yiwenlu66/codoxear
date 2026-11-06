@@ -450,12 +450,14 @@ def _handle_session_file_complete(handler: Any, *, session_id: str, query: str, 
             deps.json_response(handler, 400, {"error": "limit must be an integer"})
             return
     limit = max(1, min(limit, 120))
+    prefix_values = values.get("prefix_only")
+    prefix_only = bool(prefix_values) and str(prefix_values[0]).strip().lower() not in {"", "0", "false", "no"}
     try:
         base = deps.resolve_session_cwd(session.cwd)
     except (OSError, ValueError):
         deps.json_response(handler, 200, {"ok": True, "dir": path_json_text(session.cwd), "entries": [], "truncated": False})
         return
-    result = deps.complete_session_path(base, token=token, limit=limit)
+    result = deps.complete_session_path(base, token=token, limit=limit, prefix_only=prefix_only)
     directory = result.directory if result.directory is not None else base
     deps.json_response(
         handler,

@@ -234,7 +234,12 @@ def _handle_cwd_suggest(handler: Any, *, query: str, deps: SessionRouteDeps) -> 
     qs = urllib.parse.parse_qs(query)
     path = qs.get("path", [""])[0]
     prefix = qs.get("prefix", [""])[0]
-    deps.json_response(handler, 200, {"directories": cwd_suggestions(path, prefix=prefix)})
+    result = cwd_suggestions(path, prefix=prefix)
+    deps.json_response(
+        handler,
+        200,
+        {"directories": result.directories, "truncated": result.truncated},
+    )
 
 
 def _handle_metrics(handler: Any, *, deps: SessionRouteDeps) -> None:

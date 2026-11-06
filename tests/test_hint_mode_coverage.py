@@ -188,7 +188,8 @@ def run_shell_hint_coverage() -> dict:
         """
     )
     completed = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

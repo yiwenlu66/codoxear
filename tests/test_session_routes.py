@@ -198,7 +198,15 @@ def test_handle_session_get_route_cwd_suggest_lists_immediate_directories() -> N
             deps=deps,
             match_session_route=_match_session_route,
         ) is True
-        assert responses == [(200, {"directories": [{"name": "project", "path": str(root / "project")}]})]
+        assert responses == [
+            (
+                200,
+                {
+                    "directories": [{"name": "project", "path": str(root / "project")}],
+                    "truncated": False,
+                },
+            )
+        ]
 
         responses.clear()
         assert handle_session_get_route(
@@ -212,10 +220,58 @@ def test_handle_session_get_route_cwd_suggest_lists_immediate_directories() -> N
         assert responses[0][0] == 200
         directories = responses[0][1]["directories"]
         assert isinstance(directories, list)
+        # `prefix` is a real case-insensitive filter applied before the cap, so a
+        # large directory cannot hide the fragment being completed; it therefore
+        # also selects which names the hidden-dot rule can reveal.
         assert {(item["name"], item["path"]) for item in directories if isinstance(item, dict)} == {
-            ("project", str(root / "project")),
             (".hidden", str(root / ".hidden")),
         }
+        assert responses[0][1]["truncated"] is False
+
+        responses.clear()
+        assert handle_session_get_route(
+            _FakeHandler(),
+            path="/api/cwd-suggest",
+            query=urllib.parse.urlencode({"path": str(root), "prefix": "PRO"}),
+            manager=_FakeManager(),
+            deps=deps,
+            match_session_route=_match_session_route,
+        ) is True
+        assert [item["name"] for item in responses[0][1]["directories"]] == ["project"]
+
+
+def test_cwd_suggest_reports_truncation_for_completion_callers() -> None:
+    from codoxear.cwd_suggest import CWD_SUGGEST_LIMIT, cwd_suggestions
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        for index in range(CWD_SUGGEST_LIMIT + 3):
+            (root / f"dir-{index:03d}").mkdir()
+        (root / "file.txt").write_text("x", encoding="utf-8")
+
+        everything = cwd_suggestions(root)
+        assert len(everything.directories) == CWD_SUGGEST_LIMIT
+        assert everything.truncated is True
+        # Deterministic order, so the hidden tail is stable across requests.
+        assert [item["name"] for item in everything.directories] == [
+            f"dir-{index:03d}" for index in range(CWD_SUGGEST_LIMIT)
+        ]
+
+        wide = cwd_suggestions(root, prefix="dir-01")
+        assert wide.truncated is False
+        assert [item["name"] for item in wide.directories] == [
+            f"dir-{index:03d}" for index in range(10, 20)
+        ]
+
+        narrow = cwd_suggestions(root, prefix="dir-02")
+        assert narrow.truncated is False
+        assert [item["name"] for item in narrow.directories] == [
+            f"dir-{index:03d}" for index in range(20, 30)
+        ]
+
+        missing = cwd_suggestions(root / "absent")
+        assert missing.directories == []
+        assert missing.truncated is False
 
 
 def test_handle_session_get_route_tail_and_unattended_map_unknown_session() -> None:

@@ -355,3 +355,37 @@ def test_complete_route_returns_session_completion_and_validates_request(tmp_pat
         match_session_route=_match_session_route,
     )
     assert responses == [(404, {"error": "unknown session"})]
+
+
+def test_prefix_only_completion_returns_only_names_sharing_the_fragment(tmp_path: Path) -> None:
+    names = ["alpha.txt", "alpine.md", "xalpha.log", "beta.txt"]
+    for name in names:
+        (tmp_path / name).write_text(name, encoding="utf-8")
+    (tmp_path / "alder").mkdir()
+
+    fuzzy = complete_session_path(tmp_path, token="al")
+    assert "xalpha.log" in _entry_names(fuzzy)
+
+    prefix = complete_session_path(tmp_path, token="al", prefix_only=True)
+    # Prefix mode answers the tab-completion question: the complete set of names
+    # that start with the fragment, dirs first, alphabetical.
+    assert _entry_names(prefix) == ["alder", "alpha.txt", "alpine.md"]
+    assert prefix.entries[0] == {"name": "alder", "completion": "alder/", "is_dir": True}
+    assert prefix.truncated is False
+
+    assert complete_session_path(tmp_path, token="qqq", prefix_only=True).entries == []
+
+
+def test_prefix_only_completion_truncates_over_matches_not_over_fuzzy_score(tmp_path: Path) -> None:
+    for index in range(5):
+        (tmp_path / f"app-{index}.js").write_text("x", encoding="utf-8")
+    for index in range(5):
+        (tmp_path / f"other-{index}.js").write_text("x", encoding="utf-8")
+
+    capped = complete_session_path(tmp_path, token="app", prefix_only=True, limit=2)
+    assert _entry_names(capped) == ["app-0.js", "app-1.js"]
+    assert capped.truncated is True
+
+    whole = complete_session_path(tmp_path, token="app", prefix_only=True, limit=999)
+    assert _entry_names(whole) == [f"app-{index}.js" for index in range(5)]
+    assert whole.truncated is False

@@ -47,6 +47,69 @@ function nameFragment(query) {
   return query.slice(query.lastIndexOf("/") + 1);
 }
 
+// ---- Path *field* completion (New Session cwd, file viewer path) ----
+//
+// A path field holds one path, not prose: the whole value is the token. Tab
+// completes the fragment after the last `/` against the listing of that
+// directory. This is deliberately *not* the composer's token model above
+// (which rewrites a span inside a message and has an `@` mention prefix).
+
+function commonPrefix(names) {
+  if (!names.length) return "";
+  let prefix = names[0];
+  for (const name of names.slice(1)) {
+    let index = 0;
+    while (index < prefix.length && index < name.length && prefix[index] === name[index]) index += 1;
+    prefix = prefix.slice(0, index);
+    if (!prefix) return "";
+  }
+  return prefix;
+}
+
+// The completion of one path fragment, given the names in its directory.
+// `truncated` means the listing was capped: a longest common prefix over a
+// *subset* can be longer than the real one, so a partial fragment is never
+// inserted then — only a complete name the caller actually received.
+function completePathFragment(fragment, names, { truncated = false } = {}) {
+  const typed = String(fragment || "");
+  const available = (Array.isArray(names) ? names : []).filter((name) => typeof name === "string" && name !== "");
+  if (!typed || !available.length) return null;
+  // Exact case wins; a case-insensitive fallback repairs the case the user typed
+  // ("App" -> "app_file.js") without ever inserting a name whose case is wrong.
+  let matches = available.filter((name) => name.startsWith(typed));
+  if (!matches.length) {
+    const folded = typed.toLowerCase();
+    matches = available.filter((name) => name.toLowerCase().startsWith(folded));
+  }
+  if (!matches.length) return null;
+  if (matches.length === 1) return { insert: matches[0], unique: true };
+  const shared = commonPrefix(matches);
+  if (shared.length <= typed.length) return null;
+  if (truncated && !matches.includes(shared)) return null;
+  return { insert: shared, unique: false };
+}
+
+// Map a field value + its directory listing to the replacement value Tab should
+// write, or null when nothing can be completed.
+//
+// `defaultDir` is the directory a slashless value belongs to: the file picker
+// resolves a bare fragment against the session cwd (`""`), the New Session cwd
+// field keeps its long-standing reading of a bare fragment as a name under `/`.
+function completionPlan({ value, defaultDir = "", names = [], truncated = false } = {}) {
+  const text = String(value == null ? "" : value);
+  if (!text) return null;
+  const slash = text.lastIndexOf("/");
+  const dirPart = slash < 0 ? String(defaultDir || "") : text.slice(0, slash + 1);
+  const fragment = slash < 0 ? text : text.slice(slash + 1);
+  const entries = (Array.isArray(names) ? names : []).filter((entry) => entry && typeof entry.name === "string" && entry.name !== "");
+  const completed = completePathFragment(fragment, entries.map((entry) => entry.name), { truncated });
+  if (!completed) return null;
+  const hit = entries.find((entry) => entry.name === completed.insert);
+  const next = dirPart + completed.insert + (hit && hit.isDir ? "/" : "");
+  if (next === text) return null;
+  return { value: next, caret: next.length, unique: completed.unique };
+}
+
 // This runtime owns the anchored completion session and network state only.
 // The composer remains the sole writer of the shared picker DOM.
 function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (...args) => setTimeout(...args), clearTimeout: timerClear = (id) => clearTimeout(id), AbortController: AbortCtor = globalThis.AbortController, debounceMs = 120 }) {
@@ -165,4 +228,4 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
   return Object.freeze({ sync, snapshot, close });
 }
 
-export { pathTokenAt, createPathCompletionRuntime };
+export { pathTokenAt, completePathFragment, completionPlan, createPathCompletionRuntime };

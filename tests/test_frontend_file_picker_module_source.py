@@ -442,6 +442,8 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
         let selectedSession = "sid-selected";
         let focusInside = false;
         let rafCallback = null;
+        let completion = {{ query: "", names: [], truncated: false }};
+        let rows = [];
         const input = {{
           value: "",
           attrs: {{}},
@@ -469,6 +471,8 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           optionElementById: (id) => ({{ scrollIntoView(options) {{ events.push(["scroll", id, options]); }} }}),
           isFocusInsideField: () => focusInside,
           requestAnimationFrame: (callback) => {{ rafCallback = callback; events.push(["raf"]); }},
+          searchSnapshot: () => ({{ completion }}),
+          visibleEntries: () => rows,
         }});
         async function run() {{
           entries = [{{ path: "src/app.py", changed: true, gitPath: true, apiPath: "tok" }}];
@@ -512,9 +516,76 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const escapeEvent = {{ key: "Escape", preventDefault() {{ events.push(["prevent"]); }}, stopPropagation() {{ events.push(["stop"]); }} }};
           const escapeResult = await runtime.keydown(escapeEvent);
           const escapeEvents = events.splice(0);
+          // Tab with nothing to complete: untouched, so the browser's own focus
+          // move happens and the following blur closes the menu.
+          function tabKey(extra) {{
+            const event = Object.assign({{ key: "Tab", prevented: 0 }}, extra || {{}});
+            event.preventDefault = function () {{ event.prevented += 1; events.push(["prevent"]); }};
+            return event;
+          }}
+          function settle() {{ return new Promise((resolve) => setTimeout(resolve, 0)); }}
           menuState.setOpen(true);
-          const tabResult = await runtime.keydown({{ key: "Tab" }});
-          const tabEvents = events.splice(0);
+          menuState.setFocus(-1);
+          completion = {{ query: "", names: [], truncated: false }};
+          rows = [];
+          input.value = "abc";
+          const tabIdleEvent = tabKey();
+          const tabIdleResult = runtime.keydown(tabIdleEvent);
+          await settle();
+          const tabIdlePrevented = tabIdleEvent.prevented;
+          events.splice(0);
+
+          // Shift+Tab is never completion: it always moves focus backwards.
+          const tabShiftEvent = tabKey({{ shiftKey: true }});
+          const tabShiftResult = runtime.keydown(tabShiftEvent);
+          await settle();
+          const tabShiftPrevented = tabShiftEvent.prevented;
+          events.splice(0);
+
+          // Tab with a settled listing for exactly this value: the matched name is
+          // written and the ordinary input flow re-runs for the new value.
+          completion = {{ query: "src/app_file", truncated: false, names: [{{ name: "app_file.js", isDir: false }}, {{ name: "index.html", isDir: false }}] }};
+          input.value = "src/app_file";
+          const tabPrefixEvent = tabKey();
+          const tabPrefixResult = runtime.keydown(tabPrefixEvent);
+          const tabPrefixPrevented = tabPrefixEvent.prevented;
+          const tabPrefixValue = input.value;
+          await settle();
+          const tabPrefixFlowEvents = events.splice(0);
+          const tabPrefixScheduled = tabPrefixFlowEvents.some(function (event) {{ return event[0] === "schedule" && event[1] === "src/app_file.js"; }});
+
+          // Tab completing a unique directory adds the separator that makes the
+          // next listing show its contents.
+          rows = [];
+          menuState.setFocus(-1);
+          completion = {{ query: "src/ne", names: [{{ name: "newdir", isDir: true }}], truncated: false }};
+          input.value = "src/ne";
+          const tabDirResult = runtime.keydown(tabKey());
+          const tabDirValue = input.value;
+          await settle();
+          events.splice(0);
+
+          // A row the arrow keys picked is taken as typed text, and the highlight
+          // is reset so the next Tab completes the text instead of re-taking it.
+          rows = [{{ path: "lib/picked.py" }}];
+          menuState.setFocus(0);
+          completion = {{ query: "", names: [], truncated: false }};
+          input.value = "zzz";
+          const tabRowResult = runtime.keydown(tabKey());
+          const tabRowValue = input.value;
+          const tabRowFocus = menuState.focusIndex();
+          await settle();
+          events.splice(0);
+
+          // A capped listing cannot answer a partial prefix: Tab stays native.
+          menuState.setFocus(-1);
+          completion = {{ query: "al", truncated: true, names: [{{ name: "alpha", isDir: true }}, {{ name: "alpine", isDir: true }}] }};
+          input.value = "al";
+          const tabCappedEvent = tabKey();
+          const tabCappedResult = runtime.keydown(tabCappedEvent);
+          await settle();
+          const tabCappedPrevented = tabCappedEvent.prevented;
+          events.splice(0);
           focusInside = false;
           const blurResult = runtime.blur();
           const blurScheduledEvents = events.splice(0);
@@ -522,7 +593,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabResult, tabEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabIdleResult, tabIdlePrevented, tabShiftResult, tabShiftPrevented, tabPrefixResult, tabPrefixPrevented, tabPrefixValue, tabPrefixScheduled, tabDirResult, tabDirValue, tabRowResult, tabRowValue, tabRowFocus, tabCappedResult, tabCappedPrevented, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -572,6 +643,8 @@ def run_picker_input_preserve_probe() -> dict[str, object]:
       setStatus: (status) => events.push(["status", status]),
       optionElementById: () => null,
       isFocusInsideField: () => false,
+      searchSnapshot: () => ({{}}),
+      visibleEntries: () => [],
       requestAnimationFrame: (callback) => callback(),
     }});
     async function run() {{
@@ -684,6 +757,8 @@ def run_picker_absolute_entry_probe() -> dict[str, object]:
       setStatus: (status) => events.push(["status", status]),
       optionElementById: () => null,
       isFocusInsideField: () => false,
+      searchSnapshot: () => ({{}}),
+      visibleEntries: () => [],
       requestAnimationFrame: (callback) => callback(),
     }});
     async function run() {{
@@ -825,8 +900,25 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["enterEvents"], [["ensure"], ["render"], ["prevent"], ["openFile", "src/app.py", {"line": 42, "changed": True, "gitPath": True, "apiPath": "tok"}]])
         self.assertTrue(result["escapeResult"])
         self.assertEqual(result["escapeEvents"], [["ensure"], ["render"], ["prevent"], ["stop"], ["close", {"restoreInput": True}]])
-        self.assertTrue(result["tabResult"])
-        self.assertEqual(result["tabEvents"], [["ensure"], ["render"], ["close", {"restoreInput": True}]])
+        # Tab is decided synchronously from state already in hand: nothing to
+        # complete leaves it untouched (native focus move + blur close), a settled
+        # prefix listing fills the field, a picked row is taken, and a capped
+        # listing refuses to guess.
+        self.assertFalse(result["tabIdleResult"])
+        self.assertEqual(result["tabIdlePrevented"], 0)
+        self.assertFalse(result["tabShiftResult"])
+        self.assertEqual(result["tabShiftPrevented"], 0)
+        self.assertTrue(result["tabPrefixResult"])
+        self.assertEqual(result["tabPrefixPrevented"], 1)
+        self.assertEqual(result["tabPrefixValue"], "src/app_file.js")
+        self.assertTrue(result["tabPrefixScheduled"])
+        self.assertTrue(result["tabDirResult"])
+        self.assertEqual(result["tabDirValue"], "src/newdir/")
+        self.assertTrue(result["tabRowResult"])
+        self.assertEqual(result["tabRowValue"], "lib/picked.py")
+        self.assertEqual(result["tabRowFocus"], -1)
+        self.assertFalse(result["tabCappedResult"])
+        self.assertEqual(result["tabCappedPrevented"], 0)
         self.assertTrue(result["blurResult"])
         self.assertEqual(result["blurScheduledEvents"], [["raf"]])
         self.assertEqual(result["blurEvents"], [["close", {"restoreInput": True}]])
