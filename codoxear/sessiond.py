@@ -28,6 +28,7 @@ from .broker_launch import PiActiveSessionMarkerObserver
 from .broker_launch import _read_pi_active_session_marker_state
 from .broker_launch import _read_pi_active_session_marker_capability
 from .broker_launch import _read_pi_active_session_commands
+from .broker_launch import _read_pi_bridge_session_name_control
 from .broker_launch import _reset_pi_active_session_marker
 from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
@@ -36,6 +37,7 @@ from .broker_turn_state import _update_busy_from_pty_text
 from .broker_turn_state import apply_pi_prompt_receipt
 from .broker_turn_state import mark_backend_ready
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
+from .pi_bridge_control import set_bridge_session_name
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
 from .sessiond_control import handle_sessiond_control_connection
@@ -155,6 +157,10 @@ class Sessiond:
             sessions_dir=self.sessions_dir,
             process_pid=process_pid,
         )
+        name_control = _read_pi_bridge_session_name_control(
+            self.pi_active_session_marker_path,
+            process_pid=process_pid,
+        )
         commands = _read_pi_active_session_commands(self.pi_active_session_marker_path, sessions_dir=self.sessions_dir, process_pid=process_pid)
 
         changed = False
@@ -174,6 +180,9 @@ class Sessiond:
                 if st.pi_thinking_command != capable or st.slash_commands != next_commands:
                     st.pi_thinking_command = capable
                     st.slash_commands = next_commands
+                    changed = True
+                if st.session_name_control != name_control:
+                    st.session_name_control = name_control
                     changed = True
         if changed:
             self._write_meta()
@@ -260,6 +269,8 @@ class Sessiond:
             "control_protocol_version": 2,
             "control_capabilities": {"sync_send": True, "key_write_errors": True},
             "pi_thinking_command": bool(st.pi_thinking_command),
+            "session_name_control": bool(st.session_name_control),
+            "backend_session_name": st.backend_session_name or None,
             "slash_commands": list(st.slash_commands),
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
@@ -283,6 +294,7 @@ class Sessiond:
                         ))
                     if st2 and _should_clear_busy_state(st2, now_ts):
                         _mark_busy_state_idle(st2, now_ts)
+                self._apply_pending_session_name()
                 self._refresh_pi_thinking_capability()
                 time.sleep(0.25)
                 continue
@@ -340,8 +352,83 @@ class Sessiond:
                 socket_peer_disconnected=_socket_peer_disconnected,
                 print_exception=traceback.print_exc,
                 now=_now,
+                set_session_name=self._set_session_name,
             ),
         )
+
+    def _set_session_name(self, *, name: str, thread_id: str) -> dict[str, Any]:
+        """Project a session title into the backend process (sessiond parity)."""
+        with self._lock:
+            st = self.state
+            if st is None:
+                return {"ok": False, "backend": AGENT_BACKEND, "reason": "no-state"}
+            current_thread = str(st.session_id or "")
+            control = bool(st.session_name_control)
+            fd = st.pty_master_fd
+            pid = int(st.codex_pid)
+            busy = bool(st.busy or st.turn_open or st.pending_calls)
+            ready = st.backend_ready_ts > 0.0
+        if thread_id and current_thread and thread_id != current_thread:
+            return {"ok": False, "backend": AGENT_BACKEND, "reason": "stale-thread"}
+        if not control:
+            return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
+        if AGENT_BACKEND == "pi":
+            reply = set_bridge_session_name(self.pi_active_session_marker_path, name, expected_pid=pid)
+            if reply.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "backend": "pi",
+                    "reason": "transport",
+                    "detail": str(reply.get("error") or "bridge unavailable"),
+                }
+            effective = reply.get("name") if isinstance(reply.get("name"), str) else name
+            with self._lock:
+                if self.state is not None:
+                    self.state.backend_session_name = effective
+            self._write_meta()
+            return {"ok": True, "backend": "pi", "name": effective}
+        if AGENT_BACKEND == "cc":
+            if not name:
+                return {"ok": False, "backend": "cc", "reason": "unsupported-clear"}
+            if busy or not ready or fd is None:
+                with self._lock:
+                    if self.state is not None:
+                        self.state.pending_session_name = name
+                        self.state.pending_session_name_ts = _now()
+                return {"ok": True, "backend": "cc", "pending": True}
+            try:
+                _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
+            except Exception as exc:
+                return {"ok": False, "backend": "cc", "reason": "transport", "detail": str(exc)}
+            with self._lock:
+                if self.state is not None:
+                    self.state.backend_session_name = name
+            return {"ok": True, "backend": "cc", "accepted": True}
+        return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
+
+    def _apply_pending_session_name(self) -> None:
+        if AGENT_BACKEND != "cc":
+            return
+        fd: int | None = None
+        name: str | None = None
+        with self._lock:
+            st = self.state
+            if st is None or st.pending_session_name is None:
+                return
+            if st.backend_ready_ts <= 0.0:
+                return
+            if st.busy or st.turn_open or st.pending_calls:
+                return
+            fd = st.pty_master_fd
+            name = st.pending_session_name
+            st.pending_session_name = None
+            st.pending_session_name_ts = 0.0
+        if fd is None or not name:
+            return
+        try:
+            _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
+        except Exception:
+            pass
 
     def _ensure_root_repo(self) -> None:
         if (ROOT_REPO_DIR / ".git").exists():
@@ -462,7 +549,15 @@ class Sessiond:
             pty_master_fd=master_fd,
             start_ts=float(start_ts),
             busy=False,
+            agent_backend=AGENT_BACKEND,
         )
+        if AGENT_BACKEND == "cc":
+            st.session_name_control = True
+        elif AGENT_BACKEND == "pi":
+            st.session_name_control = _read_pi_bridge_session_name_control(
+                self.pi_active_session_marker_path,
+                process_pid=pid,
+            )
         st.slash_commands = default_slash_commands(AGENT_BACKEND)
         self.state = st
         return st

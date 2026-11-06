@@ -27,6 +27,7 @@ def _handle_broker_control_connection(
     now: Callable[[], float],
     teardown_managed_process_group: Callable[[], None],
     update_codex_settings: Callable[..., dict[str, Any]] | None = None,
+    set_session_name: Callable[..., dict[str, Any]] | None = None,
 ) -> None:
     def state_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         with lock:
@@ -195,6 +196,24 @@ def _handle_broker_control_connection(
     def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         return {"ok": True}, teardown_managed_process_group
 
+    def name_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+        name_raw = req.get("name")
+        if not isinstance(name_raw, str):
+            return {"error": "name required"}, None
+        thread_raw = req.get("thread_id")
+        thread_id = thread_raw.strip() if isinstance(thread_raw, str) else ""
+        with lock:
+            st = get_state()
+            current_thread = str(st.session_id or "") if st else ""
+        if thread_id and current_thread and thread_id != current_thread:
+            return {"ok": False, "reason": "stale-thread"}, None
+        if set_session_name is None:
+            return {"ok": False, "unsupported": True, "reason": "unsupported"}, None
+        try:
+            return set_session_name(name=name_raw, thread_id=thread_id), None
+        except Exception as exc:
+            return {"error": str(exc)}, None
+
     _handle_control_socket_connection(
         conn,
         handlers={
@@ -203,6 +222,7 @@ def _handle_broker_control_connection(
             "send": send_handler,
             "keys": keys_handler,
             "settings": settings_handler,
+            "name": name_handler,
             "shutdown": shutdown_handler,
         },
         send_json_line=_send_socket_json_line,

@@ -23,6 +23,7 @@ class SessiondControlDeps:
     socket_peer_disconnected: Callable[[BaseException], bool]
     print_exception: Callable[[], None]
     now: Callable[[], float]
+    set_session_name: Callable[..., dict[str, Any]] | None = None
 
 
 def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) -> None:
@@ -160,6 +161,24 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
     def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         return {"ok": True}, deps.teardown_managed_process_group
 
+    def name_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+        name_raw = req.get("name")
+        if not isinstance(name_raw, str):
+            return {"error": "name required"}, None
+        thread_raw = req.get("thread_id")
+        thread_id = thread_raw.strip() if isinstance(thread_raw, str) else ""
+        with deps.lock:
+            st = deps.state()
+            current_thread = str(st.session_id or "") if st else ""
+        if thread_id and current_thread and thread_id != current_thread:
+            return {"ok": False, "reason": "stale-thread"}, None
+        if deps.set_session_name is None:
+            return {"ok": False, "unsupported": True, "reason": "unsupported"}, None
+        try:
+            return deps.set_session_name(name=name_raw, thread_id=thread_id), None
+        except Exception as exc:
+            return {"error": str(exc)}, None
+
     deps.handle_control_socket_connection(
         conn,
         handlers={
@@ -167,6 +186,7 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             "tail": tail_handler,
             "send": send_handler,
             "keys": keys_handler,
+            "name": name_handler,
             "shutdown": shutdown_handler,
         },
         send_json_line=deps.send_json_line,

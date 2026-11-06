@@ -110,6 +110,17 @@ def slash_commands(meta: dict[str, Any]) -> list[dict[str, str]]:
 def pi_thinking_command(meta: dict[str, Any]) -> bool:
     return meta.get("pi_thinking_command") is True
 
+
+def session_name_control(meta: dict[str, Any]) -> bool:
+    """Whether the live backend advertises a session-title control."""
+    return meta.get("session_name_control") is True
+
+
+def backend_session_name(meta: dict[str, Any]) -> str:
+    """The backend's own recorded session title, when the sidecar reports one."""
+    value = meta.get("backend_session_name")
+    return value.strip() if isinstance(value, str) and value.strip() else ""
+
 def _clean_optional_text(value: Any) -> str | None:
     if not isinstance(value, str):
         return None

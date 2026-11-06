@@ -44,6 +44,7 @@ from codoxear.broker_launch import _read_pi_active_session_marker
 from codoxear.broker_launch import _read_pi_active_session_marker_capability
 from codoxear.broker_launch import _read_pi_active_session_run_settings
 from codoxear.broker_launch import _read_pi_active_session_commands
+from codoxear.broker_launch import _read_pi_bridge_session_name_control
 from codoxear.broker_launch import _reset_pi_active_session_marker
 from codoxear.broker_launch import _resume_session_id_from_args as _resume_session_id_from_args_impl
 from codoxear.broker_launch import _session_log_path_from_args
@@ -71,11 +72,16 @@ from codoxear.codex_live_control import CODEX_LIVE_COMMANDS
 from codoxear.codex_live_control import CodexAppServerProcess
 from codoxear.codex_live_control import codex_app_server_config_args
 from codoxear.codex_live_control import codex_live_control_compatible_args
+from codoxear.codex_live_control import codex_thread_name_supported
+from codoxear.codex_live_control import read_codex_thread_name
 from codoxear.codex_live_control import start_codex_app_server
 from codoxear.codex_live_control import stop_codex_app_server
+from codoxear.codex_live_control import update_codex_thread_name
 from codoxear.codex_live_control import update_codex_thread_settings
 from codoxear.broker_control import _handle_broker_control_connection
 from codoxear.broker_terminal import _reply_to_terminal_queries
+from codoxear.backend_session_name import read_last_backend_session_name
+from codoxear.pi_bridge_control import set_bridge_session_name
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
@@ -371,6 +377,7 @@ class Broker:
         self._term_query_buf = b""
         self._stdin_termios: list[Any] | None = None
         self._codex_app_server: CodexAppServerProcess | None = None
+        self._codex_name_control = False
 
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
@@ -419,6 +426,11 @@ class Broker:
             return
         self._codex_app_server = server
         self.codex_args = ["--remote", f"unix://{socket_path}", *self.codex_args]
+        try:
+            self._codex_name_control = codex_thread_name_supported(server.socket_path)
+        except Exception:
+            # A probe failure is a capability failure, never a launch failure.
+            self._codex_name_control = False
 
     def _update_codex_live_settings(
         self,
@@ -436,6 +448,142 @@ class Broker:
             model=model,
             effort=effort,
         )
+
+    def _set_session_name(self, *, name: str, thread_id: str) -> dict[str, Any]:
+        """Write the codoxear session name into the backend process.
+
+        This is a projection of the alias store, never a second authority: the
+        reply says exactly what happened so the rename response can report an
+        honest failure instead of claiming a title changed.
+        """
+        with self._lock:
+            st = self.state
+            if st is None:
+                return {"ok": False, "backend": AGENT_BACKEND, "reason": "no-state"}
+            current_thread = str(st.session_id or "")
+            session_control = bool(st.session_name_control)
+            fd = st.pty_master_fd
+            pid = int(st.codex_pid)
+            busy = bool(st.busy or st.turn_open or st.pending_calls)
+            ready = st.backend_ready_ts > 0.0
+        if thread_id and current_thread and thread_id != current_thread:
+            # The session rebound between the rename and this call; naming the
+            # new transcript would be naming the wrong conversation.
+            return {"ok": False, "backend": AGENT_BACKEND, "reason": "stale-thread"}
+        if not session_control:
+            return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
+        if AGENT_BACKEND == "pi":
+            reply = set_bridge_session_name(self.pi_active_session_marker_path, name, expected_pid=pid)
+            if reply.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "backend": "pi",
+                    "reason": "transport",
+                    "detail": str(reply.get("error") or "bridge unavailable"),
+                }
+            effective = reply.get("name") if isinstance(reply.get("name"), str) else name
+            with self._lock:
+                st_name = self.state
+                if st_name is not None:
+                    st_name.backend_session_name = effective
+            self._write_meta()
+            return {"ok": True, "backend": "pi", "name": effective}
+        if AGENT_BACKEND == "codex":
+            server = self._codex_app_server
+            if server is None:
+                return {"ok": False, "backend": "codex", "unsupported": True, "reason": "unsupported"}
+            if not name:
+                # The TUI refuses empty titles; report the limit instead of
+                # leaving the old title in place silently.
+                return {"ok": False, "backend": "codex", "reason": "unsupported-clear"}
+            if not current_thread:
+                return {"ok": False, "backend": "codex", "reason": "no-thread"}
+            try:
+                update_codex_thread_name(server.socket_path, thread_id=current_thread, name=name)
+            except Exception as exc:
+                return {"ok": False, "backend": "codex", "reason": "transport", "detail": str(exc)}
+            with self._lock:
+                st_name = self.state
+                if st_name is not None:
+                    st_name.backend_session_name = name
+            self._write_meta()
+            return {"ok": True, "backend": "codex", "name": name}
+        if AGENT_BACKEND == "cc":
+            if not name:
+                # Claude Code has no clear path; the title it owns stays.
+                return {"ok": False, "backend": "cc", "reason": "unsupported-clear"}
+            if busy or not ready or fd is None:
+                with self._lock:
+                    st_pending = self.state
+                    if st_pending is not None:
+                        st_pending.pending_session_name = name
+                        st_pending.pending_session_name_ts = _now()
+                return {"ok": True, "backend": "cc", "pending": True}
+            try:
+                _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
+            except Exception as exc:
+                return {"ok": False, "backend": "cc", "reason": "transport", "detail": str(exc)}
+            with self._lock:
+                st_name = self.state
+                if st_name is not None:
+                    st_name.backend_session_name = name
+            return {"ok": True, "backend": "cc", "accepted": True}
+        return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
+
+    def _apply_pending_session_name(self) -> None:
+        """Write a held Claude Code title once the TUI is at its editor."""
+        if AGENT_BACKEND != "cc":
+            return
+        fd: int | None = None
+        name: str | None = None
+        with self._lock:
+            st = self.state
+            if st is None or st.pending_session_name is None:
+                return
+            if st.backend_ready_ts <= 0.0:
+                return
+            if st.busy or st.turn_open or st.pending_calls:
+                return
+            fd = st.pty_master_fd
+            name = st.pending_session_name
+            st.pending_session_name = None
+            st.pending_session_name_ts = 0.0
+        if fd is None or not name:
+            return
+        try:
+            _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
+        except Exception:
+            # A swallowed native command is a missing title, not a broken session.
+            pass
+
+    def _observe_bind_session_name(self, *, log_path: Path) -> None:
+        """Seed the backend's own session name when a transcript binds.
+
+        The incremental watcher starts at the end of the file, so a title set
+        before codoxear attached (a terminal ``/name``) would otherwise never be
+        observed. Codex keeps its title in the app-server, not the rollout.
+        """
+        observed: str | None = read_last_backend_session_name(log_path, AGENT_BACKEND)
+        if observed is None and AGENT_BACKEND == "codex":
+            server = self._codex_app_server
+            if server is None or not self._codex_name_control:
+                return
+            with self._lock:
+                st = self.state
+                thread_id = str(st.session_id or "") if st is not None else ""
+            if not thread_id:
+                return
+            observed = read_codex_thread_name(server.socket_path, thread_id=thread_id)
+        if observed is None:
+            return
+        changed = False
+        with self._lock:
+            st = self.state
+            if st is not None and st.backend_session_name != observed:
+                st.backend_session_name = observed
+                changed = True
+        if changed:
+            self._write_meta()
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -568,6 +716,10 @@ class Broker:
                             sessions_dir=self.sessions_dir,
                             process_pid=root_pid,
                         )
+                        name_control = _read_pi_bridge_session_name_control(
+                            self.pi_active_session_marker_path,
+                            process_pid=root_pid,
+                        )
                         commands = _read_pi_active_session_commands(
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
@@ -585,6 +737,9 @@ class Broker:
                                 if st_cap.pi_thinking_command != capability or st_cap.slash_commands != next_commands:
                                     st_cap.pi_thinking_command = capability
                                     st_cap.slash_commands = next_commands
+                                    capability_changed = True
+                                if st_cap.session_name_control != name_control:
+                                    st_cap.session_name_control = name_control
                                     capability_changed = True
                                 if isinstance(live_settings, dict):
                                     for k, attr in (("model_provider", "model_provider"), ("model", "model"), ("reasoning_effort", "reasoning_effort")):
@@ -837,6 +992,7 @@ class Broker:
                 ))
             if st and _should_clear_busy_state(st, now_ts):
                 _mark_busy_state_idle(st, now_ts)
+        self._apply_pending_session_name()
 
     def _log_watcher(self) -> None:
         while not self._stop.is_set():
@@ -897,8 +1053,10 @@ class Broker:
                 st2 = self.state
                 if not st2 or st2.log_path is None or (not _paths_match(st2.log_path, log_path)) or st2.log_off != off:
                     continue
-                _apply_log_objects_to_state(st2, objs, now=_now)
+                meta_changed = _apply_log_objects_to_state(st2, objs, now=_now)
                 st2.log_off = new_off
+            if meta_changed:
+                self._write_meta()
 
             self._mark_idle_if_quiet()
             maybe_clear_resume_delivery_mute()
@@ -971,6 +1129,7 @@ class Broker:
                 if getattr(self, "_codex_app_server", None) is not None
                 else None
             ),
+            set_session_name=self._set_session_name,
         )
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
@@ -1005,6 +1164,7 @@ class Broker:
                 return
         elif result.previous_log_path is None or not _paths_match(result.previous_log_path, binding.log_path):
             self._write_meta()
+        self._observe_bind_session_name(log_path=binding.log_path)
 
     def run(self) -> int:
         """Run the broker lifecycle for this configured agent process.
@@ -1150,7 +1310,21 @@ class Broker:
             sessions_dir=self.sessions_dir,
             busy=False,
             resume_session_id=self._resume_session_id,
+            agent_backend=AGENT_BACKEND,
         )
+        if AGENT_BACKEND == "cc":
+            # Claude Code accepts its native /rename at the TUI editor; the
+            # broker gates the write on readiness and idleness.
+            st.session_name_control = True
+        elif AGENT_BACKEND == "codex":
+            st.session_name_control = bool(
+                getattr(self, "_codex_app_server", None) is not None and self._codex_name_control
+            )
+        else:
+            st.session_name_control = _read_pi_bridge_session_name_control(
+                self.pi_active_session_marker_path,
+                process_pid=pid,
+            )
         st.slash_commands = (
             list(CODEX_LIVE_COMMANDS)
             if getattr(self, "_codex_app_server", None) is not None

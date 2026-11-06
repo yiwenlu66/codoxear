@@ -35,6 +35,11 @@ class State:
     send_verdict: dict[str, Any] | None = None
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
+    agent_backend: str = ""
+    session_name_control: bool = False
+    backend_session_name: str = ""
+    pending_session_name: str | None = None
+    pending_session_name_ts: float = 0.0
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     turn_open: bool = False
     turn_has_completion_candidate: bool = False
@@ -89,6 +94,7 @@ def _state_snapshot(st: State) -> tuple[Any, ...]:
         frozenset(st.pending_calls),
         st.token,
         st.interrupt_hint_tail,
+        st.backend_session_name,
     )
 
 

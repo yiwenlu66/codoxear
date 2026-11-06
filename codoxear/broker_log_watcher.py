@@ -5,6 +5,7 @@ from typing import Any
 
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
+from codoxear.backend_session_name import backend_session_name_from_row as _backend_session_name_from_row
 from codoxear.pi_log import pi_context_token_update as _pi_context_token_update
 from codoxear.pi_log import pi_token_update as _pi_token_update
 
@@ -29,9 +30,19 @@ def _clear_resume_delivery_mute_if_idle(st: State) -> bool:
     return False
 
 
-def _apply_log_objects_to_state(st: State, objs: list[dict[str, Any]], *, now: Callable[[], float]) -> None:
+def _apply_log_objects_to_state(st: State, objs: list[dict[str, Any]], *, now: Callable[[], float]) -> bool:
+    """Apply transcript rows to the broker state.
+
+    Returns ``True`` when a *sidecar-visible* value changed, so the caller can
+    republish the metadata without writing it on every batch.
+    """
+    meta_changed = False
     for obj in objs:
         now_ts = now()
+        observed_name = _backend_session_name_from_row(st.agent_backend, obj)
+        if observed_name is not None and st.backend_session_name != observed_name:
+            st.backend_session_name = observed_name
+            meta_changed = True
         token_update = _pi_token_update(obj)
         if token_update is not None:
             st.token = token_update
@@ -55,3 +66,4 @@ def _apply_log_objects_to_state(st: State, objs: list[dict[str, Any]], *, now: C
                             )
                             st.token = token_update
         _apply_rollout_obj_to_state(st, obj, now_ts=now_ts)
+    return meta_changed

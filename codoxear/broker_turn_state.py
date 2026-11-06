@@ -657,6 +657,20 @@ class State:
     detach_trigger_tail_max: int = 8192
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
+    # Normalized backend id (``pi`` / ``codex`` / ``cc``), so the shared log
+    # reducer can interpret backend-specific session-name rows.
+    agent_backend: str = ""
+    # Live session-title control: true when this backend process exposes a
+    # mechanism the broker can drive right now (bridge socket, typed app-server
+    # method, or a native command the TUI accepts).
+    session_name_control: bool = False
+    # The backend's own recorded session name, observed from its transcript or
+    # app-server. Never authoritative; the codoxear alias store is.
+    backend_session_name: str = ""
+    # A rename that cannot be written immediately (a busy Claude Code turn) is
+    # held here and applied at the next idle settle.
+    pending_session_name: str | None = None
+    pending_session_name_ts: float = 0.0
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     declared_log_path: Path | None = None
     last_rollout_path: Path | None = None
