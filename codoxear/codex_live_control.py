@@ -174,6 +174,112 @@ def update_codex_thread_settings(
     return {"ok": True, "model": model, "effort": effort}
 
 
+def codex_thread_name_supported(
+    socket_path: Path,
+    *,
+    timeout_s: float = 1.0,
+    connect: Callable[..., Any] = _connect_unix_websocket,
+) -> bool:
+    """Whether this app-server exposes the typed thread-title method.
+
+    Probed the same way as the live settings method: the sentinel thread id does
+    not exist, so a server that *knows* ``thread/name/set`` answers with a
+    thread-not-found style error (method present), while an older server answers
+    method-not-found / experimental-capability.
+    """
+    websocket = _initialized_websocket(socket_path, timeout_s=timeout_s, connect=connect)
+    try:
+        websocket.send(
+            json.dumps(
+                {
+                    "method": "thread/name/set",
+                    "id": 2,
+                    "params": {"threadId": _PROBE_THREAD_ID, "name": "codoxear-capability-probe"},
+                }
+            )
+        )
+        response = _recv_response(websocket, 2, timeout_s=timeout_s)
+    finally:
+        websocket.close()
+    error = response.get("error")
+    if not isinstance(error, dict):
+        return True
+    if error.get("code") == -32601:
+        return False
+    message = str(error.get("message") or "").lower()
+    return "method not found" not in message and "requires experimentalapi capability" not in message
+
+
+def update_codex_thread_name(
+    socket_path: Path,
+    *,
+    thread_id: str,
+    name: str,
+    timeout_s: float = 2.0,
+    connect: Callable[..., Any] = _connect_unix_websocket,
+) -> dict[str, Any]:
+    """Set (or, when the server accepts it, clear) a Codex thread title."""
+    thread_id = str(thread_id or "").strip()
+    if not thread_id:
+        raise ValueError("Codex thread is not bound yet")
+    websocket = _initialized_websocket(socket_path, timeout_s=timeout_s, connect=connect)
+    try:
+        websocket.send(
+            json.dumps(
+                {
+                    "method": "thread/name/set",
+                    "id": 2,
+                    "params": {"threadId": thread_id, "name": name},
+                }
+            )
+        )
+        response = _recv_response(websocket, 2, timeout_s=timeout_s)
+    finally:
+        websocket.close()
+    error = response.get("error")
+    if isinstance(error, dict):
+        raise CodexLiveControlError(str(error.get("message") or error))
+    if response.get("result") != {}:
+        raise CodexLiveControlError("Codex app-server returned an invalid thread-name acknowledgement")
+    return {"ok": True, "name": name}
+
+
+def read_codex_thread_name(
+    socket_path: Path,
+    *,
+    thread_id: str,
+    timeout_s: float = 2.0,
+    connect: Callable[..., Any] = _connect_unix_websocket,
+) -> str | None:
+    """Read the thread's current title (``None`` when it has none)."""
+    thread_id = str(thread_id or "").strip()
+    if not thread_id:
+        return None
+    websocket = _initialized_websocket(socket_path, timeout_s=timeout_s, connect=connect)
+    try:
+        websocket.send(
+            json.dumps(
+                {
+                    "method": "thread/read",
+                    "id": 2,
+                    "params": {"threadId": thread_id, "includeTurns": False},
+                }
+            )
+        )
+        response = _recv_response(websocket, 2, timeout_s=timeout_s)
+    finally:
+        websocket.close()
+    if isinstance(response.get("error"), dict):
+        return None
+    result = response.get("result")
+    thread = result.get("thread") if isinstance(result, dict) else None
+    name = thread.get("name") if isinstance(thread, dict) else None
+    if not isinstance(name, str):
+        return None
+    cleaned = " ".join(name.split()).strip()
+    return cleaned[:80].rstrip() if cleaned else None
+
+
 def _stderr_text(stderr_file: Any) -> str:
     try:
         stderr_file.flush()

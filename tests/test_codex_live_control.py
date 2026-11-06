@@ -230,3 +230,55 @@ def test_start_codex_app_server_uses_private_unix_socket_and_remote_capability_p
     server.process.poll = lambda: 0
     stop_codex_app_server(server)
     assert not socket_path.exists()
+
+
+# --- thread titles ---------------------------------------------------------
+
+
+def _name_socket(responses):
+    websocket = FakeWebSocket([{"id": 1, "result": {}}, *responses])
+    return websocket, _connect_with(websocket)
+
+
+def test_thread_name_support_is_probed_by_method_presence() -> None:
+    from codoxear.codex_live_control import codex_thread_name_supported
+
+    _, connect = _name_socket([{"id": 2, "error": {"code": -32601, "message": "method not found"}}])
+    assert codex_thread_name_supported(Path("/tmp/x.sock"), connect=connect) is False
+
+    _, connect = _name_socket([{"id": 2, "error": {"code": -32600, "message": "thread not found"}}])
+    assert codex_thread_name_supported(Path("/tmp/x.sock"), connect=connect) is True
+
+
+def test_thread_name_set_sends_the_typed_params() -> None:
+    from codoxear.codex_live_control import update_codex_thread_name
+
+    websocket, connect = _name_socket([{"id": 2, "result": {}}])
+    result = update_codex_thread_name(Path("/tmp/x.sock"), thread_id="thread-7", name="deploy check", connect=connect)
+
+    assert result == {"ok": True, "name": "deploy check"}
+    assert websocket.sent[-1] == {
+        "method": "thread/name/set",
+        "id": 2,
+        "params": {"threadId": "thread-7", "name": "deploy check"},
+    }
+    assert websocket.closed is True
+
+
+def test_thread_name_set_surfaces_app_server_errors() -> None:
+    from codoxear.codex_live_control import update_codex_thread_name
+
+    _, connect = _name_socket([{"id": 2, "error": {"code": -32600, "message": "thread not loaded"}}])
+    with pytest.raises(CodexLiveControlError) as excinfo:
+        update_codex_thread_name(Path("/tmp/x.sock"), thread_id="thread-7", name="deploy", connect=connect)
+    assert "thread not loaded" in str(excinfo.value)
+
+
+def test_thread_name_read_returns_none_when_the_thread_has_no_title() -> None:
+    from codoxear.codex_live_control import read_codex_thread_name
+
+    _, connect = _name_socket([{"id": 2, "result": {"thread": {"id": "thread-7", "name": "  spaced   title "}}}])
+    assert read_codex_thread_name(Path("/tmp/x.sock"), thread_id="thread-7", connect=connect) == "spaced title"
+
+    _, connect = _name_socket([{"id": 2, "result": {"thread": {"id": "thread-7", "name": None}}}])
+    assert read_codex_thread_name(Path("/tmp/x.sock"), thread_id="thread-7", connect=connect) is None
