@@ -215,9 +215,10 @@ def test_a_new_transcript_identity_receives_the_name_again() -> None:
     h.session.thread_id = "thread-2"
     assert h.projection.reconcile("s1")["reason"] == "applied"
     assert h.calls[-1]["thread_id"] == "thread-2"
-    # The previous transcript is gone from the session set, so its record is
-    # pruned on the next store; a stale key would only cause one redundant push.
-    assert set(h.applied) == {"pi:thread-2"}
+    # The previous transcript is no longer the session's identity; its record
+    # survives the hourly grace window, then is pruned (a stale key would only
+    # cost one redundant push).
+    assert set(h.applied) == {"pi:thread-1", "pi:thread-2"}
 
 
 def test_pruning_drops_identities_no_longer_present() -> None:
@@ -243,5 +244,11 @@ def test_pruning_drops_identities_no_longer_present() -> None:
         backend_session_name="",
     )
     h.aliases["s2"] = "Gamma"
+    assert h.projection.reconcile("s2")["reason"] == "applied"
+    # A just-written record survives a transient unbound state; an hour-old
+    # orphan is dropped.
+    assert set(h.applied) == {"pi:thread-1", "pi:thread-9"}
+    h.now += 3700.0
+    h.aliases["s2"] = "Delta"
     assert h.projection.reconcile("s2")["reason"] == "applied"
     assert set(h.applied) == {"pi:thread-9"}

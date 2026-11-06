@@ -105,7 +105,15 @@ class SessionNameProjection:
                 live.add(key)
         if not live:
             return applied
-        return {key: value for key, value in applied.items() if key in live}
+        # A session can be momentarily unbound (Pi /new rebinds, a sidecar is
+        # rewritten); keeping its record briefly avoids one redundant re-push,
+        # while an hour-old orphan is genuinely gone.
+        now = self.deps.now()
+        return {
+            key: value
+            for key, value in applied.items()
+            if key in live or (now - float(value.get("ts") or 0.0)) < 3600.0
+        }
 
     def _begin(self, key: str) -> bool:
         with self.deps.lock:
