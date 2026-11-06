@@ -72,7 +72,7 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
         const ctx = {{ URL, window: {{ CodoxearUrls: {{resolveAppUrl:(p)=>String(p)}}, CodoxearStorage:storage }} }};
         vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);
         const noop=()=>{{}}, cls={{toggle(){{}},remove(){{}}}}, node={{innerHTML:"",appendChild(){{}}}};
-        const cwdInput={{value:{json.dumps(cwd_value)},focus(){{}},setSelectionRange(){{}}}};
+        const cwdInput={{value:{json.dumps(cwd_value)},focus(){{}},setSelectionRange(){{}},setAttribute(){{}},removeAttribute(){{}}}};
         const sessionCatalog=ctx.window.CodoxearSessionCatalog.createSessionCatalog({{consoleError:()=>{{}}}});
         sessionCatalog.set("newSessionDefaults",{{model:"gpt-5.4-mini",models:[],provider_choices:["chatgpt"],model_providers:["chatgpt"],provider_models:{{}},reasoning_efforts:["high"],reasoning_efforts_by_model:{{}}}});
         sessionCatalog.set("latestSessions",[]); sessionCatalog.set("recentCwds",{json.dumps(recent_cwds)}); sessionCatalog.set("tmuxAvailable",true);
@@ -87,6 +87,100 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
     )
     proc = subprocess.run(["node"], input=script, check=True, text=True, capture_output=True)
     return json.loads(proc.stdout)
+
+
+def eval_cwd_tab_completion(
+    directories: list[str],
+    *,
+    cwd_value: str,
+    focus: int = -1,
+    settle: bool = True,
+) -> dict:
+    """Ask the real controller what Tab should write into the cwd field.
+
+    ``directories`` is the directory's child list; the fetch stub applies the
+    server's own case-insensitive prefix filter to it, so this exercises the
+    client's settle/longest-common-prefix logic against a listing shaped exactly
+    like ``/api/cwd-suggest``.
+    """
+    sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, SESSION_CATALOG, NEW_SESSION)]
+    script = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const storage = {{ data:new Map(), getItem(k) {{ return this.data.get(k)||null; }}, setItem(k,v) {{this.data.set(k,String(v));}}, removeItem(k) {{ this.data.delete(k); }} }};
+        const names = {json.dumps(directories)};
+        const ctx = {{
+          URL,
+          window: {{ CodoxearUrls: {{resolveAppUrl:(p)=>String(p)}}, CodoxearStorage:storage }},
+          setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)),
+          clearTimeout,
+          fetch: async (url) => {{
+            const parsed = new URL(String(url), "http://local");
+            const prefix = String(parsed.searchParams.get("prefix") || "").toLowerCase();
+            const dir = String(parsed.searchParams.get("path") || "");
+            const directories = names
+              .filter((name) => !prefix || name.toLowerCase().startsWith(prefix))
+              .map((name) => ({{ name, path: (dir.endsWith("/") ? dir : dir + "/") + name }}));
+            return {{ ok: true, json: async () => ({{ directories, truncated: false }}) }};
+          }},
+        }};
+        vm.createContext(ctx); for (const source of {json.dumps(sources)}) vm.runInContext(source,ctx);
+        const noop=()=>{{}}, cls={{toggle(){{}},remove(){{}}}}, node={{innerHTML:"",appendChild(){{}}}};
+        const cwdInput={{value:{json.dumps(cwd_value)},focus(){{}},setSelectionRange(){{}},setAttribute(){{}},removeAttribute(){{}}}};
+        const sessionCatalog=ctx.window.CodoxearSessionCatalog.createSessionCatalog({{consoleError:()=>{{}}}});
+        sessionCatalog.set("newSessionDefaults",{{model:"gpt-5.4-mini",models:[],provider_choices:["chatgpt"],model_providers:["chatgpt"],provider_models:{{}},reasoning_efforts:["high"],reasoning_efforts_by_model:{{}}}});
+        sessionCatalog.set("latestSessions",[]); sessionCatalog.set("recentCwds",[]); sessionCatalog.set("tmuxAvailable",true);
+        const c=ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
+          sessionCatalog,
+          assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
+          cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+        }});
+        (async () => {{
+          if ({json.dumps(settle)}) {{
+            c.renderRecentCwdMenu();
+            await new Promise((resolve) => setTimeout(resolve, 40));
+          }}
+          process.stdout.write(JSON.stringify({{ completion: c.cwdTabCompletion(), menu: c.cwdMenuOptions(String(cwdInput.value || "").trim()).map((item) => item.cwd) }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=script, check=True, text=True, capture_output=True)
+    return json.loads(proc.stdout)
+
+
+class TestNewSessionCwdTabCompletion(unittest.TestCase):
+    def test_unique_directory_completes_with_its_separator(self) -> None:
+        result = eval_cwd_tab_completion(
+            ["alpha", "alpine", "beta"], cwd_value="/srv/projects/alph"
+        )
+        self.assertEqual(result["completion"], "/srv/projects/alpha/")
+
+    def test_shared_prefix_completes_only_as_far_as_the_names_agree(self) -> None:
+        result = eval_cwd_tab_completion(
+            ["alpha", "alpine", "beta"], cwd_value="/srv/projects/al"
+        )
+        self.assertEqual(result["completion"], "/srv/projects/alp")
+
+    def test_no_match_and_unsettled_listing_leave_tab_alone(self) -> None:
+        no_match = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/zzz")
+        self.assertIsNone(no_match["completion"])
+        # Nothing was ever fetched for this value, so completion must not guess:
+        # Tab stays native and focus moves.
+        unsettled = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=False)
+        self.assertIsNone(unsettled["completion"])
+
+    def test_empty_fragment_and_empty_field_leave_tab_alone(self) -> None:
+        trailing = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/")
+        self.assertIsNone(trailing["completion"])
+        empty = eval_cwd_tab_completion(["alpha"], cwd_value="")
+        self.assertIsNone(empty["completion"])
+
+    def test_an_arrow_picked_row_is_taken_instead_of_the_typed_text(self) -> None:
+        result = eval_cwd_tab_completion(
+            ["alpha", "alpine"], cwd_value="/srv/projects/al", focus=1
+        )
+        self.assertEqual(result["completion"], "/srv/projects/alpine")
 
 
 class TestNewSessionModelOptionsBehavior(unittest.TestCase):
