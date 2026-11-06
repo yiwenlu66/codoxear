@@ -172,8 +172,17 @@ def _pi_active_session_caps_path(marker_path: Path) -> Path:
     return Path(f"{marker_path}.caps")
 
 
+def _pi_bridge_socket_path(marker_path: Path) -> Path:
+    return Path(f"{marker_path}.bridge.sock")
+
+
 def _reset_pi_active_session_marker(marker_path: Path) -> None:
-    for path in (marker_path, _pi_active_session_caps_path(marker_path), Path(f"{marker_path}.receipt")):
+    for path in (
+        marker_path,
+        _pi_active_session_caps_path(marker_path),
+        Path(f"{marker_path}.receipt"),
+        _pi_bridge_socket_path(marker_path),
+    ):
         try:
             path.unlink()
         except FileNotFoundError:
@@ -356,6 +365,46 @@ def _read_pi_active_session_marker_capability(
         return False
     features = caps.get("features")
     return isinstance(features, list) and "thinking" in features
+
+
+def _read_pi_bridge_features(
+    marker_path: Path,
+    *,
+    process_pid: int,
+) -> frozenset[str]:
+    """The capability strings a *live* bridge advertises for this Pi process.
+
+    The caps file is rewritten at every extension load (including ``/reload``),
+    so it is the one place a running bridge can advertise a new control without
+    a session event. Fail-closed: a missing, malformed, foreign, or older caps
+    file advertises nothing.
+    """
+    if not isinstance(process_pid, int) or process_pid <= 0:
+        return frozenset()
+    try:
+        data = json.loads(_pi_active_session_caps_path(marker_path).read_text(encoding="utf-8"))
+    except Exception:
+        return frozenset()
+    if not isinstance(data, dict):
+        return frozenset()
+    version = data.get("bridgeVersion")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 2:
+        return frozenset()
+    if data.get("pid") != process_pid:
+        return frozenset()
+    features = data.get("features")
+    if not isinstance(features, list):
+        return frozenset()
+    return frozenset(item for item in features if isinstance(item, str))
+
+
+def _read_pi_bridge_session_name_control(
+    marker_path: Path,
+    *,
+    process_pid: int,
+) -> bool:
+    """Whether the live bridge can rename the Pi session in-process."""
+    return "session-name" in _read_pi_bridge_features(marker_path, process_pid=process_pid)
 
 
 def _read_pi_active_session_marker_state(

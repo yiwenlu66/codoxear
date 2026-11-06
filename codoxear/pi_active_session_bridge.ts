@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
@@ -51,9 +52,17 @@ type ExtensionAPI = {
 	getThinkingLevel(): ThinkingLevel;
 	getCommands(): Array<{ name: string; description?: string }>;
 	setThinkingLevel(level: ThinkingLevel): void;
+	setSessionName(name: string): void;
+	getSessionName(): string | undefined;
 };
 
 const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+// Bumped when a new control op or capability is added. Codoxear gates every
+// bridge-backed control on both this version and the matching caps feature, so
+// a session running an older bridge simply reports the capability as absent.
+const BRIDGE_VERSION = 3;
+const BRIDGE_FEATURES: readonly string[] = ["effort", "thinking", "session-name"];
 
 function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
@@ -62,7 +71,7 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	if (!sessionFile) return;
 	const payload = {
 		version: 1,
-		bridgeVersion: 2,
+		bridgeVersion: BRIDGE_VERSION,
 		reason,
 		sessionFile,
 		sessionId: ctx.sessionManager.getSessionId(),
@@ -202,8 +211,8 @@ function writeThinkingCapabilities(commands, liveSettings) {
 	const capsPath = `${markerPath}.caps`;
 	const commandsToWrite = commands !== undefined ? commands : lastCommandsSnapshot;
 	const payload = {
-		bridgeVersion: 2,
-		features: ["effort", "thinking"],
+		bridgeVersion: BRIDGE_VERSION,
+		features: [...BRIDGE_FEATURES],
 		commands: Array.isArray(commandsToWrite) ? commandsToWrite.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
 		pid: process.pid,
 		updatedAt: new Date().toISOString(),
@@ -224,9 +233,131 @@ function writeThinkingCapabilities(commands, liveSettings) {
 	}
 }
 
+// --- control channel (broker -> bridge) ------------------------------------
+//
+// The marker/caps/receipt files only carry state from Pi to the broker. Live
+// control (a rename issued in the codoxear UI) needs the other direction, so the
+// bridge listens on a sibling Unix socket. The broker connects, sends one JSON
+// line, and reads one reply. Everything here is best effort: a session without
+// the socket still works, it just reports the capability as absent.
+
+function bridgeSocketPath(): string | undefined {
+	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
+	if (!markerPath) return undefined;
+	return `${markerPath}.bridge.sock`;
+}
+
+function cleanSessionName(raw: unknown): string {
+	return typeof raw === "string" ? raw.replace(/[\r\n]+/g, " ").trim().slice(0, 200) : "";
+}
+
+function currentSessionName(): string {
+	try {
+		const name = activePi && typeof activePi.getSessionName === "function" ? activePi.getSessionName() : undefined;
+		return typeof name === "string" ? name : "";
+	} catch {
+		return "";
+	}
+}
+
+function handleBridgeRequest(request: unknown): Record<string, unknown> {
+	const op = request && typeof request === "object" ? (request as { op?: unknown }).op : undefined;
+	if (op === "get_session_name") {
+		return { ok: true, pid: process.pid, name: currentSessionName() };
+	}
+	if (op === "set_session_name") {
+		const name = cleanSessionName((request as { name?: unknown }).name);
+		if (!activePi || typeof activePi.setSessionName !== "function") {
+			return { ok: false, pid: process.pid, error: "session name control unavailable" };
+		}
+		activePi.setSessionName(name);
+		return { ok: true, pid: process.pid, name: currentSessionName() };
+	}
+	return { ok: false, pid: process.pid, error: "unknown op" };
+}
+
+let bridgeServer;
+
+function startBridgeControlServer(): void {
+	const socketPath = bridgeSocketPath();
+	if (!socketPath || bridgeServer) return;
+	try {
+		fs.mkdirSync(path.dirname(socketPath), { recursive: true });
+		try {
+			fs.unlinkSync(socketPath);
+		} catch {
+			// No stale socket to clear.
+		}
+		const server = net.createServer((socket) => {
+			let buffer = "";
+			let answered = false;
+			socket.setEncoding("utf8");
+			socket.on("error", () => {});
+			socket.on("data", (chunk) => {
+				if (answered) return;
+				buffer += chunk;
+				const newline = buffer.indexOf("\n");
+				if (newline < 0) {
+					if (buffer.length > 65536) {
+						answered = true;
+						socket.destroy();
+					}
+					return;
+				}
+				answered = true;
+				let reply;
+				try {
+					reply = handleBridgeRequest(JSON.parse(buffer.slice(0, newline)));
+				} catch (error) {
+					reply = { ok: false, pid: process.pid, error: error instanceof Error ? error.message : "invalid request" };
+				}
+				try {
+					socket.end(`${JSON.stringify(reply)}\n`);
+				} catch {
+					// Peer already gone.
+				}
+			});
+		});
+		server.on("error", () => {
+			try {
+				server.close();
+			} catch {
+				// Already closed.
+			}
+		});
+		server.listen(socketPath, () => {
+			try {
+				fs.chmodSync(socketPath, 0o600);
+			} catch {
+				// Best effort; the app dir is already user-scoped.
+			}
+		});
+		bridgeServer = server;
+		// The control channel must never be the reason a Pi process stays alive:
+		// Pi owns the event loop, and a harness that loads this bundle and exits
+		// would otherwise hang on the listening handle.
+		if (typeof server.unref === "function") server.unref();
+		process.once("exit", () => {
+			try {
+				server.close();
+			} catch {
+				// Already closed.
+			}
+			try {
+				fs.unlinkSync(socketPath);
+			} catch {
+				// Nothing left to remove.
+			}
+		});
+	} catch {
+		// Control channel unavailable; codoxear sees no session-name capability.
+	}
+}
+
 export default function (pi: ExtensionAPI): void {
 	activePi = pi;
 	writeThinkingCapabilities();
+	startBridgeControlServer();
 	let commandsRegistered = false;
 	function registerEffortCommands(ctx?: ExtensionContext) {
 		if (commandsRegistered) return;
