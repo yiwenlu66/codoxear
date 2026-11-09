@@ -423,6 +423,75 @@ def run_picker_raw_byte_collision_render_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_search_state_completion_probe() -> dict:
+    """One owner per query: a prefetch timer must join Tab's request, not abort it."""
+    picker_source = module_path("app_file_picker.js").read_text(encoding="utf-8")
+    program = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}}, console }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const timers = new Map();
+        let nextTimer = 0;
+        const calls = [];
+        let deferred = null;
+        // The search request and the completion request share this stub; only the
+        // completion one is held open, so the probe can interleave the timer.
+        const api = (url) => {{
+          calls.push(url);
+          if (String(url).includes("/file/search")) return Promise.resolve({{ matches: [] }});
+          return new Promise((resolve) => {{ deferred = resolve; }});
+        }};
+        const state = ctx.window.CodoxearFilePicker.createSearchState({{
+          blocked: () => false,
+          currentSessionId: () => "sid",
+          api,
+          inputValue: () => "abc",
+          isMenuOpen: () => true,
+          renderMenu: () => null,
+          applyMenuState: () => null,
+          normalizeFileApiPath: (value) => String(value || ""),
+          setTimeout: (callback) => {{ timers.set(++nextTimer, callback); return nextTimer; }},
+          clearTimeout: (id) => timers.delete(id),
+        }});
+        (async () => {{
+          // The typing debounce is armed but has not fired; Tab asks first.
+          state.schedule("abc");
+          const tabRequest = state.requestCompletion("abc");
+          const firing = [...timers.values()];
+          timers.clear();
+          const prefetch = firing.map((callback) => callback());
+          await Promise.resolve();
+          const callsBeforeAnswer = calls.length;
+          deferred({{ ok: true, truncated: false, entries: [{{ name: "alpha", is_dir: true }}] }});
+          const [tabListing] = await Promise.all([tabRequest, ...prefetch]);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          process.stdout.write(JSON.stringify({{
+            completionCalls: calls.filter((url) => String(url).includes("/file/complete")).length,
+            totalCalls: calls.length,
+            tabListing: tabListing && {{ query: tabListing.query, names: tabListing.names }},
+            snapshot: state.snapshot().completion,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=program, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+class TestSearchStateCompletionOwnership(unittest.TestCase):
+    def test_a_prefetch_joins_the_request_tab_is_awaiting(self) -> None:
+        result = run_search_state_completion_probe()
+        # The timer and Tab ask for the same text: exactly one request leaves the
+        # browser, so neither can abort the other and hand back another query's
+        # listing (which is how a name from the wrong directory got inserted).
+        self.assertEqual(result["completionCalls"], 1)
+        self.assertEqual(result["tabListing"]["query"], "abc")
+        self.assertEqual(result["tabListing"]["names"], [{"name": "alpha", "isDir": True}])
+        self.assertEqual(result["snapshot"]["query"], "abc")
+
+
 def run_picker_input_runtime_probe() -> dict[str, object]:
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")

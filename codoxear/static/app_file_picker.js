@@ -786,11 +786,11 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       const text = typed.trim();
       const seq = ++tabSeq;
       const state = searchSnapshot();
-      // Rows only count when they were computed for this text, and a row counts as
-      // a pick only when the user arrowed onto it.
-      const rowsMatch = Boolean(state && state.loadedQuery && state.loadedQuery === text);
+      // A row counts as an answer only when the user arrowed onto it — that is
+      // what is on screen right now, so it needs no further keying. Automatic
+      // answers (the listing below) are the ones that must be keyed to the text.
       const focusIndex = menuState.focusIndex();
-      const picked = rowsMatch && pickedByUser && focusIndex >= 0 ? (visibleEntries() || [])[focusIndex] : null;
+      const picked = pickedByUser && focusIndex >= 0 ? (visibleEntries() || [])[focusIndex] : null;
       void CodoxearPathCompletion.resolveTabCompletion({
         value: text,
         defaultDir: "",
