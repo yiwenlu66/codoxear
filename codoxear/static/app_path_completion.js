@@ -250,6 +250,9 @@ function completionFromListing(value, defaultDir, listing) {
 // inserted.
 function listingFor(listing, text) {
   if (!listing || !Array.isArray(listing.names) || listing.query !== text) return null;
+  // A failed request is not "this directory is empty": caching it as an empty
+  // listing would make the next Tab skip the request and find nothing forever.
+  if (listing.ok === false) return null;
   return listing;
 }
 
@@ -293,9 +296,11 @@ async function resolveTabCompletion({ value, defaultDir = "", picked = null, cac
   const text = String(value == null ? "" : value);
   const pickedPath = picked && typeof picked.path === "string" ? picked.path : "";
   if (pickedPath && pickedPath !== text) return { apply: pickedPath, fromRow: true };
+  // An empty field has nothing to complete, whether or not a listing for "" is
+  // cached — that check has to come first or the answer depends on the cache.
+  if (!text) return { fallthrough: true };
   const settled = listingFor(cachedListing, text);
   if (settled) return planFromListing(text, defaultDir, settled, singleRow);
-  if (!text) return { fallthrough: true };
   if (typeof fetchListing === "function") {
     let fetched = null;
     try {

@@ -91,6 +91,9 @@ def run_core() -> dict[str, object]:
             trailingSlashSingleEntry: await resolve({{ value: "~/solo/", singleRow: null, fetchListing: async (text) => listing(text, [["only-child", true]]) }}),
             trailingSlashTwoEntries: await resolve({{ value: "~/pair/", fetchListing: async (text) => listing(text, [["a", true], ["b", true]]) }}),
             cachedFetches: calls.filter((text) => text === "~/pro").length,
+            emptyWithCachedListing: await resolve({{ value: "", cachedListing: listing("", [["alpha", true]]) }}),
+            failedCachedListing: await resolve({{ value: "~/pro", cachedListing: {{ query: "~/pro", ok: false, names: [["projects", true]], truncated: false }} }}),
+            failedCachedListingRefetches: calls.filter((text) => text === "~/pro").length,
           }};
           // focusNextControl: verified moves, wrap inside the container, hidden and
           // negative-tabindex candidates skipped, popups excluded.
@@ -253,3 +256,19 @@ def test_focus_walker_verifies_the_move_skips_and_wraps() -> None:
     assert focus["focusedAfterWrap"] == "first"
     # A disabled candidate falls through to the next valid one.
     assert focus["disabledFallsBack"] is True
+
+
+def test_an_empty_field_never_decides_anything() -> None:
+    tab = run_core()["tab"]
+    # Warm or cold, an empty field is a focus move: reporting a completion here
+    # depended on whether a listing for "" happened to be cached.
+    assert tab["emptyWithCachedListing"] == {"fallthrough": True}
+    assert tab["emptyValue"] == {"fallthrough": True}
+
+
+def test_a_failed_listing_is_not_an_empty_directory() -> None:
+    tab = run_core()["tab"]
+    # A 503 must not be cached as "this directory is empty", which would make
+    # every later Tab skip the request and find nothing.
+    assert tab["failedCachedListing"] == {"fallthrough": True}
+    assert tab["failedCachedListingRefetches"] >= 1

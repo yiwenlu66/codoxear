@@ -110,6 +110,10 @@ function requireFunction(value, name) {
     let cwdSuggestInput = null;
     let cwdSuggestLoadSeq = 0;
     let cwdSuggestTimer = null;
+    // An arrow pressed before the listing produced any row is an intent, not a
+    // no-op: the first row is selected as soon as rows exist, so the gesture ends
+    // the same way whether or not the listing had arrived yet.
+    let cwdArrowPending = false;
     // The filesystem listing for one requested value:
     // `{query, names: [{name, path, isDir}], truncated}`, or null while a request is
     // in flight. One object feeds both the menu rows and Tab's cached answer, so
@@ -562,6 +566,7 @@ function requireFunction(value, name) {
           : [];
         filesystemCwdListing = {
           query: raw,
+          ok: true,
           names: directories.map((item) => ({ name: String(item.name || ""), path: String(item.path || ""), isDir: true })),
           truncated: Boolean(result && result.truncated),
         };
@@ -569,10 +574,29 @@ function requireFunction(value, name) {
         applyDialogMenus();
       } catch (_) {
         if (seq !== cwdSuggestLoadSeq) return;
-        filesystemCwdListing = { query: raw, names: [], truncated: false };
+        // A failed load is not an empty directory: marked so Tab asks again.
+        filesystemCwdListing = { query: raw, ok: false, names: [], truncated: false };
         renderRecentCwdMenu();
         applyDialogMenus();
       }
+    }
+
+    // Run the pending listing load immediately instead of waiting out the
+    // debounce: an arrow pressed before the list had rows must not be answered a
+    // quarter of a second later than the same arrow pressed when it did.
+    function setCwdArrowPending(value) {
+      cwdArrowPending = Boolean(value);
+      return cwdArrowPending;
+    }
+
+    function flushFilesystemCwdLoad() {
+      const raw = String(cwdInput.value || "").trim();
+      if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
+      cwdSuggestTimer = null;
+      cwdSuggestInput = raw;
+      filesystemCwdListing = null;
+      const seq = ++cwdSuggestLoadSeq;
+      void loadFilesystemCwdOptions(raw, seq);
     }
 
     function scheduleFilesystemCwdLoad() {
@@ -659,6 +683,11 @@ function requireFunction(value, name) {
       if (!anchor) scheduleFilesystemCwdLoad();
       const items = cwdMenuOptions(raw);
       let focus = cwdMenuFocus();
+      if (cwdArrowPending && items.length) {
+        cwdArrowPending = false;
+        focus = 0;
+        assignCwdMenuFocus(0);
+      }
       if (focus < 0 && anchor) {
         const index = items.findIndex((item) => item.cwd === anchor);
         if (index >= 0) { focus = index; assignCwdMenuFocus(index); }
@@ -874,6 +903,8 @@ function requireFunction(value, name) {
       clearNewSessionCwdInfo,
       applyNewSessionCwdSuggestion,
       resolveCwdTab,
+      flushFilesystemCwdLoad,
+      setCwdArrowPending,
       renderRecentCwdMenu,
       newSessionResumeLabel,
       setNewSessionResumeSelection,
@@ -1104,6 +1135,7 @@ function requireFunction(value, name) {
       cwdMenuOpen = false;
       cwdMenuFocus = -1;
       cwdMenuFocusMoved = false;
+      controller.setCwdArrowPending(false);
       cwdTabSeq += 1;
     }
 
@@ -1276,9 +1308,9 @@ function requireFunction(value, name) {
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();
     resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); dismissModelPicker(); dismissCwdPicker(); resumeMenuOpen = !resumeMenuOpen; reasoningMenuOpen = false; applyDialogMenus(); };
     cwdInput.onclick = () => { beginCwdBrowse(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
-    cwdInput.oninput = () => { cwdTabSeq += 1; cwdMenuFocusMoved = false; cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
+    cwdInput.oninput = () => { cwdTabSeq += 1; cwdMenuFocusMoved = false; controller.setCwdArrowPending(false); cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
     cwdInput.onblur = () => { cwdTabSeq += 1; win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { dismissCwdPicker(); applyDialogMenus(); } }); };
-    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { event.preventDefault(); const typedRaw = String(cwdInput.value || ""); const typed = typedRaw.trim(); const seq = ++cwdTabSeq; const stillCurrent = () => seq === cwdTabSeq && String(cwdInput.value || "") === typedRaw; const advance = () => { if (!stillCurrent() || doc.activeElement !== cwdInput) return; if (cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } try { nameInput.focus(); } catch (_) { CodoxearPathCompletion.focusNextControl(cwdInput, { container: root }); } }; const applyPlan = (plan) => { if (!stillCurrent()) return; if (plan && typeof plan.apply === "string") { try { applyCwdCompletionValue(plan.apply, { fromRow: Boolean(plan.fromRow) }); return; } catch (_) {} } advance(); }; void controller.resolveCwdTab(typed).then(applyPlan, advance); return; } if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuFocusMoved = true; cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
+    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { event.preventDefault(); const typedRaw = String(cwdInput.value || ""); const typed = typedRaw.trim(); const seq = ++cwdTabSeq; const stillCurrent = () => seq === cwdTabSeq && String(cwdInput.value || "") === typedRaw; const advance = () => { if (!stillCurrent() || doc.activeElement !== cwdInput) return; if (cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } try { nameInput.focus(); } catch (_) { CodoxearPathCompletion.focusNextControl(cwdInput, { container: root }); } }; const applyPlan = (plan) => { if (!stillCurrent()) return; if (plan && typeof plan.apply === "string") { try { applyCwdCompletionValue(plan.apply, { fromRow: Boolean(plan.fromRow) }); return; } catch (_) {} } advance(); }; void controller.resolveCwdTab(typed).then(applyPlan, advance); return; } if (arrow) { if (!items.length) { controller.setCwdArrowPending(true); cwdMenuFocusMoved = true; cwdMenuOpen = true; controller.flushFilesystemCwdLoad(); applyDialogMenus(); return; } event.preventDefault(); cwdTabSeq += 1; cwdMenuFocusMoved = true; cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
     modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
     // The first edit of a committed pair replaces it: clearing here means the
     // typed character or paste lands in an empty field instead of appending to

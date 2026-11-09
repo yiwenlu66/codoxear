@@ -436,11 +436,13 @@ def run_search_state_completion_probe() -> dict:
         let nextTimer = 0;
         const calls = [];
         let deferred = null;
+        let failNext = false;
         // The search request and the completion request share this stub; only the
         // completion one is held open, so the probe can interleave the timer.
         const api = (url) => {{
           calls.push(url);
           if (String(url).includes("/file/search")) return Promise.resolve({{ matches: [] }});
+          if (failNext) {{ failNext = false; return Promise.reject(new Error("503")); }}
           return new Promise((resolve) => {{ deferred = resolve; }});
         }};
         const state = ctx.window.CodoxearFilePicker.createSearchState({{
@@ -467,11 +469,24 @@ def run_search_state_completion_probe() -> dict:
           deferred({{ ok: true, truncated: false, entries: [{{ name: "alpha", is_dir: true }}] }});
           const [tabListing] = await Promise.all([tabRequest, ...prefetch]);
           await new Promise((resolve) => setTimeout(resolve, 0));
+          // A transport failure must not be cached as "this directory is empty":
+          // the same text is asked for again once the transport is back.
+          failNext = true;
+          const failed = await state.requestCompletion("def");
+          const failedOk = failed && failed.ok;
+          deferred = null;
+          const retried = state.requestCompletion("def");
+          deferred({{ ok: true, truncated: false, entries: [{{ name: "delta", is_dir: false }}] }});
+          const afterRetry = await retried;
+          const completionCalls = calls.filter((url) => String(url).includes("/file/complete")).length;
           process.stdout.write(JSON.stringify({{
             completionCalls: calls.filter((url) => String(url).includes("/file/complete")).length,
             totalCalls: calls.length,
             tabListing: tabListing && {{ query: tabListing.query, names: tabListing.names }},
             snapshot: state.snapshot().completion,
+            failedOk,
+            afterRetry: afterRetry && {{ query: afterRetry.query, ok: afterRetry.ok, names: afterRetry.names.map((e) => e.name) }},
+            completionCalls,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -486,10 +501,14 @@ class TestSearchStateCompletionOwnership(unittest.TestCase):
         # The timer and Tab ask for the same text: exactly one request leaves the
         # browser, so neither can abort the other and hand back another query's
         # listing (which is how a name from the wrong directory got inserted).
-        self.assertEqual(result["completionCalls"], 1)
+        self.assertEqual(result["completionCalls"], 3)
         self.assertEqual(result["tabListing"]["query"], "abc")
         self.assertEqual(result["tabListing"]["names"], [{"name": "alpha", "isDir": True}])
-        self.assertEqual(result["snapshot"]["query"], "abc")
+        self.assertEqual(result["snapshot"]["query"], "def")
+        self.assertEqual(result["snapshot"]["ok"], True)
+        # A failed request is not cached as an empty directory.
+        self.assertFalse(result["failedOk"])
+        self.assertEqual(result["afterRetry"], {"query": "def", "ok": True, "names": ["delta"]})
 
 
 def run_picker_input_runtime_probe() -> dict[str, object]:
@@ -516,6 +535,8 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
         let loadedQuery = "";
         const ensured = [];
         let completionRequest = null;
+        let deferredListing = null;
+        let deferredRelease = null;
         const nextControl = {{
           focus() {{ events.push(["focusNext"]); }},
           getAttribute() {{ return null; }},
@@ -556,7 +577,11 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           requestAnimationFrame: (callback) => {{ rafCallback = callback; events.push(["raf"]); }},
           searchSnapshot: () => ({{ completion, loadedQuery }}),
           visibleEntries: () => rows,
-          ensureCompletion: async (query) => {{ ensured.push(query); return completionRequest; }},
+          ensureCompletion: (query) => {{
+            ensured.push(query);
+            if (deferredListing) return new Promise((release) => {{ deferredRelease = () => release(deferredListing); }});
+            return Promise.resolve(completionRequest);
+          }},
         }});
         async function run() {{
           entries = [{{ path: "src/app.py", changed: true, gitPath: true, apiPath: "tok" }}];
@@ -645,18 +670,42 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const tabCachedFetches = ensured.filter(function (text) {{ return text === "src/ne"; }}).length;
           events.splice(0);
 
-          // (4) A row the user arrowed onto is taken as text, and the highlight is
-          // reset so the next Tab completes the text instead of re-taking it.
+          // (4) A row the user arrowed onto is taken as text. The choice is
+          // remembered by path: a search response that arrives afterwards and
+          // shifts the rows under the same index must not redirect it.
           rows = [{{ path: "lib/picked.py" }}];
+          entries = rows;
           loadedQuery = "zzz";
           completion = {{ query: "", names: [], truncated: false }};
           armCompletion(null);
           input.value = "zzz";
           await runtime.keydown({{ key: "ArrowDown", preventDefault() {{}}, stopPropagation() {{}} }});
+          rows = [{{ path: "src/inserted.js" }}, {{ path: "lib/picked.py" }}];
+          entries = rows;
           runtime.keydown(tabKey());
           await settle();
           const tabRowValue = input.value;
           const tabRowFocus = menuState.focusIndex();
+          loadedQuery = "";
+          events.splice(0);
+
+          // (5) A Tab still in flight must not overwrite a newer arrow choice:
+          // the newer intent wins and the stale answer is discarded.
+          rows = [{{ path: "page.html" }}];
+          entries = rows;
+          loadedQuery = "e";
+          menuState.setFocus(-1);
+          completion = {{ query: "", names: [], truncated: false }};
+          deferredListing = {{ query: "e", truncated: false, names: [{{ name: "empty.txt", isDir: false }}] }};
+          input.value = "e";
+          runtime.keydown(tabKey());
+          await settle();
+          await runtime.keydown({{ key: "ArrowDown", preventDefault() {{}}, stopPropagation() {{}} }});
+          deferredRelease();
+          await settle();
+          const tabPendingValue = input.value;
+          const tabPendingFocus = menuState.focusIndex();
+          deferredListing = null;
           loadedQuery = "";
           events.splice(0);
 
@@ -707,7 +756,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabColdResult, tabColdPrevented, tabColdValue, tabColdFetched, tabColdScheduled, tabShiftResult, tabShiftPrevented, tabCachedValue, tabCachedFetches, tabRowValue, tabRowFocus, tabSingleValue, tabSingleEvents, tabDraftEvents, tabCappedEvents, tabCappedValue, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabColdResult, tabColdPrevented, tabColdValue, tabColdFetched, tabColdScheduled, tabShiftResult, tabShiftPrevented, tabCachedValue, tabCachedFetches, tabRowValue, tabRowFocus, tabPendingValue, tabPendingFocus, tabSingleValue, tabSingleEvents, tabDraftEvents, tabCappedEvents, tabCappedValue, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -1030,6 +1079,9 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["tabCachedValue"], "src/newdir/")
         self.assertEqual(result["tabRowValue"], "lib/picked.py")
         self.assertEqual(result["tabRowFocus"], -1)
+        # The in-flight Tab's answer was discarded once the user arrowed.
+        self.assertEqual(result["tabPendingValue"], "e")
+        self.assertEqual(result["tabPendingFocus"], 0)
         self.assertEqual(result["tabSingleValue"], "only")
         self.assertEqual(result["tabSingleEvents"], [["prevent"], ["close", None], ["focusNext"]])
         # Falling through closes the list and moves focus itself, so the key's

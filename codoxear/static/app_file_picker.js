@@ -687,9 +687,14 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     const enterIndex = requireFunction(menuState, "enterIndex");
 
     let tabSeq = 0;
-    // A row is "picked" only when the user moved onto it with the arrow keys; the
-    // renderer's own anchored highlight is not a choice.
-    let pickedByUser = false;
+    // The row the user arrowed onto, remembered as (text it was chosen for, path):
+    // an index is not an identity — a search response arriving later can slide a
+    // different row under the same index — and a choice made for other text is
+    // not an answer for this one.
+    let pickedChoice = null;
+    // An arrow pressed before any row exists is an intent: the first row is
+    // selected once rows arrive, so the gesture ends the same way cold or warm.
+    let arrowPending = false;
 
     function openRenderedMenu() {
       const entries = renderMenu();
@@ -728,12 +733,19 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
 
     async function inputChanged() {
       tabSeq += 1;
-      pickedByUser = false;
+      pickedChoice = null;
+      arrowPending = false;
       if (!(await ensureCurrentSession())) return false;
       const rawQuery = String(input.value || "");
       handleInputState(rawQuery);
       const query = rawQuery.trim();
-      openRenderedMenu();
+      const rendered = openRenderedMenu();
+      if (arrowPending && rendered && rendered.length) {
+        arrowPending = false;
+        moveFocus(rendered.length, 1);
+        renderMenu();
+        applyMenuState();
+      }
       const sessionId = currentSessionId() || sessionState.get("selected") || "";
       if (!query || !sessionId) {
         resetSearchState();
@@ -750,7 +762,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
 
     function blur() {
       tabSeq += 1;
-      pickedByUser = false;
+      pickedChoice = null;
       animationFrame(() => {
         if (isFocusInsideField()) return;
         closeMenu({ restoreInput: true });
@@ -761,7 +773,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     function openSearchQuery(query, { line = null, suppressDraft = false } = {}) {
       // A programmatic search target is a new intent: nothing pending may land.
       tabSeq += 1;
-      pickedByUser = false;
+      pickedChoice = null;
       const rawQuery = String(query ?? "");
       if (!openSearchQueryState(rawQuery, { line, suppressDraft })) return false;
       input.value = rawQuery;
@@ -789,12 +801,10 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       // A row counts as an answer only when the user arrowed onto it — that is
       // what is on screen right now, so it needs no further keying. Automatic
       // answers (the listing below) are the ones that must be keyed to the text.
-      const focusIndex = menuState.focusIndex();
-      const picked = pickedByUser && focusIndex >= 0 ? (visibleEntries() || [])[focusIndex] : null;
       void CodoxearPathCompletion.resolveTabCompletion({
         value: text,
         defaultDir: "",
-        picked: picked && typeof picked.path === "string" ? { path: picked.path } : null,
+        picked: pickedChoice && pickedChoice.text === text ? { path: pickedChoice.path } : null,
         cachedListing: state && state.completion ? state.completion : null,
         fetchListing: (query) => ensureCompletion(query),
       }).then((plan) => {
@@ -803,7 +813,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
         if (plan && typeof plan.apply === "string") {
           input.value = plan.apply;
           menuState.setFocus(-1);
-          pickedByUser = false;
+          pickedChoice = null;
           // Re-run the ordinary input flow so the menu, the search and the draft
           // state follow the completed value (a completed directory lists what is
           // inside it, so the next Tab drills).
@@ -838,11 +848,21 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       if (!(await ensureCurrentSession())) return false;
       const entries = renderMenu();
       if (event && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        if (!entries || !entries.length) return false;
+        if (!entries || !entries.length) {
+          arrowPending = true;
+          void inputChanged();
+          return false;
+        }
         if (typeof event.preventDefault === "function") event.preventDefault();
-        pickedByUser = true;
+        // A newer choice supersedes any decision still in flight for older text,
+        // and the chosen row is remembered by path.
+        tabSeq += 1;
         const delta = event.key === "ArrowDown" ? 1 : -1;
         const focusIndex = moveFocus(entries.length, delta);
+        const focusedRow = entries[focusIndex];
+        pickedChoice = focusedRow && typeof focusedRow.path === "string"
+          ? { text: String(input.value || "").trim(), path: focusedRow.path }
+          : null;
         renderMenu();
         applyMenuState();
         const active = optionElementById(`filePickerOption-${focusIndex}`);
@@ -918,7 +938,9 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
         error,
         truncatedQuery,
         sessionId,
-        completion: { query: completion.query, names: completion.names.slice(), truncated: completion.truncated },
+        // `ok:false` marks a failed request; it must survive into the snapshot or
+        // the Tab path would treat a transport error as an empty directory.
+        completion: { query: completion.query, ok: completion.ok !== false, names: completion.names.slice(), truncated: completion.truncated },
       };
     }
 
@@ -1050,7 +1072,8 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       if (completionInFlight && completionInFlight.query === trimmed && completionInFlight.sessionId === sid) {
         return completionInFlight.promise;
       }
-      if (completion.query === trimmed && !completionPending) return Promise.resolve(completion);
+      // A failed attempt is not a cache hit: the same text is retried.
+      if (completion.query === trimmed && completion.ok !== false && !completionPending) return Promise.resolve(completion);
       const requestSeq = ++completionSeq;
       abortCompletion();
       const controller = typeof AbortCtor === "function" ? new AbortCtor() : null;
@@ -1065,6 +1088,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
           const entries = res && res.ok === true && Array.isArray(res.entries) ? res.entries : [];
           completion = {
             query: trimmed,
+            ok: true,
             names: entries
               .map((entry) => ({ name: String(entry && entry.name ? entry.name : ""), isDir: Boolean(entry && entry.is_dir) }))
               .filter((entry) => entry.name !== ""),
@@ -1075,7 +1099,9 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
           // A cancelled or superseded request has no answer of its own.
           if (controller && controller.signal && controller.signal.aborted) return null;
           if (requestSeq !== completionSeq) return null;
-          completion = { query: trimmed, names: [], truncated: false };
+          // Not an empty directory — a failed one. The resolver rejects it, so
+          // the next Tab asks again instead of trusting a transport error.
+          completion = { query: trimmed, ok: false, names: [], truncated: false };
           return completion;
         } finally {
           if (completionAbort === controller) completionAbort = null;
