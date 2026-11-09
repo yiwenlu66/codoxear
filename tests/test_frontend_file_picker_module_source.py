@@ -1076,7 +1076,7 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["tabShiftPrevented"], 0)
         # A cached listing for the same text is used as-is: no second request.
         self.assertEqual(result["tabCachedFetches"], 0)
-        self.assertEqual(result["tabCachedValue"], "src/newdir/")
+        self.assertEqual(result["tabCachedValue"], "src/newdir")
         self.assertEqual(result["tabRowValue"], "lib/picked.py")
         self.assertEqual(result["tabRowFocus"], -1)
         # The in-flight Tab's answer was discarded once the user arrowed.

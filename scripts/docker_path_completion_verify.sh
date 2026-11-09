@@ -257,6 +257,7 @@ npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
     # Separate tree for the path-field Tab scenarios: a unique match, a shared
     # prefix, and a sibling that must never be offered.
     mkdir -p "$HOME/tab-cwd-fixture/alpha/inner" "$HOME/tab-cwd-fixture/alpine" "$HOME/tab-cwd-fixture/beta"
+    mkdir -p "$HOME/tab-cwd-fixture/__pycache__" "$HOME/tab-cwd-fixture/node_modules"
     : > "$fixture/plain.txt"
     : > "$fixture/.hidden"
     : > "$fixture/subdir/child.txt"
@@ -595,6 +596,19 @@ browser wait 900 > /dev/null 2>&1 || true
 browser eval "$cwd_field_eval" --json > "$artifacts/ui-32-cwd-complete.json" 2>&1 || fail "could not read completed cwd state"
 browser screenshot --full "$artifacts/ui-32-cwd-complete.png" > "$artifacts/ui-32-cwd-complete-screenshot.txt" 2>&1 || true
 
+# The completion finishes the name, so the NEXT Tab has nothing left to finish: it
+# leaves the field instead of drilling into the directory's first child (the
+# reported bug: a completed `codox` then Tab walked into `…/__pycache__`).
+browser press Tab > "$artifacts/ui-tab-cwd-second-tab.txt" 2>&1 || fail "second Tab after a completion failed"
+browser wait 600 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-44-cwd-second-tab.json" 2>&1 || fail "could not read the state after the second Tab"
+
+# Artifact directories are never suggested (nor browsable): the fixture contains
+# a __pycache__ beside the real project directories.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/' > "$artifacts/ui-tab-cwd-noise-typed.txt" 2>&1 || fail "could not type the fixture root"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-45-cwd-noise.json" 2>&1 || fail "could not read the noise-filtered listing"
+
 # A value that already ends with "/" has no fragment to extend, but a directory
 # with exactly one child is unambiguous — and that must hold cold, from the
 # listing, not from whatever the menu happened to render.
@@ -680,6 +694,8 @@ cwd_immediate = result("ui-38-cwd-immediate")
 cwd_singleton = result("ui-39-cwd-singleton")
 cwd_arrow_cold = result("ui-41-cwd-arrow-cold")
 cwd_top_row = result("ui-43-cwd-top-row")
+cwd_second_tab = result("ui-44-cwd-second-tab")
+cwd_noise = result("ui-45-cwd-noise")
 cwd_arrow_warm = result("ui-42-cwd-arrow-warm")
 cwd_late = result("ui-40-cwd-late")
 picker_typed = result("ui-26-picker-typed")
@@ -722,19 +738,23 @@ checks = {
     # stays native when there is nothing to complete (Shift+Tab always native).
     # Typing and pressing Tab immediately is the gesture a person makes; its
     # outcome must not depend on a fetch having landed first.
-    "tab_immediate_picker_completes": picker_immediate.get("value") == "my dir/" and picker_immediate.get("focused") is True,
-    "tab_immediate_cwd_completes": cwd_immediate.get("value") == "/home/tester/tab-cwd-fixture/beta/" and cwd_immediate.get("focused") is True,
-    "tab_completes_picker_directory": picker_typed.get("value") == "subd" and picker_complete.get("value") == "subdir/" and picker_complete.get("focused") is True,
+    "tab_immediate_picker_completes": picker_immediate.get("value") == "my dir" and picker_immediate.get("focused") is True,
+    "tab_immediate_cwd_completes": cwd_immediate.get("value") == "/home/tester/tab-cwd-fixture/beta" and cwd_immediate.get("focused") is True,
+    "tab_completes_picker_directory": picker_typed.get("value") == "subd" and picker_complete.get("value") == "subdir" and picker_complete.get("focused") is True,
     "tab_picker_drill_lists_children": any("child.txt" in str(row) for row in picker_complete.get("rows") or []),
     "tab_completes_picker_file": picker_file.get("value") == "plain.txt" and picker_file.get("focused") is True,
     "tab_completed_file_opens": picker_opened.get("viewer") not in {None, "none"} and str(picker_opened.get("path", "")).endswith("plain.txt"),
     "tab_without_completion_moves_focus": picker_nomatch.get("focused") is False and picker_nomatch.get("menuOpen") is False,
-    "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_complete.get("focused") is True,
-    "tab_cwd_drill_lists_children": any(str(row).endswith("/alpha/inner") for row in cwd_complete.get("rows") or []),
+    "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha" and cwd_complete.get("focused") is True,
+    # Completing a name does not drill: the next Tab leaves the field.
+    "tab_completes_then_escapes": cwd_second_tab.get("value") == "/home/tester/tab-cwd-fixture/alpha" and cwd_second_tab.get("activeId") == "newSessionNameInput",
+    "tab_never_suggests_artifact_directories": bool(cwd_noise.get("rows")) and not any("__pycache__" in str(row) for row in cwd_noise.get("rows") or []),
     # Cold and warm must not differ: the picked row wins in both.
-    "tab_takes_the_top_listed_row": cwd_top_row.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_top_row.get("focused") is True,
-    "tab_arrow_cold_matches_warm": cwd_arrow_cold.get("value") == cwd_arrow_warm.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_arrow_cold.get("focused") is True and cwd_arrow_warm.get("focused") is True,
-    "tab_cwd_single_entry_directory": cwd_singleton.get("value") == "/home/tester/tab-cwd-fixture/alpha/inner/" and cwd_singleton.get("focused") is True,
+    "tab_takes_the_top_listed_row": cwd_top_row.get("value") == "/home/tester/tab-cwd-fixture/alpha" and cwd_top_row.get("focused") is True,
+    "tab_arrow_cold_matches_warm": cwd_arrow_cold.get("value") == cwd_arrow_warm.get("value") == "/home/tester/tab-cwd-fixture/alpha" and cwd_arrow_cold.get("focused") is True and cwd_arrow_warm.get("focused") is True,
+    # Browsing is asked for with the separator: a typed "/" lists the children and
+    # Tab takes the single entry.
+    "tab_cwd_single_entry_directory": cwd_singleton.get("value") == "/home/tester/tab-cwd-fixture/alpha/inner" and cwd_singleton.get("focused") is True,
     # A decision that resolves after the user left the field must not pull focus
     # back to the working-directory input.
     "late_decision_does_not_steal_focus": cwd_late.get("activeId") == "newSessionModelInput",
@@ -744,7 +764,7 @@ checks = {
     # taken value is the armed row, optionally with the trailing "/".
     "tab_takes_the_picked_row": bool(cwd_row_armed.get("activeRow")) and cwd_row_taken.get("value") in {cwd_row_armed.get("activeRow"), str(cwd_row_armed.get("activeRow")) + "/"} and cwd_row_taken.get("focused") is True and any(str(row).endswith("/alpha/inner") for row in cwd_row_taken.get("rows") or []),
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate, "cwd_singleton": cwd_singleton, "cwd_arrow_cold": cwd_arrow_cold, "cwd_top_row": cwd_top_row, "cwd_arrow_warm": cwd_arrow_warm, "cwd_late": cwd_late}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate, "cwd_singleton": cwd_singleton, "cwd_arrow_cold": cwd_arrow_cold, "cwd_top_row": cwd_top_row, "cwd_second_tab": cwd_second_tab, "cwd_noise": cwd_noise, "cwd_arrow_warm": cwd_arrow_warm, "cwd_late": cwd_late}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"

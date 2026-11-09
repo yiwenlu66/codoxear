@@ -433,3 +433,31 @@ def test_server_adapter_forwards_the_prefix_only_flag(tmp_path: Path) -> None:
 
     fuzzy = _complete_session_path(tmp_path, token="al", limit=20)
     assert "xalpha.log" in _entry_names(fuzzy)
+
+
+def test_completion_never_suggests_build_or_tooling_artifacts(tmp_path: Path) -> None:
+    """`__pycache__`, `node_modules`, `.git` are noise, not candidates.
+
+    Reported from use: a cwd/completion list that offers them wastes attention on
+    names nobody picks. Exact names only, so a real project called e.g. `venvs`
+    or `targets` is untouched.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "venvs").mkdir()
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "app.py").write_text("x", encoding="utf-8")
+    (tmp_path / "__pycache__" / "app.cpython-311.pyc").write_text("x", encoding="utf-8")
+
+    listing = _entry_names(complete_session_path(tmp_path, token="./", limit=50))
+    assert "src" in listing and "venvs" in listing and "app.py" in listing
+    assert "__pycache__" not in listing
+    assert "node_modules" not in listing
+    assert ".git" not in listing
+
+    # Even asked for directly, artifact names are not suggested.
+    assert complete_session_path(tmp_path, token="./__p", prefix_only=True).entries == []
+    assert _entry_names(complete_session_path(tmp_path, token="./node", prefix_only=True)) == []
+    # …and their contents are not listed either.
+    assert complete_session_path(tmp_path, token="./__pycache__/").entries == []

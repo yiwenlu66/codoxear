@@ -1108,10 +1108,10 @@ function requireFunction(value, name) {
     // and the next Tab can drill into one of them.
     function applyCwdCompletionValue(value, { fromRow = false } = {}) {
       const text = String(value == null ? "" : value);
-      // A path taken from a row names a directory (every row in this list does),
-      // so it gains the separator that lists its contents — the same rule a
-      // prefix-completed directory follows.
-      cwdInput.value = fromRow && text && !text.endsWith("/") ? `${text}/` : text;
+      // Rows and completions write the path itself. The trailing "/" is the
+      // user's own marker for "go inside", so taking an entry never adds it —
+      // otherwise the next Tab would drill into that directory's first child.
+      cwdInput.value = text;
       cwdTabSeq += 1;
       cwdMenuFocusMoved = false;
       cwdQueryDirty = true;

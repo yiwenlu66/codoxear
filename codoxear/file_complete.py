@@ -8,6 +8,8 @@ from pathlib import Path
 
 from .file_search import file_search_score
 from .git_ops import path_has_surrogate_bytes
+from .path_noise import is_noise_directory
+from .path_noise import path_enters_noise_directory
 
 
 FILE_COMPLETE_DEFAULT_LIMIT = 50
@@ -40,6 +42,9 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int, *, prefix_on
     dir_part = token[: slash_index + 1] if slash_index >= 0 else ""
     fragment = token[slash_index + 1 :] if slash_index >= 0 else token
     directory = _resolve_directory(session_cwd, dir_part)
+    if path_enters_noise_directory(dir_part):
+        # Artifact directories are not browsable: their contents are generated.
+        return FileCompletionResult(directory=directory, entries=[], truncated=False)
     include_hidden = fragment.startswith(".")
     folded_fragment = fragment.casefold()
     matches: list[tuple[int, str, bool]] = []
@@ -50,6 +55,9 @@ def _complete_path_token(session_cwd: Path, token: str, limit: int, *, prefix_on
                 if name.startswith(".") and not include_hidden:
                     continue
                 if path_has_surrogate_bytes(name):
+                    continue
+                # A build/tooling artifact directory is never a completion target.
+                if is_noise_directory(name):
                     continue
                 # Prefix mode answers "what is the complete set of names starting
                 # with this fragment" — the question tab completion asks. It

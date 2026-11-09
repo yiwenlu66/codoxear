@@ -90,6 +90,7 @@ def run_core() -> dict[str, object]:
             firstRowEqualsValue: await resolve({{ value: "/srv/recent-project", firstRow: () => ({{ path: "/srv/recent-project" }}) }}),
             firstRowAmongMany: await resolve({{ value: "/srv/dir/", firstRow: () => ({{ path: "/srv/dir/first-entry" }}) }}),
             firstRowAbsent: await resolve({{ value: "/srv/dir/", firstRow: null }}),
+            completeTokenAdvances: await resolve({{ value: "/srv/codoxear", cachedListing: listing("/srv/codoxear", [["codoxear", true]]), firstRow: () => ({{ path: "/srv/codoxear/__pycache__" }}) }}),
             trailingSlashSingleEntry: await resolve({{ value: "~/solo/", firstRow: null, fetchListing: async (text) => listing(text, [["only-child", true]]) }}),
             trailingSlashTwoEntries: await resolve({{ value: "~/pair/", fetchListing: async (text) => listing(text, [["a", true], ["b", true]]) }}),
             cachedFetches: calls.filter((text) => text === "~/pro").length,
@@ -170,13 +171,13 @@ def test_plan_rewrites_only_the_fragment_and_marks_directories() -> None:
     assert result["plan_absolute_dir"]["value"] == "/etc/hosts"
     assert result["plan_absolute_dir"]["caret"] == len("/etc/hosts")
     assert result["plan_absolute_dir"]["unique"] is True
-    assert result["plan_home_dir"]["value"] == "~/projects/"
-    assert result["plan_home_dir"]["caret"] == len("~/projects/")
+    assert result["plan_home_dir"]["value"] == "~/projects"
+    assert result["plan_home_dir"]["caret"] == len("~/projects")
     assert result["plan_home_dir"]["unique"] is True
     # A full name that is a directory gains the trailing separator: that is the
     # drill that makes the next listing show its contents.
-    assert result["plan_dir_marker"]["value"] == "~/codoxear/"
-    assert result["plan_dir_marker"]["caret"] == len("~/codoxear/")
+    assert result["plan_dir_marker"]["value"] == "~/codoxear"
+    assert result["plan_dir_marker"]["caret"] == len("~/codoxear")
     assert result["plan_dir_marker"]["unique"] is True
     assert result["plan_partial_prefix"]["value"] == "~/cod"
     assert result["plan_partial_prefix"]["caret"] == len("~/cod")
@@ -190,11 +191,11 @@ def test_slashless_value_uses_the_surface_default_directory() -> None:
     result = run_core()
     # The cwd field reads a bare fragment under "/" (its long-standing menu
     # behavior); the file picker resolves it against the session cwd.
-    assert result["plan_default_dir"]["value"] == "/codoxear/"
-    assert result["plan_default_dir"]["caret"] == len("/codoxear/")
+    assert result["plan_default_dir"]["value"] == "/codoxear"
+    assert result["plan_default_dir"]["caret"] == len("/codoxear")
     assert result["plan_default_dir"]["unique"] is True
-    assert result["plan_no_default_dir"]["value"] == "codoxear/"
-    assert result["plan_no_default_dir"]["caret"] == len("codoxear/")
+    assert result["plan_no_default_dir"]["value"] == "codoxear"
+    assert result["plan_no_default_dir"]["caret"] == len("codoxear")
     assert result["plan_no_default_dir"]["unique"] is True
 
 
@@ -202,10 +203,10 @@ def test_tab_resolution_never_depends_on_whether_a_listing_has_landed() -> None:
     tab = run_core()["tab"]
     # The measured bug: typing and pressing Tab immediately found no listing and
     # did nothing. The resolver asks for the listing itself in that case.
-    assert tab["coldFetchCompletes"] == {"apply": "~/projects/"}
+    assert tab["coldFetchCompletes"] == {"apply": "~/projects"}
     # A listing the field already has is final: no second request for the same
     # text, because an identical request could only return the same answer.
-    assert tab["cachedCompletion"] == {"apply": "~/projects/"}
+    assert tab["cachedCompletion"] == {"apply": "~/projects"}
     # The cached answer is used as-is: no second request for the same text.
     assert tab["cachedFetches"] == 0
 
@@ -243,7 +244,7 @@ def test_an_empty_fragment_still_uses_a_single_entry_listing() -> None:
     # A value that already ends with "/" has no fragment to extend, but a
     # directory with one child is unambiguous — and this must hold cold as well as
     # warm, because it comes from the listing, not from previously rendered rows.
-    assert tab["trailingSlashSingleEntry"] == {"apply": "~/solo/only-child/"}
+    assert tab["trailingSlashSingleEntry"] == {"apply": "~/solo/only-child"}
     assert tab["trailingSlashTwoEntries"] == {"fallthrough": True}
 
 
@@ -287,3 +288,13 @@ def test_a_visible_list_makes_tab_a_take_key() -> None:
     tab = run_core()["tab"]
     assert tab["firstRowAmongMany"] == {"apply": "/srv/dir/first-entry", "fromRow": True}
     assert tab["firstRowAbsent"] == {"fallthrough": True}
+
+
+def test_a_completed_token_advances_instead_of_browsing() -> None:
+    """Reported from use: after completing a path, the next Tab dove into a child.
+
+    Once the fragment names a real entry there is nothing left to finish, so Tab
+    leaves the field; browsing deeper is the user's "/" or an arrow-picked row.
+    """
+    tab = run_core()["tab"]
+    assert tab["completeTokenAdvances"] == {"fallthrough": True}

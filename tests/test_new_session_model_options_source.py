@@ -159,7 +159,7 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         result = eval_cwd_tab_completion(
             ["alpha", "alpine", "beta"], cwd_value="/srv/projects/alph"
         )
-        self.assertEqual(result["completion"], "/srv/projects/alpha/")
+        self.assertEqual(result["completion"], "/srv/projects/alpha")
 
     def test_shared_prefix_completes_only_as_far_as_the_names_agree(self) -> None:
         result = eval_cwd_tab_completion(
@@ -173,9 +173,9 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         # decision asked whether that listing had arrived. The field now asks for
         # the listing itself, so the outcome no longer depends on typing speed.
         cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=False)
-        self.assertEqual(cold["completion"], "/srv/projects/alpha/")
+        self.assertEqual(cold["completion"], "/srv/projects/alpha")
         warm = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=True)
-        self.assertEqual(warm["completion"], "/srv/projects/alpha/")
+        self.assertEqual(warm["completion"], "/srv/projects/alpha")
         self.assertEqual(cold["completion"], warm["completion"])
 
     def test_no_match_falls_through(self) -> None:
@@ -186,14 +186,13 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         self.assertTrue(cold["plan"]["fallthrough"])
 
     def test_one_listed_row_is_taken_even_with_an_empty_fragment(self) -> None:
-        # A directory with a single child: Tab takes it and marks it as a
-        # directory (one entry is an unambiguous answer), which is also what makes
-        # a one-item list usable. This comes from the listing itself, so it holds
-        # cold as well as warm.
+        # A directory with a single child: Tab takes that child (one entry is an
+        # unambiguous answer), which is also what makes a one-item list usable.
+        # This comes from the listing itself, so it holds cold as well as warm.
         trailing = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/")
-        self.assertEqual(trailing["completion"], "/srv/projects/alpha/")
+        self.assertEqual(trailing["completion"], "/srv/projects/alpha")
         cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/", settle=False)
-        self.assertEqual(cold["completion"], "/srv/projects/alpha/")
+        self.assertEqual(cold["completion"], "/srv/projects/alpha")
         # …and with several children listed, the list is the answer set: Tab takes
         # the top row (exactly what Enter would take) instead of moving focus out
         # of a field whose list is showing rows.

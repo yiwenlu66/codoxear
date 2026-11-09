@@ -7,6 +7,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .path_noise import is_noise_directory
+from .path_noise import path_enters_noise_directory
+
 
 CWD_SUGGEST_LIMIT = 50
 CWD_SUGGEST_TIMEOUT_SECONDS = 2.0
@@ -29,6 +32,8 @@ class CwdSuggestions:
 
 def _list_child_directories(path: str, *, prefix: str) -> CwdSuggestions:
     base = Path(path or "/").expanduser()
+    if path_enters_noise_directory(str(path or "")):
+        return CwdSuggestions(directories=[], truncated=False)
     include_hidden = prefix.startswith(".")
     folded_prefix = prefix.casefold()
     names: list[str] = []
@@ -45,6 +50,9 @@ def _list_child_directories(path: str, *, prefix: str) -> CwdSuggestions:
                 if folded_prefix and not name.casefold().startswith(folded_prefix):
                     continue
                 if any(0xDC80 <= ord(char) <= 0xDCFF for char in name):
+                    continue
+                # Never suggest a build/tooling artifact as a working directory.
+                if is_noise_directory(name):
                     continue
                 try:
                     if not entry.is_dir():

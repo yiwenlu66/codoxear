@@ -104,8 +104,11 @@ function completionPlan({ value, defaultDir = "", names = [], truncated = false 
   const entries = (Array.isArray(names) ? names : []).filter((entry) => entry && typeof entry.name === "string" && entry.name !== "");
   const completed = completePathFragment(fragment, entries.map((entry) => entry.name), { truncated });
   if (!completed) return null;
-  const hit = entries.find((entry) => entry.name === completed.insert);
-  const next = dirPart + completed.insert + (hit && hit.isDir ? "/" : "");
+  // A completion inserts the *name*. It deliberately does not append "/": the
+  // trailing separator is the user's marker for "go inside this directory", and
+  // appending it here made the next Tab drill into whichever child happened to be
+  // first (a `__pycache__`, typically) instead of leaving the field.
+  const next = dirPart + completed.insert;
   if (next === text) return null;
   return { value: next, caret: next.length, unique: completed.unique };
 }
@@ -239,6 +242,16 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
 // earlier design made the *decision* depend on whether a fetch had landed, which
 // reads to a user as "Tab sometimes does nothing at all".
 
+// The list has a value for this text that needs no extension: the fragment the
+// user typed already names an entry. That is the "token is complete" state, and
+// Tab's job there is to leave the field — not to browse into the first child.
+function fragmentNamesEntry(text, listing) {
+  const slash = text.lastIndexOf("/");
+  const fragment = slash < 0 ? text : text.slice(slash + 1);
+  if (!fragment) return false;
+  return listing.names.some((entry) => entry && entry.name === fragment);
+}
+
 function completionFromListing(value, defaultDir, listing) {
   if (!listing || !Array.isArray(listing.names)) return null;
   return completionPlan({ value, defaultDir, names: listing.names, truncated: Boolean(listing.truncated) });
@@ -268,7 +281,7 @@ function singleEntryPlan(text, defaultDir, listing) {
   const name = only && typeof only.name === "string" ? only.name : "";
   if (!name) return null;
   const dirPart = slash < 0 ? String(defaultDir || "") : text.slice(0, slash + 1);
-  const next = `${dirPart}${name}${only.isDir ? "/" : ""}`;
+  const next = `${dirPart}${name}`;
   return next === text ? null : { value: next };
 }
 
@@ -282,7 +295,11 @@ function planFromRow(text, firstRow) {
 
 function planFromListing(text, defaultDir, listing, firstRow) {
   const applied = completionFromListing(text, defaultDir, listing) || singleEntryPlan(text, defaultDir, listing);
-  return applied ? { apply: applied.value } : planFromRow(text, firstRow);
+  if (applied) return { apply: applied.value };
+  // Nothing to extend, and the fragment is already a real name: the token is
+  // complete, so Tab advances instead of taking the list's first row.
+  if (fragmentNamesEntry(text, listing)) return { fallthrough: true };
+  return planFromRow(text, firstRow);
 }
 
 // Resolve what Tab should do. **A visible list makes Tab a take key, not a focus

@@ -362,3 +362,19 @@ def test_handle_session_post_route_reports_an_unusable_quick_root() -> None:
     )
     assert handled is True
     assert responses == [(500, {"error": "quick workspace unavailable: No space left on device"})]
+
+
+def test_cwd_suggest_never_offers_build_or_tooling_artifacts() -> None:
+    from codoxear.cwd_suggest import cwd_suggestions
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        for name in ("src", "docs", "__pycache__", "node_modules", ".git", "venvs"):
+            (root / name).mkdir()
+        (root / "README.md").write_text("x", encoding="utf-8")
+
+        suggested = [item["name"] for item in cwd_suggestions(root).directories]
+        assert suggested == ["docs", "src", "venvs"]
+
+        assert cwd_suggestions(root, prefix="__p").directories == []
+        assert cwd_suggestions(root, prefix="node").directories == []
