@@ -44,7 +44,7 @@ def eval_model_options(
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
           sessionCatalog,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,cwdMenuOpen:()=>true,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         const options=c.sessionModelOptions(); const filtered=c.filteredNewSessionModelOptions(); const parsed=c.parseNewSessionProviderModelInput(); if (filtered[0] || options[0]) c.selectNewSessionModel(filtered[0] || options[0]);
         const selectedInput = modelInput.value;
@@ -80,7 +80,7 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
           backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
           sessionCatalog,
           assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput,cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput,cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,cwdMenuOpen:()=>true,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         process.stdout.write(JSON.stringify({{recent:c.filteredRecentCwdOptions(),menu:c.cwdMenuOptions("")}}));
         """
@@ -135,7 +135,7 @@ def eval_cwd_tab_completion(
           backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
           sessionCatalog,
           assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},cwdMenuFocusMoved:()=>false,cwdMenuOpen:()=>true,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         (async () => {{
           // `settle` warms the menu's own listing first, which is the state the old
@@ -194,10 +194,11 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         self.assertEqual(trailing["completion"], "/srv/projects/alpha/")
         cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/", settle=False)
         self.assertEqual(cold["completion"], "/srv/projects/alpha/")
-        # …but two children are ambiguous again: no fragment to extend, so Tab
-        # must fall through to the next field instead of picking one.
+        # …and with several children listed, the list is the answer set: Tab takes
+        # the top row (exactly what Enter would take) instead of moving focus out
+        # of a field whose list is showing rows.
         ambiguous = eval_cwd_tab_completion(["alpha", "beta"], cwd_value="/srv/projects/")
-        self.assertIsNone(ambiguous["completion"])
+        self.assertEqual(ambiguous["completion"], "/srv/projects/alpha")
 
     def test_bare_tilde_gains_its_separator(self) -> None:
         # `~` is a directory with nothing to complete; marking it as one lists
@@ -220,10 +221,15 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         self.assertEqual(result["completion"], "/srv/recent-project")
         self.assertEqual(result["menu"], ["/srv/recent-project"])
 
-    def test_two_listed_rows_without_a_completion_leave_tab_alone(self) -> None:
+    def test_a_visible_list_makes_tab_take_its_top_row(self) -> None:
+        """While the list is open, Tab takes an answer instead of leaving."""
         result = eval_cwd_tab_completion(
             [], cwd_value="/srv/pro", recent_cwds=["/srv/project-a", "/srv/project-b"]
         )
+        self.assertEqual(result["completion"], "/srv/project-a")
+
+    def test_no_list_at_all_still_falls_through(self) -> None:
+        result = eval_cwd_tab_completion([], cwd_value="/srv/zzz", recent_cwds=[])
         self.assertIsNone(result["completion"])
 
     # Explicit arrow selection is tracked by the dialog's key handling (the

@@ -86,9 +86,11 @@ def run_core() -> dict[str, object]:
             coldFetchNoMatch: await resolve({{ value: "~/zzz", cachedListing: null }}),
             coldFetchThrows: await resolve({{ value: "~/pro", cachedListing: null, fetchListing: async () => {{ throw new Error("boom"); }} }}),
             emptyValue: await resolve({{ value: "", cachedListing: null }}),
-            singleRow: await resolve({{ value: "~/rec", singleRow: () => ({{ path: "/srv/recent-project" }}) }}),
-            singleRowEqualsValue: await resolve({{ value: "/srv/recent-project", singleRow: () => ({{ path: "/srv/recent-project" }}) }}),
-            trailingSlashSingleEntry: await resolve({{ value: "~/solo/", singleRow: null, fetchListing: async (text) => listing(text, [["only-child", true]]) }}),
+            firstRowSingle: await resolve({{ value: "~/rec", firstRow: () => ({{ path: "/srv/recent-project" }}) }}),
+            firstRowEqualsValue: await resolve({{ value: "/srv/recent-project", firstRow: () => ({{ path: "/srv/recent-project" }}) }}),
+            firstRowAmongMany: await resolve({{ value: "/srv/dir/", firstRow: () => ({{ path: "/srv/dir/first-entry" }}) }}),
+            firstRowAbsent: await resolve({{ value: "/srv/dir/", firstRow: null }}),
+            trailingSlashSingleEntry: await resolve({{ value: "~/solo/", firstRow: null, fetchListing: async (text) => listing(text, [["only-child", true]]) }}),
             trailingSlashTwoEntries: await resolve({{ value: "~/pair/", fetchListing: async (text) => listing(text, [["a", true], ["b", true]]) }}),
             cachedFetches: calls.filter((text) => text === "~/pro").length,
             emptyWithCachedListing: await resolve({{ value: "", cachedListing: listing("", [["alpha", true]]) }}),
@@ -224,8 +226,8 @@ def test_tab_resolution_takes_picked_and_single_rows() -> None:
     # A picked row that equals the value is not a decision: fall through to the
     # listing so a directory can still be drilled into.
     assert tab["pickedEqualsValue"] == {"fallthrough": True}
-    assert tab["singleRow"] == {"apply": "/srv/recent-project", "fromRow": True}
-    assert tab["singleRowEqualsValue"] == {"fallthrough": True}
+    assert tab["firstRowSingle"] == {"apply": "/srv/recent-project", "fromRow": True}
+    assert tab["firstRowEqualsValue"] == {"fallthrough": True}
 
 
 def test_a_listing_from_another_value_is_never_used() -> None:
@@ -272,3 +274,16 @@ def test_a_failed_listing_is_not_an_empty_directory() -> None:
     # every later Tab skip the request and find nothing.
     assert tab["failedCachedListing"] == {"fallthrough": True}
     assert tab["failedCachedListingRefetches"] >= 1
+
+
+def test_a_visible_list_makes_tab_a_take_key() -> None:
+    """The rule the user could feel: while rows are listed, Tab takes one.
+
+    A user typing a prefix sees rows on screen. If the typed fragment has nothing
+    to complete, Tab used to close the list and move focus — indistinguishable
+    from "the feature does not work". The top row (what Enter would take) is the
+    answer; only an empty list falls through to focus movement.
+    """
+    tab = run_core()["tab"]
+    assert tab["firstRowAmongMany"] == {"apply": "/srv/dir/first-entry", "fromRow": True}
+    assert tab["firstRowAbsent"] == {"fallthrough": True}

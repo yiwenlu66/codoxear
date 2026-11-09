@@ -272,27 +272,33 @@ function singleEntryPlan(text, defaultDir, listing) {
   return next === text ? null : { value: next };
 }
 
-function planFromSingleRow(text, singleRow) {
-  const row = typeof singleRow === "function" ? singleRow(text) : singleRow;
+function planFromRow(text, firstRow) {
+  const row = typeof firstRow === "function" ? firstRow(text) : firstRow;
   const path = row && typeof row.path === "string" ? row.path : "";
   // `fromRow` tells the caller the value names something the list offered (a
   // directory, for both fields that have rows), not a fragment extension.
   return path && path !== text ? { apply: path, fromRow: true } : { fallthrough: true };
 }
 
-function planFromListing(text, defaultDir, listing, singleRow) {
+function planFromListing(text, defaultDir, listing, firstRow) {
   const applied = completionFromListing(text, defaultDir, listing) || singleEntryPlan(text, defaultDir, listing);
-  return applied ? { apply: applied.value } : planFromSingleRow(text, singleRow);
+  return applied ? { apply: applied.value } : planFromRow(text, firstRow);
 }
 
-// Resolve what Tab should do. Three inputs, all of them already scoped to THIS
-// text by the caller and re-validated here, so the answer cannot depend on when
-// anything arrived:
-//   picked   - the row the user explicitly arrow-keyed onto
-//   listing  - the directory listing for this text (cached or fetched)
-//   singleRow- a synchronous, text-keyed lookup for a list holding one entry
+// Resolve what Tab should do. **A visible list makes Tab a take key, not a focus
+// key**: while rows are on screen there is an answer, so Tab consumes the answer
+// and never moves focus; focus moves only when nothing is listed to take. That is
+// the difference between "Tab does nothing while I type" and a completion a user
+// can actually use.
+//
+// Every input is scoped to THIS text by the caller and re-validated here, so the
+// answer cannot depend on when anything arrived:
+//   picked    - the row the user explicitly arrow-keyed onto
+//   listing   - the directory listing for this text (cached or fetched)
+//   firstRow  - the top row currently listed for this text (synchronous, keyed to
+//               it); null when no list is showing, so an empty list falls through
 //   { apply: text, fromRow? } | { fallthrough: true }
-async function resolveTabCompletion({ value, defaultDir = "", picked = null, cachedListing = null, singleRow = null, fetchListing = null } = {}) {
+async function resolveTabCompletion({ value, defaultDir = "", picked = null, cachedListing = null, firstRow = null, fetchListing = null } = {}) {
   const text = String(value == null ? "" : value);
   const pickedPath = picked && typeof picked.path === "string" ? picked.path : "";
   if (pickedPath && pickedPath !== text) return { apply: pickedPath, fromRow: true };
@@ -300,7 +306,7 @@ async function resolveTabCompletion({ value, defaultDir = "", picked = null, cac
   // cached — that check has to come first or the answer depends on the cache.
   if (!text) return { fallthrough: true };
   const settled = listingFor(cachedListing, text);
-  if (settled) return planFromListing(text, defaultDir, settled, singleRow);
+  if (settled) return planFromListing(text, defaultDir, settled, firstRow);
   if (typeof fetchListing === "function") {
     let fetched = null;
     try {
@@ -309,9 +315,9 @@ async function resolveTabCompletion({ value, defaultDir = "", picked = null, cac
       fetched = null;
     }
     const listing = listingFor(fetched, text);
-    if (listing) return planFromListing(text, defaultDir, listing, singleRow);
+    if (listing) return planFromListing(text, defaultDir, listing, firstRow);
   }
-  return planFromSingleRow(text, singleRow);
+  return planFromRow(text, firstRow);
 }
 
 const FOCUSABLE_SELECTOR = "a[href], area[href], button, input, select, textarea, iframe, [tabindex]";

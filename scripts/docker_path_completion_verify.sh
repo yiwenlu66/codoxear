@@ -559,6 +559,15 @@ browser press Tab > "$artifacts/ui-tab-cwd-immediate.txt" 2>&1 || fail "immediat
 browser wait 900 > /dev/null 2>&1 || true
 browser eval "$cwd_field_eval" --json > "$artifacts/ui-38-cwd-immediate.json" 2>&1 || fail "could not read the immediate cwd state"
 
+# A visible list is a selection surface: a value with nothing to complete by
+# prefix (a directory followed by "/") must not send Tab out of the field — it
+# takes the top row, which is what Enter would take.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/' > "$artifacts/ui-tab-cwd-top-row-typed.txt" 2>&1 || fail "could not type a listed directory"
+browser wait 900 > /dev/null 2>&1 || true
+browser press Tab > "$artifacts/ui-tab-cwd-top-row.txt" 2>&1 || fail "Tab on a listed directory failed"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-43-cwd-top-row.json" 2>&1 || fail "could not read the top-row state"
+
 # The same gesture must give the same answer cold and warm: an arrow pressed
 # before the listing has rows is an intent, honoured when the rows arrive, so
 # ArrowDown+Tab cannot fall back to the prefix completion just because the user
@@ -670,6 +679,7 @@ picker_immediate = result("ui-37-picker-immediate")
 cwd_immediate = result("ui-38-cwd-immediate")
 cwd_singleton = result("ui-39-cwd-singleton")
 cwd_arrow_cold = result("ui-41-cwd-arrow-cold")
+cwd_top_row = result("ui-43-cwd-top-row")
 cwd_arrow_warm = result("ui-42-cwd-arrow-warm")
 cwd_late = result("ui-40-cwd-late")
 picker_typed = result("ui-26-picker-typed")
@@ -722,6 +732,7 @@ checks = {
     "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_complete.get("focused") is True,
     "tab_cwd_drill_lists_children": any(str(row).endswith("/alpha/inner") for row in cwd_complete.get("rows") or []),
     # Cold and warm must not differ: the picked row wins in both.
+    "tab_takes_the_top_listed_row": cwd_top_row.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_top_row.get("focused") is True,
     "tab_arrow_cold_matches_warm": cwd_arrow_cold.get("value") == cwd_arrow_warm.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_arrow_cold.get("focused") is True and cwd_arrow_warm.get("focused") is True,
     "tab_cwd_single_entry_directory": cwd_singleton.get("value") == "/home/tester/tab-cwd-fixture/alpha/inner/" and cwd_singleton.get("focused") is True,
     # A decision that resolves after the user left the field must not pull focus
@@ -733,7 +744,7 @@ checks = {
     # taken value is the armed row, optionally with the trailing "/".
     "tab_takes_the_picked_row": bool(cwd_row_armed.get("activeRow")) and cwd_row_taken.get("value") in {cwd_row_armed.get("activeRow"), str(cwd_row_armed.get("activeRow")) + "/"} and cwd_row_taken.get("focused") is True and any(str(row).endswith("/alpha/inner") for row in cwd_row_taken.get("rows") or []),
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate, "cwd_singleton": cwd_singleton, "cwd_arrow_cold": cwd_arrow_cold, "cwd_arrow_warm": cwd_arrow_warm, "cwd_late": cwd_late}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate, "cwd_singleton": cwd_singleton, "cwd_arrow_cold": cwd_arrow_cold, "cwd_top_row": cwd_top_row, "cwd_arrow_warm": cwd_arrow_warm, "cwd_late": cwd_late}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"

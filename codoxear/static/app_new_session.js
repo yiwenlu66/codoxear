@@ -76,6 +76,7 @@ function requireFunction(value, name) {
     const nameInput = requireInputNode(options.nameInput, "nameInput");
     const recentCwds = () => sessionCatalog.get("recentCwds");
     const cwdMenuFocus = requireFunction(options.cwdMenuFocus, "cwdMenuFocus");
+    const cwdMenuOpen = requireFunction(options.cwdMenuOpen, "cwdMenuOpen");
     const cwdMenuFocusMoved = requireFunction(options.cwdMenuFocusMoved, "cwdMenuFocusMoved");
     const assignCwdMenuFocus = requireFunction(options.assignCwdMenuFocus, "assignCwdMenuFocus");
     const closeCwdMenu = requireFunction(options.closeCwdMenu, "closeCwdMenu");
@@ -648,10 +649,14 @@ function requireFunction(value, name) {
         defaultDir: "/",
         picked: pickedRow && typeof pickedRow.cwd === "string" ? { path: String(pickedRow.cwd) } : null,
         cachedListing: filesystemCwdListing,
-        singleRow: (text) => {
-          if (cwdBrowseAnchor()) return null;
-          const rows = recentCwdRowsFor(text);
-          return rows.length === 1 ? { path: String(rows[0].cwd || "") } : null;
+        // The list is a selection surface: while it is open with rows, Tab takes
+        // its top row (exactly what Enter would take) instead of leaving the
+        // field. `cwdMenuOptions` is computed synchronously from this text, so the
+        // row can never belong to an older value.
+        firstRow: (text) => {
+          if (!cwdMenuOpen()) return null;
+          const row = cwdMenuOptions(text)[0];
+          return row && typeof row.cwd === "string" ? { path: String(row.cwd) } : null;
         },
         fetchListing: async (text) => {
           try {
@@ -1188,7 +1193,8 @@ function requireFunction(value, name) {
       modelInput, modelField, status, reasoningBtn, setPickerButtonContent, renderReasoningMenu, renderModelMenu,
       setFast: (value) => { fast = !!value; fastToggle.checked = fast; }, setBackend: (value, opts) => setBackend(value, opts), setTmuxChecked: (value) => { tmuxToggle.checked = value; }, applyDialogMenus,
       closeModelMenu: dismissModelPicker, cwdInput, cwdMenu, cwdField, cwdHint, nameInput,
-      cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, cwdMenuFocusMoved: () => cwdMenuFocusMoved, closeCwdMenu: commitCwdSelection, cwdBrowseAnchor: () => (String(cwdInput.value || "").trim() === "" ? cwdBrowseRestore : null), el,
+      cwdMenuFocus: () => cwdMenuFocus, assignCwdMenuFocus: (value) => { cwdMenuFocus = value; }, cwdMenuFocusMoved: () => cwdMenuFocusMoved,
+      cwdMenuOpen: () => cwdMenuOpen, closeCwdMenu: commitCwdSelection, cwdBrowseAnchor: () => (String(cwdInput.value || "").trim() === "" ? cwdBrowseRestore : null), el,
       resumeMenu, resumeBtn, closeResumeMenu: () => { resumeMenuOpen = false; }, fetchResumeCandidates,
       tmuxToggle, tmuxField, worktreeToggle, worktreeInput, worktreeField, startBtn,
     });

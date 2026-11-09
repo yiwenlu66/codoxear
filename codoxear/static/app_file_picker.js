@@ -805,6 +805,16 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
         value: text,
         defaultDir: "",
         picked: pickedChoice && pickedChoice.text === text ? { path: pickedChoice.path } : null,
+        // A visible list is a selection surface: with no completion to apply, Tab
+        // takes the top row Enter would take. The rows only count when the search
+        // produced them for this text (`loadedQuery`), never for an older query.
+        firstRow: (query) => {
+          if (!menuState.isOpen()) return null;
+          const state = searchSnapshot();
+          if (!state || !state.loadedQuery || state.loadedQuery !== query) return null;
+          const row = (visibleEntries() || []).find((entry) => entry && !entry.createNew && typeof entry.path === "string");
+          return row ? { path: row.path } : null;
+        },
         cachedListing: state && state.completion ? state.completion : null,
         fetchListing: (query) => ensureCompletion(query),
       }).then((plan) => {

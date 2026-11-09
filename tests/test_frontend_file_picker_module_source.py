@@ -1082,8 +1082,9 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         # The in-flight Tab's answer was discarded once the user arrowed.
         self.assertEqual(result["tabPendingValue"], "e")
         self.assertEqual(result["tabPendingFocus"], 0)
-        self.assertEqual(result["tabSingleValue"], "only")
-        self.assertEqual(result["tabSingleEvents"], [["prevent"], ["close", None], ["focusNext"]])
+        # The list is a selection surface: with no completion to apply, Tab takes
+        # the top row Enter would take and keeps focus in the field.
+        self.assertEqual(result["tabSingleValue"], "src/only-match.js")
         # Falling through closes the list and moves focus itself, so the key's
         # mechanical meaning (advance one control) survives.
         for case in ("tabDraftEvents", "tabCappedEvents"):

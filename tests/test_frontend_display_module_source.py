@@ -187,7 +187,7 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
           cwdField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
           cwdHint: {{ classList: {{ toggle() {{}} }} }},
           nameInput: {{ value: "" }},
-          cwdMenuFocus: () => -1,cwdMenuFocusMoved:()=>false,
+          cwdMenuFocus: () => -1,cwdMenuFocusMoved:()=>false,cwdMenuOpen:()=>true,
           assignCwdMenuFocus: () => {{}},
           closeCwdMenu: () => {{}},
           cwdBrowseAnchor: () => null,
