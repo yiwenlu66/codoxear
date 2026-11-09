@@ -264,7 +264,10 @@ npx --yes esbuild "$build_context/codoxear/static/app.js" --bundle --minify \
     pi --offline --no-extensions --no-skills --no-prompt-templates --no-context-files \
       --session-id docker-path-completion-verify-session -p "Initialize isolated path-completion verification session." \
       >"$HOME/pi-bootstrap.log" 2>&1 || true
-    session_log="$(find "$HOME/.pi/agent/sessions" -type f -name "*docker-path-completion-verify-session.jsonl" -print -quit)"
+    # The bootstrap above creates exactly one session; do not depend on how the
+    # installed Pi names the file (a `--session-id` request is a hint, and Pi has
+    # changed the naming before), just take the newest log it wrote.
+    session_log="$(find "$HOME/.pi/agent/sessions" -type f -name "*.jsonl" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
     test -n "$session_log"
     CODEX_WEB_AGENT_BACKEND=pi CODEX_WEB_OWNER=web PI_BIN=pi PI_OFFLINE=1 \
       codoxear-broker --cwd "$fixture" -- \
