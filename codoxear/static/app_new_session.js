@@ -107,13 +107,13 @@ function requireFunction(value, name) {
     let resumeCandidates = [];
     let resumeLoadSeq = 0;
     let resumeLoadTimer = null;
-    let filesystemCwdOptions = [];
     let cwdSuggestInput = null;
     let cwdSuggestLoadSeq = 0;
     let cwdSuggestTimer = null;
-    // The listing the menu has for the requested value: `{query, names, truncated}`
-    // or null while a request is in flight. One object, one meaning — Tab takes it
-    // as its cached answer and asks for a fresh one only when it is null.
+    // The filesystem listing for one requested value:
+    // `{query, names: [{name, path, isDir}], truncated}`, or null while a request is
+    // in flight. One object feeds both the menu rows and Tab's cached answer, so
+    // there is no second copy that can disagree.
     let filesystemCwdListing = null;
 
     const MODEL_PROVIDER_SEPARATOR = " · ";
@@ -557,19 +557,18 @@ function requireFunction(value, name) {
         if (!response.ok) throw new Error(`cwd suggestions failed: ${response.status}`);
         const result = await response.json();
         if (seq !== cwdSuggestLoadSeq) return;
-        filesystemCwdOptions = Array.isArray(result && result.directories)
+        const directories = Array.isArray(result && result.directories)
           ? result.directories.filter((item) => item && typeof item.name === "string" && typeof item.path === "string")
           : [];
         filesystemCwdListing = {
           query: raw,
-          names: filesystemCwdOptions.map((item) => ({ name: String(item.name || ""), isDir: true })),
+          names: directories.map((item) => ({ name: String(item.name || ""), path: String(item.path || ""), isDir: true })),
           truncated: Boolean(result && result.truncated),
         };
         renderRecentCwdMenu();
         applyDialogMenus();
       } catch (_) {
         if (seq !== cwdSuggestLoadSeq) return;
-        filesystemCwdOptions = [];
         filesystemCwdListing = { query: raw, names: [], truncated: false };
         renderRecentCwdMenu();
         applyDialogMenus();
@@ -581,7 +580,6 @@ function requireFunction(value, name) {
       if (raw === cwdSuggestInput) return;
       cwdSuggestInput = raw;
       filesystemCwdListing = null;
-      filesystemCwdOptions = [];
       const seq = ++cwdSuggestLoadSeq;
       if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
       cwdSuggestTimer = setTimeout(() => {
@@ -597,7 +595,7 @@ function requireFunction(value, name) {
       if (cwdBrowseAnchor()) return recent;
       const seen = new Set(recent.map((item) => item.cwd));
       const prefix = cwdSuggestionQuery(raw).prefix.toLocaleLowerCase();
-      for (const item of filesystemCwdOptions) {
+      for (const item of (filesystemCwdListing ? filesystemCwdListing.names : [])) {
         const cwd = String(item.path || "").trim();
         const name = String(item.name || "").trim();
         if (!cwd || !name || seen.has(cwd) || (prefix && !name.toLocaleLowerCase().startsWith(prefix))) continue;
@@ -823,7 +821,6 @@ function requireFunction(value, name) {
       cwdSuggestTimer = null;
       cwdSuggestInput = null;
       filesystemCwdListing = null;
-      filesystemCwdOptions = [];
       cwdSuggestLoadSeq += 1;
     }
 
