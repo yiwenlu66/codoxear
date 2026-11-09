@@ -759,6 +759,9 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     }
 
     function openSearchQuery(query, { line = null, suppressDraft = false } = {}) {
+      // A programmatic search target is a new intent: nothing pending may land.
+      tabSeq += 1;
+      pickedByUser = false;
       const rawQuery = String(query ?? "");
       if (!openSearchQueryState(rawQuery, { line, suppressDraft })) return false;
       input.value = rawQuery;
@@ -863,6 +866,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       if (event && event.key === "Escape" && isOpen()) {
         if (typeof event.preventDefault === "function") event.preventDefault();
         if (typeof event.stopPropagation === "function") event.stopPropagation();
+        tabSeq += 1;
         closeMenu({ restoreInput: true });
         return true;
       }
