@@ -773,7 +773,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             return side_effects.pop(0)
 
         coordinator = _web_launch_coordinator(
-            which_tmux=lambda _name: "/usr/bin/tmux",
+            which_tmux=lambda name: {"tmux": "/usr/bin/tmux", "systemd-run": "/usr/bin/systemd-run"}.get(name),
             wait_for_spawned_broker_meta=lambda _nonce: {"broker_pid": 7777},
             tmux_pane_snapshot=lambda *a, **kw: {"tmux_pane_id": "%8", "tmux_pane_dead": "0", "tmux_window": "work-abc123"},
             run=fake_run,
@@ -790,7 +790,13 @@ class TestSpawnWebSessionResume(unittest.TestCase):
 
         self.assertEqual(result, {"broker_pid": 7777, "tmux_session": "codoxear", "tmux_window": ANY})
         tmux_argv = run_calls[1]
-        self.assertEqual(tmux_argv[:8], ["/usr/bin/tmux", "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", "codoxear"])
+        # The server-creating invocation runs through a transient user scope so the
+        # tmux server is never owned by this service's cgroup (a unit stop used to
+        # take it — and every session in it — down).
+        self.assertEqual(tmux_argv[0], "/usr/bin/systemd-run")
+        self.assertEqual(tmux_argv[1:4], ["--user", "--scope", "--collect"])
+        self.assertTrue(tmux_argv[4].startswith("--unit=codoxear-tmux-"))
+        self.assertEqual(tmux_argv[5:13], ["/usr/bin/tmux", "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", "codoxear"])
         shell_cmd = tmux_argv[-1]
         self.assertIn("CODEX_WEB_TRANSPORT=tmux", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)

@@ -58,7 +58,7 @@ def _recorder(records: list[dict]) -> LaunchAttemptRecorder:
 
 def _deps(**overrides) -> LaunchProcessDeps:
     values = {
-        "which_tmux": lambda _name: "/usr/bin/tmux",
+        "which_tmux": lambda name: {"tmux": "/usr/bin/tmux", "systemd-run": "/usr/bin/systemd-run"}.get(name),
         "run": lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout="%8\n", stderr=""),
         "popen": lambda *args, **kwargs: SimpleNamespace(pid=1234, stderr=None, wait=lambda: 0),
         "wait_or_raise": lambda *args, **kwargs: None,
@@ -435,7 +435,9 @@ def test_launch_broker_process_tmux_missing_session_duplicate_retry_then_success
     run_cmds: list[str] = []
 
     def run(argv: list[str], **kwargs):
-        run_cmds.append(argv[1])
+        # The server-creating invocation is wrapped in a transient scope, so the
+        # tmux verb is no longer argv[1]; record the verb itself.
+        run_cmds.append(next(name for name in ("new-window", "new-session") if name in argv))
         return next(run_results)
 
     result = launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=_deps(run=run))
@@ -565,3 +567,68 @@ def test_wait_for_spawned_broker_meta_timeout_uses_bounded_poll_loop() -> None:
             )
 
     assert sleeps == [0.05]
+
+
+def test_tmux_server_is_created_in_a_transient_scope() -> None:
+    """The tmux server must not be born inside this service's cgroup.
+
+    Whichever unit starts the server owns it, and a stop (or a failure path) can
+    sweep the unit's remaining processes; that took the tmux server down in
+    production and every session in it with it — including sessions the user had
+    opened from their own shell. Creating the server through a transient user
+    scope puts it, and the panes it spawns, outside this unit.
+    """
+    records: list[dict] = []
+    calls: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        calls.append(list(argv))
+        if "new-window" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="can't find session: codoxear-test")
+        return subprocess.CompletedProcess(argv, 0, stdout="%8\n", stderr="")
+
+    deps = _deps(run=run)
+    result = launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=deps)
+
+    assert result["broker_pid"] == 5678
+    new_session = next(call for call in calls if "new-session" in call)
+    assert new_session[0] == "/usr/bin/systemd-run"
+    assert new_session[1:4] == ["--user", "--scope", "--collect"]
+    assert new_session[4].startswith("--unit=codoxear-tmux-")
+    assert new_session[5] == "/usr/bin/tmux"
+    assert records[1]["tmux_attempts"][-1]["cmd"] == "new-session"
+
+
+def test_tmux_launch_falls_back_when_systemd_run_is_unusable() -> None:
+    """A host where systemd-run cannot start must still launch the session."""
+    calls: list[list[str]] = []
+    records: list[dict] = []
+
+    def run(argv, **kwargs):
+        calls.append(list(argv))
+        if "new-window" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="can't find session: codoxear-test")
+        if argv[0].endswith("systemd-run"):
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="Failed to connect to bus: No such file or directory")
+        return subprocess.CompletedProcess(argv, 0, stdout="%8\n", stderr="")
+
+    launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=_deps(run=run))
+    commands = [attempt["cmd"] for attempt in records[1]["tmux_attempts"]]
+    assert commands == ["new-window", "new-session", "new-session-bare"]
+    bare = [call for call in calls if call[0] == "/usr/bin/tmux" and "new-session" in call]
+    assert bare and bare[-1][0] == "/usr/bin/tmux"
+
+
+def test_host_without_systemd_run_keeps_the_plain_tmux_invocation() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        calls.append(list(argv))
+        if "new-window" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="can't find session: codoxear-test")
+        return subprocess.CompletedProcess(argv, 0, stdout="%8\n", stderr="")
+
+    deps = _deps(run=run, which_tmux=lambda name: "/usr/bin/tmux" if name == "tmux" else None)
+    launch_broker_process(_request(create_in_tmux=True), recorder=_recorder([]), deps=deps)
+    new_session = next(call for call in calls if "new-session" in call)
+    assert new_session[:2] == ["/usr/bin/tmux", "new-session"]

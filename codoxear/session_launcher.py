@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, NoReturn
@@ -242,6 +243,46 @@ def launch_broker_process(
     return _launch_direct_broker(request, recorder=recorder, deps=deps, fail_launch=fail_launch)
 
 
+def _tmux_scope_argv(tmux_argv: list[str], *, systemd_run_bin: str | None, scope_name: str) -> list[str]:
+    """Run a tmux *server-creating* invocation outside this process's cgroup.
+
+    The tmux server is a long-lived daemon: whichever unit starts it inherits
+    ownership of it, and this service is restarted routinely. A unit stop can
+    sweep the remaining processes in its cgroup, which is what took down the tmux
+    server — and with it every session in it, including sessions the user had
+    created from their own shell. Starting the server through a transient user
+    scope keeps the server, and the panes it creates, out of this unit entirely.
+    A host without systemd-run keeps the plain invocation.
+    """
+    if not systemd_run_bin:
+        return list(tmux_argv)
+    return [systemd_run_bin, "--user", "--scope", "--collect", f"--unit={scope_name}", *tmux_argv]
+
+
+# A tmux error ("duplicate session", "can't find session") belongs to the retry
+# chain below; only these markers mean systemd-run itself could not run, which is
+# the one case where the bare invocation must be tried.
+_SYSTEMD_RUN_FAILURE_MARKERS = ("bus", "systemd", "transient scope")
+
+
+def _resolve_systemd_run(resolve: Callable[[str], str | None]) -> str | None:
+    """Resolve systemd-run, refusing a path that is not systemd-run.
+
+    The resolver handed to the launcher answers for any program name, so a host
+    (or a test double) that maps everything to one binary must not produce a
+    nonsense command line like `tmux --user --scope ...`.
+    """
+    candidate = resolve("systemd-run")
+    if not candidate:
+        return None
+    return candidate if str(candidate).rsplit("/", 1)[-1].startswith("systemd-run") else None
+
+
+def _systemd_run_unusable(detail: str) -> bool:
+    text = str(detail or "").lower()
+    return any(marker in text for marker in _SYSTEMD_RUN_FAILURE_MARKERS)
+
+
 def _launch_tmux_broker(
     request: LaunchProcessRequest,
     *,
@@ -288,19 +329,29 @@ def _launch_tmux_broker(
         tmux_window,
         shell_cmd,
     ]
-    new_session_argv = [
-        tmux_bin,
-        "new-session",
+    systemd_run_bin = _resolve_systemd_run(deps.which_tmux)
+    new_session_argv = _tmux_scope_argv(
+        [
+            tmux_bin,
+            "new-session",
         "-d",
         "-P",
         "-F",
         "#{pane_id}",
         "-s",
         request.tmux_session_name,
-        "-n",
-        tmux_window,
-        shell_cmd,
-    ]
+            "-n",
+            tmux_window,
+            shell_cmd,
+        ],
+        systemd_run_bin=systemd_run_bin,
+        scope_name=f"codoxear-tmux-{uuid.uuid4().hex[:12]}",
+    )
+    plain_new_session_argv = _tmux_scope_argv(
+        [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", request.tmux_session_name, "-n", tmux_window, shell_cmd],
+        systemd_run_bin=None,
+        scope_name="",
+    )
 
     def tmux_run(argv: list[str]) -> subprocess.CompletedProcess[str]:
         return deps.run(argv, capture_output=True, text=True, env=request.env, check=False)
@@ -311,6 +362,11 @@ def _launch_tmux_broker(
     if tmux_proc.returncode != 0 and _tmux_missing_session(_tmux_detail(tmux_proc)):
         tmux_proc = tmux_run(new_session_argv)
         attempts.append({"cmd": "new-session", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
+        if systemd_run_bin and tmux_proc.returncode != 0 and not (tmux_proc.stdout or "").strip() and _systemd_run_unusable(_tmux_detail(tmux_proc)):
+            # systemd-run itself can be unusable (no user manager, no bus). The
+            # session still has to start, so retry the bare invocation once.
+            tmux_proc = tmux_run(plain_new_session_argv)
+            attempts.append({"cmd": "new-session-bare", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
         if tmux_proc.returncode != 0 and _tmux_duplicate_session(_tmux_detail(tmux_proc)):
             tmux_proc = tmux_run(new_window_argv)
             attempts.append({"cmd": "new-window-after-duplicate", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
