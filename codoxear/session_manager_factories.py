@@ -774,6 +774,7 @@ def session_name_projection_for_manager(manager: Any) -> SessionNameProjection:
             sessions=lambda: _registry_sessions(manager),
             alias_get=manager.alias_get,
             alias_set=manager.alias_set,
+            alias_cleared=manager.alias_cleared,
             sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
             applied=lambda: manager._session_names,
             set_applied=lambda value: setattr(manager, "_session_names", value),

@@ -35,6 +35,9 @@ class Harness:
                 lock=self.lock,
                 sessions=lambda: self.sessions,
                 alias_get=lambda sid: self.aliases.get(sid, ""),
+                # Mirrors the store: an entry holding "" is an explicit user
+                # clear; a missing key means nothing is known about the name.
+                alias_cleared=lambda sid: self.aliases.get(sid) == "",
                 alias_set=self._alias_set,
                 sock_call=self._sock_call,
                 applied=lambda: self.applied,
@@ -48,11 +51,8 @@ class Harness:
     def _alias_set(self, session_id: str, name: str) -> str:
         self.alias_writes.append((session_id, name))
         cleaned = " ".join(name.split()).strip()
-        if cleaned:
-            self.aliases[session_id] = cleaned
-        else:
-            self.aliases.pop(session_id, None)
-        return self.aliases.get(session_id, "")
+        self.aliases[session_id] = cleaned
+        return cleaned
 
     def _sock_call(self, sock: Any, req: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
         self.calls.append({"sock": sock, **req})
@@ -104,7 +104,7 @@ def test_removing_the_alias_projects_a_clear_and_stays_cleared() -> None:
     h.aliases["s1"] = "Alpha"
     h.projection.reconcile("s1")
 
-    h.aliases.pop("s1")
+    h.aliases["s1"] = ""  # explicit clear: the entry stays, holding nothing
     assert h.projection.reconcile("s1")["reason"] == "cleared"
     assert h.calls[-1]["name"] == ""
     assert h.applied["pi:thread-1"]["state"] == "cleared"
@@ -113,7 +113,7 @@ def test_removing_the_alias_projects_a_clear_and_stays_cleared() -> None:
     h.session.backend_session_name = "Alpha"
     assert h.projection.reconcile("s1")["reason"] == "cleared"
     assert h.alias_writes == []
-    assert h.aliases == {}
+    assert h.aliases == {"s1": ""}
 
 
 def test_unsupported_is_retried_only_after_the_backend_advertises_control() -> None:
@@ -168,7 +168,7 @@ def test_clear_the_backend_refuses_marks_the_identity_cleared() -> None:
     h.aliases["s1"] = "Alpha"
     h.projection.reconcile("s1")
 
-    h.aliases.pop("s1")
+    h.aliases["s1"] = ""  # the user cleared the name: an explicit empty entry
     h.replies = [{"ok": False, "backend": "codex", "reason": "unsupported-clear"}]
     assert h.projection.reconcile("s1")["reason"] == "unsupported-clear"
     assert h.applied["codex:thread-1"]["state"] == "cleared"
@@ -176,7 +176,7 @@ def test_clear_the_backend_refuses_marks_the_identity_cleared() -> None:
     # The old codex title still exists; it is not adopted back.
     h.session.backend_session_name = "Alpha"
     assert h.projection.reconcile("s1")["reason"] == "cleared"
-    assert h.aliases == {}
+    assert h.aliases == {"s1": ""}
 
 
 def test_a_terminal_set_title_is_adopted_when_no_alias_exists() -> None:
@@ -252,3 +252,27 @@ def test_pruning_drops_identities_no_longer_present() -> None:
     h.aliases["s2"] = "Delta"
     assert h.projection.reconcile("s2")["reason"] == "applied"
     assert set(h.applied) == {"pi:thread-9"}
+
+
+def test_a_missing_alias_never_erases_a_backend_title() -> None:
+    """The incident: an empty alias *store* must not be read as a user clear.
+
+    A name that was applied once and then vanished from the map (a lost save, a
+    store that was never loaded) is indistinguishable from "the user removed it"
+    unless the store records the clear itself. Erasing the backend title is
+    irreversible — the recorded `cleared` state blocks re-adoption — so the only
+    safe reading of a missing entry is "keep what is there and adopt it".
+    """
+    h = Harness(backend="pi")
+    h.aliases["s1"] = "Alpha"
+    h.replies = [{"ok": True, "backend": "pi", "name": "Alpha"}]
+    assert h.projection.reconcile("s1")["reason"] == "applied"
+
+    # The alias disappears without an explicit clear (what a lost save looks like).
+    h.aliases.pop("s1")
+    h.calls.clear()
+    result = h.projection.reconcile("s1")
+    assert result["reason"] in ("no-alias", "adopted")
+    # No clear was pushed to the backend, and the title was not destroyed.
+    assert all(call.get("name") != "" for call in h.calls)
+    assert h.applied["pi:thread-1"]["state"] != "cleared"

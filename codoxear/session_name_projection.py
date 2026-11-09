@@ -39,6 +39,7 @@ class SessionNameProjectionDeps:
     lock: Any
     sessions: Callable[[], MutableMapping[str, Any]]
     alias_get: Callable[[str], str]
+    alias_cleared: Callable[[str], bool]
     alias_set: Callable[[str, str], str]
     sock_call: Callable[..., dict[str, Any]]
     applied: Callable[[], MutableMapping[str, dict[str, Any]]]
@@ -173,7 +174,16 @@ class SessionNameProjection:
                     return {"ok": False, "backend": backend, "reason": "retry-later", "name": desired}
             return self._push(session_id, snapshot, key, desired, record)
 
-        # No alias.
+        # No name for this session. That is not the same as "the user removed it":
+        # the alias store can be empty because it was never adopted, or because a
+        # save lost it. Only an explicit clear (an entry holding "") may erase a
+        # backend title — a wrong clear destroys a name the user set in the
+        # terminal, and the recorded `cleared` state then blocks re-adoption.
+        if not self.deps.alias_cleared(session_id):
+            observed = snapshot["observed"]
+            if observed and record_name != observed:
+                return self._adopt(session_id, backend, key, observed)
+            return {"ok": True, "backend": backend, "reason": "no-alias"}
         if state == "cleared":
             return {"ok": True, "backend": backend, "reason": "cleared"}
         if record_name or state == "failed":

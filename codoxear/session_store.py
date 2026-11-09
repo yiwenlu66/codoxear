@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import math
 from copy import deepcopy
 import os
@@ -221,6 +223,13 @@ class SessionStore:
         self.unattended_store.save(dict(obj))
 
     def load_aliases(self) -> dict[str, str]:
+        """Load the alias map, keeping an explicit clear as an empty entry.
+
+        An entry holding ``""`` means the user cleared that name; the key being
+        absent means nothing is known about it. The name projector needs that
+        difference: it may only erase a backend title the user explicitly removed,
+        never one it simply has no alias for.
+        """
         obj = load_json_file(self.paths.aliases, default=None)
         if obj is None:
             return {}
@@ -232,13 +241,36 @@ class SessionStore:
                 continue
             if not isinstance(value, str):
                 continue
+            if value == "":
+                cleaned[sid] = ""
+                continue
             alias = self.clean_alias(value)
             if isinstance(alias, str) and alias:
                 cleaned[sid] = alias
         return cleaned
 
     def save_aliases(self, obj: dict[str, str]) -> None:
-        atomic_write_json(self.paths.aliases, dict(obj))
+        """Persist the alias map without ever replacing names with nothing.
+
+        Every in-memory copy of this map is a projection of the file: a store
+        that was built but not yet loaded holds ``{}``. One such save replaced
+        every session name in a live deployment with an empty object, and the
+        names are user data with no other copy. An empty map is therefore only
+        written when the file already holds nothing; names are still removed one
+        at a time by an explicit rename/clear, whose map is never empty.
+        """
+        target = dict(obj)
+        if not target:
+            existing = load_json_file(self.paths.aliases, default=None)
+            if isinstance(existing, dict) and existing:
+                print(
+                    "warning: refusing to overwrite session_aliases.json with an empty map "
+                    f"({len(existing)} name(s) on disk); this save came from a store that lost its aliases",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return
+        atomic_write_json(self.paths.aliases, target)
 
     def load_session_names(self) -> dict[str, dict[str, Any]]:
         """Projection bookkeeping: which name each transcript already received.

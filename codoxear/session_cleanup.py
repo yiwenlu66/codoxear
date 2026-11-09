@@ -29,9 +29,16 @@ class SessionCleanupCoordinator:
     remove_send_journal: Callable[[str], None] = lambda _session_id: None
 
     def prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
+        """Forget a socket whose sidecar disappeared, keeping everything the user owns.
+
+        A missing sidecar means "this session cannot be seen right now", not "the
+        user deleted it": the broker may still be alive with a torn-down control
+        channel. Only the stale socket files and the registry entry go; the alias,
+        sidebar meta, drafts, queues and hidden set survive, because their only
+        authority is an explicit delete.
+        """
         with self.lock:
             self.sessions().pop(session_id, None)
-        self.clear_deleted_session_state(session_id)
         self.unlink_quiet(sock)
         self.unlink_quiet(sock.with_suffix(".json"))
 

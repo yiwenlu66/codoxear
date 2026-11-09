@@ -1261,6 +1261,9 @@ class SessionManager:
     def alias_set(self, session_id: str, name: str) -> str:
         return self._ui_state_coordinator_for_manager().alias_set(session_id, name)
 
+    def alias_cleared(self, session_id: str) -> bool:
+        return self._ui_state_coordinator_for_manager().alias_cleared(session_id)
+
     def alias_get(self, session_id: str) -> str:
         return self._ui_state_coordinator_for_manager().alias_get(session_id)
 

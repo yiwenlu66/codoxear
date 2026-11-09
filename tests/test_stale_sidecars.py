@@ -371,10 +371,14 @@ class TestStaleSidecars(unittest.TestCase):
 
             self.assertFalse(sock.exists())
             self.assertNotIn("stale", h.registry.sessions)
-            self.assertNotIn("stale", h.store.hidden_sessions)
-            self.assertNotIn("stale", h.store.aliases)
-            self.assertNotIn("stale", h.store.queues)
             self.assertGreater(h.registry.last_discover_ts, 0)
+            # A socket whose sidecar vanished is "unseen", not "deleted by the
+            # user": the user's name, queued prompt and hidden flag survive, so a
+            # transient metadata gap can never destroy them (this exact path once
+            # deleted every session name in a live deployment).
+            self.assertEqual(h.store.aliases["stale"], "Stale")
+            self.assertEqual(h.store.hidden_sessions, {"stale"})
+            self.assertEqual(h.store.queues["stale"], [{"id": "q", "text": "later"}])
 
     def test_refresh_prunes_existing_session_when_sidecar_disappears(self) -> None:
         with TemporaryDirectory() as td:

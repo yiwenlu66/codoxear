@@ -44,14 +44,17 @@ class SessionUiStateCoordinator:
             self.save_hidden_sessions()
 
     def alias_set(self, session_id: str, name: str) -> str:
+        """Set (or explicitly clear) one name.
+
+        A clear keeps the key with an empty value so the difference between "the
+        user removed this name" and "this key holds nothing known" survives on
+        disk; the name projector may only erase a backend title for the former.
+        """
         alias = self.clean_alias(name)
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-            if alias:
-                self.aliases()[session_id] = alias
-            else:
-                self.aliases().pop(session_id, None)
+            self.aliases()[session_id] = alias if alias else ""
         self.save_aliases()
         return alias
 
@@ -64,8 +67,13 @@ class SessionUiStateCoordinator:
         with self.lock:
             if session_id not in self.aliases():
                 return
-            self.aliases().pop(session_id, None)
+            self.aliases()[session_id] = ""
         self.save_aliases()
+
+    def alias_cleared(self, session_id: str) -> bool:
+        """True only when the user explicitly removed this session's name."""
+        with self.lock:
+            return self.aliases().get(session_id) == ""
 
     def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
         with self.lock:

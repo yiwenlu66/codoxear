@@ -661,3 +661,46 @@ def test_session_names_store_round_trips_projection_records(tmp_path: Path) -> N
     assert store.load_session_names() == {
         "pi:thread-2": {"state": "cleared", "name": "", "attempts": 0, "ts": 0.0, "control": False}
     }
+
+
+def test_saving_an_empty_alias_map_never_replaces_names_on_disk(tmp_path: Path) -> None:
+    """The incident guard: an empty in-memory map must not erase the file.
+
+    Every alias map held in memory is a projection of the file, and a store that
+    was built but not yet loaded holds nothing. One such save replaced every
+    session name in a live deployment, so the store refuses that write and leaves
+    the names where they are; removing the last name still works, one at a time.
+    """
+    store = _make_store_with_uploads_root(tmp_path)
+    store.save_aliases({"broker-1": "alpha", "broker-2": "beta"})
+    assert store.load_aliases() == {"broker-1": "alpha", "broker-2": "beta"}
+
+    store.save_aliases({})
+    assert store.load_aliases() == {"broker-1": "alpha", "broker-2": "beta"}
+
+    # Removing names one at a time is the supported path and still works.
+    store.save_aliases({"broker-1": "alpha"})
+    assert store.load_aliases() == {"broker-1": "alpha"}
+    store.save_aliases({"broker-1": ""})
+    assert store.load_aliases() == {"broker-1": ""}
+
+
+def test_an_empty_alias_file_is_writable(tmp_path: Path) -> None:
+    store = _make_store_with_uploads_root(tmp_path)
+    assert store.load_aliases() == {}
+    store.save_aliases({})
+    assert store.load_aliases() == {}
+    store.save_aliases({"broker-1": "alpha"})
+    assert store.load_aliases() == {"broker-1": "alpha"}
+
+
+def test_an_explicit_alias_clear_survives_a_reload(tmp_path: Path) -> None:
+    """An explicit clear is an entry holding "", not a missing key.
+
+    The name projector may erase a backend title only for an explicit clear; a
+    missing key means it knows nothing about the name, so the difference has to
+    survive the round trip through disk.
+    """
+    store = _make_store_with_uploads_root(tmp_path)
+    store.save_aliases({"broker-1": "alpha", "broker-2": ""})
+    assert store.load_aliases() == {"broker-1": "alpha", "broker-2": ""}
