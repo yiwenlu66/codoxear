@@ -44,7 +44,7 @@ def eval_model_options(
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
           sessionCatalog,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         const options=c.sessionModelOptions(); const filtered=c.filteredNewSessionModelOptions(); const parsed=c.parseNewSessionProviderModelInput(); if (filtered[0] || options[0]) c.selectNewSessionModel(filtered[0] || options[0]);
         const selectedInput = modelInput.value;
@@ -80,7 +80,7 @@ def eval_cwd_options(recent_cwds: list[str], *, browse_anchor: str | None = None
           backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
           sessionCatalog,
           assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput,cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput,cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>-1,cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         process.stdout.write(JSON.stringify({{recent:c.filteredRecentCwdOptions(),menu:c.cwdMenuOptions("")}}));
         """
@@ -135,7 +135,7 @@ def eval_cwd_tab_completion(
           backend:()=>"codex", provider:()=>"chatgpt", reasoningEffort:()=>"high", literalModelInputValue:()=>"", launchPresetProviderAbsent:()=>false,
           sessionCatalog,
           assignProvider:noop, assignReasoningEffort:noop, assignLiteralModelInputValue:noop, assignLaunchPresetProviderAbsent:noop, modelInput:{{value:""}}, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
-          cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
+          cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},cwdMenuFocusMoved:()=>false,assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         (async () => {{
           // `settle` warms the menu's own listing first, which is the state the old
@@ -186,10 +186,14 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         self.assertTrue(cold["plan"]["fallthrough"])
 
     def test_one_listed_row_is_taken_even_with_an_empty_fragment(self) -> None:
-        # A directory with a single child: Tab takes it (one row is an
-        # unambiguous answer), which is also what makes a one-item list usable.
+        # A directory with a single child: Tab takes it and marks it as a
+        # directory (one entry is an unambiguous answer), which is also what makes
+        # a one-item list usable. This comes from the listing itself, so it holds
+        # cold as well as warm.
         trailing = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/")
-        self.assertEqual(trailing["completion"], "/srv/projects/alpha")
+        self.assertEqual(trailing["completion"], "/srv/projects/alpha/")
+        cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/", settle=False)
+        self.assertEqual(cold["completion"], "/srv/projects/alpha/")
         # …but two children are ambiguous again: no fragment to extend, so Tab
         # must fall through to the next field instead of picking one.
         ambiguous = eval_cwd_tab_completion(["alpha", "beta"], cwd_value="/srv/projects/")
@@ -222,20 +226,11 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         )
         self.assertIsNone(result["completion"])
 
-    def test_an_arrow_picked_row_is_taken_instead_of_the_typed_text(self) -> None:
-        result = eval_cwd_tab_completion(
-            ["alpha", "alpine"], cwd_value="/srv/projects/al", focus=1
-        )
-        self.assertEqual(result["completion"], "/srv/projects/alpine")
+    # Explicit arrow selection is tracked by the dialog's key handling (the
+    # controller only receives the resulting flag) and is covered end to end by
+    # scripts/docker_path_completion_verify.sh `tab_takes_the_picked_row`; the
+    # resolver's own rule is pinned in tests/test_path_field_completion.py.
 
-    def test_a_picked_row_that_equals_the_value_never_swallows_the_key(self) -> None:
-        # The highlight can sit on a row whose path is already the field text.
-        # Taking it would change nothing, so Tab must still do something real:
-        # the filesystem listing adds the separator and drills into it.
-        result = eval_cwd_tab_completion(
-            ["alpha", "alpine"], cwd_value="/srv/projects/alpha", focus=0
-        )
-        self.assertEqual(result["completion"], "/srv/projects/alpha/")
 
 
 class TestNewSessionModelOptionsBehavior(unittest.TestCase):

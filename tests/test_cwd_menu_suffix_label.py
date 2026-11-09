@@ -86,7 +86,7 @@ def eval_cwd_menu_dom(recent_cwds: list[str], *, browse_anchor: str | None = Non
           setPickerButtonContent:noop, renderReasoningMenu:noop, renderModelMenu:noop, setFast:noop, setBackend:noop, setTmuxChecked:noop,
           applyDialogMenus:noop, closeModelMenu:noop,
           cwdInput, cwdMenu, cwdField, cwdHint, nameInput:makeNode("input"),
-          cwdMenuFocus:()=>menuFocus, assignCwdMenuFocus:(v)=>{{menuFocus=v;}}, closeCwdMenu:noop,
+          cwdMenuFocus:()=>menuFocus,cwdMenuFocusMoved:()=>false, assignCwdMenuFocus:(v)=>{{menuFocus=v;}}, closeCwdMenu:noop,
           cwdBrowseAnchor:()=>{json.dumps(browse_anchor)},
           el:(tag, attrs=[], children=[]) => ctx.window.CodoxearDom.createElement(tag, attrs, children, null),
           resumeMenu:makeNode("div"), resumeBtn:makeNode("div"), closeResumeMenu:noop, fetchResumeCandidates:async()=>({{sessions:[]}}),

@@ -687,6 +687,9 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     const enterIndex = requireFunction(menuState, "enterIndex");
 
     let tabSeq = 0;
+    // A row is "picked" only when the user moved onto it with the arrow keys; the
+    // renderer's own anchored highlight is not a choice.
+    let pickedByUser = false;
 
     function openRenderedMenu() {
       const entries = renderMenu();
@@ -724,6 +727,8 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     }
 
     async function inputChanged() {
+      tabSeq += 1;
+      pickedByUser = false;
       if (!(await ensureCurrentSession())) return false;
       const rawQuery = String(input.value || "");
       handleInputState(rawQuery);
@@ -744,6 +749,8 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     }
 
     function blur() {
+      tabSeq += 1;
+      pickedByUser = false;
       animationFrame(() => {
         if (isFocusInsideField()) return;
         closeMenu({ restoreInput: true });
@@ -762,47 +769,61 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     }
 
     // Tab completion. Tab is consumed unconditionally: the browser runs a key
-    // event's default action before any request could resolve, so the decision
-    // has to be made after the fact — from the listing already in hand, or from
-    // one request started now. Only the latency varies, never the outcome, and a
-    // Tab that completes nothing moves focus on itself (never into the list).
+    // event's default action before any request could resolve, so the decision is
+    // made after the fact — from the listing already in hand, or from one request
+    // started now. Only the latency varies, never the outcome, and a Tab that
+    // completes nothing moves focus on itself (never into the list).
+    // The typed text is normalized once (a path field holds one path); the raw
+    // value is kept only for the no-clobber checks.
     function tabCompletion(event) {
       if (!event || event.key !== "Tab") return false;
       if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return false;
       if (typeof event.preventDefault === "function") event.preventDefault();
       const typed = String(input.value || "");
+      const text = typed.trim();
       const seq = ++tabSeq;
       const state = searchSnapshot();
-      const listing = state && state.completion && state.completion.query === typed.trim() ? state.completion : null;
+      // Rows only count when they were computed for this text, and a row counts as
+      // a pick only when the user arrowed onto it.
+      const rowsMatch = Boolean(state && state.loadedQuery && state.loadedQuery === text);
+      const focusIndex = menuState.focusIndex();
+      const picked = rowsMatch && pickedByUser && focusIndex >= 0 ? (visibleEntries() || [])[focusIndex] : null;
       void CodoxearPathCompletion.resolveTabCompletion({
-        value: typed,
+        value: text,
         defaultDir: "",
-        rows: visibleEntries() || [],
-        pickedIndex: menuState.focusIndex(),
-        cached: listing,
-        fetchListing: (text) => ensureCompletion(text),
+        picked: picked && typeof picked.path === "string" ? { path: picked.path } : null,
+        cachedListing: state && state.completion ? state.completion : null,
+        fetchListing: (query) => ensureCompletion(query),
       }).then((plan) => {
         if (seq !== tabSeq) return;
-        if (String(input.value || "") !== typed) return;
-        if (plan && typeof plan.apply === "string" && plan.apply !== typed) {
+        if (String(input.value || "").trim() !== text) return;
+        if (plan && typeof plan.apply === "string") {
           input.value = plan.apply;
           menuState.setFocus(-1);
+          pickedByUser = false;
           // Re-run the ordinary input flow so the menu, the search and the draft
           // state follow the completed value (a completed directory lists what is
           // inside it, so the next Tab drills).
-          void inputChanged();
+          const refreshed = inputChanged();
+          if (refreshed && typeof refreshed.catch === "function") refreshed.catch(() => {});
           return;
         }
-        if (menuState.isOpen()) closeMenu();
-        CodoxearPathCompletion.focusNextControl(input);
-      }, () => {
-        // A decision that failed outright must still leave the key with its
-        // mechanical meaning rather than swallow it silently.
-        if (seq !== tabSeq) return;
-        if (menuState.isOpen()) closeMenu();
-        CodoxearPathCompletion.focusNextControl(input);
-      });
+        advanceFocus(seq, typed);
+      }, () => advanceFocus(seq, typed));
       return true;
+    }
+
+    // Falling through is a focus move of our own: the list closes first (its rows
+    // are real controls), and the move only happens if the field still holds
+    // focus — a Tab whose answer arrives after the user moved on must not pull
+    // focus back.
+    function advanceFocus(seq, typed) {
+      if (seq !== tabSeq) return;
+      if (String(input.value || "") !== typed) return;
+      const doc = input.ownerDocument;
+      if (doc && doc.activeElement && doc.activeElement !== input) return;
+      if (menuState.isOpen()) closeMenu();
+      CodoxearPathCompletion.focusNextControl(input, { container: input.closest(".fileViewer") });
     }
 
     function keydown(event) {
@@ -816,6 +837,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       if (event && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         if (!entries || !entries.length) return false;
         if (typeof event.preventDefault === "function") event.preventDefault();
+        pickedByUser = true;
         const delta = event.key === "ArrowDown" ? 1 : -1;
         const focusIndex = moveFocus(entries.length, delta);
         renderMenu();
@@ -878,6 +900,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     // before the key is pressed. `query` names the settled value, so a listing for
     // old text can never complete new text.
     let completion = { query: "", names: [], truncated: false };
+    let completionInFlight = null;
     let completionPending = false;
     let completionSeq = 0;
     let completionAbort = null;
@@ -927,6 +950,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       seq += 1;
       abortCompletion();
       completionAbort = null;
+      completionInFlight = null;
       completion = { query: "", names: [], truncated: false };
       completionPending = false;
       completionSeq += 1;
@@ -1005,42 +1029,58 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     // exactly the names sharing the typed fragment (never fuzzy matches), so the
     // client can decide completion on a complete set — or refuse when the server
     // reports it had to cap the listing.
-    async function requestCompletion(query) {
+    //
+    // One owner per query: a prefetch timer and a Tab press asking for the same
+    // text share the in-flight request instead of aborting each other, and a
+    // request that is cancelled or superseded resolves `null` rather than handing
+    // back some other query's listing (which is how a name from the wrong
+    // directory could be inserted).
+    function requestCompletion(query) {
       const trimmed = String(query || "").trim();
       const sid = String(currentSessionId() || "");
       if (!trimmed || !sid) {
         completion = { query: "", names: [], truncated: false };
         completionPending = false;
-        return completion;
+        return Promise.resolve(null);
       }
-      if (completion.query === trimmed && !completionPending) return completion;
+      if (completionInFlight && completionInFlight.query === trimmed && completionInFlight.sessionId === sid) {
+        return completionInFlight.promise;
+      }
+      if (completion.query === trimmed && !completionPending) return Promise.resolve(completion);
       const requestSeq = ++completionSeq;
-      completionPending = true;
       abortCompletion();
       const controller = typeof AbortCtor === "function" ? new AbortCtor() : null;
       completionAbort = controller;
-      try {
-        const res = await api(`/api/sessions/${sid}/file/complete?prefix_only=1&limit=120&path=${encodeURIComponent(trimmed)}`, {
-          signal: controller ? controller.signal : undefined,
-        });
-        if (requestSeq !== completionSeq || sessionId !== sid) return completion;
-        const entries = res && res.ok === true && Array.isArray(res.entries) ? res.entries : [];
-        completion = {
-          query: trimmed,
-          names: entries
-            .map((entry) => ({ name: String(entry && entry.name ? entry.name : ""), isDir: Boolean(entry && entry.is_dir) }))
-            .filter((entry) => entry.name !== ""),
-          truncated: Boolean(res && res.truncated),
-        };
-      } catch (_) {
-        if (controller && controller.signal && controller.signal.aborted) return completion;
-        if (requestSeq !== completionSeq) return completion;
-        completion = { query: trimmed, names: [], truncated: false };
-      } finally {
-        if (completionAbort === controller) completionAbort = null;
-        if (requestSeq === completionSeq) completionPending = false;
-      }
-      return completion;
+      completionPending = true;
+      const promise = (async () => {
+        try {
+          const res = await api(`/api/sessions/${sid}/file/complete?prefix_only=1&limit=120&path=${encodeURIComponent(trimmed)}`, {
+            signal: controller ? controller.signal : undefined,
+          });
+          if (requestSeq !== completionSeq || sessionId !== sid) return null;
+          const entries = res && res.ok === true && Array.isArray(res.entries) ? res.entries : [];
+          completion = {
+            query: trimmed,
+            names: entries
+              .map((entry) => ({ name: String(entry && entry.name ? entry.name : ""), isDir: Boolean(entry && entry.is_dir) }))
+              .filter((entry) => entry.name !== ""),
+            truncated: Boolean(res && res.truncated),
+          };
+          return completion;
+        } catch (_) {
+          // A cancelled or superseded request has no answer of its own.
+          if (controller && controller.signal && controller.signal.aborted) return null;
+          if (requestSeq !== completionSeq) return null;
+          completion = { query: trimmed, names: [], truncated: false };
+          return completion;
+        } finally {
+          if (completionAbort === controller) completionAbort = null;
+          if (completionInFlight && completionInFlight.promise === promise) completionInFlight = null;
+          if (requestSeq === completionSeq) completionPending = false;
+        }
+      })();
+      completionInFlight = { query: trimmed, sessionId: sid, promise };
+      return promise;
     }
 
     function schedule(query) {

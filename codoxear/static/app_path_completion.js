@@ -244,70 +244,120 @@ function completionFromListing(value, defaultDir, listing) {
   return completionPlan({ value, defaultDir, names: listing.names, truncated: Boolean(listing.truncated) });
 }
 
-// Resolve what Tab should do. Never throws, never depends on timing:
-//   { apply: text }       -> write `text` into the field, caret at the end
-//   { fallthrough: true } -> there is nothing to complete: close the list and
-//                            let the caller move focus on
-async function resolveTabCompletion({ value, defaultDir = "", rows = [], pickedIndex = -1, cached = null, fetchListing = null } = {}) {
+// A listing belongs to exactly one value. Anything else is another directory's
+// answer (a superseded request, an aborted prefetch) and must never be combined
+// with this value's text — that is how a name from the wrong directory gets
+// inserted.
+function listingFor(listing, text) {
+  if (!listing || !Array.isArray(listing.names) || listing.query !== text) return null;
+  return listing;
+}
+
+// An empty fragment (the value ends with "/") leaves nothing to complete by
+// prefix, but a directory holding exactly one entry is still unambiguous.
+function singleEntryPlan(text, defaultDir, listing) {
+  // An empty field has nothing to complete: Tab there belongs to focus movement.
+  if (!text) return null;
+  const slash = text.lastIndexOf("/");
+  const fragment = slash < 0 ? text : text.slice(slash + 1);
+  if (fragment || listing.names.length !== 1) return null;
+  const only = listing.names[0];
+  const name = only && typeof only.name === "string" ? only.name : "";
+  if (!name) return null;
+  const dirPart = slash < 0 ? String(defaultDir || "") : text.slice(0, slash + 1);
+  const next = `${dirPart}${name}${only.isDir ? "/" : ""}`;
+  return next === text ? null : { value: next };
+}
+
+function planFromSingleRow(text, singleRow) {
+  const row = typeof singleRow === "function" ? singleRow(text) : singleRow;
+  const path = row && typeof row.path === "string" ? row.path : "";
+  // `fromRow` tells the caller the value names something the list offered (a
+  // directory, for both fields that have rows), not a fragment extension.
+  return path && path !== text ? { apply: path, fromRow: true } : { fallthrough: true };
+}
+
+function planFromListing(text, defaultDir, listing, singleRow) {
+  const applied = completionFromListing(text, defaultDir, listing) || singleEntryPlan(text, defaultDir, listing);
+  return applied ? { apply: applied.value } : planFromSingleRow(text, singleRow);
+}
+
+// Resolve what Tab should do. Three inputs, all of them already scoped to THIS
+// text by the caller and re-validated here, so the answer cannot depend on when
+// anything arrived:
+//   picked   - the row the user explicitly arrow-keyed onto
+//   listing  - the directory listing for this text (cached or fetched)
+//   singleRow- a synchronous, text-keyed lookup for a list holding one entry
+//   { apply: text, fromRow? } | { fallthrough: true }
+async function resolveTabCompletion({ value, defaultDir = "", picked = null, cachedListing = null, singleRow = null, fetchListing = null } = {}) {
   const text = String(value == null ? "" : value);
-  const list = Array.isArray(rows) ? rows : [];
-  const pickedRow = pickedIndex >= 0 && list[pickedIndex] ? list[pickedIndex] : null;
-  const pickedPath = pickedRow && typeof pickedRow.path === "string" ? pickedRow.path : "";
-  // A row the user picked with the arrow keys outranks everything else, but a
-  // row that already equals the text is not a decision: fall through to the
-  // listing so the field can drill into it instead.
-  if (pickedPath && pickedPath !== text) return { apply: pickedPath };
-  const applied = completionFromListing(text, defaultDir, cached);
-  if (applied) return { apply: applied.value };
+  const pickedPath = picked && typeof picked.path === "string" ? picked.path : "";
+  if (pickedPath && pickedPath !== text) return { apply: pickedPath, fromRow: true };
+  const settled = listingFor(cachedListing, text);
+  if (settled) return planFromListing(text, defaultDir, settled, singleRow);
   if (!text) return { fallthrough: true };
-  // The field's own listing is unknown for this text: ask. A listing that is
-  // known and yielded nothing is final — never re-ask for it, because a second,
-  // identical listing could only produce the same answer.
-  if (!cached && typeof fetchListing === "function") {
-    let listing = null;
+  if (typeof fetchListing === "function") {
+    let fetched = null;
     try {
-      listing = await fetchListing(text);
+      fetched = await fetchListing(text);
     } catch (_) {
-      listing = null;
+      fetched = null;
     }
-    const fetched = completionFromListing(text, defaultDir, listing);
-    if (fetched) return { apply: fetched.value };
+    const listing = listingFor(fetched, text);
+    if (listing) return planFromListing(text, defaultDir, listing, singleRow);
   }
-  // One row left is an unambiguous answer even when it is not a prefix of what
-  // was typed (a recent path, say), and a list with a single item that Tab
-  // cannot take reads as broken. A "create this path" row is not an answer: it
-  // is the text retyped, so taking it would only rewrite what the user wrote.
-  const onlyRow = list.length === 1 ? list[0] : null;
-  const onlyPath = onlyRow && !onlyRow.createNew && typeof onlyRow.path === "string" ? onlyRow.path : "";
-  if (onlyPath && onlyPath !== text) return { apply: onlyPath };
-  return { fallthrough: true };
+  return planFromSingleRow(text, singleRow);
 }
 
 const FOCUSABLE_SELECTOR = "a[href], area[href], button, input, select, textarea, iframe, [tabindex]";
-const POPUP_SELECTOR = ".filePickerMenu, .dialogPickerMenu, #newSessionCwdMenu, [aria-hidden='true'], [inert]";
+const POPUP_SELECTOR = ".filePickerMenu, .dialogPickerMenu, #newSessionCwdMenu, [inert], [aria-hidden='true']";
 
-// The fall-through for a consumed Tab: move focus to the next control, the way
-// the browser would have if the key had not been used for completion. Walking
-// the document is deliberate — the two surfaces have different neighbours, and a
-// list row must never be a landing spot.
-function focusNextControl(from) {
+function isFocusTarget(node) {
+  if (!node || typeof node.focus !== "function") return false;
+  if (node.disabled) return false;
+  if (typeof node.matches === "function" && node.matches(":disabled")) return false;
+  if (typeof node.getAttribute === "function") {
+    const tabindex = node.getAttribute("tabindex");
+    if (tabindex !== null && Number(tabindex) < 0) return false;
+  }
+  if (typeof node.closest === "function" && node.closest(POPUP_SELECTOR)) return false;
+  if (typeof node.checkVisibility === "function" && !node.checkVisibility()) return false;
+  const rect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
+  return !rect || (rect.width > 0 && rect.height > 0);
+}
+
+// The fall-through for a consumed Tab: move focus on, the way the browser would
+// have if the key had not been spent on completion. `container` bounds the
+// search (a modal dialog, the viewer panel) and the walk wraps inside it, so a
+// control that sits *before* the field is still reachable; the move is verified,
+// so an ineffective focus (visibility:hidden, disabled ancestor) falls through
+// to the next candidate instead of reporting success and leaving focus behind.
+function focusNextControl(from, { container = null } = {}) {
   if (!from || typeof from.focus !== "function") return false;
   const doc = from.ownerDocument;
   if (!doc || typeof doc.querySelectorAll !== "function") return false;
-  const nodes = Array.from(doc.querySelectorAll(FOCUSABLE_SELECTOR));
+  const scope = container && typeof container.querySelectorAll === "function" ? container : doc;
+  const nodes = Array.from(scope.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isFocusTarget);
+  if (!nodes.length) return false;
   const start = nodes.indexOf(from);
-  if (start < 0) return false;
-  for (let index = start + 1; index < nodes.length; index += 1) {
-    const node = nodes[index];
-    if (!node || typeof node.focus !== "function" || node.disabled) continue;
-    if (typeof node.getAttribute === "function" && node.getAttribute("tabindex") === "-1") continue;
-    if (typeof node.closest === "function" && node.closest(POPUP_SELECTOR)) continue;
-    const rect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
-    if (rect && (rect.width <= 0 || rect.height <= 0)) continue;
-    node.focus();
-    return true;
+  const ordered = start < 0 ? nodes : nodes.slice(start + 1).concat(nodes.slice(0, start));
+  for (const node of ordered) {
+    if (node === from) continue;
+    try {
+      node.focus();
+    } catch (_) {
+      continue;
+    }
+    if (doc.activeElement === node) return true;
   }
   return false;
 }
 
-export { pathTokenAt, completePathFragment, completionPlan, resolveTabCompletion, focusNextControl, createPathCompletionRuntime };
+export {
+  pathTokenAt,
+  completePathFragment,
+  completionPlan,
+  resolveTabCompletion,
+  focusNextControl,
+  createPathCompletionRuntime,
+};

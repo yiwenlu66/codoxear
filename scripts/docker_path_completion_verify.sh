@@ -566,6 +566,21 @@ browser wait 900 > /dev/null 2>&1 || true
 browser eval "$cwd_field_eval" --json > "$artifacts/ui-32-cwd-complete.json" 2>&1 || fail "could not read completed cwd state"
 browser screenshot --full "$artifacts/ui-32-cwd-complete.png" > "$artifacts/ui-32-cwd-complete-screenshot.txt" 2>&1 || true
 
+# A value that already ends with "/" has no fragment to extend, but a directory
+# with exactly one child is unambiguous — and that must hold cold, from the
+# listing, not from whatever the menu happened to render.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/alpha/' > "$artifacts/ui-tab-cwd-singleton-typed.txt" 2>&1 || fail "could not type a single-entry directory"
+browser press Tab > "$artifacts/ui-tab-cwd-singleton.txt" 2>&1 || fail "Tab on a single-entry directory failed"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-39-cwd-singleton.json" 2>&1 || fail "could not read the single-entry state"
+
+# A late decision must not steal focus back from where the user moved on to.
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/zzzz' > "$artifacts/ui-tab-cwd-late-typed.txt" 2>&1 || fail "could not type a no-match value"
+browser press Tab > "$artifacts/ui-tab-cwd-late.txt" 2>&1 || fail "Tab on a no-match value failed"
+browser click '#newSessionModelInput' > "$artifacts/ui-tab-cwd-late-move.txt" 2>&1 || fail "could not move focus to the model field"
+browser wait 1200 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-40-cwd-late.json" 2>&1 || fail "could not read the late-decision state"
+
 # A shared prefix completes only as far as the names agree.
 browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/al' > "$artifacts/ui-tab-cwd-shared-typed.txt" 2>&1 || fail "could not type a shared prefix"
 browser wait 900 > /dev/null 2>&1 || true
@@ -633,6 +648,8 @@ mention_link = result("ui-24-mention-link")
 mention_viewer = result("ui-25-mention-viewer")
 picker_immediate = result("ui-37-picker-immediate")
 cwd_immediate = result("ui-38-cwd-immediate")
+cwd_singleton = result("ui-39-cwd-singleton")
+cwd_late = result("ui-40-cwd-late")
 picker_typed = result("ui-26-picker-typed")
 picker_complete = result("ui-27-picker-complete")
 picker_file = result("ui-28-picker-file")
@@ -682,11 +699,15 @@ checks = {
     "tab_without_completion_moves_focus": picker_nomatch.get("focused") is False and picker_nomatch.get("menuOpen") is False,
     "tab_completes_cwd_directory": cwd_typed.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_complete.get("value") == "/home/tester/tab-cwd-fixture/alpha/" and cwd_complete.get("focused") is True,
     "tab_cwd_drill_lists_children": any(str(row).endswith("/alpha/inner") for row in cwd_complete.get("rows") or []),
+    "tab_cwd_single_entry_directory": cwd_singleton.get("value") == "/home/tester/tab-cwd-fixture/alpha/inner/" and cwd_singleton.get("focused") is True,
+    # A decision that resolves after the user left the field must not pull focus
+    # back to the working-directory input.
+    "late_decision_does_not_steal_focus": cwd_late.get("activeId") == "newSessionModelInput",
     "tab_cwd_shared_prefix": cwd_shared.get("value") == "/home/tester/tab-cwd-fixture/alp",
     "shift_tab_never_completes": cwd_shift.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_shift.get("focused") is False,
     "tab_takes_the_picked_row": bool(cwd_row_armed.get("activeRow")) and cwd_row_taken.get("value") == cwd_row_armed.get("activeRow") and cwd_row_taken.get("focused") is True,
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate, "cwd_singleton": cwd_singleton, "cwd_late": cwd_late}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"

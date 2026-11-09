@@ -62,19 +62,59 @@ def run_core() -> dict[str, object]:
           plan_truncated_partial: plan({{ value: "~/al", truncated: true, names: names([["alpha", true], ["alpine", true]]) }}),
         }};
         const listing = (query, entries, truncated) => ({{ query, names: names(entries), truncated: Boolean(truncated) }});
+        const focusState = {{ active: null }};
+        const node = (name, visible = true) => {{
+          const element = {{
+            name, focused: false, attrs: {{}},
+            focus() {{ if (!visible) return; focusState.active = element; element.focused = true; }},
+            getAttribute(key) {{ return Object.prototype.hasOwnProperty.call(element.attrs, key) ? element.attrs[key] : null; }},
+            closest() {{ return null; }},
+            getBoundingClientRect() {{ return {{ width: visible ? 10 : 0, height: visible ? 10 : 0 }}; }},
+            ownerDocument: null,
+          }};
+          return element;
+        }};
         (async () => {{
           out.tab = {{
-            pickedRow: await resolve({{ value: "zzz", rows: [{{ path: "lib/picked.py" }}], pickedIndex: 0 }}),
-            pickedEqualsValue: await resolve({{ value: "lib/picked.py", rows: [{{ path: "lib/picked.py" }}], pickedIndex: 0 }}),
-            cachedCompletion: await resolve({{ value: "~/pro", cached: listing("~/pro", [["projects", true]]) }}),
-            cachedNoMatchSkipsFetch: await resolve({{ value: "~/zzz", cached: listing("~/zzz", [["projects", true]]) }}),
-            coldFetchCompletes: await resolve({{ value: "~/pro", cached: null, fetchListing: async (text) => {{ calls.push("cold:" + text); return listing(text, [["projects", true]]); }} }}),
-            coldFetchNoMatch: await resolve({{ value: "~/zzz", cached: null }}),
-            coldFetchThrows: await resolve({{ value: "~/pro", cached: null, fetchListing: async () => {{ throw new Error("boom"); }} }}),
-            emptyValue: await resolve({{ value: "", cached: null }}),
-            singleRow: await resolve({{ value: "~/rec", rows: [{{ path: "/srv/recent-project" }}] }}),
-            singleDraftRow: await resolve({{ value: "newfile", rows: [{{ path: "newfile", createNew: true }}] }}),
+            pickedRow: await resolve({{ value: "zzz", picked: {{ path: "lib/picked.py" }} }}),
+            pickedEqualsValue: await resolve({{ value: "lib/picked.py", picked: {{ path: "lib/picked.py" }} }}),
+            cachedCompletion: await resolve({{ value: "~/pro", cachedListing: listing("~/pro", [["projects", true]]) }}),
+            cachedNoMatchSkipsFetch: await resolve({{ value: "~/zzz", cachedListing: listing("~/zzz", [["projects", true]]) }}),
+            foreignListingIgnored: await resolve({{ value: "~/a", cachedListing: listing("../a", [["alphaOld", true]]) }}),
+            coldFetchCompletes: await resolve({{ value: "~/pro", cachedListing: null, fetchListing: async (text) => {{ calls.push("cold:" + text); return listing(text, [["projects", true]]); }} }}),
+            coldForeignListingIgnored: await resolve({{ value: "~/a", fetchListing: async () => listing("../a", [["alphaOld", true]]) }}),
+            coldFetchNoMatch: await resolve({{ value: "~/zzz", cachedListing: null }}),
+            coldFetchThrows: await resolve({{ value: "~/pro", cachedListing: null, fetchListing: async () => {{ throw new Error("boom"); }} }}),
+            emptyValue: await resolve({{ value: "", cachedListing: null }}),
+            singleRow: await resolve({{ value: "~/rec", singleRow: () => ({{ path: "/srv/recent-project" }}) }}),
+            singleRowEqualsValue: await resolve({{ value: "/srv/recent-project", singleRow: () => ({{ path: "/srv/recent-project" }}) }}),
+            trailingSlashSingleEntry: await resolve({{ value: "~/solo/", singleRow: null, fetchListing: async (text) => listing(text, [["only-child", true]]) }}),
+            trailingSlashTwoEntries: await resolve({{ value: "~/pair/", fetchListing: async (text) => listing(text, [["a", true], ["b", true]]) }}),
             cachedFetches: calls.filter((text) => text === "~/pro").length,
+          }};
+          // focusNextControl: verified moves, wrap inside the container, hidden and
+          // negative-tabindex candidates skipped, popups excluded.
+          const first = node("first");
+          const hidden = node("hidden", false);
+          const tabbable = node("tabbable");
+          tabbable.attrs.tabindex = "-1";
+          const last = node("last");
+          const container = {{ querySelectorAll: () => [first, hidden, tabbable, last] }};
+          focusState.active = first;
+          const doc = {{ get activeElement() {{ return focusState.active; }}, querySelectorAll: () => [first, hidden, tabbable, last] }};
+          for (const element of [first, hidden, tabbable, last]) element.ownerDocument = doc;
+          out.focus = {{
+            skipsToNext: core.focusNextControl(first, {{ container }}),
+            focusedAfterSkip: focusState.active ? focusState.active.name : null,
+            wrapsToFirst: core.focusNextControl(last, {{ container }}),
+            focusedAfterWrap: focusState.active ? focusState.active.name : null,
+            disabledFallsBack: (() => {{
+              const off = node("off");
+              off.disabled = true;
+              off.ownerDocument = doc;
+              const host = {{ querySelectorAll: () => [focusState.active, off, last] }};
+              return core.focusNextControl(focusState.active, {{ container: host }});
+            }})(),
           }};
           process.stdout.write(JSON.stringify(out));
         }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});
@@ -173,11 +213,43 @@ def test_tab_resolution_falls_through_only_when_there_is_truly_nothing() -> None
     assert tab["emptyValue"] == {"fallthrough": True}
 
 
-def test_tab_resolution_takes_picked_and_single_rows_but_not_drafts() -> None:
+def test_tab_resolution_takes_picked_and_single_rows() -> None:
     tab = run_core()["tab"]
-    assert tab["pickedRow"] == {"apply": "lib/picked.py"}
+    # `fromRow` tells the caller the value names something a list offered (a
+    # directory), so the caller can add the separator that lists its contents.
+    assert tab["pickedRow"] == {"apply": "lib/picked.py", "fromRow": True}
     # A picked row that equals the value is not a decision: fall through to the
     # listing so a directory can still be drilled into.
     assert tab["pickedEqualsValue"] == {"fallthrough": True}
-    assert tab["singleRow"] == {"apply": "/srv/recent-project"}
-    assert tab["singleDraftRow"] == {"fallthrough": True}
+    assert tab["singleRow"] == {"apply": "/srv/recent-project", "fromRow": True}
+    assert tab["singleRowEqualsValue"] == {"fallthrough": True}
+
+
+def test_a_listing_from_another_value_is_never_used() -> None:
+    tab = run_core()["tab"]
+    # The measured cross-directory insertion: a cached or fetched listing that
+    # belongs to a different text must be ignored, not combined with this text.
+    assert tab["foreignListingIgnored"] == {"fallthrough": True}
+    assert tab["coldForeignListingIgnored"] == {"fallthrough": True}
+
+
+def test_an_empty_fragment_still_uses_a_single_entry_listing() -> None:
+    tab = run_core()["tab"]
+    # A value that already ends with "/" has no fragment to extend, but a
+    # directory with one child is unambiguous — and this must hold cold as well as
+    # warm, because it comes from the listing, not from previously rendered rows.
+    assert tab["trailingSlashSingleEntry"] == {"apply": "~/solo/only-child/"}
+    assert tab["trailingSlashTwoEntries"] == {"fallthrough": True}
+
+
+def test_focus_walker_verifies_the_move_skips_and_wraps() -> None:
+    focus = run_core()["focus"]
+    # The hidden node and the tabindex="-1" node are skipped; the move is verified.
+    assert focus["skipsToNext"] is True
+    assert focus["focusedAfterSkip"] == "last"
+    # A field that is last wraps to the beginning of its container instead of
+    # leaving focus stranded.
+    assert focus["wrapsToFirst"] is True
+    assert focus["focusedAfterWrap"] == "first"
+    # A disabled candidate falls through to the next valid one.
+    assert focus["disabledFallsBack"] is True

@@ -444,6 +444,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
         let rafCallback = null;
         let completion = {{ query: "", names: [], truncated: false }};
         let rows = [];
+        let loadedQuery = "";
         const ensured = [];
         let completionRequest = null;
         const nextControl = {{
@@ -484,7 +485,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           optionElementById: (id) => ({{ scrollIntoView(options) {{ events.push(["scroll", id, options]); }} }}),
           isFocusInsideField: () => focusInside,
           requestAnimationFrame: (callback) => {{ rafCallback = callback; events.push(["raf"]); }},
-          searchSnapshot: () => ({{ completion }}),
+          searchSnapshot: () => ({{ completion, loadedQuery }}),
           visibleEntries: () => rows,
           ensureCompletion: async (query) => {{ ensured.push(query); return completionRequest; }},
         }});
@@ -575,28 +576,37 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const tabCachedFetches = ensured.filter(function (text) {{ return text === "src/ne"; }}).length;
           events.splice(0);
 
-          // (4) A picked row is taken as text and the highlight is reset.
+          // (4) A row the user arrowed onto is taken as text, and the highlight is
+          // reset so the next Tab completes the text instead of re-taking it.
           rows = [{{ path: "lib/picked.py" }}];
-          menuState.setFocus(0);
+          loadedQuery = "zzz";
           completion = {{ query: "", names: [], truncated: false }};
           armCompletion(null);
           input.value = "zzz";
+          await runtime.keydown({{ key: "ArrowDown", preventDefault() {{}}, stopPropagation() {{}} }});
           runtime.keydown(tabKey());
           await settle();
           const tabRowValue = input.value;
           const tabRowFocus = menuState.focusIndex();
+          loadedQuery = "";
           events.splice(0);
 
-          // (5) One visible row is an unambiguous answer.
+          // (5) A lone search row is NOT a completion here: this list is a fuzzy
+          // project search, so taking its only row would substitute a path the
+          // user never typed, and its arrival is timed by a separate request. Tab
+          // falls through; Enter still takes that row.
           rows = [{{ path: "src/only-match.js" }}];
+          loadedQuery = "only";
           menuState.setFocus(-1);
-          completion = {{ query: "", names: [], truncated: false }};
+          menuState.setOpen(true);
+          completion = {{ query: "only", names: [], truncated: false }};
           armCompletion(null);
           input.value = "only";
           runtime.keydown(tabKey());
           await settle();
           const tabSingleValue = input.value;
-          events.splice(0);
+          const tabSingleEvents = events.splice(0);
+          loadedQuery = "";
 
           // (6) A lone "create this path" row is not an answer, and (7) nor is a
           // capped listing: both fall through — the list closes and focus moves on
@@ -610,14 +620,17 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           await settle();
           const tabDraftEvents = events.splice(0);
 
-          rows = [];
-          menuState.setFocus(-1);
+          rows = [{{ path: "src/stale.js" }}];
+          loadedQuery = "other";
+          menuState.setFocus(0);
           menuState.setOpen(true);
           completion = {{ query: "al", truncated: true, names: [{{ name: "alpha", isDir: true }}, {{ name: "alpine", isDir: true }}] }};
           input.value = "al";
           runtime.keydown(tabKey());
           await settle();
           const tabCappedEvents = events.splice(0);
+          const tabCappedValue = input.value;
+          loadedQuery = "";
           focusInside = false;
           const blurResult = runtime.blur();
           const blurScheduledEvents = events.splice(0);
@@ -625,7 +638,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabColdResult, tabColdPrevented, tabColdValue, tabColdFetched, tabColdScheduled, tabShiftResult, tabShiftPrevented, tabCachedValue, tabCachedFetches, tabRowValue, tabRowFocus, tabSingleValue, tabDraftEvents, tabCappedEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabColdResult, tabColdPrevented, tabColdValue, tabColdFetched, tabColdScheduled, tabShiftResult, tabShiftPrevented, tabCachedValue, tabCachedFetches, tabRowValue, tabRowFocus, tabSingleValue, tabSingleEvents, tabDraftEvents, tabCappedEvents, tabCappedValue, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -948,7 +961,8 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertEqual(result["tabCachedValue"], "src/newdir/")
         self.assertEqual(result["tabRowValue"], "lib/picked.py")
         self.assertEqual(result["tabRowFocus"], -1)
-        self.assertEqual(result["tabSingleValue"], "src/only-match.js")
+        self.assertEqual(result["tabSingleValue"], "only")
+        self.assertEqual(result["tabSingleEvents"], [["prevent"], ["close", None], ["focusNext"]])
         # Falling through closes the list and moves focus itself, so the key's
         # mechanical meaning (advance one control) survives.
         for case in ("tabDraftEvents", "tabCappedEvents"):
