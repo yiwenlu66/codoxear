@@ -795,6 +795,12 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
         }
         if (menuState.isOpen()) closeMenu();
         CodoxearPathCompletion.focusNextControl(input);
+      }, () => {
+        // A decision that failed outright must still leave the key with its
+        // mechanical meaning rather than swallow it silently.
+        if (seq !== tabSeq) return;
+        if (menuState.isOpen()) closeMenu();
+        CodoxearPathCompletion.focusNextControl(input);
       });
       return true;
     }

@@ -195,6 +195,12 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         ambiguous = eval_cwd_tab_completion(["alpha", "beta"], cwd_value="/srv/projects/")
         self.assertIsNone(ambiguous["completion"])
 
+    def test_bare_tilde_gains_its_separator(self) -> None:
+        # `~` is a directory with nothing to complete; marking it as one lists
+        # the home directory instead of leaving the field inert.
+        result = eval_cwd_tab_completion([], cwd_value="~")
+        self.assertEqual(result["completion"], "~/")
+
     def test_empty_field_leaves_tab_alone(self) -> None:
         empty = eval_cwd_tab_completion(["alpha"], cwd_value="")
         self.assertIsNone(empty["completion"])

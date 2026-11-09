@@ -534,6 +534,9 @@ function requireFunction(value, name) {
 
     function cwdSuggestionQuery(raw) {
       const value = String(raw || "").trim();
+      // `~` is a directory with no separator in it: list the home directory's
+      // children instead of asking the root for names starting with "~".
+      if (value === "~" || value === "~/") return { path: "~", prefix: "" };
       const slash = value.lastIndexOf("/");
       if (slash < 0) return { path: "/", prefix: value };
       if (slash === 0) return { path: "/", prefix: value.slice(1) };
@@ -607,6 +610,9 @@ function requireFunction(value, name) {
     // is what keeps Tab's outcome independent of how fast the user types.
     async function resolveCwdTab(value) {
       const raw = String(value == null ? "" : value).trim();
+      // `~` is a directory whose name contains no separator: the only thing left
+      // to do is mark it as one, which lists the home directory's contents.
+      if (raw === "~") return { apply: "~/" };
       return CodoxearPathCompletion.resolveTabCompletion({
         value: raw,
         defaultDir: "/",
@@ -1252,7 +1258,7 @@ function requireFunction(value, name) {
     cwdInput.onclick = () => { beginCwdBrowse(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
     cwdInput.oninput = () => { cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
     cwdInput.onblur = () => win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { dismissCwdPicker(); applyDialogMenus(); } });
-    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { event.preventDefault(); const typed = String(cwdInput.value || "").trim(); const seq = ++cwdTabSeq; void controller.resolveCwdTab(typed).then((plan) => { if (seq !== cwdTabSeq) return; if (String(cwdInput.value || "").trim() !== typed) return; if (plan && typeof plan.apply === "string") { applyCwdCompletionValue(plan.apply); return; } if (cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } nameInput.focus(); }); return; } if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
+    cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { event.preventDefault(); const typed = String(cwdInput.value || "").trim(); const seq = ++cwdTabSeq; const advance = () => { if (cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } try { nameInput.focus(); } catch (_) { CodoxearPathCompletion.focusNextControl(cwdInput); } }; void controller.resolveCwdTab(typed).then((plan) => { if (seq !== cwdTabSeq) return; if (String(cwdInput.value || "").trim() !== typed) return; if (plan && typeof plan.apply === "string") { applyCwdCompletionValue(plan.apply); return; } advance(); }, advance); return; } if (arrow) { if (!items.length) return; event.preventDefault(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
     modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };
     // The first edit of a committed pair replaces it: clearing here means the
     // typed character or paste lands in an empty field instead of appending to
