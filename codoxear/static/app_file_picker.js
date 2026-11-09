@@ -676,6 +676,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     const animationFrame = requireFunction(options, "requestAnimationFrame");
     const searchSnapshot = requireFunction(options, "searchSnapshot");
     const visibleEntries = requireFunction(options, "visibleEntries");
+    const ensureCompletion = requireFunction(options, "ensureCompletion");
     const openSearchQueryState = requireFunction(menuState, "openSearchQuery");
     const takePreservedSearchOnFocus = requireFunction(menuState, "takePreservedSearchOnFocus");
     const setOpen = requireFunction(menuState, "setOpen");
@@ -684,6 +685,8 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     const moveFocus = requireFunction(menuState, "moveFocus");
     const isOpen = requireFunction(menuState, "isOpen");
     const enterIndex = requireFunction(menuState, "enterIndex");
+
+    let tabSeq = 0;
 
     function openRenderedMenu() {
       const entries = renderMenu();
@@ -758,58 +761,41 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       return true;
     }
 
-    // Tab completion, decided synchronously: the browser runs a key event's
-    // default action before any network round trip can call preventDefault, so
-    // this only ever answers from state already in hand — the listing prefetched
-    // by createSearchState, or the row the arrow keys picked. When neither gives
-    // a new value, Tab is left alone and focus moves as it always did.
+    // Tab completion. Tab is consumed unconditionally: the browser runs a key
+    // event's default action before any request could resolve, so the decision
+    // has to be made after the fact — from the listing already in hand, or from
+    // one request started now. Only the latency varies, never the outcome, and a
+    // Tab that completes nothing moves focus on itself (never into the list).
     function tabCompletion(event) {
       if (!event || event.key !== "Tab") return false;
       if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return false;
-      const current = String(input.value || "");
-      const rows = visibleEntries();
-      let next = null;
-      const focus = menuState.focusIndex();
-      if (focus >= 0) {
-        const row = rows && rows[focus] ? rows[focus] : null;
-        const path = row && typeof row.path === "string" ? row.path : "";
-        if (path) next = path;
-      }
-      if (next === null) {
-        const value = current.trim();
-        const state = searchSnapshot();
-        const listing = state && state.completion ? state.completion : null;
-        if (listing && listing.query && listing.query === value) {
-          const plan = CodoxearPathCompletion.completionPlan({
-            value,
-            defaultDir: "",
-            names: listing.names,
-            truncated: listing.truncated,
-          });
-          if (plan) next = plan.value;
-        }
-      }
-      // One row left is an unambiguous answer even when it is not a prefix of
-      // what was typed, and a menu with a single item that Tab cannot take reads
-      // as broken.
-      if (next === null && current.trim() && rows && rows.length === 1 && rows[0]
-          && !rows[0].createNew && typeof rows[0].path === "string") {
-        next = rows[0].path;
-      }
-      if (next === null || next === current) {
-        // Tab is about to move focus. Close the popup first: its rows are
-        // rendered controls, so an open menu would swallow the focus move and
-        // the row would vanish under the pointer.
-        if (menuState.isOpen()) closeMenu();
-        return false;
-      }
       if (typeof event.preventDefault === "function") event.preventDefault();
-      input.value = next;
-      menuState.setFocus(-1);
-      // Re-run the ordinary input flow so the menu, the search and the draft
-      // state all follow the completed value (a completed directory immediately
-      // lists what is inside it).
-      void inputChanged();
+      const typed = String(input.value || "");
+      const seq = ++tabSeq;
+      const state = searchSnapshot();
+      const listing = state && state.completion && state.completion.query === typed.trim() ? state.completion : null;
+      void CodoxearPathCompletion.resolveTabCompletion({
+        value: typed,
+        defaultDir: "",
+        rows: visibleEntries() || [],
+        pickedIndex: menuState.focusIndex(),
+        cached: listing,
+        fetchListing: (text) => ensureCompletion(text),
+      }).then((plan) => {
+        if (seq !== tabSeq) return;
+        if (String(input.value || "") !== typed) return;
+        if (plan && typeof plan.apply === "string" && plan.apply !== typed) {
+          input.value = plan.apply;
+          menuState.setFocus(-1);
+          // Re-run the ordinary input flow so the menu, the search and the draft
+          // state follow the completed value (a completed directory lists what is
+          // inside it, so the next Tab drills).
+          void inputChanged();
+          return;
+        }
+        if (menuState.isOpen()) closeMenu();
+        CodoxearPathCompletion.focusNextControl(input);
+      });
       return true;
     }
 
@@ -1097,6 +1083,7 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     return Object.freeze({
       dispose,
       request,
+      requestCompletion,
       reset,
       schedule,
       setSessionId,

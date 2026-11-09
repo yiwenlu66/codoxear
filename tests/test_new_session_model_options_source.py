@@ -97,7 +97,7 @@ def eval_cwd_tab_completion(
     settle: bool = True,
     recent_cwds: list[str] | None = None,
 ) -> dict:
-    """Ask the real controller what Tab should write into the cwd field.
+    """Ask the real controller what Tab should write into the cwd field (async).
 
     ``directories`` is the directory's child list; the fetch stub applies the
     server's own case-insensitive prefix filter to it, so this exercises the
@@ -138,11 +138,15 @@ def eval_cwd_tab_completion(
           cwdInput,cwdMenu:{{innerHTML:"",appendChild:noop}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},cwdMenuFocus:()=>{json.dumps(focus)},assignCwdMenuFocus:noop,closeCwdMenu:noop,cwdBrowseAnchor:()=>null,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:"",appendChild:noop}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         (async () => {{
+          // `settle` warms the menu's own listing first, which is the state the old
+          // synchronous design required. Without it the listing is cold — the case
+          // that used to do nothing at all when the user typed and pressed Tab.
           if ({json.dumps(settle)}) {{
             c.renderRecentCwdMenu();
             await new Promise((resolve) => setTimeout(resolve, 40));
           }}
-          process.stdout.write(JSON.stringify({{ completion: c.cwdTabCompletion(), menu: c.cwdMenuOptions(String(cwdInput.value || "").trim()).map((item) => item.cwd) }}));
+          const plan = await c.resolveCwdTab(String(cwdInput.value || "").trim());
+          process.stdout.write(JSON.stringify({{ plan, completion: plan && typeof plan.apply === "string" ? plan.apply : null, menu: c.cwdMenuOptions(String(cwdInput.value || "").trim()).map((item) => item.cwd) }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
@@ -163,13 +167,23 @@ class TestNewSessionCwdTabCompletion(unittest.TestCase):
         )
         self.assertEqual(result["completion"], "/srv/projects/alp")
 
-    def test_no_match_and_unsettled_listing_leave_tab_alone(self) -> None:
-        no_match = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/zzz")
-        self.assertIsNone(no_match["completion"])
-        # Nothing was ever fetched for this value, so completion must not guess:
-        # Tab stays native and focus moves.
-        unsettled = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=False)
-        self.assertIsNone(unsettled["completion"])
+    def test_typing_and_pressing_tab_immediately_still_completes(self) -> None:
+        # The measured regression: typing a unique prefix and pressing Tab before
+        # the menu's debounced listing landed did nothing at all, because the
+        # decision asked whether that listing had arrived. The field now asks for
+        # the listing itself, so the outcome no longer depends on typing speed.
+        cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=False)
+        self.assertEqual(cold["completion"], "/srv/projects/alpha/")
+        warm = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/alph", settle=True)
+        self.assertEqual(warm["completion"], "/srv/projects/alpha/")
+        self.assertEqual(cold["completion"], warm["completion"])
+
+    def test_no_match_falls_through(self) -> None:
+        direct = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/zzz")
+        self.assertIsNone(direct["completion"])
+        self.assertTrue(direct["plan"]["fallthrough"])
+        cold = eval_cwd_tab_completion(["alpha"], cwd_value="/srv/projects/zzz", settle=False)
+        self.assertTrue(cold["plan"]["fallthrough"])
 
     def test_one_listed_row_is_taken_even_with_an_empty_fragment(self) -> None:
         # A directory with a single child: Tab takes it (one row is an

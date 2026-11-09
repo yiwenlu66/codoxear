@@ -62,6 +62,7 @@
       setStatus: (status) => setFileStatus(status), optionElementById: (id) => document.getElementById(id),
       isFocusInsideField: () => filePickerField.contains(document.activeElement), requestAnimationFrame: requestAnimationFrame,
       searchSnapshot: () => searchState.snapshot(), visibleEntries: () => entryRuntime.visibleEntries(),
+      ensureCompletion: (query) => searchState.requestCompletion(query),
     }));
     return Object.freeze({ menuState, domRuntime, searchState, entryRuntime, renderRuntime, inputRuntime });
   }

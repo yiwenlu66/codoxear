@@ -511,6 +511,13 @@ browser click '#fileCloseBtn' > "$artifacts/ui-tab-close-viewer.txt" 2>&1 || tru
 browser click '#fileBtn' > "$artifacts/ui-tab-open-picker.txt" 2>&1 || fail "file picker button missing"
 browser wait 800 > /dev/null 2>&1 || true
 
+# The real gesture: type and press Tab with NO pause. The answer is not on the
+# wire yet, so this is the case that used to do nothing at all.
+browser fill '#filePickerInput' 'my' > "$artifacts/ui-tab-picker-immediate-typed.txt" 2>&1 || fail "could not type an immediate picker prefix"
+browser press Tab > "$artifacts/ui-tab-picker-immediate.txt" 2>&1 || fail "immediate Tab in the picker failed"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$picker_field_eval" --json > "$artifacts/ui-37-picker-immediate.json" 2>&1 || fail "could not read the immediate picker state"
+
 # A unique directory match completes and keeps focus in the field.
 browser fill '#filePickerInput' 'subd' > "$artifacts/ui-tab-picker-typed.txt" 2>&1 || fail "could not type a picker prefix"
 browser wait 700 > /dev/null 2>&1 || true
@@ -541,6 +548,13 @@ browser eval "$picker_field_eval" --json > "$artifacts/ui-30-picker-nomatch.json
 browser click '#fileCloseBtn' > "$artifacts/ui-tab-close-viewer-again.txt" 2>&1 || true
 browser click '#newBtn' > "$artifacts/ui-tab-new-session.txt" 2>&1 || fail "new session button missing"
 browser wait 700 > /dev/null 2>&1 || true
+
+# The same immediate gesture in the dialog, with a prefix this session has never
+# typed (a warm listing would hide the bug).
+browser fill '#newSessionCwdInput' '/home/tester/tab-cwd-fixture/be' > "$artifacts/ui-tab-cwd-immediate-typed.txt" 2>&1 || fail "could not type an immediate cwd prefix"
+browser press Tab > "$artifacts/ui-tab-cwd-immediate.txt" 2>&1 || fail "immediate Tab in the cwd field failed"
+browser wait 900 > /dev/null 2>&1 || true
+browser eval "$cwd_field_eval" --json > "$artifacts/ui-38-cwd-immediate.json" 2>&1 || fail "could not read the immediate cwd state"
 
 # A unique directory completes with its separator, and the menu now lists what is
 # inside it: Tab is a drill, not just text entry.
@@ -617,6 +631,8 @@ mention_nomatch = result("ui-22-mention-nomatch")
 mention_enter = result("ui-23-mention-enter")
 mention_link = result("ui-24-mention-link")
 mention_viewer = result("ui-25-mention-viewer")
+picker_immediate = result("ui-37-picker-immediate")
+cwd_immediate = result("ui-38-cwd-immediate")
 picker_typed = result("ui-26-picker-typed")
 picker_complete = result("ui-27-picker-complete")
 picker_file = result("ui-28-picker-file")
@@ -655,6 +671,10 @@ checks = {
     # Path *fields*: Tab completes from the listing prefetched while typing, keeps
     # focus, drills into a completed directory, takes a row the arrows picked, and
     # stays native when there is nothing to complete (Shift+Tab always native).
+    # Typing and pressing Tab immediately is the gesture a person makes; its
+    # outcome must not depend on a fetch having landed first.
+    "tab_immediate_picker_completes": picker_immediate.get("value") == "my dir/" and picker_immediate.get("focused") is True,
+    "tab_immediate_cwd_completes": cwd_immediate.get("value") == "/home/tester/tab-cwd-fixture/beta/" and cwd_immediate.get("focused") is True,
     "tab_completes_picker_directory": picker_typed.get("value") == "subd" and picker_complete.get("value") == "subdir/" and picker_complete.get("focused") is True,
     "tab_picker_drill_lists_children": any("child.txt" in str(row) for row in picker_complete.get("rows") or []),
     "tab_completes_picker_file": picker_file.get("value") == "plain.txt" and picker_file.get("focused") is True,
@@ -666,7 +686,7 @@ checks = {
     "shift_tab_never_completes": cwd_shift.get("value") == "/home/tester/tab-cwd-fixture/alph" and cwd_shift.get("focused") is False,
     "tab_takes_the_picked_row": bool(cwd_row_armed.get("activeRow")) and cwd_row_taken.get("value") == cwd_row_armed.get("activeRow") and cwd_row_taken.get("focused") is True,
 }
-print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken}, "pass": all(checks.values())}, indent=2))
+print(json.dumps({"checks": checks, "observed": {"dot_slash": first, "fragment": fragment, "subdir_active": subdir_active, "subdir": subdir, "file_accepted": file_accepted, "draft_reload": draft_reload, "space_option": space_option, "space_children": space_children, "index_zero": index_zero, "absolute": absolute, "url": url, "before_escape": before_escape, "after_escape": after_escape, "reopened": reopened, "before_caret": before_caret, "after_caret": after_caret, "mention_open": mention_open, "mention_fragment": mention_fragment, "mention_accepted": mention_accepted, "mention_email": mention_email, "mention_nomatch": mention_nomatch, "mention_enter": mention_enter, "mention_link": mention_link, "mention_viewer": mention_viewer, "picker_typed": picker_typed, "picker_complete": picker_complete, "picker_file": picker_file, "picker_opened": picker_opened, "picker_nomatch": picker_nomatch, "cwd_typed": cwd_typed, "cwd_complete": cwd_complete, "cwd_shared": cwd_shared, "cwd_shift": cwd_shift, "cwd_row_armed": cwd_row_armed, "cwd_row_taken": cwd_row_taken, "picker_immediate": picker_immediate, "cwd_immediate": cwd_immediate}, "pass": all(checks.values())}, indent=2))
 PY
 
 python3 - "$artifacts" "$target_commit" <<'PY' > "$artifacts/report.json"

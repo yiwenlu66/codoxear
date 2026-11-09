@@ -228,4 +228,86 @@ function createPathCompletionRuntime({ api, onChange, setTimeout: timerSet = (..
   return Object.freeze({ sync, snapshot, close });
 }
 
-export { pathTokenAt, completePathFragment, completionPlan, createPathCompletionRuntime };
+// ---- Tab in a path field: the decision, and its fall-through ----
+//
+// Typing and pressing Tab immediately is the normal gesture, so the answer is
+// usually not on the wire yet when the key arrives. A key event's default action
+// cannot be cancelled after a network round trip (the browser runs it before the
+// first macrotask), which is why the field consumes Tab unconditionally and
+// decides afterwards: from the listing it already has, or from a request it
+// starts now. Only the latency of the effect varies, never the outcome — the
+// earlier design made the *decision* depend on whether a fetch had landed, which
+// reads to a user as "Tab sometimes does nothing at all".
+
+function completionFromListing(value, defaultDir, listing) {
+  if (!listing || !Array.isArray(listing.names)) return null;
+  return completionPlan({ value, defaultDir, names: listing.names, truncated: Boolean(listing.truncated) });
+}
+
+// Resolve what Tab should do. Never throws, never depends on timing:
+//   { apply: text }       -> write `text` into the field, caret at the end
+//   { fallthrough: true } -> there is nothing to complete: close the list and
+//                            let the caller move focus on
+async function resolveTabCompletion({ value, defaultDir = "", rows = [], pickedIndex = -1, cached = null, fetchListing = null } = {}) {
+  const text = String(value == null ? "" : value);
+  const list = Array.isArray(rows) ? rows : [];
+  const pickedRow = pickedIndex >= 0 && list[pickedIndex] ? list[pickedIndex] : null;
+  const pickedPath = pickedRow && typeof pickedRow.path === "string" ? pickedRow.path : "";
+  // A row the user picked with the arrow keys outranks everything else, but a
+  // row that already equals the text is not a decision: fall through to the
+  // listing so the field can drill into it instead.
+  if (pickedPath && pickedPath !== text) return { apply: pickedPath };
+  const applied = completionFromListing(text, defaultDir, cached);
+  if (applied) return { apply: applied.value };
+  if (!text) return { fallthrough: true };
+  // The field's own listing is unknown for this text: ask. A listing that is
+  // known and yielded nothing is final — never re-ask for it, because a second,
+  // identical listing could only produce the same answer.
+  if (!cached && typeof fetchListing === "function") {
+    let listing = null;
+    try {
+      listing = await fetchListing(text);
+    } catch (_) {
+      listing = null;
+    }
+    const fetched = completionFromListing(text, defaultDir, listing);
+    if (fetched) return { apply: fetched.value };
+  }
+  // One row left is an unambiguous answer even when it is not a prefix of what
+  // was typed (a recent path, say), and a list with a single item that Tab
+  // cannot take reads as broken. A "create this path" row is not an answer: it
+  // is the text retyped, so taking it would only rewrite what the user wrote.
+  const onlyRow = list.length === 1 ? list[0] : null;
+  const onlyPath = onlyRow && !onlyRow.createNew && typeof onlyRow.path === "string" ? onlyRow.path : "";
+  if (onlyPath && onlyPath !== text) return { apply: onlyPath };
+  return { fallthrough: true };
+}
+
+const FOCUSABLE_SELECTOR = "a[href], area[href], button, input, select, textarea, iframe, [tabindex]";
+const POPUP_SELECTOR = ".filePickerMenu, .dialogPickerMenu, #newSessionCwdMenu, [aria-hidden='true'], [inert]";
+
+// The fall-through for a consumed Tab: move focus to the next control, the way
+// the browser would have if the key had not been used for completion. Walking
+// the document is deliberate — the two surfaces have different neighbours, and a
+// list row must never be a landing spot.
+function focusNextControl(from) {
+  if (!from || typeof from.focus !== "function") return false;
+  const doc = from.ownerDocument;
+  if (!doc || typeof doc.querySelectorAll !== "function") return false;
+  const nodes = Array.from(doc.querySelectorAll(FOCUSABLE_SELECTOR));
+  const start = nodes.indexOf(from);
+  if (start < 0) return false;
+  for (let index = start + 1; index < nodes.length; index += 1) {
+    const node = nodes[index];
+    if (!node || typeof node.focus !== "function" || node.disabled) continue;
+    if (typeof node.getAttribute === "function" && node.getAttribute("tabindex") === "-1") continue;
+    if (typeof node.closest === "function" && node.closest(POPUP_SELECTOR)) continue;
+    const rect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
+    if (rect && (rect.width <= 0 || rect.height <= 0)) continue;
+    node.focus();
+    return true;
+  }
+  return false;
+}
+
+export { pathTokenAt, completePathFragment, completionPlan, resolveTabCompletion, focusNextControl, createPathCompletionRuntime };

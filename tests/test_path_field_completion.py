@@ -27,6 +27,11 @@ def run_core() -> dict[str, object]:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(SOURCE)}, ctx);
         const core = ctx.window.CodoxearPathCompletion;
+        const calls = [];
+        const resolve = async (args) => core.resolveTabCompletion(Object.assign({{
+          defaultDir: "",
+          fetchListing: async (text) => {{ calls.push(text); return null; }},
+        }}, args || {{}}));
         const fragment = (f, names, options) => core.completePathFragment(f, names, options || {{}});
         const plan = (args) => core.completionPlan(args);
         const names = (list) => list.map((entry) => ({{ name: entry[0], isDir: Boolean(entry[1]) }}));
@@ -56,7 +61,23 @@ def run_core() -> dict[str, object]:
           plan_empty_value: plan({{ value: "", names: names([["codoxear", true]]) }}),
           plan_truncated_partial: plan({{ value: "~/al", truncated: true, names: names([["alpha", true], ["alpine", true]]) }}),
         }};
-        process.stdout.write(JSON.stringify(out));
+        const listing = (query, entries, truncated) => ({{ query, names: names(entries), truncated: Boolean(truncated) }});
+        (async () => {{
+          out.tab = {{
+            pickedRow: await resolve({{ value: "zzz", rows: [{{ path: "lib/picked.py" }}], pickedIndex: 0 }}),
+            pickedEqualsValue: await resolve({{ value: "lib/picked.py", rows: [{{ path: "lib/picked.py" }}], pickedIndex: 0 }}),
+            cachedCompletion: await resolve({{ value: "~/pro", cached: listing("~/pro", [["projects", true]]) }}),
+            cachedNoMatchSkipsFetch: await resolve({{ value: "~/zzz", cached: listing("~/zzz", [["projects", true]]) }}),
+            coldFetchCompletes: await resolve({{ value: "~/pro", cached: null, fetchListing: async (text) => {{ calls.push("cold:" + text); return listing(text, [["projects", true]]); }} }}),
+            coldFetchNoMatch: await resolve({{ value: "~/zzz", cached: null }}),
+            coldFetchThrows: await resolve({{ value: "~/pro", cached: null, fetchListing: async () => {{ throw new Error("boom"); }} }}),
+            emptyValue: await resolve({{ value: "", cached: null }}),
+            singleRow: await resolve({{ value: "~/rec", rows: [{{ path: "/srv/recent-project" }}] }}),
+            singleDraftRow: await resolve({{ value: "newfile", rows: [{{ path: "newfile", createNew: true }}] }}),
+            cachedFetches: calls.filter((text) => text === "~/pro").length,
+          }};
+          process.stdout.write(JSON.stringify(out));
+        }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});
         """
     )
     proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -130,3 +151,33 @@ def test_slashless_value_uses_the_surface_default_directory() -> None:
     assert result["plan_no_default_dir"]["value"] == "codoxear/"
     assert result["plan_no_default_dir"]["caret"] == len("codoxear/")
     assert result["plan_no_default_dir"]["unique"] is True
+
+
+def test_tab_resolution_never_depends_on_whether_a_listing_has_landed() -> None:
+    tab = run_core()["tab"]
+    # The measured bug: typing and pressing Tab immediately found no listing and
+    # did nothing. The resolver asks for the listing itself in that case.
+    assert tab["coldFetchCompletes"] == {"apply": "~/projects/"}
+    # A listing the field already has is final: no second request for the same
+    # text, because an identical request could only return the same answer.
+    assert tab["cachedCompletion"] == {"apply": "~/projects/"}
+    # The cached answer is used as-is: no second request for the same text.
+    assert tab["cachedFetches"] == 0
+
+
+def test_tab_resolution_falls_through_only_when_there_is_truly_nothing() -> None:
+    tab = run_core()["tab"]
+    assert tab["cachedNoMatchSkipsFetch"] == {"fallthrough": True}
+    assert tab["coldFetchNoMatch"] == {"fallthrough": True}
+    assert tab["coldFetchThrows"] == {"fallthrough": True}
+    assert tab["emptyValue"] == {"fallthrough": True}
+
+
+def test_tab_resolution_takes_picked_and_single_rows_but_not_drafts() -> None:
+    tab = run_core()["tab"]
+    assert tab["pickedRow"] == {"apply": "lib/picked.py"}
+    # A picked row that equals the value is not a decision: fall through to the
+    # listing so a directory can still be drilled into.
+    assert tab["pickedEqualsValue"] == {"fallthrough": True}
+    assert tab["singleRow"] == {"apply": "/srv/recent-project"}
+    assert tab["singleDraftRow"] == {"fallthrough": True}
