@@ -151,3 +151,28 @@ hit area, two equal columns at every width. Re-measured after the change: chip 3
 field, not a chip.
 
 Screenshots regenerated (`preview-desktop.png` at 1100×1000, `preview-phone.png` at 430×1150).
+
+## 2026-11-13 — dropdowns rejected; calendar + wheel built and measured
+
+User: "you use dropdown for datetime?" — correct, v3 proposed a 28-day list menu plus a 30-minute list
+menu, which is a dropdown pair, not a date/time control.
+
+Two further errors surfaced while fixing it:
+- The reason I had written for rejecting a calendar ("7 columns cannot reach the 44px touch target
+  inside a phone dialog") is arithmetically false. Measured content width: 393px viewport → 322.6px
+  content → 46.1px per column; 430px viewport → 356.6px → 50.9px. Desktop dialog → 64px. A calendar
+  fits.
+- The earlier preview carried wrong weekday labels (`Wed 12 Nov`, `Fri 14 Nov`). 2026-11-12 is a
+  Thursday and 2026-11-14 is a Saturday. The calendar in the mock is now generated from the real
+  month, not typed by hand.
+
+Replaced in the plan and the mock: `.snoozeCalendar` (7 columns, 44px-tall day cells, past days
+disabled, today ringed, selected ink-filled) + `.snoozeTimeWheel` (132px = 3 × 44px rows,
+`scroll-snap-type: y mandatory`, centred row in ink with 1px rules). No `.filePickerMenu` remains in the
+date/time path.
+
+Measured after the change: day cell 64×44 (desktop) / ≈46×44 at 393px, wheel row 44px, chips 32px,
+`Depends on` field 44px.
+
+Screenshots regenerated: `preview-custom.png` (the Custom… block alone), `preview-desktop.png`,
+`preview-phone.png`.

@@ -64,48 +64,40 @@ dependency, so `/edit` keeps its current whole-row contract and is not touched b
 
 ## 3. Custom date/time control
 
-Two pickers on the **chip plane**, not the field plane. The custom row belongs to the chip row above
-it, so it matches the chips, not the name input:
+No dropdowns. A date is a month grid; a time is a snapping wheel. Both live inline in the `Custom…`
+block — no overlay, so nothing can clip or mis-position on a phone.
 
-| | `.choiceChip` | custom pickers |
-| --- | --- | --- |
-| height | `--dialog-control-h` (32px) | same |
-| type | `--font-md` | same |
-| padding | `0 var(--space-5)` | same |
-| hit area | `::after { inset: -2px }` | same |
-| border / radius / fill | 1px `--border`, `--radius-control`, `--paper` | same |
+**Calendar** (`.snoozeCalendar`)
 
-Measured in the preview, after: chip 32px/13px, picker 32px/13px. (An earlier attempt put them on the
-44px/16px field plane — same box as the name input — and that is exactly the size difference you
-pointed at. Reverted.)
+- `‹ November 2026 ›` header: 32px icon buttons with the app's `::after` hit area, month title in
+  `--font-md` 600.
+- Weekday header in `--font-xs`, `--muted`, uppercase.
+- `.calGrid`: `repeat(7, minmax(0,1fr))`, day cells `min-height: 44px`. Measured: 46px wide at a 393px
+  viewport, 51px at 430px, 64px on desktop — so the 44px touch target is met in both axes. (The claim
+  that a 7-column grid could not reach 44px in a phone dialog was wrong; that is what produced the
+  dropdown.)
+- Past days `disabled` and muted; today ringed with an inset 1px `--border`; the selected day ink-filled
+  (`--ink` / `--paper`), same treatment as an active chip.
 
-The pickers are `dialogPickerBtn` + `dialogPickerMenu` — the "Depends on" primitive — in two equal
-columns at every width: both labels fit a ~166px phone column (`Fri 14 Nov`, `9:00am`). Pure helpers in
-`app_snooze.js` (`nextSnoozeDays(count, nowMs)`, `snoozeTimeSlots()`) build the menus without a DOM.
+**Time wheel** (`.snoozeTimeWheel`)
 
-Rules this needs (each one out-specifies the rule it replaces):
+- `max-height: 132px` = three 44px rows, `scroll-snap-type: y mandatory`,
+  `overscroll-behavior: contain` (it is a nested scroller inside `.formBody`), rows 44px with
+  `font-variant-numeric: tabular-nums`.
+- The settled row is `--ink` at weight 600 with 1px `--border` rules above and below; the rows around it
+  stay `--muted`, which is what makes it read as a wheel rather than a list.
+- 30-minute steps; commits the centred row on scroll settle, so any time is reachable, not only the
+  five preset moments.
 
-```
-.formViewer .customSnoozeRow {
-  display: none;                                   /* shown by the controller in custom mode */
-  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
-  gap: var(--space-2);                             /* same gutter as the chips */
-}
-.formViewer .customSnoozeRow .dialogPickerBtn {    /* beats .formViewer .dialogPickerBtn (44px) */
-  height: var(--dialog-control-h); minimum: same;
-  padding: 0 var(--space-5); font-size: var(--font-md); position: relative;
-}
-.formViewer .customSnoozeRow .dialogPickerBtn::after { content: ""; position: absolute; inset: -2px; }
-.formViewer .customSnoozeRow .pickerButtonPrimary { font-size: var(--font-md); }
-```
+**Wiring**
 
-`.customSnoozeRow` also has to come out of the phone media query's single-column list
-(`app.css:4206`), otherwise an equal-specificity rule fights it there.
-
-Menus: date = next 28 days as `.fileMenuItem` rows (`Today · Wed 12 Nov`, `Tomorrow · Thu 13 Nov`, …)
-with the current value `.active`; time = 30-minute slots, current value marked and scrolled into view.
-`positionDialogMenu` already handles the flip and max-height. Save: `new Date(y, m, d, hh, mm)` → epoch
-seconds, what `Date.parse("YYYY-MM-DDTHH:MM")` produced before.
+- `.customSnoozeRow` becomes one column: `grid-template-columns: minmax(0,1fr); gap: var(--space-3)`.
+- Pure helpers in `app_snooze.js`: `monthGrid(year, month)` (Monday-first, leading blanks, month
+  length), `clampSnoozeDate(day, today)` (no past days), `wheelIndex(epoch)` / `wheelEpoch(index)`.
+- Save: the selected day + wheel value → `new Date(y, m, d, hh, mm)` local → epoch seconds, what
+  `Date.parse("YYYY-MM-DDTHH:MM")` produced before.
+- Height cost: about 470px when expanded, and `.formBody` already scrolls (`app.css:3165-3179`), so the
+  dialog caps at the viewport and the body scrolls — the same behaviour as the new-session dialog.
 
 ## 4. Drag
 
