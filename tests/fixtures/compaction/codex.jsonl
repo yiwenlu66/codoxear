@@ -1,0 +1,4 @@
+{"type":"event_msg","timestamp":"2026-11-13T10:00:00Z","payload":{"type":"user_message","message":"Before compaction"}}
+{"type":"compacted","timestamp":"2026-11-13T10:01:00Z","payload":{"message":"REDACTED COMPACTION SUMMARY"}}
+{"type":"event_msg","timestamp":"2026-11-13T10:01:00.001Z","payload":{"type":"context_compacted"}}
+{"type":"event_msg","timestamp":"2026-11-13T10:02:00Z","payload":{"type":"user_message","message":"After compaction"}}

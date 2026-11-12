@@ -172,7 +172,7 @@ def _text_parts(content: Any) -> list[str]:
 
 
 def cc_user_text(obj: dict[str, Any]) -> str | None:
-    if obj.get("type") != "user" or obj.get("isMeta") is True:
+    if obj.get("type") != "user" or obj.get("isMeta") is True or obj.get("isCompactSummary") is True:
         return None
     msg = _message(obj, role="user")
     if msg is None:
@@ -513,6 +513,9 @@ def cc_system_api_error_is_terminal(obj: dict[str, Any]) -> bool:
 
 
 def cc_message_role(obj: dict[str, Any]) -> str | None:
+    # A compact summary is backend context, never a human turn or tool result.
+    if obj.get("isCompactSummary") is True:
+        return None
     typ = obj.get("type")
     if typ == "assistant":
         return "assistant"

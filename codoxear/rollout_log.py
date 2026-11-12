@@ -59,6 +59,7 @@ from .rollout_idle import _has_assistant_output_text
 from .rollout_idle import _last_chat_role_ts_from_tail
 from .rollout_idle import _last_conversation_ts_from_tail
 from .rollout_chat_batch import _extract_chat_events
+from .rollout_compaction import codex_compaction_source, enrich_compaction_events
 
 
 def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None) -> dict[str, Any]:
@@ -66,6 +67,9 @@ def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None
         return event
     out = dict(event)
     out["_before_byte"] = int(before_byte)
+    if out.get("kind") == "compaction":
+        # Position is unique even for timestamp-less legacy boundaries.
+        out.setdefault("message_id", f"compaction:{before_byte}")
     return out
 
 
@@ -171,8 +175,11 @@ def _read_chat_page_reverse(
         initial_cc_pending_tool_ids=initial_pending,
         prior_user_byte=prior_user_byte,
         prior_turn_has_assistant=prior_turn_has_assistant,
+        log_path=log_path,
     )
     next_before = records[0].start if records else (lower_bound if scan_limit is not None else 0)
+    if events:
+        next_before = min(next_before, events[0].get("_before_byte", next_before))
     return events, next_before, has_older, size, records
 
 
@@ -211,22 +218,44 @@ def _read_chat_tail_page_with_activity(log_path: Path, *, limit: int) -> tuple[l
     return [dict(event) for event in events], before_byte, after_byte, has_older, activity.copy() if activity is not None else None
 
 
+def _preceding_codex_checkpoint(log_path: Path, before_byte: int) -> JsonlRecord | None:
+    """Resolve only a split Codex notification/checkpoint pair, bounded to 64 KiB."""
+    lower_bound = max(0, before_byte - 64 * 1024)
+    for record in _iter_jsonl_records_reverse(log_path, before=before_byte):
+        if record.start < lower_bound:
+            break
+        if _single_chat_event(record.obj) is not None:
+            return record if codex_compaction_source(record.obj) == "checkpoint" else None
+    return None
+
+
 def _extract_positioned_chat_events(
     records: list[JsonlRecord],
     *,
     initial_cc_pending_tool_ids: set[str] | None = None,
     prior_user_byte: int | None = None,
     prior_turn_has_assistant: bool = False,
+    log_path: Path | None = None,
 ) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
+    # If a read boundary splits Codex's checkpoint/notification pair, canonicalize
+    # to the checkpoint's position/ID. A live client has already seen that ID;
+    # a tail/history page instead starts at that checkpoint. Pi never takes this
+    # look-behind path, and no enrichment adds reads to its hot tail.
+    projected_rows: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     cc_pending_tool_ids = set(initial_cc_pending_tool_ids or set())
     for record in records:
-        if pi_log_row_is_transcript_excluded(record.obj):
-            continue
         event = _single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         if event is not None:
-            events.append(_with_chat_position(event, before_byte=record.start))
-    events = _dedupe_assistant_chat_events(events)
+            event = _with_chat_position(event, before_byte=record.start)
+        projected_rows.append((record.obj, event))
+    first_visible = next((obj for obj, event in projected_rows if event is not None), None)
+    if log_path is not None and first_visible is not None and codex_compaction_source(first_visible) == "notification":
+        prior = _preceding_codex_checkpoint(log_path, records[0].start)
+        if prior is not None:
+            records = [prior, *records]
+            prior_event = _with_chat_position(_single_chat_event(prior.obj), before_byte=prior.start)
+            projected_rows.insert(0, (prior.obj, prior_event))
+    events = _dedupe_assistant_chat_events(enrich_compaction_events(projected_rows))
     events = _inject_no_response_events(
         records,
         events,
@@ -384,6 +413,7 @@ def _read_chat_live_delta(
         initial_cc_pending_tool_ids=initial_pending,
         prior_user_byte=prior_user_byte,
         prior_turn_has_assistant=prior_turn_has_assistant,
+        log_path=log_path,
     )
     objs = [record.obj for record in records]
     _events, meta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_pending)

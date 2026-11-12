@@ -422,6 +422,7 @@ def _project_live_record_window(
         initial_cc_pending_tool_ids=initial_cc_pending,
         prior_user_byte=prior_user_byte,
         prior_turn_has_assistant=prior_turn_has_assistant,
+        log_path=log_path,
     )
     if objs:
         if source_revision is not None:

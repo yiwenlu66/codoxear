@@ -1,0 +1,5 @@
+{"type":"user","uuid":"cc-u1","timestamp":"2026-11-13T10:00:00Z","message":{"role":"user","content":"Before compaction"}}
+{"type":"assistant","timestamp":"2026-11-13T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"First answer"}],"stop_reason":"end_turn"}}
+{"type":"system","subtype":"compact_boundary","uuid":"cc-boundary","timestamp":"2026-11-13T10:01:00Z","compactMetadata":{"trigger":"auto","preTokens":167189}}
+{"type":"user","isCompactSummary":true,"timestamp":"2026-11-13T10:01:00Z","message":{"role":"user","content":"REDACTED COMPACTION SUMMARY"}}
+{"type":"user","timestamp":"2026-11-13T10:02:00Z","message":{"role":"user","content":"After compaction"}}

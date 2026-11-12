@@ -405,12 +405,14 @@ def test_pi_length_text_compaction_continuation_does_not_insert_false_no_respons
         ),
     ]
     events = _extract_positioned_chat_events(records)
-    assert [ev["role"] for ev in events] == ["user", "assistant", "assistant"]
+    assert [ev["role"] for ev in events] == ["user", "assistant", "system", "assistant"]
+    assert events[2]["kind"] == "compaction"
+    assert "text" not in events[2]
     assert events[1]["text"] == "partial before compaction"
     assert events[1]["message_class"] == "narration"
     assert events[-1]["text"] == "continuing with a tool"
     assert events[-1]["message_class"] == "narration"
-    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+    assert all(ev.get("text") != _NO_RESPONSE_TEXT for ev in events)
 
 
 def test_pi_tool_use_message_does_not_project_no_response() -> None:

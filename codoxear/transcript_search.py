@@ -316,6 +316,7 @@ def iter_positioned_chat_events_forward(
     start_at = max(0, int(start_byte))
     cc_pending_tool_ids: set[str] = _rollout_log._cc_pending_tool_ids_before(log_path, start_at) if start_at > 0 else set()
     last_assistant_key: tuple[str, str] | None = None
+    previous_compaction_source: str | None = None
     if start_at > 0:
         open_user_byte, open_turn_has_assistant = _rollout_log._prior_open_turn_context(log_path, start_at)
     else:
@@ -335,6 +336,19 @@ def iter_positioned_chat_events_forward(
             raw_event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         except Exception:
             raw_event = None
+        source = _rollout_log.codex_compaction_source(record.obj)
+        if source == "notification":
+            if previous_compaction_source == "checkpoint":
+                raw_event = None
+            else:
+                prior = _rollout_log._preceding_codex_checkpoint(log_path, record.start)
+                if prior is not None:
+                    raw_event = _rollout_log._with_chat_position(_rollout_log._single_chat_event(prior.obj), before_byte=prior.start)
+                    record = prior
+        if source:
+            previous_compaction_source = source
+        elif raw_event is not None:
+            previous_compaction_source = None
         if raw_event is not None:
             role = raw_event.get("role")
             if role == "user":
@@ -455,7 +469,16 @@ def read_chat_window_around(
             has_newer = True
             break
         right.append(event)
-    return left + right, next_before, bool(has_older), has_newer
+    combined = []
+    seen_compactions: set[str] = set()
+    for event in left + right:
+        if event.get("kind") == "compaction":
+            key = event["message_id"]
+            if key in seen_compactions:
+                continue
+            seen_compactions.add(key)
+        combined.append(event)
+    return combined, next_before, bool(has_older), has_newer
 
 
 def search_chat_log(

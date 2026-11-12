@@ -25,6 +25,7 @@ from .rollout_events import _event_ts
 from .rollout_events import _strip_oai_mem_citation_tail
 from .subagent_events import is_subagent_event_id
 from .rollout_events import _text_message_id
+from .rollout_compaction import compaction_event
 
 
 def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
@@ -102,6 +103,9 @@ def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
 
 
 def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+    boundary = compaction_event(obj)
+    if boundary is not None:
+        return boundary
     typ = obj.get("type")
     if typ in ("user", "assistant", "system"):
         return get_agent_backend("cc").chat_event_from_log_row(obj, cc_pending_tool_ids=cc_pending_tool_ids)

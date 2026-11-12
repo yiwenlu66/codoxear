@@ -15,6 +15,7 @@ from .pi_log import pi_assistant_tool_invocation_count
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_user_text
 from .rollout_chat_events import _single_chat_event
+from .rollout_compaction import enrich_compaction_events
 from .rollout_events import _codex_error_affects_turn_status
 from .subagent_events import is_subagent_event_id
 
@@ -40,7 +41,7 @@ def _extract_chat_events(
         duplicate-subagent tracking so batch-level event and turn status remain
         consistent across backend log formats.
     """
-    events: list[dict[str, Any]] = []
+    projected_rows: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     total_thinking = 0
     total_thinking_tokens = 0
     total_tools = 0
@@ -62,8 +63,7 @@ def _extract_chat_events(
                     event = None
                 else:
                     seen_subagent_ids.add(message_id)
-            if event is not None:
-                events.append(event)
+        projected_rows.append((obj, event))
 
         if typ == "user":
             user_text = cc_user_text(obj)
@@ -201,7 +201,7 @@ def _extract_chat_events(
                 continue
 
     return (
-        events,
+        enrich_compaction_events(projected_rows),
         {"thinking": total_thinking, "thinking_tokens": total_thinking_tokens, "tool": total_tools, "system": total_system},
         {"turn_start": turn_start, "turn_end": turn_end, "turn_aborted": turn_aborted},
         {"tool_names": sorted(tool_names), "last_tool": last_tool},
