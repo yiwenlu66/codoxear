@@ -1257,6 +1257,28 @@
         flex-direction: column;
         width: 100%;
       }
+      .msg-row.compaction-row { display: block; margin: var(--space-7) 0 var(--space-5); }
+      .compactionMark {
+        display: flex; align-items: center; gap: var(--space-4);
+        color: var(--muted); font-size: var(--font-sm); line-height: 1.2;
+      }
+      .compactionMark::before, .compactionMark::after {
+        content: ""; flex: 1 1 0; min-width: var(--space-7);
+        border-top: 1px dashed var(--border);
+      }
+      .compactionLabel {
+        display: inline-flex; align-items: center; gap: var(--space-3);
+        flex: 0 1 auto; min-width: 0; white-space: nowrap;
+      }
+      .compactionIcon { width: 14px; height: 14px; flex: 0 0 auto; }
+      .compactionTitle { color: var(--text); font-weight: 600; }
+      .compactionTokens { font-family: var(--font-mono); font-size: var(--font-xs); }
+      .compactionTokens b { font-weight: 600; color: var(--text); }
+      .compactionMeta {
+        text-align: center; color: var(--text-subtle, var(--muted));
+        font-size: var(--font-xs); margin-top: var(--space-2);
+      }
+      .compactionMeta .ts { position: static; font-size: inherit; }
       .day-sep {
         align-self: center;
         margin: var(--space-6) 0 var(--space-3) 0;

@@ -8,7 +8,12 @@
     return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
   }
 
+  function isTranscriptEvent(ev) {
+    return Boolean(ev && (ev.role === "user" || ev.role === "assistant" || (ev.role === "system" && ev.kind === "compaction")));
+  }
+
   function eventKey(ev) {
+    if (ev?.kind === "compaction") return ev.message_id || `compaction|${ev.ts ?? ""}`;
     if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
     const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
     if (ts === null) return "";
@@ -77,9 +82,16 @@
   }
 
   function normalizeTailEvent(ev) {
-    if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
-    if (typeof ev.text !== "string" || !ev.text.trim()) return null;
-    const out = { role: ev.role, text: ev.text };
+    if (!isTranscriptEvent(ev)) return null;
+    const compaction = ev.kind === "compaction";
+    if (!compaction && (typeof ev.text !== "string" || !ev.text.trim())) return null;
+    const out = compaction ? { role: "system", kind: "compaction" } : { role: ev.role, text: ev.text };
+    if (compaction) {
+      for (const key of ["tokens_before", "tokens_after", "kept_messages"]) {
+        if (Number.isInteger(ev[key]) && ev[key] >= 0) out[key] = ev[key];
+      }
+      if (ev.trigger === "auto" || ev.trigger === "manual") out.trigger = ev.trigger;
+    }
     if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
     if (typeof ev.message_class === "string") out.message_class = ev.message_class;
     if (typeof ev.message_id === "string") out.message_id = ev.message_id;
@@ -678,8 +690,8 @@
     const msgs = [];
     const seen = new Set();
     for (const ev of events || []) {
-      if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-      if (consumePending) takePendingMatch(ev, selectedSessionId, { allowUntimedCommit: false });
+      if (!isTranscriptEvent(ev)) continue;
+      if (consumePending && ev.kind !== "compaction") takePendingMatch(ev, selectedSessionId, { allowUntimedCommit: false });
       const key = eventKey(ev);
       if (key && seen.has(key)) continue;
       if (key) seen.add(key);
@@ -739,8 +751,8 @@
     }
 
     function appendEvent(ev) {
-      if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return false;
-      if (consumePendingUserIfMatches(ev)) return false;
+      if (!isTranscriptEvent(ev)) return false;
+      if (ev.kind !== "compaction" && consumePendingUserIfMatches(ev)) return false;
       if (isDuplicateEvent(ev)) return false;
       if (isAdjacentAssistantDuplicateEvent(ev)) {
         markEventSeen(ev);
@@ -821,7 +833,7 @@
       const prependedMessageIds = new Set();
       const msgs = [];
       for (const ev of allEvents || []) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+        if (!isTranscriptEvent(ev)) continue;
         const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
         if (messageId && (renderedMessageIds.has(messageId) || prependedMessageIds.has(messageId))) continue;
         if (messageId) prependedMessageIds.add(messageId);
@@ -896,11 +908,11 @@
       let prevDay = null;
       let lastDay = null;
       for (const row of rows) {
-        const role = row.classList.contains("user") ? "user" : "assistant";
+        const role = row.dataset.kind === "compaction" ? "system" : row.classList.contains("user") ? "user" : "assistant";
         const ts = Number(row.dataset.ts || "0");
         const day = ts ? ymd(new Date(ts * 1000)) : null;
         row.classList.remove("grouped");
-        if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
+        if (role !== "system" && prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
         prevRole = role;
         prevDay = day;
         if (day && day !== lastDay) {

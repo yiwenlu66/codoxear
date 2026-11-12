@@ -9,7 +9,55 @@
     return value;
   }
 
+  function formatCompactionTokens(value) {
+    if (value >= 1000000) return `${Number((value / 1000000).toFixed(1))}M`;
+    if (value >= 1000) return `${Number((value / 1000).toFixed(value < 10000 ? 1 : 0))}k`;
+    return String(value);
+  }
+
+  function makeCompactionRow(ev, { ts }, deps) {
+    const el = requireFunction(deps && deps.el, "el");
+    const time24 = requireFunction(deps && deps.time24, "time24");
+    const row = el("div", { class: "msg-row compaction-row", role: "separator", "aria-label": "Context compacted" });
+    row.dataset.role = "system";
+    row.dataset.kind = "compaction";
+    if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+    if (typeof ev.message_id === "string" && ev.message_id) row.dataset.messageId = ev.message_id;
+    if (typeof ev.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
+    const mark = el("div", { class: "compactionMark" });
+    const label = el("span", { class: "compactionLabel" });
+    label.appendChild(el("span", { "aria-hidden": "true", html: '<svg class="compactionIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16"/><path d="M4 20h16"/><path d="m9 8 3 3 3-3"/><path d="m9 16 3-3 3 3"/></svg>' }));
+    label.appendChild(el("span", { class: "compactionTitle", text: "Context compacted" }));
+    const validCount = (value) => Number.isInteger(value) && value >= 0;
+    const before = validCount(ev.tokens_before) ? ev.tokens_before : null;
+    const after = validCount(ev.tokens_after) ? ev.tokens_after : null;
+    if (before !== null || after !== null) {
+      const tokens = el("span", { class: "compactionTokens" });
+      if (before !== null) tokens.appendChild(el("b", { text: formatCompactionTokens(before) }));
+      if (before !== null && after !== null) tokens.appendChild(el("span", { text: " → " }));
+      if (after !== null) tokens.appendChild(el("b", { text: formatCompactionTokens(after) }));
+      label.appendChild(tokens);
+    }
+    mark.appendChild(label);
+    row.appendChild(mark);
+    const segments = [];
+    if (ev.trigger === "auto" || ev.trigger === "manual") segments.push(ev.trigger);
+    if (validCount(ev.kept_messages)) segments.push(`kept last ${ev.kept_messages} ${ev.kept_messages === 1 ? "message" : "messages"}`);
+    if (typeof ts === "number" && Number.isFinite(ts)) segments.push(time24(new Date(ts * 1000)));
+    if (segments.length) {
+      const meta = el("div", { class: "compactionMeta" });
+      segments.forEach((segment, index) => {
+        if (index) meta.appendChild(el("span", { text: " · " }));
+        const isTime = index === segments.length - 1 && typeof ts === "number" && Number.isFinite(ts);
+        meta.appendChild(el("span", { class: isTime ? "ts" : "", text: segment }));
+      });
+      row.appendChild(meta);
+    }
+    return { row, bubble: null };
+  }
+
   function makeRow(ev, { ts, pending }, deps) {
+    if (ev.kind === "compaction") return makeCompactionRow(ev, { ts }, deps);
     const el = requireFunction(deps && deps.el, "el");
     const chatMarkdownHtmlCached = requireFunction(deps && deps.chatMarkdownHtmlCached, "chatMarkdownHtmlCached");
     const upgradeCandidateFileRefs = requireFunction(deps && deps.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
@@ -145,6 +193,7 @@
   }
 
   function rowSearchText(row) {
+    if (row?.dataset?.kind === "compaction") return "";
     const md = row ? row.querySelector(".md") : null;
     return String((md || row || {}).textContent || "");
   }
