@@ -245,7 +245,7 @@ def test_stored_mode_is_applied_at_construction_and_when_the_session_is_selected
     assert result["writes"] == []
 
 
-def test_successful_send_and_enqueue_reset_height_mode_but_clear_composer_does_not() -> None:
+def test_successful_send_and_enqueue_reset_height_mode_and_so_does_clear_composer() -> None:
     result = run_scenario(
         """
         const key = "codexweb.composerHeight.sid";
@@ -282,12 +282,81 @@ def test_successful_send_and_enqueue_reset_height_mode_but_clear_composer_does_n
     )
     assert result["sendCalls"] == [["send", "hello"]]
     assert result["afterSend"]["mode"] == "normal" and result["afterSend"]["stored"] is None
-    assert result["afterClear"]["mode"] == "full" and result["afterClear"]["stored"] == '{"mode":"full"}'
+    assert result["afterClear"]["mode"] == "normal" and result["afterClear"]["stored"] is None
     assert result["choiceOpen"]["mode"] == "full"
     assert result["nowCalls"] == [["send", "steer"]]
     assert result["afterNow"]["mode"] == "normal" and result["afterNow"]["stored"] is None
     assert result["laterCalls"] == [["queue", "queue me"]]
     assert result["afterLater"]["mode"] == "normal" and result["afterLater"]["stored"] is None
+
+
+def test_a_server_draft_that_arrives_empty_collapses_every_client() -> None:
+    result = run_scenario(
+        """
+        const key = "codexweb.composerHeight.sid";
+        const tall = harness({ stored: { [key]: '{"mode":"tall","height":420}' } });
+        const before = tall.snapshot();
+        // Another client sent: the server draft arrives empty through the same
+        // setDraftFromServer seam draft sync uses.
+        tall.controller.setDraftFromServer("sid", "");
+        const afterRemoteSend = tall.snapshot();
+
+        const kept = harness({ stored: { [key]: '{"mode":"full"}' } });
+        kept.controller.setDraftFromServer("sid", "text from another client");
+        const afterRemoteEdit = kept.snapshot();
+
+        // Typing a tall draft down to empty is a live edit, not a consumption:
+        // the box only collapses when the app empties the composer.
+        const typed = harness({ stored: { [key]: '{"mode":"tall","height":420}' } });
+        typed.textarea.value = "draft";
+        typed.textarea.emit("input");
+        typed.textarea.value = "";
+        typed.textarea.emit("input");
+        const typedEmpty = typed.snapshot();
+
+        process.stdout.write(JSON.stringify({ before, afterRemoteSend, afterRemoteEdit, typedEmpty }));
+        """
+    )
+    assert result["before"]["mode"] == "tall" and result["before"]["tallVar"] == "420px"
+    assert result["afterRemoteSend"]["mode"] == "normal"
+    assert result["afterRemoteSend"]["stored"] is None
+    # The remembered tall height survives for the next expand (exactly as after a
+    # local send); CSS reads --composer-tall-h only under data-height="tall".
+    assert result["afterRemoteSend"]["tallVar"] == "420px"
+    assert result["afterRemoteEdit"]["mode"] == "full"
+    assert result["afterRemoteEdit"]["stored"] == '{"mode":"full"}'
+    assert result["typedEmpty"]["mode"] == "tall"
+    assert result["typedEmpty"]["stored"] == '{"mode":"tall","height":420}'
+
+
+def test_clear_collapses_the_composer_and_keeps_the_undo_chip_usable() -> None:
+    result = run_scenario(
+        """
+        const h = harness({ stored: { "codexweb.composerHeight.sid": '{"mode":"tall","height":420}' } });
+        h.textarea.value = "a long draft";
+        h.textarea.emit("input");
+        h.clearBtn.emit("click");
+        const cleared = h.snapshot();
+        const chrome = {
+          strip: h.composerStrip.style.display,
+          undo: h.draftUndoBtn.style.display,
+          clear: h.clearBtn.style.display,
+        };
+        h.draftUndoBtn.emit("click");
+        const undone = { ...h.snapshot(), text: h.textarea.value };
+        process.stdout.write(JSON.stringify({ cleared, chrome, undone }));
+        """
+    )
+    # The clear consumed the draft, so the box returns to its compact height...
+    assert result["cleared"]["mode"] == "normal"
+    assert result["cleared"]["stored"] is None
+    # ...while the undo chip stays reachable in the strip.
+    assert result["chrome"]["strip"] == "flex"
+    assert result["chrome"]["undo"] == "inline-flex"
+    assert result["undone"]["text"] == "a long draft"
+    # Undo restores the text at the compact height; the tall geometry is gone.
+    assert result["undone"]["mode"] == "normal"
+    assert result["undone"]["stored"] is None
 
 
 def test_drag_resizes_continuously_with_snap_gravity_and_suppresses_the_click() -> None:

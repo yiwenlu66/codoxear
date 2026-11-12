@@ -238,6 +238,18 @@ re-pushed (draft resurrection after a send from another client). Consequences:
 - Session rows expose the tombstone ts as `draft_updated_ts`; `0.0` means
   the session has no entry at all.
 
+Composer height mode (`codexweb.composerHeight.<sid>`) stays per-browser
+localStorage — tall is a fixed px / 55%-of-viewport height, so sharing it across
+a phone and a laptop is meaningless — but the *reset* is draft state: an empty
+composer is never tall. `clearComposer()` and `setDraftFromServer()` with empty
+text both collapse through the single writer `applyHeightMode("normal")`, which
+also clears the stored key. Consequence: a send (or clear) in one browser
+collapses every client that then receives the empty draft, because the
+consumption edge rides the existing tombstone; the pull is gated on
+"composer unmodified since this client's last sync point", so a client actively
+editing keeps both its text and its geometry. Typing a draft down to empty does
+not collapse (the app did not consume it).
+
 ## Pi integration strategy
 
 Codoxear wraps all backends in a PTY so web and terminal share the same

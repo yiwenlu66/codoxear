@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Docker-isolated behavioral verifier for the composer height modes
 # (normal / tall / full, the #expandBtn cycle + drag handle, per-session
-# persistence, and the send-reset).
+# persistence, the send-reset, and the cross-client reset).
 #
 # Same isolation contract as scripts/docker_theme_verify.sh: the app is built
 # from a Git archive of the requested commit, runs under a container-only HOME
@@ -9,7 +9,9 @@
 # agent-browser on a loopback port that is never the live 8743. Every flow
 # runs through the real composer: a real keyboard-less fill, real mouse clicks
 # and a real mouse drag on the grabber strip (#expandBtn), plus synthetic PointerEvents for
-# the deterministic drag/click-suppression and snap paths.
+# the deterministic drag/click-suppression and snap paths. The cross-client step
+# drives a second, independent agent-browser session (its own profile, cookies,
+# and localStorage) as the second client.
 set -euo pipefail
 
 usage() {
@@ -74,12 +76,20 @@ browser() {
   AGENT_BROWSER_SESSION="$browser_session" agent-browser "$@"
 }
 
+# The second client: an independent browser (own profile, cookies, and
+# localStorage) against the same server, which is what makes a composer height
+# that only lives in localStorage device-private.
+browser_b() {
+  AGENT_BROWSER_SESSION="${browser_session}-b" agent-browser "$@"
+}
+
 capture_container_diagnostics() {
   "${docker[@]}" logs "$container" > "$artifacts/server.log" 2>&1 || true
 }
 
 cleanup() {
   browser close >/dev/null 2>&1 || true
+  browser_b close >/dev/null 2>&1 || true
   "${docker[@]}" rm -f "$container" >/dev/null 2>&1 || true
   rm -rf "$root"
 }
@@ -264,6 +274,9 @@ PROBE='(() => {
 probe() {
   browser eval "$PROBE" --json > "$artifacts/$1.json" 2>&1 || fail "probe $1 failed"
 }
+probe_b() {
+  browser_b eval "$PROBE" --json > "$artifacts/$1.json" 2>&1 || fail "probe $1 failed"
+}
 shot() {
   browser screenshot "$artifacts/$1.png" > /dev/null 2>&1 || fail "screenshot $1 failed"
 }
@@ -275,6 +288,14 @@ click_expand() {
 select_session() {
   browser click "#sessions .session[data-session-id=\"$1\"]" > /dev/null 2>&1 || fail "could not select session $1"
   settle 1200
+}
+select_session_b() {
+  browser_b click "#sessions .session[data-session-id=\"$1\"]" > /dev/null 2>&1 || fail "could not select session $1 in the second browser"
+  browser_b wait 1200 > /dev/null 2>&1 || true
+}
+click_expand_b() {
+  browser_b click '#expandBtn' > /dev/null 2>&1 || fail "second browser expand button click failed"
+  browser_b wait 450 > /dev/null 2>&1 || true
 }
 session_ids() {
   browser eval '(() => [...document.querySelectorAll("#sessions .session[data-session-id]")].map((n) => n.dataset.sessionId))()' --json > "$artifacts/session-ids.json" 2>&1 || fail "could not list sessions"
@@ -387,6 +408,45 @@ browser wait 2500 > /dev/null 2>&1
 probe g2-after-send
 shot 04-after-send-reset
 
+# k. cross-client reset. The second browser selects the same session, types its
+# own long draft and expands to tall; its draft upload makes the server draft
+# authoritative for both clients. When THIS browser sends, the second browser
+# receives the empty draft through draft sync and must collapse with it — the
+# height mode lives in per-browser localStorage, so only the shared draft state
+# can carry that event across clients.
+browser_b set viewport 1280 860 > /dev/null 2>&1 || true
+browser_b set media light > /dev/null 2>&1 || true
+browser_b open "http://127.0.0.1:${port}/" > "$artifacts/browser-b-open.txt" 2>&1 || fail "second browser could not open app"
+browser_b errors --clear --json > /dev/null 2>&1 || true
+browser_b fill '#pw' "$password" > /dev/null 2>&1 || fail "second browser login field was not available"
+browser_b click '#loginBtn' > /dev/null 2>&1 || fail "second browser login button was not available"
+browser_b wait 3500 > /dev/null 2>&1 || true
+select_session_b "$SID_A"
+browser_b fill '#msg' "$LONG_DRAFT" > /dev/null 2>&1 || fail "second browser could not type the long draft"
+browser_b wait 1500 > /dev/null 2>&1 || true
+click_expand_b
+probe_b k1-second-browser-tall
+
+browser fill '#msg' 'cross-client reset probe' > /dev/null 2>&1 || fail "could not type the sending draft"
+browser eval '(() => { document.getElementById("msg").focus(); return true; })()' --json > /dev/null 2>&1 || true
+browser press Control+Enter > /dev/null 2>&1 || fail "Ctrl+Enter failed in the sending browser"
+browser wait 1500 > /dev/null 2>&1 || true
+probe k2-sending-browser-after-send
+
+# The second browser learns the draft is gone on its next session poll (5s
+# visible cadence; up to 15s if the page is treated as hidden), then collapses.
+collapsed_after_s=0
+for i in $(seq 1 9); do
+  sleep 3
+  probe_b k3-second-browser-after-remote-send
+  if python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["data"]["result"]; raise SystemExit(0 if p["height"] == "normal" else 1)' "$artifacts/k3-second-browser-after-remote-send.json"; then
+    collapsed_after_s=$(( i * 3 ))
+    break
+  fi
+done
+printf '%s\n' "$collapsed_after_s" > "$artifacts/cross-client-collapse-seconds.txt"
+shot 05b-second-browser-after-remote-send
+
 # h. drag. h1: real mouse drag from normal; the click that follows pointerup
 # on a real mouse must be suppressed, so the mode stays tall.
 browser fill '#msg' "$LONG_DRAFT" > /dev/null 2>&1 || fail "could not retype the long draft"
@@ -485,6 +545,7 @@ names = [
     "h3a-back-to-normal", "h3b-drag-past-full", "h4-drag-down-normal",
     "i0-seeded-tall", "i1-aborted-drag-lands-normal", "i2-first-click-suppressed", "i3-second-click-reuses-committed",
     "j1-phone-four-lines",
+    "k1-second-browser-tall", "k2-sending-browser-after-send", "k3-second-browser-after-remote-send",
 ]
 p = {n: load(n) for n in names}
 sid_a = (artifacts / "session-order.txt").read_text().split()[0]
@@ -538,6 +599,20 @@ checks = {
     "h_drag_down_from_full_snaps_normal": h4["height"] == "normal" and key_a not in h4["storageKeys"] and h4["chatWrapDisplay"] != "none",
 }
 i0, i1, i2, i3 = (p[n] for n in ["i0-seeded-tall", "i1-aborted-drag-lands-normal", "i2-first-click-suppressed", "i3-second-click-reuses-committed"])
+# Cross-client reset: the second browser's tall composer collapses on the shared
+# draft's tombstone, so "a send returns the composer to normal" holds for every
+# client, not only the one that sent.
+k1, k2s, k3 = p["k1-second-browser-tall"], p["k2-sending-browser-after-send"], p["k3-second-browser-after-remote-send"]
+collapse_seconds = float((artifacts / "cross-client-collapse-seconds.txt").read_text().strip() or 0)
+checks["k_second_browser_precondition_is_tall_in_the_same_session"] = bool(
+    k1["sid"] == sid_a and k1["height"] == "tall" and k1["draftLines"] >= 30 and key_a in k1["storageKeys"]
+)
+checks["k_remote_send_collapses_the_second_browser"] = bool(
+    k3["sid"] == sid_a and k3["height"] == "normal" and k3["draftLines"] == 1
+    and key_a not in k3["storageKeys"] and k3["expandVisible"] is False
+)
+checks["k_local_sender_is_normal_too"] = k2s["height"] == "normal"
+checks["k_remote_collapse_arrives_within_a_poll_window"] = 0 < collapse_seconds <= 27
 checks["i_seed_loads_committed_tall_500"] = i0["height"] == "tall" and i0["tallVar"] == "500px"
 checks["i_aborted_drag_lands_normal_keeps_committed_preference"] = i1["height"] == "normal"
 checks["i_first_click_after_abort_suppressed"] = i2["height"] == "normal"

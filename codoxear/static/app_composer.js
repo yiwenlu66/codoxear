@@ -848,8 +848,13 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       applyHeightMode(mode, { persist: false });
     }
 
-    // A successful send/enqueue consumed the draft: the next message starts compact.
-    function resetHeightMode() {
+    // An empty composer is never tall: a height mode belongs to the draft it was
+    // expanded for, so the mode dies with that draft. Every path that empties
+    // the textarea funnels through this — this client's send, its own clear, a
+    // picker command, and another client's send arriving as an empty server
+    // draft — which is what lets a remote send collapse every client's composer.
+    function resetHeightModeIfExpanded() {
+      if (heightMode === "normal") return;
       applyHeightMode("normal");
     }
 
@@ -928,8 +933,13 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     function setDraftFromServer(sessionId, text) {
       if (!sessionId) return;
       hideModelPicker();
-      textarea.value = String(text || "");
+      const value = String(text || "");
+      textarea.value = value;
       saveSessionDraft(sessionId);
+      // Covers the local Clear control (its undo chip keeps the strip visible)
+      // and a server draft that arrives empty because another client sent or
+      // cleared the shared draft.
+      if (!value) resetHeightModeIfExpanded();
       autoGrow();
     }
 
@@ -985,6 +995,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       hideModelPicker();
       textarea.value = "";
       clearSessionDraft(sessionState.get("selected"));
+      resetHeightModeIfExpanded();
       autoGrow();
       if (blur) blurComposer();
     }
@@ -1114,10 +1125,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       const ok = await sendText(raw);
       if (ok && historyController) historyController.reset();
       if (ok) blurComposer();
-      if (ok && textarea.value === raw) {
-        clearComposer({ blur: false });
-        resetHeightMode();
-      }
+      if (ok && textarea.value === raw) clearComposer({ blur: false });
     };
 
     sendChoiceNowBtn.onclick = async () => {
@@ -1128,10 +1136,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       const ok = await sendText(raw, { sid: sessionId });
       if (ok && historyController) historyController.reset();
       if (ok) blurComposer();
-      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) {
-        clearComposer({ blur: false });
-        resetHeightMode();
-      }
+      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) clearComposer({ blur: false });
     };
     sendChoiceLaterBtn.onclick = async () => {
       const raw = sendChoicePending && sendChoicePending.text;
@@ -1141,10 +1146,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       hideSendChoice({ restoreFocus: true });
       if (!raw || !sessionId) return;
       const ok = await enqueueComposerText(raw, { sid: sessionId });
-      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) {
-        clearComposer();
-        resetHeightMode();
-      }
+      if (ok && sessionId === sessionState.get("selected") && textarea.value === raw) clearComposer();
     };
     sendChoiceCancelBtn.onclick = () => hideSendChoice({ restoreFocus: true });
     sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });

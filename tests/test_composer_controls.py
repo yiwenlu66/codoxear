@@ -17,7 +17,7 @@ def test_clear_visibility_tracks_the_grabber_condition_and_nonempty_text():
                       "emptyTall": ["stack", "none"], "tallText": ["stack", ""]}
 
 
-def test_clear_undo_round_trip_uses_draft_sync_and_preserves_height():
+def test_clear_undo_round_trip_uses_draft_sync_and_collapses_the_composer():
     result = run_scenario('''
       const h = harness(); h.expandBtn.emit("click");
       const text = "first line\\nsecond line ";
@@ -31,12 +31,16 @@ def test_clear_undo_round_trip_uses_draft_sync_and_preserves_height():
         cache: h.storage.get("codexweb.draft.sid"), caret: h.textarea.selectionStart,
         focus: h.calls, chip: h.draftUndoBtn.style.display, grab: h.expandBtn.style.display}));
     ''')
-    assert result["cleared"] == {"value": "", "chip": "inline-flex", "strip": "flex", "grab": "none", "cache": None, "mode": "tall"}
+    # Clearing consumed the draft, so the composer returns to its compact height
+    # while the undo chip keeps the strip (and itself) reachable.
+    assert result["cleared"] == {"value": "", "chip": "inline-flex", "strip": "flex", "grab": "none", "cache": None, "mode": "normal"}
     assert result["restored"] == "first line\nsecond line " == result["cache"]
     assert result["edits"] == ["", result["restored"]]
     assert result["caret"] == len(result["restored"])
     assert result["focus"] == [["focus"]]
-    assert result["chip"] == "none" and result["grab"] == ""
+    # Undo restores the text at the compact height; the grabber is only shown
+    # again when the restored draft overflows the normal cap.
+    assert result["chip"] == "none" and result["grab"] == "none"
 
 
 def test_undo_dismissals_are_permanent_and_never_clobber_a_new_draft():
