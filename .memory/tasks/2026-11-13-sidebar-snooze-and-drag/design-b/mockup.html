@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en" data-theme="clay" data-mode="light" data-input-modality="pointer">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom snooze — compact segmented stepper</title>
+<link rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/app.css">
+<link id="theme" rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/themes/clay.css">
+<style id="proposal">
+/* Proposed field geometry, not page scaffolding. */
+#editViewer .snoozeField .choiceChips,
+.mockDialog .snoozeField .choiceChips {
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: var(--space-5);
+  column-gap: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+}
+.formViewer .snoozeField .choiceChip { padding-inline: var(--space-3); }
+.formViewer .snoozeField .choiceChip::after {
+  inset: auto 0;
+  top: 50%;
+  height: var(--ctl);
+  transform: translateY(-50%);
+}
+.snoozeField { gap: var(--space-2); }
+.snoozeStepper {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  column-gap: var(--space-5);
+  padding-inline: var(--space-2);
+}
+.snoozeSegments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(var(--ctl), 1fr));
+}
+.snoozeSegments.timeSegments { grid-template-columns: repeat(2, minmax(var(--ctl), 1fr)); }
+.snoozeSegment {
+  display: grid;
+  grid-template-rows: var(--ctl) var(--dialog-control-h) var(--ctl);
+  justify-items: center;
+  align-items: center;
+  min-width: 0;
+}
+.formViewer .snoozeNudge {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+}
+.formViewer .snoozeNudge:hover { background: var(--paper); color: var(--ink); }
+.snoozeNudge .icon { width: var(--font-3xl); height: var(--font-3xl); }
+.snoozeValue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--dialog-control-h);
+  border-block: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--font-md)/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.snoozeSegment:first-child .snoozeValue {
+  border-left: 1px solid var(--border);
+  border-top-left-radius: var(--radius-control);
+  border-bottom-left-radius: var(--radius-control);
+}
+.snoozeSegment:last-child .snoozeValue {
+  border-right: 1px solid var(--border);
+  border-top-right-radius: var(--radius-control);
+  border-bottom-right-radius: var(--radius-control);
+}
+.snoozeSegment [data-part="hour"] { position: relative; }
+.snoozeSegment [data-part="hour"]::after {
+  content: ":";
+  position: absolute;
+  right: 0;
+  transform: translateX(50%);
+}
+.snoozeValue:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; position: relative; z-index: 1; }
+:where(:root[data-theme="paper"][data-mode="dark"]) .snoozeValue,
+:where(:root[data-theme="paper"][data-mode="dark"]) .snoozeSegment:first-child .snoozeValue,
+:where(:root[data-theme="paper"][data-mode="dark"]) .snoozeSegment:last-child .snoozeValue {
+  border-color: var(--hairline);
+}
+</style>
+<style id="scaffolding">
+/* Presentation-only: three real dialogs in document flow. */
+html, body { height: auto; min-height: 100%; overflow: auto; }
+body { padding: var(--space-7); }
+main { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--space-7); max-width: 100%; align-items: start; }
+figure { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+figure:nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
+figcaption { font-size: var(--font-sm); color: var(--muted); }
+.mockDialog.formDialog {
+  display: flex; flex-direction: column; position: static; transform: none;
+  width: 100%; max-width: 480px; gap: var(--dialog-group-gap);
+  max-height: calc(100dvh - var(--space-7) - var(--space-7));
+}
+.queueHeader .title { font-weight: 600; }
+.mockDialog .formBody { flex-shrink: 1; }
+.mockDialog .dialogPickerBtn { width: fit-content; }
+.mockDialog .sliderRow { display: grid; grid-template-columns: minmax(0,1fr) auto auto; }
+.mockDialog .rangeValue { min-width: 0; }
+.mockDialog [hidden] { display: none; }
+@media(max-width: 880px) {
+  main { display: flex; flex-direction: column; }
+  figure { width: 100%; min-height: calc(100dvh - var(--space-7)); }
+  .mockDialog.formDialog { max-width: none; }
+}
+</style>
+</head>
+<body>
+<main id="states"></main>
+<script>
+const icon = path => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+const presets = [['none','No snooze',''],['evening','This evening','· 6pm'],['tomorrow','Tomorrow','· 9am'],['weekend','This weekend','· Sat 10am'],['nextWeek','Next week','· Mon 9am'],['indefinite','Indefinitely',''],['custom','Custom…','']];
+const figures = [['none','(a) No snooze'],['custom','(b) Custom…'],['indefinite','(c) Indefinitely']];
+const parts = [['day','Day'],['month','Month'],['year','Year'],['hour','Hour'],['minute','Half hour']];
+const segment = ([part,label]) => `<div class="snoozeSegment"><button class="icon-btn snoozeNudge" data-nudge="1" data-component="${part}" aria-label="Increase ${label.toLowerCase()}">${icon('m7 14 5-5 5 5')}</button><span class="snoozeValue" data-part="${part}" role="spinbutton" tabindex="0" aria-label="${label}"></span><button class="icon-btn snoozeNudge" data-nudge="-1" data-component="${part}" aria-label="Decrease ${label.toLowerCase()}">${icon('m7 10 5 5 5-5')}</button></div>`;
+for (const [mode,caption] of figures) {
+ const figure = document.createElement('figure');
+ figure.innerHTML = `<figcaption>${caption}</figcaption><section class="formViewer formDialog mockDialog" id="${mode==='custom'?'editViewer':mode+'Viewer'}" data-mode="${mode}" aria-label="Edit conversation, ${caption}">
+ <div class="queueHeader"><div class="title">Edit conversation</div><div class="actions"><button class="icon-btn" aria-label="Close">${icon('M6 6l12 12M18 6L6 18')}</button></div></div>
+ <div class="formBody">
+ <label class="field"><span class="fieldLabel">Conversation name</span><input type="text" value="Fix the sidebar date picker"></label>
+ <div class="field editPriorityField"><label class="fieldLabel" for="priority-${mode}">Priority offset</label><div class="sliderRow"><input id="priority-${mode}" aria-label="Priority offset" type="range" min="-1" max="1" step="0.05" value="0.35"><span class="rangeValue">+0.35</span><button class="icon-btn text-btn subtleBtn">Reset</button></div></div>
+ <div class="field snoozeField"><span class="fieldLabel">Snooze</span><div class="choiceChips">${presets.map(([key,label,time])=>`<button class="choiceChip ${key===mode?'active':''}" data-preset="${key}" aria-pressed="${key===mode}"><span class="chipLabel">${label}</span><span class="chipTime">${time}</span></button>`).join('')}</div>
+ <div class="snoozeStepper" role="group" aria-label="Custom snooze date and local time" ${mode!=='custom'?'hidden':''}><div class="snoozeSegments dateSegments" role="group" aria-label="Date">${parts.slice(0,3).map(segment).join('')}</div><div class="snoozeSegments timeSegments" role="group" aria-label="Time, 24 hour">${parts.slice(3).map(segment).join('')}</div></div>
+ </div>
+ <div class="field"><span class="fieldLabel">Depends on</span><div class="pickerField"><button class="filePickerBtn dialogPickerBtn"><span class="pickerButtonText"><span class="pickerButtonPrimary">No dependency</span></span><span class="pickerButtonChevron">${icon('m6 9 6 6 6-6')}</span></button></div></div>
+ </div><div class="formActions"><button>Cancel</button><button class="primary" data-save>Save</button></div></section>`;
+ document.querySelector('main').append(figure);
+ const dialog = figure.querySelector('section');
+ dialog.instant = new Date(2026,10,18,9,0);
+ const paint = () => {
+   const d=dialog.instant;
+   const values={day:d.getDate(),month:d.toLocaleString('en',{month:'short'}),year:d.getFullYear(),hour:String(d.getHours()).padStart(2,'0'),minute:String(d.getMinutes()).padStart(2,'0')};
+   dialog.querySelectorAll('[data-part]').forEach(el=> { el.textContent=values[el.dataset.part]; el.setAttribute('aria-valuetext',String(values[el.dataset.part])); el.setAttribute('aria-valuenow',String(el.dataset.part==='month'?d.getMonth()+1:Number(values[el.dataset.part]))); });
+   dialog.querySelector('.snoozeStepper').setAttribute('aria-label',`Custom snooze: ${d.toLocaleString('en',{dateStyle:'full',timeStyle:'short'})}`);
+ };
+ const nudge=(part,dir)=> {
+   const old=dialog.instant, d=new Date(old);
+   if(part==='day') d.setDate(d.getDate()+dir);
+   if(part==='month'||part==='year') {
+     const day=d.getDate(); d.setDate(1);
+     if(part==='month') d.setMonth(d.getMonth()+dir); else d.setFullYear(d.getFullYear()+dir);
+     const last = new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); d.setDate(Math.min(day,last));
+   }
+   if(part==='hour') d.setHours(d.getHours()+dir);
+   if(part==='minute') d.setMinutes(d.getMinutes()+dir*30);
+   if(d >= new Date(2026,10,13,12,0)) dialog.instant=d;
+   paint();
+ };
+ dialog.querySelectorAll('[data-nudge]').forEach(button=>button.onclick=()=>nudge(button.dataset.component,Number(button.dataset.nudge)));
+ dialog.querySelectorAll('[data-part]').forEach(el=>el.onkeydown=event=> { if(event.key==='ArrowUp'||event.key==='ArrowDown') {event.preventDefault();nudge(el.dataset.part,event.key==='ArrowUp'?1:-1);} });
+ dialog.querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>{
+   dialog.dataset.mode=button.dataset.preset;
+   dialog.querySelectorAll('[data-preset]').forEach(b=> {b.classList.toggle('active',b===button);b.setAttribute('aria-pressed',String(b===button));});
+   dialog.querySelector('.snoozeStepper').hidden=button.dataset.preset!=='custom';
+ });
+ dialog.querySelector('[data-save]').onclick=()=> { dialog.savedDraft={mode:dialog.dataset.mode,snooze_until:dialog.dataset.mode==='custom'?dialog.instant.getTime()/1000:null}; };
+ paint();
+}
+document.addEventListener('keydown',()=>document.documentElement.dataset.inputModality='keyboard',true);
+document.addEventListener('pointerdown',()=>document.documentElement.dataset.inputModality='pointer',true);
+window.setTheme=(family,mode='light')=>{ document.documentElement.dataset.theme=family;document.documentElement.dataset.mode=mode;document.querySelector('#theme').href=`file:///home/yiwen/codoxear/codoxear/static/themes/${family}.css`; };
+</script>
+</body></html>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en" data-theme="clay" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snooze · custom date + time — design A</title>
+<link rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/app.css">
+<link id="themeLink" rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/themes/clay.css">
+<style>
+  /* ---------- mock scaffolding (not proposed) ---------- */
+  html, body { margin: 0; height: auto; overflow: visible; background: var(--bg); }
+  body { font-family: var(--font-ui); color: var(--text); padding: var(--space-5); }
+  .shots { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+  .shot { display: flex; flex-direction: column; gap: var(--space-3); }
+  .shot > .cap { font-size: var(--font-sm); color: var(--muted); }
+  /* Lay the real dialog out in-flow instead of centred/fixed. */
+  .mockDialog.formViewer.formDialog {
+    display: flex; position: static; transform: none; left: auto; top: auto; margin: 0;
+    width: min(94vw, 480px); max-height: none;
+  }
+  /* Mirror the #editViewer-scoped rules (the mock has three dialogs, so no id). */
+  .mockDialog .choiceChips.modeChips { flex-wrap: wrap; gap: var(--space-2); overflow: visible; }
+  .mockDialog .formBody { overflow: visible; }
+
+  /* ---------- PROPOSED RULES (copied verbatim into RATIONALE.md) ---------- */
+
+  /* 1. The revealed block: two chip strips, stacked, no gap of their own —
+        each strip's 6px vertical padding is the hit-area lane and the
+        visual gap between them at once. */
+  #editViewer .customSnoozeRow,
+  .mockDialog .customSnoozeRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  /* 2. A strip is the base .choiceChips scroller (nowrap, overflow-x auto),
+        retuned: 6px vertical padding so the 44px hit area is not clipped,
+        no scrollbar (a clipped chip at the edge is the affordance). */
+  #editViewer .choiceChips.snoozeStrip,
+  .mockDialog .choiceChips.snoozeStrip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: var(--space-2);
+    padding: var(--space-2) 2px;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  #editViewer .snoozeStrip::-webkit-scrollbar,
+  .mockDialog .snoozeStrip::-webkit-scrollbar { display: none; }
+
+  /* 3. Strip chips are the same 32px .choiceChip; their hit area grows to
+        44px tall and fills the 6px gap sideways (3px each). */
+  #editViewer .snoozeStrip .choiceChip,
+  .mockDialog .snoozeStrip .choiceChip {
+    min-width: var(--ctl);
+    font-variant-numeric: tabular-nums;
+  }
+  #editViewer .snoozeStrip .choiceChip::after,
+  .mockDialog .snoozeStrip .choiceChip::after {
+    inset: calc(var(--space-2) * -1) -3px;
+  }
+
+  /* 4. Second-level selection: the chosen day/time is outlined in ink, not
+        filled — the fill belongs to the mode (Custom…). 1px border + 1px
+        inset ring = 2px ink edge, the .agentBackendTab.active language,
+        without changing the chip's box. */
+  #editViewer .snoozeStrip .choiceChip[aria-checked="true"],
+  .mockDialog .snoozeStrip .choiceChip[aria-checked="true"] {
+    border-color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+  #editViewer .snoozeStrip .choiceChip:disabled,
+  .mockDialog .snoozeStrip .choiceChip:disabled {
+    color: var(--ink-disabled);
+    border-color: var(--border-faint);
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+
+<div class="shots" id="shots"></div>
+
+<template id="dialogTpl">
+  <div class="shot">
+    <div class="formViewer formDialog mockDialog" role="dialog" aria-label="Edit conversation">
+      <div class="queueHeader"><div class="title">Edit conversation</div><div class="actions">
+        <button class="icon-btn" type="button" title="Close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div></div>
+      <div class="formBody">
+        <label class="field"><span class="fieldLabel">Conversation name</span>
+          <input type="text" value="Fix the sidebar date picker"></label>
+        <label class="field editPriorityField"><span class="fieldLabel">Priority offset</span>
+          <div class="sliderRow"><input type="range" min="-1" max="1" step="0.05" value="0.35"><span class="rangeValue">+0.35</span><button class="icon-btn text-btn subtleBtn" type="button">Reset</button></div></label>
+        <div class="field" role="group" aria-label="Snooze"><span class="fieldLabel">Snooze</span>
+          <div class="choiceChips modeChips" role="radiogroup" aria-label="Snooze"></div>
+          <div class="customSnoozeRow" style="display:none">
+            <div class="choiceChips snoozeStrip" data-strip="day" role="radiogroup" aria-label="Snooze day"></div>
+            <div class="choiceChips snoozeStrip" data-strip="time" role="radiogroup" aria-label="Snooze time"></div>
+          </div>
+        </div>
+        <label class="field"><span class="fieldLabel">Depends on</span>
+          <div class="pickerField"><button class="filePickerBtn dialogPickerBtn" type="button">
+            <span class="pickerButtonText"><span class="pickerButtonPrimary">No dependency</span></span>
+            <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button></div></label>
+      </div>
+      <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
+    </div>
+    <div class="cap"></div>
+  </div>
+</template>
+
+<script>
+  // ---- theme switch for the family screenshots: ?theme=paper&mode=dark ----
+  const params = new URLSearchParams(location.search);
+  const family = params.get("theme") || "clay";
+  const mode = params.get("mode") || "light";
+  document.documentElement.dataset.theme = family;
+  document.documentElement.dataset.mode = mode;
+  const link = document.getElementById("themeLink");
+  if (family === "paper" && mode === "light") link.remove();
+  else link.href = `file:///home/yiwen/codoxear/codoxear/static/themes/${family}.css`;
+
+  // ---- fixed mock clock: Fri 13 Nov 2026, 14:10 local ----
+  const NOW = new Date(2026, 10, 13, 14, 10);
+  const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const DAYS = 60;                       // strip length; Indefinitely covers longer
+
+  // Same formatter as app_snooze.js compactLocalTime.
+  function compactTime(h, m) {
+    return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
+  }
+  function dayLabel(d, i) {
+    if (i === 0) return "Today";
+    return d.getDate() === 1 ? `${WD[d.getDay()]} 1 ${MON[d.getMonth()]}` : `${WD[d.getDay()]} ${d.getDate()}`;
+  }
+  function readout(d, slot) {
+    return `· ${WD[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}, ${compactTime(Math.floor(slot / 2), (slot % 2) * 30)}`;
+  }
+  function chip(label, time) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "choiceChip"; b.setAttribute("role", "radio");
+    const l = document.createElement("span"); l.className = "chipLabel"; l.textContent = label;
+    const t = document.createElement("span"); t.className = "chipTime"; t.textContent = time || "";
+    b.append(l, t);
+    return b;
+  }
+
+  const MODES = [
+    ["none", "No snooze", ""], ["evening", "This evening", "· 6pm"], ["tomorrow", "Tomorrow", "· 9am"],
+    ["weekend", "This weekend", "· Sat 10am"], ["nextWeek", "Next week", "· Mon 9am"],
+    ["indefinite", "Indefinitely", ""], ["custom", "Custom…", ""],
+  ];
+
+  function buildDialog(state, caption) {
+    const node = document.getElementById("dialogTpl").content.firstElementChild.cloneNode(true);
+    node.querySelector(".cap").textContent = caption;
+    const modeRow = node.querySelector(".modeChips");
+    const customRow = node.querySelector(".customSnoozeRow");
+    const dayStrip = node.querySelector('[data-strip="day"]');
+    const timeStrip = node.querySelector('[data-strip="time"]');
+    let selDay = state.day, selSlot = state.slot;
+    const modeBtns = new Map();
+
+    for (const [key, label, time] of MODES) {
+      const b = chip(label, time);
+      b.dataset.mode = key;
+      modeBtns.set(key, b);
+      modeRow.append(b);
+    }
+    const days = [];
+    for (let i = 0; i < DAYS; i++) {
+      const d = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + i);
+      days.push(d);
+      const b = chip(dayLabel(d, i));
+      b.dataset.day = i;
+      dayStrip.append(b);
+    }
+    for (let s = 0; s < 48; s++) {
+      const b = chip(compactTime(Math.floor(s / 2), (s % 2) * 30));
+      b.dataset.slot = s;
+      timeStrip.append(b);
+    }
+    const firstFutureSlot = Math.floor((NOW.getHours() * 60 + NOW.getMinutes()) / 30) + 1;
+
+    function render(scroll) {
+      for (const [key, b] of modeBtns) {
+        b.classList.toggle("active", key === state.mode);
+        b.setAttribute("aria-checked", String(key === state.mode));
+      }
+      customRow.style.display = state.mode === "custom" ? "grid" : "none";
+      modeBtns.get("custom").querySelector(".chipTime").textContent =
+        state.mode === "custom" ? readout(days[selDay], selSlot) : "";
+      for (const b of dayStrip.children) b.setAttribute("aria-checked", String(Number(b.dataset.day) === selDay));
+      for (const b of timeStrip.children) {
+        const s = Number(b.dataset.slot);
+        b.disabled = selDay === 0 && s < firstFutureSlot;
+        b.setAttribute("aria-checked", String(s === selSlot));
+      }
+      if (scroll && state.mode === "custom") {
+        for (const strip of [dayStrip, timeStrip]) {
+          const on = strip.querySelector('[aria-checked="true"]');
+          // Chosen chip second from the left with its predecessor half-clipped:
+          // a cut chip at both edges says "this row scrolls both ways".
+          const prev = on.previousElementSibling;
+          strip.scrollLeft = prev ? prev.offsetLeft + prev.offsetWidth / 2 - strip.offsetLeft : 0;
+        }
+      }
+    }
+    modeRow.addEventListener("click", (e) => {
+      const b = e.target.closest(".choiceChip"); if (!b) return;
+      state.mode = b.dataset.mode; render(true);
+    });
+    dayStrip.addEventListener("click", (e) => {
+      const b = e.target.closest(".choiceChip"); if (!b) return;
+      selDay = Number(b.dataset.day);
+      if (selDay === 0 && selSlot < firstFutureSlot) selSlot = firstFutureSlot; // clamp, never a past instant
+      render(false);
+    });
+    timeStrip.addEventListener("click", (e) => {
+      const b = e.target.closest(".choiceChip"); if (!b || b.disabled) return;
+      selSlot = Number(b.dataset.slot); render(false);
+    });
+    // Desktop: a vertical wheel over a strip scrolls it sideways.
+    for (const strip of [dayStrip, timeStrip]) {
+      strip.addEventListener("wheel", (e) => {
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        strip.scrollLeft += e.deltaY; e.preventDefault();
+      }, { passive: false });
+    }
+    document.getElementById("shots").append(node);
+    render(true);
+  }
+
+  // Wed 18 Nov (index 5), 2:00pm (slot 28)
+  const only = params.get("only");
+  const STATES = {
+    a: [{ mode: "none", day: 1, slot: 18 }, "(a) No snooze"],
+    b: [{ mode: "custom", day: 5, slot: 28 }, `(b) Custom… — day strip + time strip · ${family} ${mode}`],
+    c: [{ mode: "indefinite", day: 1, slot: 18 }, "(c) Indefinitely"],
+  };
+  for (const key of only ? [only] : ["a", "b", "c"]) buildDialog(...STATES[key]);
+</script>
+</body>
+</html>

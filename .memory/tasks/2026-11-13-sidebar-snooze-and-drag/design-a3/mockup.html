@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en" data-theme="clay" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snooze · Custom… — design A3 (overlay panel, period + fixed time grid)</title>
+<link rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/app.css">
+<link id="themeLink" rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/themes/clay.css">
+<style>
+  /* ---------- mock scaffolding (not proposed) ---------- */
+  .gallery { overflow: auto !important; height: auto !important; padding: var(--space-5); }
+  .gallery .frames { display: flex; flex-wrap: wrap; gap: var(--space-7); }
+  .gallery figure { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+  .gallery figcaption { font-size: var(--font-sm); color: var(--muted); }
+  .gallery iframe { border: 1px solid var(--hairline); background: var(--bg); }
+
+  /* ================= PROPOSED RULES (verbatim in RATIONALE.md) ================= */
+
+  /* Panel: the existing .filePickerMenu.dialogPickerMenu surface. Its only
+     own geometry is an intrinsic minimum width — seven 44px day tracks — so
+     the helper's 280px list width cannot squeeze the grid below the touch
+     pitch; on very narrow phones it yields to the viewport. */
+  #editViewer .snoozePanel {
+    min-width: min(calc(7 * var(--ctl) + 2 * var(--space-2) + 2px), calc(100vw - 4 * var(--space-5)));
+    max-height: none;   /* never clamped: data-fit-whole places it whole instead */
+    padding: var(--space-2);
+    overflow: hidden;
+  }
+  /* Open, it is a column of fixed-height parts; nothing inside yields or scrolls. */
+  #editViewer .snoozePanel.open {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Month nav: the month is plain text (not a .fieldLabel clone); the
+     control is the ‹ › pair of standard 32px dialog icon buttons, whose
+     44px hit area comes from the existing .formViewer .icon-btn::after. */
+  #editViewer .snoozeMonthNav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-left: var(--space-3);
+  }
+  #editViewer .snoozeMonth {
+    flex: 1 1 auto;
+    font-size: var(--font-md);
+    color: var(--text);
+  }
+  #editViewer .snoozeMonthNav .icon-btn:disabled {
+    color: var(--ink-disabled);
+    border-color: var(--border-faint);
+  }
+
+  /* Weekday row and day grid share seven equal tracks. Each day track is a
+     44px square; the 32px chip sits centred in it and its ::after fills the
+     track, so neighbouring hit areas tile without overlapping. */
+  #editViewer .snoozeWeekdays,
+  #editViewer .snoozeDays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  #editViewer .snoozeWeekdays {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    text-align: center;
+    line-height: var(--space-6);
+  }
+  /* Always six week rows: the panel's height never changes between months,
+     so a panel opened upward does not move its ‹ › under the finger. Rows
+     are 32px chips 12px apart (44px pitch); the outer 6px of the first and
+     last rows' hit areas lie over the weekday text and the time section's
+     top lane, which hold no targets. */
+  #editViewer .snoozeDays {
+    grid-template-rows: repeat(6, var(--ctl-chrome));
+    row-gap: calc(var(--ctl) - var(--ctl-chrome));
+    place-items: center;
+  }
+  #editViewer .snoozePanel .choiceChip {
+    padding: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  #editViewer .snoozeDays .choiceChip {
+    width: var(--ctl-chrome);
+    min-width: var(--ctl-chrome);
+  }
+  #editViewer .snoozePanel .choiceChip::after {
+    inset: calc(var(--space-2) * -1);
+  }
+
+  /* Time: a period row (Night · Morning · Afternoon · Evening, 6 h each)
+     above a fixed 6 × 2 grid of that period's twelve half-hours. Nothing
+     scrolls: every slot is at most two taps away and both rows are always
+     visible. Rows sit at the 44px pitch (32px chip + 12px lane). */
+  #editViewer .snoozeTime {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--ctl) - var(--ctl-chrome));
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-faint);
+  }
+  #editViewer .snoozePeriods,
+  #editViewer .snoozeTimes {
+    display: grid;
+    gap: calc(var(--ctl) - var(--ctl-chrome)) var(--space-2);
+    grid-auto-rows: var(--ctl-chrome);
+  }
+  #editViewer .snoozePeriods {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #editViewer .snoozeTimes {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  /* In the gapped rows the hit area fills half of each 6px gap sideways and
+     the 12px lane vertically, so neighbouring targets tile without overlap. */
+  #editViewer .snoozeTime .choiceChip::after {
+    inset: calc(var(--space-2) * -1) calc(var(--space-2) / -2);
+  }
+  /* Periods are tabs. The one on view reads by text + fill (--text on
+     --wash; the others --muted on paper) — the text step is what carries it
+     in dark modes, where --wash sits close to --paper. It is navigation, not
+     part of the answer, so it never takes the ink fill. */
+  #editViewer .snoozePeriods .choiceChip {
+    color: var(--muted);
+  }
+  #editViewer .snoozePeriods .choiceChip[aria-selected="true"] {
+    color: var(--text);
+    background: var(--wash);
+  }
+  #editViewer .snoozePeriods .choiceChip[aria-checked="true"] {
+    color: var(--text);
+  }
+
+  /* Two-weight selection: the mode chip keeps the ink fill; the answer path
+     (chosen day, the period holding the chosen time, the chosen time) gets
+     the 2px ink edge of .agentBackendTab.active; today is weight only. */
+  #editViewer .snoozePanel .choiceChip[aria-checked="true"] {
+    border-color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+  #editViewer .snoozeDays .choiceChip[aria-current="date"] {
+    font-weight: 600;
+  }
+  #editViewer .snoozePanel .choiceChip:disabled {
+    color: var(--ink-disabled);
+    border-color: transparent;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<script>
+  const params = new URLSearchParams(location.search);
+  const family = params.get("theme") || "clay";
+  const mode = params.get("mode") || "light";
+  document.documentElement.dataset.theme = family;
+  document.documentElement.dataset.mode = mode;
+  const themeLink = document.getElementById("themeLink");
+  if (family === "paper" && mode === "light") themeLink.remove();
+  else themeLink.href = `file:///home/yiwen/codoxear/codoxear/static/themes/${family}.css`;
+</script>
+
+<script>
+/* ===== no ?state: a gallery of real-viewport frames ===== */
+if (!params.get("state")) {
+  document.documentElement.classList.add("gallery");
+  document.body.classList.add("gallery");
+  const desktop = params.get("size") === "desktop";
+  const size = desktop ? [1100, 900] : [393, 852];
+  const frames = [
+    ["a", "(a) No snooze", size],
+    ["b-open", "(b) Custom… open — 9:30am, Morning on view", size],
+    ["b-open-other", "(b) open — 9:30am chosen, Afternoon on view", size],
+    ["b", "(b) Custom… — chosen, panel closed", size],
+    ["c", "(c) Indefinitely", size],
+  ];
+  if (!desktop) frames.splice(3, 0, ["b-open", "(b) open · 393×660 (Safari toolbars)", [393, 660]]);
+  const wrap = document.createElement("div"); wrap.className = "frames";
+  for (const [state, cap, sz] of frames) {
+    const fig = document.createElement("figure");
+    const f = document.createElement("iframe");
+    f.width = sz[0]; f.height = sz[1];
+    f.src = `${location.pathname}?state=${state}&theme=${family}&mode=${mode}`;
+    const c = document.createElement("figcaption"); c.textContent = `${cap} · ${sz[0]}×${sz[1]}`;
+    fig.append(f, c); wrap.append(fig);
+  }
+  document.body.append(wrap);
+}
+</script>
+
+<script type="module">
+if (params.get("state")) {
+  const state = params.get("state");
+  const helperMode = params.get("helper") || "patched";   // "stock" | "patched"
+
+  /* ---- positionDialogMenu: verbatim copy of codoxear/static/app_dialog_menu.js
+     (file:// pages cannot import ES modules) plus the proposed opt-in
+     data-fit-whole branch, marked. helper=stock skips that branch. ---- */
+  const windowTarget = window;
+  function positionDialogMenu(menu, anchorBtn) {
+    if (!menu || !anchorBtn) return;
+    const host = menu.parentElement;
+    if (!host) return;
+    const visualViewport = windowTarget.visualViewport;
+    const rect = anchorBtn.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const viewportWidth = hostRect.width;
+    const viewportTop = visualViewport ? visualViewport.offsetTop : 0;
+    const viewportBottom = viewportTop + (visualViewport ? visualViewport.height : windowTarget.innerHeight);
+    const margin = 12;
+    const viewportLeft = Math.max(0, Number(windowTarget.innerWidth) || hostRect.width);
+    const minLeft = Math.max(0, margin - hostRect.left);
+    const left = Math.max(minLeft, rect.left - hostRect.left);
+    const width = Math.max(160, Math.min(Math.max(rect.width, 280), viewportLeft - margin - hostRect.left - left));
+    menu.style.position = "absolute";
+    menu.style.left = `${left}px`;
+    menu.style.width = `${width}px`;
+    menu.style.right = "auto";
+    menu.style.bottom = "auto";
+    menu.style.maxHeight = "";
+    // ---- proposed: opt-in whole-panel placement (data-fit-whole) ----
+    if (helperMode === "patched" && "fitWhole" in menu.dataset) {
+      const h = menu.offsetHeight;
+      const below = rect.bottom + 6;
+      const above = rect.top - 6 - h;
+      let top, side;
+      if (below + h <= viewportBottom - margin) { top = below; side = "below"; }
+      else if (above >= viewportTop + margin) { top = above; side = "above"; }
+      else {                                   // neither side fits: open toward the larger side and
+        side = "over";                         // slide back over the anchor by the deficit, so the
+        top = viewportBottom - below >= rect.top - viewportTop   // panel stays whole and on-screen
+          ? Math.max(viewportTop + margin, Math.min(rect.top, viewportBottom - margin - h))
+          : Math.min(viewportBottom - margin - h, Math.max(viewportTop + margin, rect.bottom - h));
+      }
+      menu.style.top = `${top - hostRect.top}px`;
+      window.__placement = { side, h, freeBelow: viewportBottom - margin - below, freeAbove: rect.top - 6 - viewportTop - margin, helperMode };
+      return;
+    }
+    // ---- end proposed ----
+    const menuHeight = Math.min(menu.scrollHeight || 260, Math.floor((viewportBottom - viewportTop) * 0.5));
+    const spaceBelow = viewportBottom - rect.bottom - margin;
+    const spaceAbove = rect.top - viewportTop - margin;
+    const openAbove = spaceBelow < Math.min(220, menuHeight) && spaceAbove > spaceBelow;
+    if (openAbove) {
+      const maxHeight = Math.max(120, spaceAbove - 8);
+      menu.style.maxHeight = `${maxHeight}px`;
+      const top = Math.max(viewportTop + margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 6);
+      menu.style.top = `${top}px`;
+    } else {
+      const maxHeight = Math.max(120, spaceBelow - 8);
+      menu.style.maxHeight = `${maxHeight}px`;
+      const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 6);
+      menu.style.top = `${top}px`;
+    }
+    window.__placement = { side: openAbove ? "above" : "below", menuHeight, spaceBelow, spaceAbove, helperMode };
+  }
+
+  /* ---- markup: the real Edit dialog, built as app_shell.js builds it ---- */
+  const el = (tag, attrs = {}, kids = []) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+    }
+    for (const k of kids) n.append(k);
+    return n;
+  };
+  const svg = (d) => {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("class", "icon"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", d); s.append(p);
+    return s;
+  };
+
+  // Fixed mock clock: Fri 13 Nov 2026, 14:10 local.
+  const NOW = new Date(2026, 10, 13, 14, 10);
+  const TODAY = new Date(2026, 10, 13);
+  const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const compactTime = (h, m) => `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`; // = app_snooze.js
+  const firstFutureSlot = Math.floor((NOW.getHours() * 60 + NOW.getMinutes()) / 30) + 1;
+
+  const MODES = [
+    ["none", "No snooze", ""], ["evening", "This evening", "· 6pm"], ["tomorrow", "Tomorrow", "· 9am"],
+    ["weekend", "This weekend", "· Sat 10am"], ["nextWeek", "Next week", "· Mon 9am"],
+    ["indefinite", "Indefinitely", ""], ["custom", "Custom…", ""],
+  ];
+  const chip = (label, time) => el("button", { type: "button", class: "choiceChip" }, [
+    el("span", { class: "chipLabel", text: label }), el("span", { class: "chipTime", text: time || "" }),
+  ]);
+
+  const modeRow = el("div", { class: "choiceChips", id: "editSnoozeButtons", role: "radiogroup", "aria-label": "Snooze" });
+  const modeBtns = new Map();
+  for (const [key, label, time] of MODES) {
+    const b = chip(label, time); b.dataset.snoozeMode = key; b.setAttribute("role", "radio");
+    modeBtns.set(key, b); modeRow.append(b);
+  }
+  const customBtn = modeBtns.get("custom");
+  customBtn.setAttribute("aria-haspopup", "dialog");
+  customBtn.setAttribute("aria-controls", "editSnoozePanel");
+
+  // Panel = existing dialog menu surface, appended to the dialog like editDependencyMenu.
+  const prevBtn = el("button", { type: "button", class: "icon-btn", "aria-label": "Previous month" }, [svg("M15 6l-6 6 6 6")]);
+  const nextBtn = el("button", { type: "button", class: "icon-btn", "aria-label": "Next month" }, [svg("M9 6l6 6-6 6")]);
+  const monthText = el("span", { class: "snoozeMonth", "aria-live": "polite" });
+  const weekdays = el("div", { class: "snoozeWeekdays", "aria-hidden": "true" },
+    ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((t) => el("span", { text: t })));
+  const daysGrid = el("div", { class: "snoozeDays", role: "radiogroup", "aria-label": "Snooze day" });
+  const PERIODS = [["Night", 0], ["Morning", 12], ["Afternoon", 24], ["Evening", 36]];   // first slot of each 6 h block
+  const periodRow = el("div", { class: "snoozePeriods", role: "tablist", "aria-label": "Time of day" });
+  const timesGrid = el("div", { class: "snoozeTimes", role: "radiogroup", "aria-label": "Snooze time" });
+  const timeSection = el("div", { class: "snoozeTime" }, [periodRow, timesGrid]);
+  const panel = el("div", { class: "filePickerMenu dialogPickerMenu snoozePanel", id: "editSnoozePanel", role: "dialog", "aria-label": "Custom snooze time" }, [
+    el("div", { class: "snoozeMonthNav" }, [monthText, prevBtn, nextBtn]),
+    weekdays, daysGrid, timeSection,
+  ]);
+  panel.dataset.fitWhole = "";
+
+  const dlg = el("dialog", { class: "formViewer formDialog", id: "editViewer", "aria-label": "Edit conversation" }, [
+    el("div", { class: "queueHeader" }, [
+      el("div", { class: "title", text: "Edit conversation" }),
+      el("div", { class: "actions" }, [el("button", { class: "icon-btn", type: "button", "aria-label": "Close" }, [svg("M6 6l12 12M18 6L6 18")])]),
+    ]),
+    el("div", { class: "formBody" }, [
+      el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Conversation name" }),
+        el("input", { type: "text", id: "editNameInput", value: "Fix the sidebar date picker" })]),
+      el("label", { class: "field editPriorityField" }, [el("span", { class: "fieldLabel", text: "Priority offset" }),
+        el("div", { class: "sliderRow" }, [
+          el("input", { type: "range", min: "-1", max: "1", step: "0.05", value: "0.35" }),
+          el("span", { class: "rangeValue", text: "+0.35" }),
+          el("button", { class: "icon-btn text-btn subtleBtn", type: "button", text: "Reset" })])]),
+      el("div", { class: "field", role: "group", "aria-label": "Snooze" }, [el("span", { class: "fieldLabel", text: "Snooze" }), modeRow]),
+      el("label", { class: "field" }, [el("span", { class: "fieldLabel", text: "Depends on" }),
+        el("div", { class: "pickerField" }, [el("button", { class: "filePickerBtn dialogPickerBtn", type: "button", id: "editDependencyBtn" }, [
+          el("span", { class: "pickerButtonText" }, [el("span", { class: "pickerButtonPrimary", text: "No dependency" })]),
+          el("span", { class: "pickerButtonChevron" }, [svg("m6 9 6 6 6-6")])])])]),
+    ]),
+    el("div", { class: "formActions" }, [el("button", { type: "button", text: "Cancel" }), el("button", { class: "primary", type: "button", text: "Save" })]),
+  ]);
+  dlg.append(panel);
+  document.body.append(dlg);
+
+  /* ---- state ---- */
+  let snoozeMode = { a: "none", c: "indefinite" }[state] || "custom";
+  let pick = { y: 2026, m: 10, d: 18, slot: 19 };     // Wed 18 Nov, 9:30am
+  const periodOf = (slot) => Math.floor(slot / 12);
+  let viewPeriod = state === "b-open-other" ? 2 : periodOf(pick.slot);   // which 12 slots are on view
+  let view = { y: 2026, m: 10 };
+  let open = state.startsWith("b-open");
+
+  const pickDate = () => new Date(pick.y, pick.m, pick.d);
+  const isToday = (d) => d.getTime() === TODAY.getTime();
+
+  function renderModes() {
+    for (const [key, b] of modeBtns) {
+      b.classList.toggle("active", key === snoozeMode);
+      b.setAttribute("aria-checked", String(key === snoozeMode));
+    }
+    const d = pickDate();
+    customBtn.querySelector(".chipTime").textContent = snoozeMode === "custom"
+      ? `· ${WD[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}, ${compactTime(pick.slot >> 1, (pick.slot & 1) * 30)}` : "";
+    customBtn.setAttribute("aria-expanded", String(open));
+  }
+  function renderPanel() {
+    monthText.textContent = `${MONTH[view.m]} ${view.y}`;
+    prevBtn.disabled = view.y === TODAY.getFullYear() && view.m === TODAY.getMonth();
+    daysGrid.replaceChildren();
+    const first = new Date(view.y, view.m, 1);
+    const lead = (first.getDay() + 6) % 7;                          // Monday-first
+    for (let i = 0; i < lead; i++) daysGrid.append(el("span"));
+    const n = new Date(view.y, view.m + 1, 0).getDate();
+    for (let d = 1; d <= n; d++) {
+      const date = new Date(view.y, view.m, d);
+      const b = el("button", { type: "button", class: "choiceChip", role: "radio", text: String(d),
+        "aria-label": `${WD[date.getDay()]} ${d} ${MON[view.m]}` });
+      b.disabled = date < TODAY;
+      if (isToday(date)) b.setAttribute("aria-current", "date");
+      b.setAttribute("aria-checked", String(date.getTime() === pickDate().getTime()));
+      b.onclick = () => {
+        pick = { ...pick, y: view.y, m: view.m, d };
+        if (isToday(date) && pick.slot < firstFutureSlot) {             // never a past instant
+          pick.slot = firstFutureSlot;
+          viewPeriod = periodOf(pick.slot);
+        }
+        render(false);
+      };
+      daysGrid.append(b);
+    }
+    const dayIsToday = isToday(pickDate());
+    const slotPast = (slot) => dayIsToday && slot < firstFutureSlot;
+    periodRow.replaceChildren();
+    PERIODS.forEach(([label, first], p) => {
+      const b = el("button", { type: "button", class: "choiceChip", role: "tab", text: label });
+      b.disabled = slotPast(first + 11);                               // whole block already past today
+      b.setAttribute("aria-selected", String(p === viewPeriod));
+      b.setAttribute("aria-checked", String(p === periodOf(pick.slot)));   // holds the chosen time
+      b.onclick = () => { viewPeriod = p; render(false); };            // view only: commits nothing
+      periodRow.append(b);
+    });
+    timesGrid.replaceChildren();
+    const firstSlot = PERIODS[viewPeriod][1];
+    for (let s = firstSlot; s < firstSlot + 12; s++) {
+      const h = s >> 1, m = (s & 1) * 30;
+      const b = el("button", { type: "button", class: "choiceChip", role: "radio",
+        text: `${h % 12 || 12}:${m ? "30" : "00"}`, "aria-label": compactTime(h, m) });
+      b.disabled = slotPast(s);
+      b.setAttribute("aria-checked", String(s === pick.slot));
+      b.onclick = () => { pick = { ...pick, slot: s }; open = false; render(false); };  // time is the last step: commit + close
+      timesGrid.append(b);
+    }
+  }
+  function render(placeNow) {
+    renderModes();
+    panel.classList.toggle("open", open && snoozeMode === "custom");
+    if (open && snoozeMode === "custom") {
+      renderPanel();
+      if (placeNow) positionDialogMenu(panel, customBtn);   // placement runs on open only
+    }
+  }
+  modeRow.addEventListener("click", (e) => {
+    const b = e.target.closest(".choiceChip"); if (!b) return;
+    const next = b.dataset.snoozeMode;
+    open = next === "custom" ? !(snoozeMode === "custom" && open) : false;
+    if (open) { view = { y: pick.y, m: pick.m }; viewPeriod = periodOf(pick.slot); }   // reopen on the answer
+    snoozeMode = next; render(true);
+  });
+  prevBtn.onclick = () => { view = view.m === 0 ? { y: view.y - 1, m: 11 } : { y: view.y, m: view.m - 1 }; render(false); };
+  nextBtn.onclick = () => { view = view.m === 11 ? { y: view.y + 1, m: 0 } : { y: view.y, m: view.m + 1 }; render(false); };
+  // Outside tap closes; the value is already committed. composedPath(), not
+  // target.closest(): a day tap re-renders the grid, so by the time the click
+  // reaches document its target is detached and closest() would say "outside".
+  document.addEventListener("click", (e) => {
+    if (!open) return;
+    const path = e.composedPath();
+    if (!path.includes(panel) && !path.includes(customBtn)) { open = false; render(false); }
+  });
+
+  dlg.showModal();
+  document.activeElement.blur();            // the app's modal policy owns initial focus; no stray ring in the mock
+  render(true);
+  window.__ready = true;
+}
+</script>
+</body>
+</html>

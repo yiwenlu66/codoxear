@@ -176,3 +176,138 @@ Measured after the change: day cell 64×44 (desktop) / ≈46×44 at 393px, wheel
 
 Screenshots regenerated: `preview-custom.png` (the Custom… block alone), `preview-desktop.png`,
 `preview-phone.png`.
+
+## 2026-11-13 — design delegated; evaluation rubric fixed BEFORE seeing results
+
+User: "still ugly. make a decent subagent do design." Two independent designers are running in
+parallel (design-a: claude-opus-5-5 high; design-b: gpt-6.1-sol high), same brief, separate output
+dirs, forbidden from reading each other.
+
+Rubric fixed in advance so the choice is not after-the-fact taste. Each item is measurable or
+falsifiable from the artifacts:
+
+1. **Height parity.** Visual height of the custom control either matches the chip plane
+   (`--dialog-control-h` = 32px) or is an overlay that costs zero inline height. Anything that adds a
+   >150px inline block to the field is the failure that has now been rejected three times.
+2. **Type parity.** Nothing inside the custom control renders above `--font-md` (13px desktop /
+   14px coarse). The original sin was `--font-xl` (16px) next to 13px chips.
+3. **Touch targets ≥ 44×44** in both axes, measured, whether visual or via `::after`.
+4. **Token purity.** No color literal, no new font family, all geometry via `--radius-*`/`--space-*`.
+   Must still read correctly under paper (square, no shadow) and slate (pills, ghost chrome).
+5. **Legibility of state.** The chosen day and time must be readable without opening anything, and
+   there must be no hidden commit step.
+6. **Not a re-skin.** If the answer is rejection #3 or #4 with different padding, it fails regardless
+   of polish.
+
+Prior (recorded before the results): the untried combination is a chip-plane (32px) trigger whose
+picker is an *overlay* — calendar for the day, wheel/stepper for the time — rather than inline. That
+satisfies #1 and #2 without a dropdown list, and it is the shape the platforms use (Android date
+dialog, iOS wheels). If neither designer lands there, that is a signal to steer, not to accept.
+
+## 2026-11-13 — design-b (gpt-6.1-sol) result, judged
+
+Artifacts: `design-b/` (mockup.html, shot-phone.png, shot-desktop.png, check-{clay,paper,slate}[-dark].png,
+measure-*.json, RATIONALE.md). Verified the reported numbers myself from `measure-phone.json`: chip
+32px/14px, value 32px/14px, nudge 32px visual with 44px pseudo-element, stepper block 120px tall,
+4 chip rows at 393px, body does not scroll at 852px height. Six theme/mode renders exist and the
+control holds its 120px/32px/44px geometry in all of them. Its critique of rejection #4 (calendar
+consumes 264px of rows before headers; the 44px selected day out-shouts the 32px chip that revealed
+it) is accurate and reusable.
+
+Verdict against the rubric: 1 height pass (120px, under the 150px limit), 2 type pass, 3 touch pass,
+4 tokens pass, 5 state legible, 6 not a re-skin. It fails the *purpose*: ten floating chevrons with no
+grouping read as an unfinished debug widget, and a date three weeks out becomes a repeated-tap chore —
+which the designer itself named as the weakest point and shipped anyway.
+
+Model-feedback submitted: rating 2, request-id 73ddb205-9d37-492d-8517-1973b242e02e.
+
+## 2026-11-13 — design-a (opus-5-5) round 1: two chip strips, steered away
+
+Artifacts: `design-a/` (mockup with `?theme=`/`?only=` switches, shot-phone.png, shot-desktop.png,
+shot-families.png, RATIONALE.md). Measured: mode chip and strip chips both 32px/14px (13px desktop),
+strip hit 44px tall, revealed block 88px, dialog 520/614/520 at 393 wide, 4 mode chip rows.
+
+Its critique of rejection #4 is the best work product of the whole exercise and is accurate:
+44px *visible* boxes against the constitution's "hit area is not visual size"; three competing
+selection languages (filled mode chip, filled day cell, ringed today, bold wheel row); bare day digits
+while every other target is a bordered chip; `November 2026` at `--font-md` 600 duplicating
+`.fieldLabel`; the wheel's implicit scroll-settle commit; a vertical scroller nested in `.formBody`.
+
+Verdict: consistent with the system (it *is* `.choiceChip`) but functionally wrong — its own weakest
+point says it: a linear strip makes "the 9th of next month" a ~1800px fling with no month landmark,
+and the half-clipped `er 17` / `0pm` edge fragments read as rendering glitches. Three scroll gestures
+in one field (two horizontal strips inside a vertical body).
+
+Steered (same session, run 6510f682): keep the design language, the two-weight selection rule, the
+`· Wed 18 Nov, 2pm` readout and the no-commit-step property; replace the mechanism with a chip-plane
+trigger plus an overlay month-calendar panel reusing `filePickerMenu` chrome and
+`positionDialogMenu`, with the time slots in the same panel. Output to `design-a2/`, must report panel
+rect vs viewport and prove it does not clip or scroll the body.
+
+## 2026-11-13 — design-a2: chip trigger + calendar popover, judged
+
+Artifacts: `design-a2/` (mockup, shot-phone.png, shot-desktop.png, shot-families.png,
+shot-helper-stock.png, RATIONALE.md). Verified by eye in `shot-families.png`: clay/paper/slate ×
+light/dark all hold — paper square with no shadow, slate rounded, dark inverts the ink edge; day cells
+are bordered chips, past days borderless, `18` carries the 2px ink edge, `2pm` likewise.
+
+Rubric: 1 inline growth **0px** (best possible), 2 day/time chips at `--font-md` (14/13), 3 day cell
+32×32 visual in a 44×44 track (measured, tiling without overlap), 4 tokens only, 5 state legible via
+`· Wed 18 Nov, 2pm` in the mode chip's existing slot, 6 not a re-skin. All pass.
+
+Real findings worth carrying into the plan:
+- `positionDialogMenu` clamps the panel to half the viewport and only flips under 220px, so a 414px
+  calendar gets cut (their `shot-helper-stock.png` shows it at 393×660 and 1100×900). Their proposal:
+  an opt-in `data-fit-whole` flag (full `scrollHeight`, open on the larger side). Three lines, no
+  change for menus without the flag.
+- Document click-away must use `event.composedPath()`: a day tap re-renders the grid, so
+  `target.closest()` sees a detached node and closes the panel mid-selection.
+- At 360px wide the day tracks shrink to 42.6px, so neighbouring 44px hit areas overlap by 1.4px.
+
+Rejected remainder: the time well is a nested scroller — 8 of 48 slots visible, no cue that it
+scrolls, one 37px row at 393×660. That is the same defect the designer criticised in rejection #4.
+Steered (run 06587768, `design-a3/`): no inner scrolling anywhere (`scrollHeight === clientHeight`),
+all 48 half-hours within two taps via a period selector plus a fixed 3-row grid, panel ≤ 460px, shots
+with a non-default time.
+
+## 2026-11-13 — design-a3: period tabs + fixed slot grid, judged
+
+Artifacts: `design-a3/`. Verified in the shot: panel = nav row (`November 2026`, ‹ ›), weekday row, six
+week rows, period tabs `Night · Morning · Afternoon · Evening`, then a fixed 6×2 grid of the period's
+twelve half-hours. No inner scroll (their measurement: no element in the panel computes overflow
+auto/scroll; panel scrollHeight 443 = clientHeight 443 at five viewport sizes). Period tab carries two
+marks: `--wash` fill = on view, 2px ink edge = holds the answer, and browsing periods never hides the
+answer's location. Every half-hour ≤ 2 taps; "9th of next month at 9am" = 4 taps from a Morning answer.
+Panel 322×445, and the placement table shows it opens *over* the anchor at 393×852 and 393×660 because
+445 > 417px of free space below.
+
+Rubric: all pass except one new consequence, which the designer found itself: with the panel over the
+chip, the only written readout of the answer is covered; state survives only as three ink edges.
+
+Decision: keep the design, fix the consequence. Steered (run a97a2364, `design-a4/`): put the live
+answer in the panel header row alongside a still-identified month, no extra row, panel ≤ 460px,
+shots at 393×852 / 393×660 / 1100×900 plus six family variants, header measured at 360 and 393 for
+truncation.
+
+## 2026-11-13 — design-a4 accepted as the final control
+
+Artifacts: `design-a4/` (mockup with `?state=&theme=&mode=&pick=`, shot-phone.png, shot-desktop.png,
+shot-families.png, shot-header-widest.png, RATIONALE.md). Copied into the task root as
+`preview-custom.png` and `preview-custom-families.png`; `PLAN.md` §3 rewritten to this design.
+
+Accepted because, measured rather than asserted: 0px inline growth (dialog 558px in every state);
+panel 322×445; day chip 32×32 inside a 44×44 tiling track; period tab 72.5→78.5×44; slot 46.3→52.3×44;
+header 308×32 and the widest real answer (`Wed 12 May, 12:30am`, 139.6px) untruncated at 360 with 18.4px
+slack; zero scroll containers inside the panel at five viewport sizes; `.formBody` scrollTop 0; four taps
+for "the 9th of next month at 9am"; six family/mode variants render from tokens only.
+
+Two product-level findings carried into the plan: `positionDialogMenu` clamps a menu to half the viewport
+and flaps only under 220px free, so an opt-in `data-fit-whole` branch is required (below → above → over),
+and click-away must use `event.composedPath()` because a day tap re-renders the grid.
+
+Known and accepted: on phones the panel opens over its own chip (445px fits neither side of 417/367), so
+the live answer lives in the panel header; the header then carries two dates, distinguished by
+`--font-md`/`--text` vs `--font-sm`/`--muted`, which is weakest in slate's ghost-button header.
+
+Model feedback submitted for the designer session: rating 5, request-id dd237ea5-49b8-4326-ba70-137e4650d653
+(the session produced a1→a4 under three steers; rated once, at the end).

@@ -1,7 +1,8 @@
-# Sidebar snooze + drag — feature plan (v3)
+# Sidebar snooze + drag — feature plan (v4)
 
-Plan only, nothing implemented. Preview: `mockup.html` → `preview-desktop.png`, `preview-phone.png`
-(real `app.css` + clay tokens, real dialog classes, screenshots taken in Chrome).
+Plan only, nothing implemented. Previews: `preview-custom.png` / `preview-custom-families.png` is the
+final snooze control (`design-a4/`); `preview-desktop.png` / `preview-phone.png` are the drag states
+(`mockup.html`). Everything rendered from the real `app.css` + theme tokens in Chrome.
 
 ---
 
@@ -62,42 +63,68 @@ dependency, so `/edit` keeps its current whole-row contract and is not touched b
 
 ---
 
-## 3. Custom date/time control
+## 3. Custom date/time control — final design
 
-No dropdowns. A date is a month grid; a time is a snapping wheel. Both live inline in the `Custom…`
-block — no overlay, so nothing can clip or mis-position on a phone.
+Designed and measured by a subagent; artifacts and reasoning in `design-a4/` (mockup with
+`?state=&theme=&mode=&pick=`), rendered in `preview-custom.png` and `preview-custom-families.png`.
 
-**Calendar** (`.snoozeCalendar`)
+**Shape.** `Custom…` is the trigger. The picker is a panel anchored to that chip, reusing the
+`.filePickerMenu.dialogPickerMenu` chrome (1px `--border`, `--radius-card`, `--shadow-pop`,
+`--paper`) and `positionDialogMenu`. **Inline growth is 0px** — the dialog is 558px at 393 in every
+state — and the panel is 322×445px.
 
-- `‹ November 2026 ›` header: 32px icon buttons with the app's `::after` hit area, month title in
-  `--font-md` 600.
-- Weekday header in `--font-xs`, `--muted`, uppercase.
-- `.calGrid`: `repeat(7, minmax(0,1fr))`, day cells `min-height: 44px`. Measured: 46px wide at a 393px
-  viewport, 51px at 430px, 64px on desktop — so the 44px touch target is met in both axes. (The claim
-  that a 7-column grid could not reach 44px in a phone dialog was wrong; that is what produced the
-  dropdown.)
-- Past days `disabled` and muted; today ringed with an inset 1px `--border`; the selected day ink-filled
-  (`--ink` / `--paper`), same treatment as an active chip.
+**Panel contents, top to bottom**
 
-**Time wheel** (`.snoozeTimeWheel`)
+1. *Header, one 32px row.* Left: the live answer `Wed 18 Nov, 9:30am` — `--font-md`, `--text`,
+   `nowrap`, `flex: 0 0 auto`, `aria-live="polite"`, written by the same formatter call that fills the
+   chip's `.chipTime` so the two cannot drift. Right: `‹ Nov 2026 ›` — month at `--font-sm`/`--muted`
+   in a 60px `min-width` so the arrows never move, arrows are the standard 32px `.icon-btn` with 44px
+   hit areas, `‹` disabled on the current month.
+2. *Weekday row* `Mo … Su`, `--font-sm`, muted.
+3. *Day grid* — Monday-first, **six fixed week rows** so the panel never changes height. Each day is a
+   32×32 `.choiceChip` centred in a 44×44 track whose `::after` fills the track, so hit areas tile
+   without overlap. Past days disabled and borderless; today at weight 600; the chosen day carries a
+   2px ink edge (1px border + 1px inset ink ring — the `.agentBackendTab.active` language the app
+   already uses).
+4. *Period tabs* `Night · Morning · Afternoon · Evening`, 32px, with **two independent marks**:
+   `--wash` fill = the period on view, 2px ink edge = this period holds the chosen time. A fully past
+   period is disabled; the Today clamp moves the period on view.
+5. *Slot grid* — a fixed 6 × 2 grid of that period's twelve half-hours, labels `h:mm` with the
+   meridiem carried by the tab, each slot 32px visual in a 44px pitch, chosen slot with the same 2px
+   ink edge.
 
-- `max-height: 132px` = three 44px rows, `scroll-snap-type: y mandatory`,
-  `overscroll-behavior: contain` (it is a nested scroller inside `.formBody`), rows 44px with
-  `font-variant-numeric: tabular-nums`.
-- The settled row is `--ink` at weight 600 with 1px `--border` rules above and below; the rows around it
-  stay `--muted`, which is what makes it read as a wheel rather than a list.
-- 30-minute steps; commits the centred row on scroll settle, so any time is reachable, not only the
-  five preset moments.
+**Interaction.** Opening `Custom…` fills it like a preset and opens the panel. A day tap commits and
+keeps the panel open; a time tap commits and closes it; a period tap commits nothing; an outside tap or
+picking a preset closes it. Nothing is ever pending. When closed, the chip's existing `.chipTime` slot
+reads `· Wed 18 Nov, 2pm`, exactly the way presets read `· 9am`. "The 9th of next month at 9am" is four
+taps: `Custom… › 9 9:00`.
 
-**Wiring**
+**Measured** (Chrome, `getBoundingClientRect`/`getComputedStyle`, hit box = border box + `::after`):
+day chip 32×32 → 44×44 at a 44px pitch; period tab 72.5×32 → 78.5×44; slot 46.3×32 → 52.3×44; header
+308×32 with the widest real answer (`Wed 12 May, 12:30am`, 139.6px) fitting at 360 with 18.4px of slack
+and no truncation; **no scroll container anywhere in the panel** (`scrollHeight === clientHeight` at
+393×852, 393×660, 360×640, 430×932, 1100×900); `.formBody` never scrolls.
 
-- `.customSnoozeRow` becomes one column: `grid-template-columns: minmax(0,1fr); gap: var(--space-3)`.
-- Pure helpers in `app_snooze.js`: `monthGrid(year, month)` (Monday-first, leading blanks, month
-  length), `clampSnoozeDate(day, today)` (no past days), `wheelIndex(epoch)` / `wheelEpoch(index)`.
-- Save: the selected day + wheel value → `new Date(y, m, d, hh, mm)` local → epoch seconds, what
-  `Date.parse("YYYY-MM-DDTHH:MM")` produced before.
-- Height cost: about 470px when expanded, and `.formBody` already scrolls (`app.css:3165-3179`), so the
-  dialog caps at the viewport and the body scrolls — the same behaviour as the new-session dialog.
+**Two narrow product changes this design needs**, both found by measurement:
+
+- `positionDialogMenu` caps a menu at half the viewport and flips only under 220px of free space, so a
+  445px panel gets cut. Add an **opt-in `data-fit-whole` branch**: use the full `scrollHeight`, place
+  below if it fits, else above if it fits, else over the anchor from the larger side. Menus without the
+  flag behave byte-identically.
+- Click-away must use `event.composedPath()`. A day tap re-renders the grid, so `target.closest()` sees
+  a detached node and closes the panel mid-selection.
+
+**Consequence to keep in mind:** at 393×852 the panel fits neither side (417px below, 367px above), so
+it opens *over* the `Custom…` chip — which is exactly why the live answer lives in the panel header. At
+430×932 it opens below; at 1100×900 above.
+
+**Rejected in review, with the reason each time** — native `<input type=date|time>` (44px box and 16px
+type beside 32px chips, UA chrome); 32px pickers on the *field* plane at 44px (the size difference, once
+more); dropdown lists of days and times ("you use dropdown for datetime?"); an inline month calendar plus
+time wheel (470px block; 44px *visible* boxes where the app's rule is that hit area is not visual size;
+three competing selection languages; nested vertical scroller); per-segment arrow steppers (ten targets,
+repeated tapping for distant dates); horizontal chip strips (a month becomes a 1,800px fling; clipped
+half-chips read as glitches).
 
 ## 4. Drag
 
@@ -193,7 +220,9 @@ is still in Later, so it appears already in the right slot) and then `snooze {in
 | `tests/test_reorder_offset.py` (new) | midpoint/top/bottom targets; only the dragged row's offset changes; result order via `listing_priority` + `sort_session_rows`; clamp path reports `applied: false`; the exact-1.0 neighbour tie |
 | `tests/test_snooze_presets.py` (extend) | presets unchanged; `nextSnoozeDays`/`snoozeTimeSlots` local and DST-safe |
 | `tests/test_sidebar_drag_module.py` (new, VM) | `classifyDrop` truth table from §4.1; insertion-index math (above first, below last, header, refuse zone, single card, source=Later); payload builder; same-index no-op |
-| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; picker value round trip |
+| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; panel open/close per §3; day tap keeps the panel, time tap closes it; period tap commits nothing; Today clamp |
+| `tests/test_dialog_menu_placement.py` (new) | `data-fit-whole`: full `scrollHeight`, below → above → over, and unflagged menus unchanged |
+| `tests/test_snooze_panel_layout.py` (new, VM) | no scroll container inside the panel; header not truncated at 360 with the widest real answer; day/period/slot hit boxes ≥44 in both axes |
 | `scripts/docker_sidebar_drag_verify.sh` (new) | real server + broker: synthesized pointer sequence reorders Now and the next `GET /api/sessions` agrees; Now→Later sets `snoozed_indefinitely`; Later→Now wakes at the dropped slot; tmux order follows |
 
 `tests/test_sidebar_render_order.py` is untouched — `sort_session_rows` does not change.
@@ -206,8 +235,9 @@ desktop drag; the synthesized-pointer harness proves our handler, not the platfo
 ## 7. Phasing
 
 1. **Indefinite snooze** — store/listing/diagnostics + `/snooze` + the chip.
-2. **Custom pickers** — `app_snooze.js` helpers, shell markup, controller wiring, the three CSS notes
-   in §3.
+2. **Custom picker** — `design-a4/` markup and CSS, the `data-fit-whole` branch in
+   `app_dialog_menu.js`, `composedPath()` click-away, `app_snooze.js` month/period helpers, and the
+   dialog's panel wiring.
 3. **`/reorder`** — the offset computation, tests, `curl` a permutation and check
    `GET /api/sessions` plus the tmux window order.
 4. **Drag gesture** — `app_sidebar_drag.js`, `app_sessions.js` integration, the §4.4 rules.
