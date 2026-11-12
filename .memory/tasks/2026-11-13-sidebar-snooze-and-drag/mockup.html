@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en" data-theme="clay" data-mode="light">
+<head>
+<meta charset="utf-8">
+<title>Snooze + drag preview</title>
+<link rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/app.css">
+<link rel="stylesheet" href="file:///home/yiwen/codoxear/codoxear/static/themes/clay.css">
+<style>
+  /* Mock-only scaffolding. Everything inside .mockDialog / .mockSidebar uses the
+     app's real classes and tokens; the only authored rules are the three
+     proposed additions (customSnoozeRow columns, drop indicator, drop zone). */
+  html, body { margin: 0; background: var(--wash); }
+  body { font-family: var(--font-ui); color: var(--text); padding: 22px; }
+  h1 { font-size: var(--font-2xl); margin: 0 0 4px; }
+  h2 { font-size: var(--font-lg); margin: 26px 0 10px; color: var(--text-subtle);
+       text-transform: uppercase; letter-spacing: .08em; }
+  p.note { margin: 0 0 14px; font-size: var(--font-md); color: var(--muted); max-width: 720px; }
+  .shots { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
+  .shot { display: flex; flex-direction: column; gap: 8px; }
+  .shot > .cap { font-size: var(--font-sm); color: var(--muted); }
+  .mockDialog.formDialog {
+    display: flex; position: static; transform: none; left: auto; top: auto; margin: 0;
+    width: min(92vw, 480px); box-shadow: none;
+  }
+  /* the real dialogs get these from #editViewer-scoped rules; the mock mirrors them */
+  .mockDialog .choiceChips { flex-wrap: wrap; gap: var(--space-2); overflow: visible; }
+  .mockDialog .formBody { overflow: visible; }
+  /* proposed: custom row on the field plane; pickers fill their column.
+     Phones keep the existing single-column stack (app.css:4206). */
+  .mockDialog .customSnoozeRow .dialogPickerBtn { width: 100%; }
+  @media (min-width: 881px) {
+    .mockDialog .customSnoozeRow {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: var(--space-2);
+    }
+  }
+  .mockDialog .pickerField { position: relative; }
+  .mockSidebar { width: min(320px, 100%); border: 1px solid var(--border); background: var(--paper); padding: 8px; border-radius: var(--radius-card); }
+  .mockSidebar .sessions { overflow: visible; padding: 4px; position: relative; }
+  /* proposed drag affordances */
+  .dropIndicator {
+    height: 2px; margin: 2px 0 2px 2px; border-radius: var(--radius-pill);
+    background: var(--ink); position: relative;
+  }
+  .session[data-dragging="true"] {
+    box-shadow: var(--shadow-pop); border-color: var(--ink);
+    background: var(--paper); transform: rotate(-.4deg);
+    opacity: .96;
+  }
+  .sessionGroupHeader[data-drop="snooze"] {
+    background: var(--wash); border: 1px solid var(--ink); border-radius: var(--radius-control);
+    color: var(--ink); padding: var(--space-3) var(--space-4); text-transform: none;
+    letter-spacing: 0; font-size: var(--font-md); font-weight: 600;
+  }
+  .sessionGroupHeader[data-drop="snooze"] .sessionGroupCount { display: none; }
+  .mockHint { font-size: var(--font-sm); color: var(--muted); margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<h1>Snooze + drag — UI preview</h1>
+<p class="note">Real <code>app.css</code> + clay tokens, real dialog classes. Only the three proposed
+additions are authored here: the custom row's two equal columns, the drop indicator, and the drop zone.</p>
+
+<div class="shots">
+
+  <!-- 1. BEFORE -->
+  <div class="shot">
+    <div class="formViewer formDialog mockDialog">
+      <div class="queueHeader"><div class="title">Edit conversation</div><div class="actions">
+        <button class="icon-btn" title="Close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div></div>
+      <div class="formBody">
+        <label class="field"><span class="fieldLabel">Conversation name</span>
+          <input type="text" value="Fix the sidebar date picker"></label>
+        <label class="field editPriorityField"><span class="fieldLabel">Priority offset</span>
+          <div class="sliderRow"><input type="range" min="-1" max="1" step="0.05" value="0.35"><span class="rangeValue">+0.35</span><button class="icon-btn text-btn subtleBtn" type="button">Reset</button></div></label>
+        <label class="field"><span class="fieldLabel">Snooze</span>
+          <div class="choiceChips">
+            <button class="choiceChip" type="button"><span class="chipLabel">No snooze</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This evening</span><span class="chipTime">· 6pm</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Tomorrow</span><span class="chipTime">· 9am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This weekend</span><span class="chipTime">· Sat 10am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Next week</span><span class="chipTime">· Mon 9am</span></button>
+            <button class="choiceChip active" type="button"><span class="chipLabel">Custom…</span><span class="chipTime"></span></button>
+          </div>
+          <div class="customSnoozeRow" style="display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:var(--space-4)">
+            <input type="date" value="2026-11-14">
+            <input type="time" value="09:00" step="60">
+          </div>
+        </label>
+        <label class="field"><span class="fieldLabel">Depends on</span>
+          <div class="pickerField"><button class="filePickerBtn dialogPickerBtn" type="button">
+            <span class="pickerButtonText"><span class="pickerButtonPrimary">No dependency</span></span>
+            <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button></div></label>
+      </div>
+      <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
+    </div>
+    <div class="cap">Before — native date/time: 44px box, 16px type on phones, UA chrome, 1fr / 140px.</div>
+  </div>
+
+  <!-- 2. AFTER, custom -->
+  <div class="shot">
+    <div class="formViewer formDialog mockDialog">
+      <div class="queueHeader"><div class="title">Edit conversation</div><div class="actions">
+        <button class="icon-btn" title="Close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div></div>
+      <div class="formBody">
+        <label class="field"><span class="fieldLabel">Conversation name</span>
+          <input type="text" value="Fix the sidebar date picker"></label>
+        <label class="field editPriorityField"><span class="fieldLabel">Priority offset</span>
+          <div class="sliderRow"><input type="range" min="-1" max="1" step="0.05" value="0.35"><span class="rangeValue">+0.35</span><button class="icon-btn text-btn subtleBtn" type="button">Reset</button></div></label>
+        <label class="field"><span class="fieldLabel">Snooze</span>
+          <div class="choiceChips">
+            <button class="choiceChip" type="button"><span class="chipLabel">No snooze</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This evening</span><span class="chipTime">· 6pm</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Tomorrow</span><span class="chipTime">· 9am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This weekend</span><span class="chipTime">· Sat 10am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Next week</span><span class="chipTime">· Mon 9am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Indefinitely</span><span class="chipTime"></span></button>
+            <button class="choiceChip active" type="button"><span class="chipLabel">Custom…</span><span class="chipTime"></span></button>
+          </div>
+          <div class="customSnoozeRow" style="display:grid">
+            <div class="pickerField">
+              <button class="filePickerBtn dialogPickerBtn" type="button" aria-expanded="true">
+                <span class="pickerButtonText"><span class="pickerButtonPrimary">Fri 14 Nov</span></span>
+                <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </button>
+              <div class="filePickerMenu dialogPickerMenu open" style="left:0;right:auto;top:calc(100% + 6px);width:100%;box-shadow:none">
+                <button class="fileMenuItem" type="button"><span class="fileMenuPath">Today · Wed 12 Nov</span></button>
+                <button class="fileMenuItem" type="button"><span class="fileMenuPath">Tomorrow · Thu 13 Nov</span></button>
+                <button class="fileMenuItem active" type="button"><span class="fileMenuPath">Fri 14 Nov</span></button>
+                <button class="fileMenuItem" type="button"><span class="fileMenuPath">Sat 15 Nov</span></button>
+                <button class="fileMenuItem" type="button"><span class="fileMenuPath">Sun 16 Nov</span></button>
+              </div>
+            </div>
+            <div class="pickerField">
+              <button class="filePickerBtn dialogPickerBtn" type="button">
+                <span class="pickerButtonText"><span class="pickerButtonPrimary">9:00am</span></span>
+                <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+              </button>
+            </div>
+          </div>
+        </label>
+        <label class="field"><span class="fieldLabel">Depends on</span>
+          <div class="pickerField"><button class="filePickerBtn dialogPickerBtn" type="button">
+            <span class="pickerButtonText"><span class="pickerButtonPrimary">No dependency</span></span>
+            <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button></div></label>
+      </div>
+      <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
+    </div>
+    <div class="cap">After — Custom: same field plane and type as “Depends on”, two equal columns, app-owned menus.</div>
+  </div>
+
+  <!-- 3. AFTER, indefinite -->
+  <div class="shot">
+    <div class="formViewer formDialog mockDialog">
+      <div class="queueHeader"><div class="title">Edit conversation</div><div class="actions">
+        <button class="icon-btn" title="Close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div></div>
+      <div class="formBody">
+        <label class="field"><span class="fieldLabel">Conversation name</span>
+          <input type="text" value="Fix the sidebar date picker"></label>
+        <label class="field editPriorityField"><span class="fieldLabel">Priority offset</span>
+          <div class="sliderRow"><input type="range" min="-1" max="1" step="0.05" value="0.35"><span class="rangeValue">+0.35</span><button class="icon-btn text-btn subtleBtn" type="button">Reset</button></div></label>
+        <label class="field"><span class="fieldLabel">Snooze</span>
+          <div class="choiceChips">
+            <button class="choiceChip" type="button"><span class="chipLabel">No snooze</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This evening</span><span class="chipTime">· 6pm</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Tomorrow</span><span class="chipTime">· 9am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">This weekend</span><span class="chipTime">· Sat 10am</span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Next week</span><span class="chipTime">· Mon 9am</span></button>
+            <button class="choiceChip active" type="button"><span class="chipLabel">Indefinitely</span><span class="chipTime"></span></button>
+            <button class="choiceChip" type="button"><span class="chipLabel">Custom…</span><span class="chipTime"></span></button>
+          </div>
+        </label>
+        <label class="field"><span class="fieldLabel">Depends on</span>
+          <div class="pickerField"><button class="filePickerBtn dialogPickerBtn" type="button">
+            <span class="pickerButtonText"><span class="pickerButtonPrimary">No dependency</span></span>
+            <span class="pickerButtonChevron"><svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button></div></label>
+      </div>
+      <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
+    </div>
+    <div class="cap">After — Indefinitely is a chip; the custom row disappears. Nothing new is displayed on the card.</div>
+  </div>
+
+  <!-- 4. drag states -->
+  <div class="shot">
+    <div class="mockSidebar">
+      <div class="sessions">
+        <div class="sessionGroupHeader"><span class="sessionGroupLabel">Now</span><span class="sessionGroupCount">4</span></div>
+
+        <div class="session">
+          <div class="sessionContent"><div class="sessionInner">
+            <div class="row"><div class="sessionTitleRow"><span class="stateDot busy"></span>
+              <div class="titleLine"><span class="titleText">Router refactor</span></div></div>
+              <div class="sessionBadges"><span class="badge unread">unread 2</span></div></div>
+            <div class="muted subLine sessionMetaLine"><span class="metaText"><span class="sidebarMetaLabel">2m</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaData">sonnet ·hi</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaLabel">codoxear</span></span></div>
+          </div></div>
+        </div>
+
+        <div class="dropIndicator"></div>
+
+        <div class="session" data-dragging="true">
+          <div class="sessionContent"><div class="sessionInner">
+            <div class="row"><div class="sessionTitleRow"><span class="stateDot idle"></span>
+              <div class="titleLine"><span class="titleText">Snooze + drag</span></div></div><div class="sessionBadges"></div></div>
+            <div class="muted subLine sessionMetaLine"><span class="metaText"><span class="sidebarMetaLabel">41m</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaData">opus ·hi</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaLabel">codoxear</span></span></div>
+          </div></div>
+        </div>
+
+        <div class="session">
+          <div class="sessionContent"><div class="sessionInner">
+            <div class="row"><div class="sessionTitleRow"><span class="stateDot idle"></span>
+              <div class="titleLine"><span class="titleText">Paper theme audit</span></div></div><div class="sessionBadges"></div></div>
+            <div class="muted subLine sessionMetaLine"><span class="metaText"><span class="sidebarMetaLabel">3h</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaData">sonnet ·md</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaLabel">codoxear</span></span></div>
+          </div></div>
+        </div>
+
+        <div class="session">
+          <div class="sessionContent"><div class="sessionInner">
+            <div class="row"><div class="sessionTitleRow"><span class="stateDot idle"></span>
+              <div class="titleLine"><span class="titleText">Upload retry policy</span></div></div><div class="sessionBadges"></div></div>
+            <div class="muted subLine sessionMetaLine"><span class="metaText"><span class="sidebarMetaLabel">1d</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaData">sonnet ·hi</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaLabel">codoxear</span></span></div>
+          </div></div>
+        </div>
+
+        <div class="sessionGroupHeader" data-drop="snooze">
+          <span class="sessionGroupLabel">Later · drop to snooze indefinitely</span>
+          <span class="sessionGroupCount">1</span>
+        </div>
+
+        <div class="session">
+          <div class="sessionContent"><div class="sessionInner">
+            <div class="row"><div class="sessionTitleRow"><span class="stateDot idle"></span>
+              <div class="titleLine"><span class="titleText">Dendron sync notes</span></div></div><div class="sessionBadges"></div></div>
+            <div class="muted subLine sessionMetaLine"><span class="metaText"><span class="sidebarMetaLabel">5h</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaData">sonnet ·md</span><span class="sidebarMetaSeparator"> | </span><span class="sidebarMetaLabel">notes</span></span></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">Drag — card lifted, 2px insertion line where it will land, Later header becomes the snooze target.</div>
+  </div>
+
+</div>
+<div class="mockHint">Grab of drag: while dragging a Later card, the Now header reads “Now · drop to wake”.</div>
+</body>
+</html>

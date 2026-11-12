@@ -101,3 +101,34 @@ Observed:
 
 Conclusion: the user's rule (compute the offset for the desired position at that instant) is exactly
 satisfiable at block granularity; v1's manual-rank field was unnecessary.
+
+## 2026-11-13 — v3: single-row offset, preview built
+
+User rulings taken as binding (supersede v2): a drop computes the offset for the **dragged row only**;
+a UI preview is required; no unrequested surface may be added (the Later-card snooze badge idea is
+dropped, and nothing new is displayed on a card).
+
+Changes made to the plan:
+- §4.2 replaces the whole-block ladder with a single-row target: `(score_above + score_below)/2`,
+  or `score_below + 0.005` at the top, or `score_above - 0.005` at the bottom; one
+  `priority_offset` write for the dragged row, computed server-side against the same clock/bucket as
+  the sort.
+- Two boundaries are now stated instead of engineered around: a neighbour pinned at exactly 1.0
+  (clip) falls to the `updated_ts` tiebreak, and a target outside `[tp-1, tp+1]` is clamped. The route
+  reports `applied: false` in those cases.
+- `/edit` no longer becomes partial; the two gestures get two narrow routes
+  (`/snooze`, `/reorder`), so no existing endpoint changes contract.
+- Removed from the plan because they were not asked for: `Alt+↑/↓` reordering, a hover grip
+  affordance, success toasts, and the Later-card state question.
+
+Preview (new): `mockup.html` imports the real `app.css` + `themes/clay.css` and uses the real dialog
+classes; screenshots `preview-desktop.png` (1100×1000) and `preview-phone.png` (430×1200) were taken
+in Chrome via `agent-browser --session sidemock`.
+
+Measured while building the preview (implementation notes, not opinions):
+- `.dialogPickerBtn` has no width rule (only `.sidePickerBtn` does): `getBoundingClientRect()` gave
+  118.6px inside a 170px grid column, i.e. shrink-to-fit. The two new pickers need `width: 100%`.
+- The native `input[type=date]` renders 44px tall with 16px text next to 32px chips at the same
+  dialog width — visible in the preview's "before" shot, matching the user's screenshot.
+- `#editViewer`-scoped rules (chips wrap, `formBody` overflow visible) are what make the mock behave
+  like the real dialog; the implementation inherits them.
