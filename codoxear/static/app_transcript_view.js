@@ -233,6 +233,13 @@
       return result;
     }
 
+    function noteUserScroll() {
+      // A reader gesture on the transcript (wheel, touch, scrollbar grab) — it
+      // only records who owns the scroll position, so it changes no view
+      // state and needs no policy transition.
+      return requireFunction(scrollRuntime.noteUserScroll, "scrollRuntime.noteUserScroll")();
+    }
+
     function state() {
       const scroll = scrollRuntime.snapshot();
       return Object.freeze({
@@ -263,6 +270,7 @@
       replaceWithLoading,
       scrollToBottom,
       observeScroll,
+      noteUserScroll,
       setHistory,
       historyCursor: () => historyCursor,
       showLoadError,

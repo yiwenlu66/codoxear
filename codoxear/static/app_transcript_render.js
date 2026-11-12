@@ -350,18 +350,24 @@ addAppEvent(document, "keydown", (e) => {
   const step = Math.round(chat.clientHeight * 0.15);
   const halfPage = Math.round(chat.clientHeight * 0.45);
   const scrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
+  // A scroll shortcut is a reader-driven scroll like a wheel spin: tag it so
+  // the upward move it produces counts as the reader leaving the live tail.
+  const scrollByShortcut = (top) => {
+    transcriptScrollRuntime.noteUserScroll();
+    chat.scrollBy({ top, behavior: scrollBehavior });
+  };
   if (key === "j") {
     e.preventDefault();
-    chat.scrollBy({ top: step, behavior: scrollBehavior });
+    scrollByShortcut(step);
   } else if (key === "k") {
     e.preventDefault();
-    chat.scrollBy({ top: -step, behavior: scrollBehavior });
+    scrollByShortcut(-step);
   } else if (key === "d") {
     e.preventDefault();
-    chat.scrollBy({ top: halfPage, behavior: scrollBehavior });
+    scrollByShortcut(halfPage);
   } else if (key === "u") {
     e.preventDefault();
-    chat.scrollBy({ top: -halfPage, behavior: scrollBehavior });
+    scrollByShortcut(-halfPage);
   }
 });
 

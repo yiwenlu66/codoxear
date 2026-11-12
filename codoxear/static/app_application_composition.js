@@ -1179,6 +1179,17 @@ import * as CodoxearWiring from "./app_wiring.js";
           },
           { passive: true }
         );
+        // A scrollbar grab (or a drag inside the transcript that scrolls it)
+        // begins before any scroll event, so it is the only evidence that the
+        // movement a following scroll event reports belongs to the reader.
+        eventBindings.on(
+          chat,
+          "pointerdown",
+          () => {
+            transcriptView().noteUserScroll();
+          },
+          { passive: true }
+        );
         eventBindings.on(jumpBtn, 'click', () => {
           void jumpToLatest();
         });

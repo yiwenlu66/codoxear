@@ -958,7 +958,11 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             runtime.scrollToBottom();
             const afterBottom = {{ top: chat.scrollTop, snapshot: runtime.snapshot() }};
             chat.scrollTop = 100;
+            const unpromptedUpScroll = runtime.handleScroll();
+            runtime.noteUserScroll();
+            chat.scrollTop = 10;
             const upScroll = runtime.handleScroll();
+            chat.scrollTop = 100;
             runtime.markDetachedWindow();
             const detachedTime = runtime.syncVisibleTimeIndicator();
             searchOpen = true;
@@ -999,6 +1003,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               initialProjection,
               afterBottom,
               upScroll,
+              unpromptedUpScroll,
               detachedTime,
               searchHidden,
               afterThresholds,
@@ -1016,10 +1021,15 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         )
         out = _run_node(js)
         self.assertEqual(out["initialProjection"], {"jump": "none", "time": "none", "text": ""})
-        self.assertEqual(out["afterBottom"]["top"], 500)
+        # 500 - 100: the exact bottom scroll offset, not a clamped overshoot.
+        self.assertEqual(out["afterBottom"]["top"], 400)
         self.assertTrue(out["afterBottom"]["snapshot"]["autoScroll"])
         self.assertLess(out["upScroll"]["delta"], 0)
         self.assertFalse(out["upScroll"]["autoScroll"])
+        # A platform-driven upward scroll event is not reader evidence: only a
+        # gesture (wheel/touch/scrollbar/shortcut) may leave the live tail.
+        self.assertLess(out["unpromptedUpScroll"]["delta"], 0)
+        self.assertTrue(out["unpromptedUpScroll"]["autoScroll"])
         self.assertEqual(out["detachedTime"], {"visible": True, "text": "Day · 12:34"})
         self.assertEqual(out["searchHidden"], {"visible": False, "text": ""})
         self.assertEqual(out["afterThresholds"]["cancelOlder"], 1)
@@ -1031,8 +1041,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["afterWheelTouchAtTop"]["autoLoadOlder"], 3)
         self.assertFalse(out["afterWheelTouchAtTop"]["snapshot"]["autoScroll"])
         self.assertEqual(out["scheduledBeforeRun"], 1)
-        self.assertEqual(out["afterFirstRaf"], {"top": 800, "queued": 1})
-        self.assertEqual(out["afterSecondRaf"], {"top": 800, "jump": "none"})
+        self.assertEqual(out["afterFirstRaf"], {"top": 700, "queued": 1})
+        self.assertEqual(out["afterSecondRaf"], {"top": 700, "jump": "none"})
         self.assertEqual(out["reset"]["snapshot"], {"autoScroll": True, "renderedAtLiveTail": True, "lastScrollTop": 0})
         self.assertEqual(out["reset"]["top"], 0)
         self.assertEqual(out["reset"]["jump"], "none")
@@ -1082,7 +1092,10 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             "restoreExact": True,
             "exact": {"top": 120, "autoScroll": False, "jump": "inline-flex"},
             "restoreChanged": True,
-            "changed": {"top": 700, "autoScroll": True, "jump": "none"},
+            # scrollToBottom targets the bottom scroll offset exactly
+            # (scrollHeight - clientHeight); it no longer relies on the
+            # browser clamping an out-of-range write.
+            "changed": {"top": 600, "autoScroll": True, "jump": "none"},
             "cleared": True,
             "restoreMissing": False,
         })

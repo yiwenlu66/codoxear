@@ -971,6 +971,14 @@
     let autoScroll = true;
     let renderedAtLiveTail = true;
     let lastScrollTop = Number(chat.scrollTop) || 0;
+    // Who owns the scroll position right now. Leaving the live tail is a
+    // reader decision, so only a scroll event the reader is actually driving
+    // may clear `autoScroll`. A phone's soft keyboard produces scroll events
+    // nobody asked for — the platform clamping the container when the composer
+    // or the keyboard changes its height, and its caret-reveal pan settling —
+    // and treating those as "the reader scrolled away" made the date chip and
+    // the jump button (both read this predicate) strobe at keystroke cadence.
+    let readerOwnsScroll = false;
     let touchY = null;
     const scrollPositions = new Map();
 
@@ -1066,6 +1074,7 @@
     }
 
     function enableAutoScroll() {
+      readerOwnsScroll = false;
       return setAutoScroll(true);
     }
 
@@ -1088,15 +1097,39 @@
       return snapshot();
     }
 
+    function maxScrollTop() {
+      return Math.max(0, (Number(chat.scrollHeight) || 0) - (Number(chat.clientHeight) || 0));
+    }
+
+    function pinnedToTail() {
+      return (Number(chat.scrollTop) || 0) >= maxScrollTop() - 1;
+    }
+
+    // A scroll interaction the reader is driving: wheel, touch, a scrollbar
+    // grab, or a scroll shortcut. Until this module next places the viewport
+    // itself, an upward scroll event is attributable to the reader.
+    function noteUserScroll() {
+      readerOwnsScroll = true;
+      return snapshot();
+    }
+
     function setScrollTop(nextTop) {
       const top = Math.max(0, Number(nextTop) || 0);
       chat.scrollTop = top;
+      readerOwnsScroll = false;
       lastScrollTop = Number(chat.scrollTop) || 0;
       return snapshot();
     }
 
     function scrollToBottom() {
-      chat.scrollTop = Number(chat.scrollHeight) || 0;
+      const target = maxScrollTop();
+      // Never re-write the position the viewport already holds. The composer's
+      // per-keystroke auto-grow used to re-issue `scrollTop = scrollHeight` on
+      // every input; on mobile those writes land inside the platform's own
+      // keyboard scroll work and its correction came back as an upward scroll
+      // event indistinguishable from the reader scrolling away.
+      if (Math.abs((Number(chat.scrollTop) || 0) - target) > 1) chat.scrollTop = target;
+      readerOwnsScroll = false;
       lastScrollTop = Number(chat.scrollTop) || 0;
       return snapshot();
     }
@@ -1139,7 +1172,11 @@
       const cur = Number(chat.scrollTop) || 0;
       const delta = cur - lastScrollTop;
       lastScrollTop = cur;
-      if (delta < 0) autoScroll = false;
+      // A scroll event can only prove the reader left the tail when the reader
+      // is driving the scroll and the event does not simply end pinned at the
+      // (possibly new) tail — a clamp to a smaller bottom scroll offset looks
+      // like an upward move but lands exactly at the tail.
+      if (delta < 0 && readerOwnsScroll && !pinnedToTail()) autoScroll = false;
       else if (isNearBottom()) autoScroll = true;
       if (shouldCancelOlderLoad() && cur > olderCancelPx) cancelOlderLoad();
       if (cur <= olderTopTriggerPx && delta <= 0) maybeAutoLoadOlder();
@@ -1148,6 +1185,7 @@
     }
 
     function handleWheel(event) {
+      noteUserScroll();
       if (event && Number(event.deltaY) < 0) {
         autoScroll = false;
         syncJumpButton();
@@ -1157,12 +1195,14 @@
     }
 
     function handleTouchStart(event) {
+      noteUserScroll();
       const touch = event && event.touches && event.touches[0];
       touchY = touch ? Number(touch.clientY) : null;
       return snapshot();
     }
 
     function handleTouchMove(event) {
+      noteUserScroll();
       const touch = event && event.touches && event.touches[0];
       if (!touch || touchY === null) return snapshot();
       const y = Number(touch.clientY);
@@ -1189,6 +1229,7 @@
       markDetachedWindow,
       markLiveTail,
       maybeAutoLoadOlder,
+      noteUserScroll,
       preserveScrollFrom,
       reset,
       restoreSessionScrollPosition,

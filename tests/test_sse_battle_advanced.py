@@ -38,6 +38,22 @@ MESSAGE_FLOW_CONTROLLER = module_path("app_message_flow.js")
 SESSION_CATALOG = module_path("app_session_catalog.js")
 SESSION_STATE = module_path("app_session_state.js")
 POLLING_HELPERS = module_path("app_polling.js")
+
+
+def _run_node_script(js: str) -> "subprocess.CompletedProcess[str]":
+    """Run a harness script through a file, never as one argv argument.
+
+    These harnesses concatenate whole module sources; a single ``node -e``
+    argument is capped at 128 KiB (MAX_ARG_STRLEN), so the combined source
+    crossed the limit as soon as a module grew.
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8", delete=False) as script:
+        script.write(js)
+        path = script.name
+    try:
+        return subprocess.run(["node", path], check=True, capture_output=True, text=True)
+    finally:
+        Path(path).unlink(missing_ok=True)
 TRANSCRIPT_HELPERS = module_path("app_transcript.js")
 _CURSOR_SECRET = b"sse-battle-test-cursor-secret"
 
@@ -503,7 +519,7 @@ visibility = "visible";
 controller.resumeLiveDelivery();
 process.stdout.write(JSON.stringify({{ retryDelay: retry.delay, whileHidden, afterVisible: sources.length, resumeUrl: sources[1].url }}));
 """
-        result = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        result = _run_node_script(js)
         self.assertEqual(json.loads(result.stdout), {
             "retryDelay": 6000,
             "whileHidden": 1,
@@ -547,7 +563,7 @@ sources[0].emit("message", "{{not-json");
 sources[0].emit("message", JSON.stringify({{ text: "after-malformed" }}));
 process.stdout.write(JSON.stringify({{ sourceCount: sources.length, malformed, delivered, closed: Boolean(sources[0].closed) }}));
 """
-        result = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        result = _run_node_script(js)
         outcome = json.loads(result.stdout)
         self.assertEqual(outcome, {
             "sourceCount": 1,
@@ -601,7 +617,7 @@ controller.resume("sse-battle", 9); // visibilityState changed back to visible
 sources[2].emit("open");
 process.stdout.write(JSON.stringify({{ sourceCount: sources.length, timedRetry, transitions, fallbacks, messages, urls: sources.map((item) => item.url) }}));
 """
-        result = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        result = _run_node_script(js)
         outcome = json.loads(result.stdout)
         self.assertEqual(outcome["timedRetry"], {"delay": 1000, "cancelled": False})
         self.assertEqual(outcome["sourceCount"], 3)
