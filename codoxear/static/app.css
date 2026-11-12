@@ -2549,6 +2549,11 @@ select {
       .fileViewerHeader .title {
         flex: 1 1 auto;
         min-width: 0;
+        font-weight: 650;
+      }
+      /* File actions are hidden while no file is open. */
+      .fileViewerHeader .icon-btn[hidden] {
+        display: none;
       }
       .fileViewerHeader .actions {
         display: flex;
@@ -2772,6 +2777,11 @@ select {
         border: 1px solid var(--border-subtle);
         background: var(--paper);
         overflow: auto;
+      }
+      /* Nothing rendered yet: no second frame inside the dialog. */
+      .fileDiff:empty {
+        border-color: transparent;
+        background: transparent;
       }
       .fileDiff .monaco-editor,
       .fileDiff .monaco-diff-editor,
@@ -3560,6 +3570,29 @@ select {
         font-size: var(--font-md);
         color: var(--muted);
       }
+      /* No-query empty state: the next action reads as content, the reason
+         beneath it as a muted note. */
+      .pickerEmptyState {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        padding: var(--space-5);
+      }
+      .pickerEmptyTitle {
+        color: var(--text);
+      }
+      .pickerEmptyNote {
+        font-size: var(--font-sm);
+        line-height: 1.35;
+      }
+      /* Git-state notice above a non-empty candidate list. */
+      .fileMenuGitStatus {
+        padding: var(--space-3) var(--space-5);
+        font-size: var(--font-sm);
+        line-height: 1.35;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border-faint);
+      }
       .choiceChips {
         display: flex;
         flex-wrap: nowrap;
@@ -4204,8 +4237,13 @@ select {
           right: 10px;
           bottom: calc(10px + env(safe-area-inset-bottom));
         }
+        /* Actions may wrap to a second row: keep the title on the first row,
+           centred on the 32px chrome controls. */
         .fileViewerHeader {
           align-items: flex-start;
+        }
+        .fileViewerHeader .title {
+          line-height: var(--ctl-chrome);
         }
         .fileViewerHeader .actions {
           gap: var(--space-2);

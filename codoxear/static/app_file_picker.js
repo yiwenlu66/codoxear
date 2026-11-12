@@ -344,6 +344,18 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     return row;
   }
 
+  // The no-query empty state: one block whose primary line is the next action
+  // and whose optional note explains why the candidate list is empty.
+  function appendFilePickerEmptyState(parent, title, note, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const block = createEl("div", { class: "pickerEmpty pickerEmptyState" });
+    block.appendChild(createEl("div", { class: "pickerEmptyTitle", text: String(title || "") }));
+    if (note) block.appendChild(createEl("div", { class: "pickerEmptyNote", role: "status", text: String(note) }));
+    parent.appendChild(block);
+    return block;
+  }
+
   function appendFilePickerEntryItem(parent, entry, idx, active, query, identityHint, title, host = {}) {
     if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
     const createEl = requireFunction(host, "el");
@@ -443,11 +455,14 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
       const state = searchSnapshot();
       const draftPath = normalizeDraftFilePath(query);
       const gitMessage = String(gitStatusMessage() || "");
-      // Surface an explicit git-state notice (e.g. non-repo) above the candidate
-      // list so the user understands why changed files are absent. Only shown
-      // in the candidate (no-query) view, where the changed-files section lives.
-      if (gitMessage && !query) appendGitStatus(gitMessage);
+      // Surface an explicit git-state notice (e.g. non-repo) so the user
+      // understands why changed files are absent. Only shown in the candidate
+      // (no-query) view, where the changed-files section lives: as a note under
+      // the empty state when nothing is listed, else above the candidates.
+      const showGitNote = Boolean(gitMessage && !query);
+      if (showGitNote && entries !== null && entries.length) appendGitStatus(gitMessage);
       if (entries === null) {
+        if (showGitNote) appendGitStatus(gitMessage);
         const showDraft = draftPath && !draftSuppressed();
         if (showDraft) appendDraft(draftPath, 0, focus === 0);
         appendStatus("Searching files...");
@@ -460,11 +475,14 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
           syncActiveDescendant(0);
           return [draftEntry(draftPath)];
         }
-        const emptyText = query
-          ? state.errorQuery === query
-            ? state.error || "Unable to search files"
-            : "No matching files"
-          : "Type to search files.";
+        if (!query) {
+          appendFilePickerEmptyState(menu, "Type to search files", showGitNote ? gitMessage : "", host);
+          syncActiveDescendant(-1);
+          return entries;
+        }
+        const emptyText = state.errorQuery === query
+          ? state.error || "Unable to search files"
+          : "No matching files";
         appendStatus(emptyText);
         syncActiveDescendant(-1);
         return entries;
@@ -1177,4 +1195,4 @@ import * as CodoxearPathCompletion from "./app_path_completion.js";
     });
   }
 
-export { appendDraftFileMenuItem, appendFilePickerEntryItem, appendFilePickerGitStatusRow, appendFilePickerSection, appendFilePickerStatusRow, appendHighlightedFileMenuPath, createEntryRuntime, createInputRuntime, createMenuDomRuntime, createMenuRenderRuntime, createMenuState, createSearchState, localFilePickerSearchEntries, normalizeSamePathFilePickerScores, pendingSessionPathEntry, prependPendingSessionPathEntry, visibleFilePickerEntries };
+export { appendDraftFileMenuItem, appendFilePickerEmptyState, appendFilePickerEntryItem, appendFilePickerGitStatusRow, appendFilePickerSection, appendFilePickerStatusRow, appendHighlightedFileMenuPath, createEntryRuntime, createInputRuntime, createMenuDomRuntime, createMenuRenderRuntime, createMenuState, createSearchState, localFilePickerSearchEntries, normalizeSamePathFilePickerScores, pendingSessionPathEntry, prependPendingSessionPathEntry, visibleFilePickerEntries };

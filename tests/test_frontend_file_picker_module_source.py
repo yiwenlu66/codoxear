@@ -141,7 +141,7 @@ def run_picker_module_probe() -> dict[str, object]:
         // Non-repo git-state notice must render as an explicit status row in the
         // candidate (no-query) view rather than a silently empty changed-files list.
         const gitStatusParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
-        const gitStatusRow = picker.appendFilePickerGitStatusRow(gitStatusParent, "Not a git repository \u2014 no changed files", {{ el }});
+        const gitStatusRow = picker.appendFilePickerGitStatusRow(gitStatusParent, "No changed files to list \u2014 this folder is not a git repository.", {{ el }});
         let gitStatusHostError = "";
         try {{ picker.appendFilePickerGitStatusRow(gitStatusParent, "x", {{}}); }} catch (err) {{ gitStatusHostError = err && err.message ? err.message : String(err); }}
         const renderMenuHost = {{ children: [], innerHTML: "", appendChild(child) {{ this.children.push(child); return child; }} }};
@@ -161,14 +161,17 @@ def run_picker_module_probe() -> dict[str, object]:
           titleForEntry: () => "",
           normalizeFileApiPath: (v) => v || "",
           activeIdentity: () => ({{ path: "", gitPath: false, apiPath: "" }}),
-          gitStatusMessage: () => "Not a git repository \u2014 no changed files",
+          gitStatusMessage: () => "No changed files to list \u2014 this folder is not a git repository.",
           openDraftFilePath: () => null,
           openEntry: () => null,
           el,
           createTextNode: (t) => ({{ tag: "#text", text: String(t) }}),
         }});
         renderRuntime.render();
-        const renderedGitStatus = renderMenuHost.children.find((node) => (node.attrs && node.attrs.class || "").includes("fileMenuGitStatus"));
+        const renderedEmptyState = renderMenuHost.children.find((node) => (node.attrs && node.attrs.class || "").includes("pickerEmptyState"));
+        const renderedGitStatus = renderedEmptyState && renderedEmptyState.children.find((node) => (node.attrs && node.attrs.class || "") === "pickerEmptyNote");
+        const renderedEmptyTitle = renderedEmptyState && renderedEmptyState.children.find((node) => (node.attrs && node.attrs.class || "") === "pickerEmptyTitle");
+        const renderedTopLevelClasses = renderMenuHost.children.map((node) => (node.attrs && node.attrs.class) || "");
         function summarizeNode(node) {{
           const attrs = node.attrs || {{}};
           return {{
@@ -195,6 +198,8 @@ def run_picker_module_probe() -> dict[str, object]:
           renameEntry: summarizeNode(renameEntryItem),
           gitStatusRow: summarizeNode(gitStatusRow),
           renderedGitStatus: renderedGitStatus ? summarizeNode(renderedGitStatus) : null,
+          renderedEmptyTitle: renderedEmptyTitle ? summarizeNode(renderedEmptyTitle) : null,
+          renderedTopLevelClasses,
           statusHostError,
           menuState: {{
             opened,
@@ -963,6 +968,7 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
             result["exports"],
             [
                 "appendDraftFileMenuItem",
+                "appendFilePickerEmptyState",
                 "appendFilePickerEntryItem",
                 "appendFilePickerGitStatusRow",
                 "appendFilePickerSection",
@@ -1002,9 +1008,13 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         # Non-repo notice renders as an explicit status row, both standalone and
         # inside the menu render (no-query candidate view).
         self.assertEqual(result["gitStatusRow"]["cls"], "fileMenuGitStatus")
-        self.assertEqual(result["gitStatusRow"]["text"], "Not a git repository \u2014 no changed files")
+        self.assertEqual(result["gitStatusRow"]["text"], "No changed files to list \u2014 this folder is not a git repository.")
         self.assertIsNotNone(result["renderedGitStatus"])
-        self.assertEqual(result["renderedGitStatus"]["text"], "Not a git repository \u2014 no changed files")
+        self.assertEqual(result["renderedGitStatus"]["text"], "No changed files to list \u2014 this folder is not a git repository.")
+        # With nothing listed, the notice is a note under the empty-state action,
+        # not a separate row above it.
+        self.assertEqual(result["renderedEmptyTitle"]["text"], "Type to search files")
+        self.assertEqual(result["renderedTopLevelClasses"], ["pickerEmpty pickerEmptyState"])
 
     def test_file_picker_menu_render_runtime_behavior(self) -> None:
         result = run_picker_render_runtime_probe()

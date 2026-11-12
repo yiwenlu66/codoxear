@@ -159,6 +159,8 @@
       diffButton.disabled = modeState.diffDisabled;
       previewButton.disabled = modeState.previewDisabled;
       downloadButton.disabled = modeState.downloadDisabled;
+      diffButton.hidden = modeState.fileActionsVisible === false;
+      downloadButton.hidden = modeState.fileActionsVisible === false;
       videoPreviewButton.style.display = modeState.videoPreviewVisible ? "" : "none";
       videoPreviewButton.disabled = modeState.videoPreviewDisabled;
       videoPreviewButton.title = modeState.videoPreviewTitle;

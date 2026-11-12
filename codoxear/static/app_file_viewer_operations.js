@@ -288,6 +288,9 @@
         diffDisabled: !diffable,
         previewDisabled: !canToggleMode,
         downloadDisabled: Boolean(!hasPath || draft),
+        // With no file open the file actions have nothing to act on: hide them
+        // instead of showing a row of disabled controls.
+        fileActionsVisible: hasPath,
         videoPreviewVisible: videoVisible,
         videoPreviewDisabled: Boolean(!videoVisible || videoPreparing),
         videoPreviewTitle: videoTitle,
@@ -326,6 +329,7 @@
       const editUnavailableReason = activeFileEditorUnavailableReason();
       const canEdit = activeFileCanEnterEditMode();
       fileEditButton.disabled = unavailable || savePending || (!canEdit && !editUnavailableReason);
+      fileEditButton.hidden = !currentFileEditorState().path;
       const editMode = Boolean(currentFileEditMode());
       const dirty = Boolean(currentFileDirty());
       const saveStyle = editMode || savePending;

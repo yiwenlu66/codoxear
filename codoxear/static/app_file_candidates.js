@@ -269,7 +269,7 @@
         // Precisely match git's non-repo fatal so a transient 409 (e.g. "git
         // changed during refresh") is not misreported as a non-repo cwd.
         const isNonRepo = /not a git repository/i.test(message);
-        if (isNonRepo) gitStateMessage = "Not a git repository \u2014 no changed files";
+        if (isNonRepo) gitStateMessage = "No changed files to list \u2014 this folder is not a git repository.";
       }
       if (!changedEntriesFresh && renderedFallback) {
         if (gitStateMessage) setGitStateMessage(gitStateMessage);
