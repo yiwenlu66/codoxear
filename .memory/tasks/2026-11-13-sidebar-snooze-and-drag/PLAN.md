@@ -1,377 +1,294 @@
-# Sidebar snooze + drag ordering — feature plan
+# Sidebar snooze + drag — feature plan (v2)
 
-Status: plan only. Nothing below is implemented. §9 lists the four decisions I need from you.
+Status: plan only, nothing implemented. v2 replaces v1's manual-rank idea with your rule: a drag
+computes `priority_offset` so the row lands at the desired position in that instant.
 
 ---
 
-## 1. Three facts from the current code that decide the design
+## 1. What decides the shapes
 
-**(a) The "ugly" date row is not a styling accident — it is three mechanisms stacked.**
+**The date row.** Three mechanisms stack, so it can't be restyled into place:
 
-- `app.css:3212-3216` forces `.formViewer input[type=date|time]` to `height: var(--ctl)` = **44px**,
-  while every snooze chip is `.formViewer .choiceChip` at `--dialog-control-h` = **32px**
-  (`app.css:3325-3331`). Two different vertical planes inside one field.
-- `app.css:4095-4106` applies `font-size: var(--font-xl) !important` (**16px**) to
-  `input[type=date|time]` on coarse pointers — the iOS anti-zoom floor — while chip labels stay at
-  `--font-md` (13px). This is why the numbers in your screenshot are visibly larger than
-  "This weekend".
-- The rest is UA chrome: inner field segments, the calendar indicator, and the platform's own
-  padding/box, on a `minmax(0,1fr) 140px` grid (`app.css:3755`).
+- `.formViewer input[type=date|time]` is forced to `height: var(--ctl)` = 44px (`app.css:3212-3216`)
+  while every snooze chip is `--dialog-control-h` = 32px (`app.css:3325-3331`).
+- On coarse pointers `input[type=date|time]` takes `font-size: var(--font-xl) !important` — the iOS
+  anti-zoom floor (`app.css:4095-4106`) — while chip labels stay at 13/14px. That is the visibly
+  larger number in your screenshot, and it cannot be lowered without reintroducing focus zoom.
+- The rest is UA chrome: inner segments, calendar indicator, platform padding, on a
+  `minmax(0,1fr) 140px` grid (`app.css:3755`).
 
-Consequence: restyling the native widgets cannot converge them onto the dialog's type plane,
-because the 16px floor on a text-entry input is `!important` for a real reason. A date control that
-belongs to the dialog has to stop being an `<input type=date>`.
+So the custom control is rebuilt from the dialog's own picker primitive (§3), not restyled.
 
-**(b) `priority_offset` cannot express an order.** `base_priority = clip01(time_priority + offset)`
-(`session_listing.py:153`) with `offset ∈ [-1, 1]` (`session_cleaners.py:41-43`). Two consequences:
+**The score.** `base_priority = clip01(time_priority + priority_offset)`, `offset ∈ [-1, 1]`
+(`session_listing.py:153`, `session_cleaners.py:41-43`), `time_priority` decaying with an 8h half-life
+and a 30s bucket (`server_config.py:349-350`). Two facts that the drag arithmetic must respect:
 
-- *Saturation*: an old session dragged above a saturated row (score exactly 1.0) is unreachable —
-  the dragged row clamps to 1.0 and loses the tie to the newer `updated_ts`. Saturation is not rare:
-  any row with `offset ≥ 1 - time_priority` sits at 1.0 for hours.
-- *Drift*: the recency term decays (8h half-life, 30s bucket, `server_config.py:349-350`). A
-  constant offset added to a decaying score changes its relative position over time. Worked example
-  in §4.2: a young row dragged *below* an older row inverts within ~16 hours.
+- Clipping: any row whose `tp + offset ≥ 1` sits at exactly 1.0, so its position is decided by the
+  `updated_ts` tiebreak, not by its offset.
+- The decay is multiplicative per row, so gaps between rows are not conserved.
 
-So the drag must not write `priority_offset`. It needs its own ordering channel. The slider keeps
-its current meaning.
+Both are handled by writing a **whole-block ladder** (§4.2) rather than one row's offset.
 
-**(c) `snooze_until` has no way to say "forever", and one `snooze_until` value cannot carry two
-meanings without lying about its type.** The row contract, the prune (an expired stamp is deleted at
-`session_store.py:358`) and the `snoozed` predicate all assume "a finite timestamp or nothing".
+**The snooze field.** `snooze_until` means "a finite timestamp or nothing" in the row contract, the
+expiry prune (`session_store.py:358`) and the `snoozed` predicate. It cannot also mean "forever".
 
 ---
 
 ## 2. Feature A — indefinite snooze
 
-### Representation
-
-Store a second, sparse key. Never a sentinel timestamp, never `math.inf` (it serializes to invalid
-JSON), never `-1` smuggled into a float field.
+A second, sparse key. Not a sentinel timestamp, not `math.inf` (`json.dumps(float("inf"))` emits
+`Infinity`, which `JSON.parse` rejects), not `-1` in a float field.
 
 ```
 sidebar_meta[sid] = {
   "priority_offset": float,
-  "snooze_until": float,            # present only for a timed snooze
-  "snoozed_indefinitely": true,     # present only for an indefinite snooze
+  "snooze_until": float,          # only for a timed snooze
+  "snoozed_indefinitely": true,   # only for an indefinite snooze
   "dependency_session_id": str,
-  "manual_order": float,            # §4
-  "manual_order_ts": float,         # §4
 }
 ```
 
-Mutual exclusion is validated in exactly one place — the same `_validated_sidebar_entry` that
-already rejects a self-dependency:
+Mutual exclusion is enforced in the one place that already rejects a self-dependency
+(`session_ui_state._validated_sidebar_entry`); everything downstream uses
 
 ```
 snoozed = snoozed_indefinitely or (snooze_until is not None and snooze_until > now_ts)
 ```
 
-Call sites that must learn the new flag: `session_cleaners.clean_snoozed_indefinitely`,
-`session_store.SidebarSessionState` + `sidebar_state_for_session` (the prune never touches an
-indefinite snooze), `session_ui_state._validated_sidebar_entry` / `edit_session`,
-`session_listing` facts + row, `diagnostics_routes` (it recomputes `snoozed` itself),
-`launch_ledger` default row. `session_snapshot_runtime.remap_session_identity` moves the whole meta
-dict, so the new keys inherit resume correctness with no code change (pin that with a test).
+Call sites: `session_cleaners`, `session_store.SidebarSessionState` + `sidebar_state_for_session`
+(the prune never touches an indefinite snooze), `session_ui_state`, `session_listing` facts + row,
+`diagnostics_routes` (recomputes `snoozed` itself), `launch_ledger` default row.
+`session_snapshot_runtime.remap_session_identity` moves the whole meta dict, so a resume carries the
+new key for free — pin that with a test.
 
-### UI
+UI: a seventh chip between **Next week** and **Custom…** (`[ Indefinitely ]`); `openEditSession` maps a
+stored indefinite snooze to it; save sends `snoozed_indefinitely: true` and no `snooze_until`. The chip
+row already wraps (`app.css:3546`), so no layout work.
 
-A seventh chip in the existing row, between **Next week** and **Custom…**:
-
-```
-[ No snooze ] [ This evening ·6pm ] [ Tomorrow ·9am ]
-[ This weekend ·Sat 10am ] [ Next week ·Mon 9am ] [ Indefinitely ] [ Custom… ]
-```
-
-- `openEditSession` maps a stored indefinite snooze to that chip.
-- Save sends `snoozed_indefinitely: true` and no `snooze_until`.
-- The chip row already wraps (`app.css:3546`), so no layout work.
-- No card badge. The Later block plus the Edit dialog carry the state; adding a badge is a separate
-  visual decision (question 3 in §9).
-
-### Wire format
-
-`POST /api/sessions/<id>/edit` becomes **partial**: an absent field means "leave unchanged"
-(`name` absent today is an error; it becomes "keep the alias", `snooze_until: null` still means
-"clear"). This is needed beyond this feature — every gesture write stops being able to clobber a
-name/offset the user edited concurrently. The dialog always sends every field, so its behaviour is
-unchanged. `snoozed_indefinitely: true` together with a non-null `snooze_until` is a 400.
+`POST /api/sessions/<id>/edit` becomes **partial** (absent field = leave unchanged; `name` absent keeps
+the alias; `snooze_until: null` still clears). The gesture writes must never be able to clobber a name
+or offset edited in another tab. `snoozed_indefinitely: true` plus a non-null `snooze_until` → 400.
 
 ---
 
-## 3. Feature B — custom date/time control that belongs to the dialog
+## 3. Feature B — custom date/time control
 
-**Replace the two native inputs with two dialog picker buttons and two menus**, reusing the
-primitive the "Depends on" field already uses (`dialogPickerBtn` + `dialogPickerMenu` +
-`positionDialogMenu`, `app_dialog_menu.js:39`).
+Two `dialogPickerBtn` buttons + two `dialogPickerMenu` menus — the primitive the "Depends on" field
+already uses (`app_dialog_menu.js:39`):
 
 ```
 Custom…
-[ Wed 12 Nov ▾ ]  [ 9:00am ▾ ]
+[ Wed 12 Nov ▾ ]   [ 9:00am ▾ ]
 ```
 
-- Buttons sit on the dialog *field* plane (44px, `.formViewer .dialogPickerBtn`) — the same plane as
-  the name input and the dependency picker, so the field stops looking like a foreign widget and
-  starts looking like the dialog's own control. Type comes from the field plane (`--font-lg`, which
-  the dialog retunes to 16px on coarse pointers, same as the anti-zoom floor), with no UA chrome and
-  no iOS zoom, because a `button` is not an entry field and the 16px `!important` rule does not
-  apply to it.
-  Two planes in one dialog (32px chips for choices, 44px fields for values) is already the dialog's
-  existing hierarchy and reads as hierarchy; what reads as a defect today is a *third*, foreign
-  widget with its own type size, chrome and corner treatment.
-- Row: `grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--space-2)` (equal halves, no
-  more `1fr 140px`).
-- **Date menu**: the next 28 days as `.fileMenuItem` rows — `Today · Thu 13 Nov`,
-  `Tomorrow · Fri 14 Nov`, then `Sat 15 Nov`, … — with the current value marked `.active`. 28 rows
-  scrolls inside the menu's existing `max-height: min(44vh, 360px)` and `positionDialogMenu` already
-  flips it above the field when the space below is short.
-- **Time menu**: 30-minute slots `00:00 … 23:30`, current value marked and scrolled into view on open.
-- Pure helpers land in `app_snooze.js` (`nextSnoozeDays(count, nowMs)`, `snoozeTimeSlots()`), so the
-  list construction is unit-testable without a DOM, and the DST behaviour is inherited from the
-  local-`Date` arithmetic the presets already use.
-- Save path unchanged in shape: `new Date(y, m, d, hh, mm)` → epoch seconds, i.e. exactly what
-  `Date.parse("YYYY-MM-DDTHH:MM")` produced before.
-
-Rejected: (i) keep native inputs, clamp CSS — the 16px `!important` floor keeps the type mismatch on
-phones; (ii) `<input type="datetime-local">` — one field, same chrome, worse; (iii) a month-grid
-calendar — 7 columns cannot reach the 44px touch target inside a 366px phone dialog, and a 28-row
-list already covers every snooze horizon this UI needs.
+- Field plane (44px, `.formViewer .dialogPickerBtn`), type from `--font-lg` (the dialog retunes it to
+  16px on coarse pointers), no UA chrome, and no zoom because a `button` is not an entry field. This
+  is the same plane as the name input and the dependency picker; the thing that reads as broken today
+  is a *third* widget with its own type size, corner treatment and indicator.
+- Row: `minmax(0,1fr) minmax(0,1fr)` with `gap: var(--space-2)`.
+- Date menu: next 28 days as `.fileMenuItem` rows (`Today · Thu 13 Nov`, `Tomorrow · Fri 14 Nov`,
+  `Sat 15 Nov`, …), current value `.active`. Fits the menu's existing `max-height: min(44vh, 360px)`
+  and `positionDialogMenu` already flips it above the field.
+- Time menu: 30-minute slots, current value marked and scrolled into view on open.
+- Pure helpers in `app_snooze.js` (`nextSnoozeDays(count, nowMs)`, `snoozeTimeSlots()`) so the list
+  construction is testable without a DOM and inherits the local-`Date` arithmetic the presets use.
+- Save: `new Date(y, m, d, hh, mm)` → epoch seconds (today's `Date.parse("YYYY-MM-DDTHH:MM")`
+  produced the same).
 
 ---
 
-## 4. Feature C — drag: reorder, snooze, wake
+## 4. Feature C — drag
 
 ### 4.1 Gesture map
 
 ```
-        ┌─────────────────────────── drop zone → action ────────────────────────────┐
-source  │ within Now (any slot)      │ on Now header/block │ on Later block/header │ Waiting │
-────────┼────────────────────────────┼─────────────────────┼───────────────────────┼─────────┤
-Now     │ reorder (rank write)       │ reorder to index 0  │ snooze indefinitely   │ refuse  │
-Later   │ — (no reorder in Later)    │ wake + land at slot │ cancel (no-op)        │ refuse  │
-────────┴────────────────────────────┴─────────────────────┴───────────────────────┴─────────┘
+source  │ within Now            │ Now header/block │ Later block/header     │ Waiting
+────────┼───────────────────────┼──────────────────┼────────────────────────┼────────
+Now     │ reorder               │ move to top      │ snooze indefinitely    │ refuse
+Later   │ —                     │ wake, at slot    │ cancel                 │ refuse
 ```
 
-- Insertion inside Now is per-card halves: pointer in a card's upper half → insert above it, lower
-  half → insert below it.
-- Cross-block drops have **no slot semantics in the destination block** except one: Later→Now lands
-  the row at the slot you dropped it into (it is being ranked in the same request, §5).
-- Dropping anywhere else (chat area, sidebar chrome, below the list) cancels.
-- **The target block's header is the guaranteed drop zone.** While a drag is active, the opposite
-  block's header is rendered if it does not exist (an empty Later block has no header, which would
-  otherwise make Now→Later impossible). The ephemeral header is owned by the drag module and removed
-  on drag end; `app_sessions.render()` runs strictly after that (the existing `refreshDeferred` flush
-  already fires on gesture close, `app_sessions.js:165-172`), so the container never has two writers
-  at once.
-- Later is recency-ordered and stays that way; a Later→Later drag is a deliberate no-op.
-- Non-session rows (launch attempts, orphan recovery) are not draggable and are excluded from the
-  `order` payload. They never carry a rank, so they keep sorting at the top of Now by score — exactly
-  where they sort today (`final_priority: 1.0`, `session_listing.py:619-628`).
+- Insertion inside Now is per-card halves (upper half → above, lower half → below).
+- Later→Now lands the row at the slot you dropped it into; Now→Later has no slot semantics.
+- The block header is the guaranteed drop zone: while dragging, the opposite block's header is
+  rendered if the block is empty (otherwise Now→Later is impossible with nothing snoozed yet). The
+  drag module owns that ephemeral node and removes it on drag end; `app_sessions.render()` runs after
+  the flush (`app_sessions.js:165-172`), so the container never has two writers.
+- Later stays recency-ordered; Later→Later is a no-op.
+- Launch-attempt / orphan-recovery rows are not draggable and are not part of the payload; they are
+  unranked rows with `final_priority: 1.0`, so they keep sitting at the top of Now as they do today
+  (`session_listing.py:619-628`).
 
-### 4.2 The ordering contract (the load-bearing decision)
+### 4.2 The offset ladder (your rule, made exact)
 
-Within **Now only**, the sort key grows two leading tiers:
+A drop posts the desired Now order. The server recomputes `priority_offset` for **every** Now row so
+that the resulting scores are one descending ladder in that instant:
 
 ```
-manual_rank := the value below, or None for any row that is not in the Now block
-
-(group_rank,                                     # unchanged: now/waiting/later
- 0 if manual_rank is None else 1,                # within Now: unranked floats above the manual list
- manual_rank if manual_rank is not None else 0.0, # ascending
- -final_priority, -updated_ts, -start_ts, sid)   # today's chain, unchanged
+TOP    = 0.99                     # a freshly active row (tp = 1.0) still outranks the whole ladder
+BOTTOM = 0.02                     # keep the last rung off 0 so nothing ties with a dead score
+step   = (TOP - BOTTOM) / max(1, N - 1)
+target_i = TOP - i * step         # i = position in the dropped order
+offset_i = round(target_i - tp_i, 4)    # tp_i from the same projection the listing uses
 ```
 
-with
+- `offset_i ∈ [-0.98, 0.99]` for every possible `tp ∈ [0,1]`, so it is always a legal offset and never
+  needs clamping. `final_priority = clip01(tp_i + offset_i) = target_i`, because targets are < 1.
+- Targets are distinct by `step`, and 30s-bucket jitter moves a score by at most 0.0007, so the order
+  is exact for any realistic block size.
+- Why the whole block and not just the dragged row: a midpoint between two neighbours has no room when
+  both neighbours are clamped at 1.0 (that is exactly the case you hit — the top of Now is usually a
+  saturation cluster), and repeated drops between the same pair exhaust the gap. Re-laddering the
+  block has room for any number of rows, and it heals drift left by earlier drags at the same time.
+- Why `TOP = 0.99` and not 1.0: a fully fresh row scores 1.0, so the ladder's ceiling sits just under
+  freshness and nothing else has to be special-cased. What activity does to a rung follows directly
+  from `score = tp + offset`: a message restores up to `1 - tp_at_placement` of score. A row you pushed
+  down while it was stale (its `tp` was near 0) therefore clips to 1.0 on its next message and comes
+  back to the top; a row you demoted straight after it had been active keeps the rung you gave it.
+  Your ordering is not silently reverted by activity — only your own drags change it.
+- Rounding offsets to 4dp is safe: rungs differ by `0.97 / (N-1)`, which stays far above 1e-4 for any
+  realistic block.
+- Behaviour over hours, stated once and not defended: rungs are absolute while decay is per-row, so a
+  young row placed below an older one closes the gap and can eventually cross it. Any later drag
+  re-ladders the whole block and heals it. You asked for the desired position in that instant; that
+  is what this delivers.
+- Nothing else changes: `sort_session_rows` keeps today's key, the client keeps rendering server
+  order, no new store field, no rank validity rule, no `tmux_order_sync` change.
 
-```
-manual_rank(row) = manual_order
-    if manual_order is a number
-       and manual_order_ts is a number
-       and updated_ts <= manual_order_ts
-    else None
-```
-
-and a session that leaves Now (snoozed, or blocked by a dependency) has its rank pruned where the
-store already prunes (`sidebar_state_for_session`), so ranks exist only for rows in the last-written
-Now order.
-
-Why this shape:
-
-- **Exact at drop time.** The drag posts the whole Now order; the server writes dense ranks. No
-  arithmetic against a decaying score, no clipping, no unreachable slot.
-- **Stable.** A rank is a position, not a boost. It does not decay, so the order you set holds.
-- **Recency still wins on new information.** A row whose `updated_ts` advances past `manual_order_ts`
-  loses its rank and floats to the top of Now by score. That is the same promise the sidebar makes
-  today ("the thing that just answered is at the top"), and it is what makes the manual order safe
-  to use: it can never bury new content. A brand-new session is unranked by construction and also
-  appears at the top.
-- **Zero effect until used.** A sidebar that has never been dragged has no ranks at all, so all rows
-  sit in tier 0 and the key reduces to today's key exactly.
-
-Worked example of why `priority_offset` was rejected (§1b): Now = A (age 1 min, tp 1.0), B (age 3h,
-tp 0.77), C (age 2d, tp 0.0016). Dragging C above A needs `score_C > 1.0` — impossible while the
-score clips, and a normalized ladder (C 0.99 / A 0.90 / B 0.81) quietly re-sorts when a young row is
-placed *below* an older one: `score_A - score_B` starts at +0.09 and reaches −0.08 by hour 16, because
-A's recency term loses 0.5 while B's loses 0.23. A constant offset plus a decaying term cannot hold
-an order.
+Side effect worth knowing: the Edit dialog's slider will now show ladder values (`+0.97`, `+0.71`,
+`+0.45`). Those are the real offsets; dragging it by hand still works as before.
 
 ### 4.3 Pointer machinery
 
-One gesture session, owned by a new module `codoxear/static/app_sidebar_drag.js`.
+One gesture session in a new module `codoxear/static/app_sidebar_drag.js`.
 
-- **Activation.** Touch/pen: 380 ms still hold (movement < 8px). Mouse: 6px movement with
-  `|dy| > |dx| * 1.2`. Horizontal intent keeps belonging to the existing swipe:
-  `bindSwipe`'s axis gate (`app_sessions.js:112-116`) already refuses a vertical drag, and a still
-  hold never engages a swipe, so the two gestures are exclusive by geometry — no coordination code,
-  just a test that pins it.
-- **Scroll conflict.** `pointermove` + `preventDefault` does not stop scrolling; a non-passive
-  `touchmove` listener added at activation does, because nothing has scrolled yet at that point.
-  `.session` already declares `touch-action: pan-y` (`app.css:372`), which is what makes the still
-  hold the right activation trigger in the first place.
-- **Refresh during drag** reuses the swipe deferral: `app_sessions` reports
-  `draggingSessionId != null` into the same `refreshDeferred` path, then flushes after commit. A poll
-  must never destroy the dragged node.
-- **Geometry.** Everything is measured from the live DOM at activation: `#sessions` (the scroll
-  container, `app.css:258-264`) and the card rects, with each card's group taken from the nearest
-  preceding `.sessionGroupHeader`. The module holds no second copy of the session list.
-- **Auto-scroll** while the pointer is within 48px of the container's top/bottom edge, 6–14px per
-  frame, on a rAF loop that stops with the drag.
-- **Commit holds, it does not optimistically reorder.** The dropped card stays where you put it while
-  the request is in flight; the authoritative snapshot then re-renders the block. On a LAN that is
-  tens of milliseconds, and it keeps the single-writer rule (no local order cache, no second sort)
-  intact. Failure → snap back + toast naming the error.
-- **Click suppression.** A completed drag swallows the click that follows the release, so dropping a
-  card never selects it.
-- Horizontal swipe, vertical scroll, tap-to-select and hint mode all keep working unchanged.
+- Activation: touch/pen = 380ms still hold (movement < 8px); mouse = 6px with `|dy| > |dx| * 1.2`.
+  The sidebar scrolls and `.session` declares `touch-action: pan-y` (`app.css:372`), so a still hold is
+  the only activation that cannot be a scroll. The horizontal swipe keeps its own gate
+  (`app_sessions.js:112-116`) and is exclusive by geometry.
+- Scroll suppression: a non-passive `touchmove` listener added at activation (`preventDefault` on
+  `pointermove` does not stop scrolling).
+- Refresh during drag reuses the swipe deferral (`refreshDeferred`), so a poll can't destroy the
+  dragged node; it flushes after commit.
+- Geometry comes from the live DOM at activation: `#sessions` (the scroll container,
+  `app.css:258-264`) and the card rects, each card's group taken from the nearest preceding
+  `.sessionGroupHeader`. The module keeps no second copy of the session list.
+- Auto-scroll within 48px of the container's top/bottom edge, 6–14px per frame, rAF loop that stops
+  with the drag.
+- Commit holds instead of optimistically reordering: the card stays where you dropped it until the
+  authoritative snapshot renders the block. No local order cache, no second sort. Failure → snap back
+  + toast with the error.
+- A completed drag swallows the click that follows the release, so a drop never selects the session.
 
-### 4.4 Visuals (tokens only, no new vocabulary)
+### 4.4 Visuals (tokens only)
 
 - Dragged card: `position: fixed`, measured width, `border-color: var(--ink)`,
-  `box-shadow: var(--shadow-pop)`, `cursor: grabbing`; paper's `--shadow-pop: none` already means
-  "no decorative shadow" there.
-- Insertion point: a 2px `var(--ink)` line with `--radius-pill`, absolutely positioned inside
-  `#sessions`.
-- Drop zone states on the block header/region: `data-drop="snooze"` → `var(--wash)` fill + ink
-  border, label becomes `Later · drop to snooze indefinitely`; `data-drop="wake"` → same treatment with
-  `Now · drop to wake`; `data-drop="refuse"` (Waiting) → `opacity .5`, `cursor: not-allowed`.
-- No backdrop, no dimming (design rule), nothing that shifts layout under the pointer, and no
-  transition at all under `prefers-reduced-motion`.
-- Desktop: hovering a Now card reveals a small grip in the existing hover-reveal group
-  (`:hover` / `:has(... :focus-visible)`, never `:focus-within`), purely as an affordance — the press
-  target stays the whole card.
+  `box-shadow: var(--shadow-pop)` (paper's is `none`), `cursor: grabbing`.
+- Insertion point: 2px `var(--ink)` line, `--radius-pill`, absolutely positioned in `#sessions`.
+- Drop zone on the header/region: `data-drop="snooze"` → `var(--wash)` fill + ink border, label
+  `Later · drop to snooze indefinitely`; `data-drop="wake"` → `Now · drop to wake`;
+  `data-drop="refuse"` (Waiting) → `opacity .5`, `cursor: not-allowed`.
+- No backdrop, no dimming, nothing that reflows under the pointer, nothing animated under
+  `prefers-reduced-motion`.
+- Desktop affordance: a small grip inside the existing hover-reveal group (`:hover` /
+  `:has(… :focus-visible)`, never `:focus-within`); the press target stays the whole card.
 
 ### 4.5 Keyboard
 
-`Alt+↑` / `Alt+↓` on a focused card moves it one slot inside Now and posts the same order payload.
-`Alt` is free: the direct-shortcut handler bails out on `altKey` (`app_transcript_render.js:303-305`).
-Cross-block moves from the keyboard stay in the Edit dialog (chips are reachable); no drag-only
-capability is introduced.
+`Alt+↑` / `Alt+↓` on a focused card moves it one slot in Now and posts the same payload. `Alt` is free
+— the direct-shortcut handler bails on `altKey` (`app_transcript_render.js:303-305`). Cross-block moves
+stay in the Edit dialog, so nothing is drag-only.
 
-### 4.6 Failure and race handling
+### 4.6 Failure and races
 
-- Unknown ids in `order` (the other tab deleted a session mid-drag): dropped from the payload,
-  reported in the response as `ignored`, request succeeds. The follow-up refresh reconciles.
-- Unknown id in `snooze`/`wake` (the gesture's own subject vanished): whole request fails with 404,
-  nothing is written, the drag reverts and a toast says the session is gone.
-- A duplicate id, or a session in both `order` and `snooze`: 400.
-- Two clients dragging at once: the last whole-block write wins — stated, not silently merged.
+- Unknown ids in `order` (deleted mid-drag): dropped from the ladder, reported as `ignored`, gesture
+  succeeds and the refresh reconciles.
+- Unknown id in `snooze`/`wake`: whole request fails 404, nothing written, drag reverts, toast names it.
+- Duplicate id, or a session in both `order` and `snooze`: 400.
+- Two clients dragging at once: the last whole-block write wins.
 
 ---
 
 ## 5. Server API
 
-**`POST /api/sidebar-layout`** (new; authenticated like every other control route; matched in
-`handle_session_post_route`'s non-session branch, next to `/api/quick-sessions`):
+**`POST /api/sidebar-layout`** (new; authenticated; matched in `handle_session_post_route`'s
+non-session branch next to `/api/quick-sessions`):
 
 ```json
-{ "order": ["sid1", "sid2", ...],   // authoritative Now order, may be []
-  "snooze": ["sidX"],               // set indefinite snooze (and drop its rank)
-  "wake": ["sidY"] }                // clear any snooze (rank comes from "order")
+{ "order": ["sid1", "sid2", ...],   // desired Now order → one ladder write for the whole block
+  "snooze": ["sidX"],               // indefinite snooze
+  "wake": ["sidY"] }                // clear snooze
 ```
 
 One coordinator method, one lock, one `save_sidebar_meta()`:
 
-1. `order` → `manual_order = index`, `manual_order_ts = now`; **every other live session loses
-   `manual_order`/`manual_order_ts`** (the payload is authoritative for the whole block, so no
-   orphans and no colliding ranks).
-2. `snooze` → `snoozed_indefinitely: true`, `snooze_until` deleted, rank cleared.
-3. `wake` → both snooze keys deleted.
+1. `order` → `reorder_offsets(rows_in_payload_order + any other current Now row appended, now_ts)`
+   → `priority_offset` per row (§4.2).
+2. `snooze` → `snoozed_indefinitely: true`, `snooze_until` deleted. No ladder rewrite needed: removing
+   a row doesn't disturb the remaining rungs.
+3. `wake` → both snooze keys deleted; the row's position comes from the same request's `order`.
 4. Respond `{ok, ignored, sessions: {sid: {priority_offset, snooze_until, snoozed_indefinitely,
    dependency_session_id}}}`.
 
-Everything else routes through the existing `/edit` (partial, §2). The gesture uses
-`/api/sidebar-layout` rather than two `/edit` calls because "snooze this row and re-rank the block" is
-one user action: two calls would render a visible intermediate state and could half-apply.
+`reorder_offsets` lives in `session_listing.py` (the module that owns priority math) as a pure
+function of `(rows, now_ts, half_life, bucket)`, so the ladder is unit-testable without a server.
 
-The client computes `order` from what it rendered (Now rows in DOM order, dragged id inserted at the
-drop index). It needs no knowledge of scores.
-
-`manual_order` / `manual_order_ts` stay on the public listing row like `priority_offset` and
-`snooze_until` do: they are two floats, they are what diagnostics should show, and hiding them would
-force a second derived field.
+The client sends only ids in render order with the dragged id inserted at the drop index; it computes
+no offsets. That keeps the arithmetic next to the sort it has to satisfy, and immune to the
+client/server clock or bucket skew.
 
 ---
 
-## 6. Tests and verification
+## 6. Tests
 
-Behavioural only (no source-string assertions):
-
-| File | What it pins |
+| File | Pins |
 | --- | --- |
-| `tests/test_snooze_indefinite.py` (new) | cleaner mutual exclusion; sparse keys; store prune never touches an indefinite snooze; listing `snoozed` derivation; diagnostics parity |
-| `tests/test_sidebar_manual_order.py` (new) | sort tiers (unranked above ranked, group rank still first, waiting/later never consult a rank); rank validity vs `updated_ts`; prune-on-leave; remap carries the keys |
-| `tests/test_control_routes.py` (extend) | `/edit` partial body leaves untouched fields alone; indefinite round trip; layout: 401, 400 duplicate/overlap, 404 unknown subject, `ignored` for unknown order ids, atomic sidecar write, non-listed ranks cleared |
-| `tests/test_snooze_presets.py` (extend) | presets unchanged; `nextSnoozeDays` / `snoozeTimeSlots` produce local, DST-safe sequences |
-| `tests/test_sidebar_drag_module.py` (new, VM) | `classifyDrop` truth table from §4.1; insertion-index math (above first card, below last, on header, refuse zone, single card, source=Later); payload builder; same-index no-op |
-| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; picker value round-trip |
-| `scripts/docker_sidebar_drag_verify.sh` (new) | real server + broker: synthesized pointer sequence reorders Now and the next `GET /api/sessions` agrees; Now→Later sets `snoozed_indefinitely`; Later→Now clears it at the dropped slot; tmux windows follow the new order; capture screenshots at 390px and desktop, mouse and touch emulation |
+| `tests/test_sidebar_reorder_offsets.py` (new) | ladder is exact (feed the result back through `listing_priority` + `sort_session_rows` and assert the requested order); offsets always in `[-1,1]`; N=0/N=1; a saturated top row still reorders; a row with `tp = 1.0` dragged to the top and to the bottom; order survives a 30s advance; a stale-demoted row clips back to the top on activity while a fresh-demoted row keeps its rung |
+| `tests/test_snooze_indefinite.py` (new) | cleaner mutual exclusion; sparse keys; prune ignores an indefinite snooze; listing `snoozed`; diagnostics parity |
+| `tests/test_control_routes.py` (extend) | `/edit` partial body leaves other fields alone; indefinite round trip; layout: 401, 400 duplicate/overlap, 404 unknown subject, `ignored` for unknown order ids, offsets visible on the next `GET /api/sessions` |
+| `tests/test_snooze_presets.py` (extend) | presets unchanged; `nextSnoozeDays` / `snoozeTimeSlots` are local and DST-safe |
+| `tests/test_sidebar_drag_module.py` (new, VM) | `classifyDrop` truth table from §4.1; insertion-index math (above first, below last, on header, refuse zone, single card, source=Later); payload builder; same-index no-op |
+| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; picker value round trip |
+| `scripts/docker_sidebar_drag_verify.sh` (new) | real server + broker: synthesized pointer sequence reorders Now and the next `GET /api/sessions` agrees (including a saturated top row); Now→Later sets `snoozed_indefinitely`; Later→Now wakes at the dropped slot; tmux windows follow; screenshots at 390px and desktop |
 
-Real-browser acceptance (not substitution) before calling it done: `agent-browser` at
-`set device "iPhone 15 Pro"` with a real touch drag, plus one desktop drag — the synthesized-pointer
-harness proves our handler, not the platform's gesture arbitration.
+`tests/test_sidebar_render_order.py` is untouched — the sort is unchanged, which is the point of this
+design.
+
+Real-browser acceptance before calling it done: one `agent-browser` touch drag at
+`set device "iPhone 15 Pro"` and one desktop drag. The synthesized-pointer harness proves our handler,
+not the platform's gesture arbitration.
 
 ---
 
-## 7. Phasing (each phase ends at a state you can look at)
+## 7. Phasing
 
 1. **Indefinite snooze** — cleaners/store/ui_state/listing/diagnostics/launch_ledger, partial `/edit`,
-   dialog chip. Look at: chip saves, row moves to Later, survives a server restart, never expires.
-2. **Custom pickers** — `app_snooze.js` helpers, shell markup, controller wiring, CSS. Look at:
-   dialog in all three families × light/dark at 390px and desktop.
-3. **Ordering plumbing, server only** — facts/row fields, `manual_rank`, sort key, prune, layout
-   endpoint. Look at: `curl` the endpoint, then `GET /api/sessions`, and the tmux window order.
-4. **Drag gesture** — `app_sidebar_drag.js`, `app_sessions.js` integration, CSS, Alt+↑/↓.
-   Look at: the docker verifier plus a real phone drag.
-5. **Documentation** — one paragraph in `AGENTS.md` under "Sidebar order is server-owned" recording:
-   the Now two-tier key, the rank-validity rule, the rank-cleared-on-leaving-Now rule, the
-   layout endpoint as the gesture writer, and the drag/refresh deferral contract.
+   chip. Look at: saves, lands in Later, survives a restart, never expires.
+2. **Custom pickers** — `app_snooze.js` helpers, shell markup, controller wiring, CSS. Look at: the
+   dialog in three families × light/dark at 390px and desktop.
+3. **Ladder + endpoint, server only** — `reorder_offsets`, `/api/sidebar-layout`, tests. Look at:
+   `curl` a permutation, then `GET /api/sessions` and the tmux window order.
+4. **Drag gesture** — `app_sidebar_drag.js`, `app_sessions.js` integration, CSS, Alt+↑/↓. Look at: the
+   docker verifier plus a real phone drag.
+5. **Docs** — one paragraph under "Sidebar order is server-owned" in `AGENTS.md`: the drag writes a
+   whole-block offset ladder with a 0.99 top rung, the sort key is unchanged, and the gesture route is
+   `/api/sidebar-layout`.
 
 ---
 
 ## 8. Risks
 
-- **iOS gesture arbitration** (long-press + touchmove suppression inside a scrolling container).
-  Mitigation: activation requires a still hold, so nothing has scrolled yet. If a real device still
-  fights it, the fallback is a dedicated grip handle (smaller hit region, no long press) — decide
-  from the device test, not from speculation.
-- **`updated_ts` clock assumption.** Rank validity compares a server-written stamp against a
-  backend-generated chat timestamp; both come from this machine. If a backend ever writes a future
-  timestamp, that row loses its rank silently (it lands at the top). Acceptable, and visible.
-- **tmux churn.** Order writes produce one listing generation → one coalesced `tmux_order_sync` pass,
-  which is exactly what the mirror is for. Dragging a row in the browser will move a tmux window; that
-  is the existing mirror contract, not a new one.
-- **Frozen order for dormant rows.** After a reorder, rows that receive no activity keep their manual
-  position instead of sinking with age. That is the point of a manual order, but it does change the
-  default feel of a block that has been dragged once.
+- **iOS gesture arbitration**: a still hold means nothing has scrolled yet, and the non-passive
+  `touchmove` guard is the standard fix. If a real device still fights it, the fallback is a grip
+  handle (smaller region, no long press) — decided by the device test.
+- **Decay drift** over hours (§4.2): accepted as instant semantics, healed by the next drag.
+- **tmux follow**: one drag → one listing generation → one coalesced `tmux_order_sync` pass. Window
+  order follows the sidebar, as it already does for every other order change.
 
 ---
 
-## 9. Decisions I need from you
+## 9. Open question
 
-1. **New reply on a manually placed row** → it floats to the top of Now until you reorder again
-   (my recommendation; it keeps "just answered is on top" true). Alternative: your rank wins and the
-   reply does not move the row.
-2. **Drop into Later is always indefinite** — no timed variant from a drag. Confirm.
-3. **Snooze state on the card**: show `until Fri 9am` / `indefinitely` in the Later block, or leave
-   Later silent as it is today?
-4. **`Indefinitely` placement**: its own chip in the row (my recommendation) or only reachable
-   through Custom…?
+Only one: should a snoozed card in **Later** show its state (`until Fri 9am` / `indefinitely`), or stay
+silent as today? Everything else is settled; I'll flag at build time if the device test contradicts the
+iOS assumptions in §4.3.

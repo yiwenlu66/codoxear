@@ -75,3 +75,29 @@ Read for the plan (paths relative to repo root):
 `PROMPT.md` in this directory is local-only: the repo `.gitignore` ignores `PROMPT.md` (25 older
 task specs were force-added before the rule). The committed deliverable is `PLAN.md`, which is
 self-contained; `OPS.md` carries the evidence trail.
+
+## 2026-11-13 — ladder math verified against the real sort (v2 plan)
+
+Prediction before running: a whole-block offset ladder with `TOP=0.99`, `BOTTOM=0.02`,
+`offset_i = target_i - tp_i` reproduces any requested order exactly, needs no clamping, and survives
+one 30s bucket of decay.
+
+Harness (`/tmp/ladder_check.py`, `/tmp/ladder_stress.py`, throwaway): builds rows with real
+`listing_priority` / `sidebar_time_priority_from_elapsed_seconds` (8h half-life, 30s bucket), writes
+the ladder, and re-runs `sort_session_rows` on the result.
+
+Observed:
+- 5 fixed ages (1 min … 30 d) × 4 hand-picked permutations, and a block where three rows were already
+  saturated at `final_priority = 1.0` by pre-existing offsets: every requested order reproduced
+  exactly, including dragging the oldest row to the top of the saturated block.
+- +30 s later (one bucket of decay): all orders still exact.
+- 400 random trials, N ∈ {1,2,3,5,8,13,21,40,60}, ages from 0 to 30 days, random permutations,
+  checked again at +30 s: 0 mismatches; `max |offset| = 0.99`, i.e. the `[-1, 1]` cleaner bound is
+  never reached and no clamp is needed.
+- Activity behaviour confirmed as documented: a row demoted while fresh stays demoted when it next
+  receives a message (`['c','b','a']`), a row demoted while stale clips back to the top
+  (`['z','y','x']`). This is why the v2 plan states the stickiness instead of claiming "fresh always
+  rises".
+
+Conclusion: the user's rule (compute the offset for the desired position at that instant) is exactly
+satisfiable at block granularity; v1's manual-rank field was unnecessary.
