@@ -132,3 +132,22 @@ Measured while building the preview (implementation notes, not opinions):
   dialog width — visible in the preview's "before" shot, matching the user's screenshot.
 - `#editViewer`-scoped rules (chips wrap, `formBody` overflow visible) are what make the mock behave
   like the real dialog; the implementation inherits them.
+
+## 2026-11-13 — preview correction: chip plane, not field plane
+
+User: "still ugly! don't you notice size difference?" — correct. Measured with
+`getBoundingClientRect()` + `getComputedStyle()` in the preview page, before the fix:
+
+| element | height | font-size |
+| --- | --- | --- |
+| `.choiceChip` | 32px | 13px |
+| my custom date picker | 44px | 16px (`--font-lg`) |
+
+So v3 §3 had put the custom row on the same plane as the name input, which left the *field-internal*
+size difference the user was complaining about. Corrected: custom pickers now use
+`--dialog-control-h`, `--font-md`, `0 var(--space-5)` padding and the chips' `::after { inset: -2px }`
+hit area, two equal columns at every width. Re-measured after the change: chip 32px/13px, date picker
+32px/13px, time picker 32px/13px; the "Depends on" field correctly stays 44px/14px because it is a
+field, not a chip.
+
+Screenshots regenerated (`preview-desktop.png` at 1100×1000, `preview-phone.png` at 430×1150).

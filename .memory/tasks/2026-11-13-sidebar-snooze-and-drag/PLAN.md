@@ -64,29 +64,48 @@ dependency, so `/edit` keeps its current whole-row contract and is not touched b
 
 ## 3. Custom date/time control
 
-Two `dialogPickerBtn` + `dialogPickerMenu` pairs — the primitive the "Depends on" field already uses
-(`app_dialog_menu.js:39`):
+Two pickers on the **chip plane**, not the field plane. The custom row belongs to the chip row above
+it, so it matches the chips, not the name input:
 
-- Field plane: 44px, type from `--font-lg` (16px on coarse pointers, same as every other field), no UA
-  chrome, no zoom (a `button` is not an entry field).
-- Date menu: next 28 days as `.fileMenuItem` rows (`Today · Wed 12 Nov`, `Tomorrow · Thu 13 Nov`, …),
-  current value `.active`. Fits the menu's `max-height: min(44vh, 360px)`; `positionDialogMenu` flips it
-  above the field when needed.
-- Time menu: 30-minute slots, current value marked and scrolled into view.
-- Pure helpers in `app_snooze.js` (`nextSnoozeDays(count, nowMs)`, `snoozeTimeSlots()`), so the lists
-  are testable without a DOM and inherit the local-`Date` arithmetic the presets use.
-- Save: `new Date(y, m, d, hh, mm)` → epoch seconds (what `Date.parse("YYYY-MM-DDTHH:MM")` produced).
+| | `.choiceChip` | custom pickers |
+| --- | --- | --- |
+| height | `--dialog-control-h` (32px) | same |
+| type | `--font-md` | same |
+| padding | `0 var(--space-5)` | same |
+| hit area | `::after { inset: -2px }` | same |
+| border / radius / fill | 1px `--border`, `--radius-control`, `--paper` | same |
 
-Three details the preview settled:
+Measured in the preview, after: chip 32px/13px, picker 32px/13px. (An earlier attempt put them on the
+44px/16px field plane — same box as the name input — and that is exactly the size difference you
+pointed at. Reverted.)
 
-- `.dialogPickerBtn` has no width rule (only `.sidePickerBtn` does), so the two pickers need
-  `width: 100%` inside the grid or they render ragged.
-- Desktop `≥881px`: `grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--space-2)`.
-  Phones keep the existing single-column stack (`app.css:4206`) — consistent with every other field.
-- The mock needed `#editViewer`-scoped rules reproduced (chips wrap, `formBody` overflow visible);
-  those already exist in `app.css` for the real dialog, so the implementation inherits them.
+The pickers are `dialogPickerBtn` + `dialogPickerMenu` — the "Depends on" primitive — in two equal
+columns at every width: both labels fit a ~166px phone column (`Fri 14 Nov`, `9:00am`). Pure helpers in
+`app_snooze.js` (`nextSnoozeDays(count, nowMs)`, `snoozeTimeSlots()`) build the menus without a DOM.
 
----
+Rules this needs (each one out-specifies the rule it replaces):
+
+```
+.formViewer .customSnoozeRow {
+  display: none;                                   /* shown by the controller in custom mode */
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: var(--space-2);                             /* same gutter as the chips */
+}
+.formViewer .customSnoozeRow .dialogPickerBtn {    /* beats .formViewer .dialogPickerBtn (44px) */
+  height: var(--dialog-control-h); minimum: same;
+  padding: 0 var(--space-5); font-size: var(--font-md); position: relative;
+}
+.formViewer .customSnoozeRow .dialogPickerBtn::after { content: ""; position: absolute; inset: -2px; }
+.formViewer .customSnoozeRow .pickerButtonPrimary { font-size: var(--font-md); }
+```
+
+`.customSnoozeRow` also has to come out of the phone media query's single-column list
+(`app.css:4206`), otherwise an equal-specificity rule fights it there.
+
+Menus: date = next 28 days as `.fileMenuItem` rows (`Today · Wed 12 Nov`, `Tomorrow · Thu 13 Nov`, …)
+with the current value `.active`; time = 30-minute slots, current value marked and scrolled into view.
+`positionDialogMenu` already handles the flip and max-height. Save: `new Date(y, m, d, hh, mm)` → epoch
+seconds, what `Date.parse("YYYY-MM-DDTHH:MM")` produced before.
 
 ## 4. Drag
 

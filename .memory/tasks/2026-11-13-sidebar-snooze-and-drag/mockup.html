@@ -25,14 +25,24 @@
   /* the real dialogs get these from #editViewer-scoped rules; the mock mirrors them */
   .mockDialog .choiceChips { flex-wrap: wrap; gap: var(--space-2); overflow: visible; }
   .mockDialog .formBody { overflow: visible; }
-  /* proposed: custom row on the field plane; pickers fill their column.
-     Phones keep the existing single-column stack (app.css:4206). */
-  .mockDialog .customSnoozeRow .dialogPickerBtn { width: 100%; }
-  @media (min-width: 881px) {
-    .mockDialog .customSnoozeRow {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: var(--space-2);
-    }
+  /* Proposed: the custom row sits on the CHIP plane, not the field plane —
+     same 32px height, same type token, same hit-area outset as .choiceChip. */
+  .mockDialog .customSnoozeRow .dialogPickerBtn {
+    width: 100%;
+    height: var(--dialog-control-h);
+    min-height: var(--dialog-control-h);
+    padding: 0 var(--space-5);
+    font-size: var(--font-md);
+    position: relative;
+  }
+  .mockDialog .customSnoozeRow .dialogPickerBtn::after {
+    content: ""; position: absolute; inset: -2px;
+  }
+  .mockDialog .customSnoozeRow .pickerButtonPrimary { font-size: var(--font-md); }
+  /* two chip-sized pickers at every width: both labels fit a 166px phone column */
+  .mockDialog .customSnoozeRow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-2);
   }
   .mockDialog .pickerField { position: relative; }
   .mockSidebar { width: min(320px, 100%); border: 1px solid var(--border); background: var(--paper); padding: 8px; border-radius: var(--radius-card); }
@@ -58,8 +68,8 @@
 </head>
 <body>
 <h1>Snooze + drag — UI preview</h1>
-<p class="note">Real <code>app.css</code> + clay tokens, real dialog classes. Only the three proposed
-additions are authored here: the custom row's two equal columns, the drop indicator, and the drop zone.</p>
+<p class="note">Real <code>app.css</code> + clay tokens, real dialog classes. Only the proposed additions are
+authored here: the custom row on the chip plane, the drop indicator, and the drop zone.</p>
 
 <div class="shots">
 
@@ -131,7 +141,6 @@ additions are authored here: the custom row's two equal columns, the drop indica
                 <button class="fileMenuItem" type="button"><span class="fileMenuPath">Tomorrow · Thu 13 Nov</span></button>
                 <button class="fileMenuItem active" type="button"><span class="fileMenuPath">Fri 14 Nov</span></button>
                 <button class="fileMenuItem" type="button"><span class="fileMenuPath">Sat 15 Nov</span></button>
-                <button class="fileMenuItem" type="button"><span class="fileMenuPath">Sun 16 Nov</span></button>
               </div>
             </div>
             <div class="pickerField">
@@ -150,7 +159,7 @@ additions are authored here: the custom row's two equal columns, the drop indica
       </div>
       <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
     </div>
-    <div class="cap">After — Custom: same field plane and type as “Depends on”, two equal columns, app-owned menus.</div>
+    <div class="cap">After — custom row on the chip plane: 32px, same type token and padding as the chips, two columns, app-owned menus.</div>
   </div>
 
   <!-- 3. AFTER, indefinite -->
