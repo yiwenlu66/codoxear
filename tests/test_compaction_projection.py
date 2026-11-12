@@ -127,8 +127,11 @@ def test_codex_forms_and_pair_dedupe(variant, tmp_path):
     assert len(markers(_read_chat_export_events(path, max_bytes=100000))) == 1
 
 
-def test_codex_pair_split_across_live_and_history_boundaries(tmp_path):
+@pytest.mark.parametrize("summary_bytes", [0, 100000])
+def test_codex_pair_split_across_live_and_history_boundaries(tmp_path, summary_bytes):
     objects = rows("codex.jsonl")
+    if summary_bytes:
+        objects[1]["payload"]["message"] = "x" * summary_bytes
     path = write_log(tmp_path / "codex.jsonl", objects[:2])
     first, after, *_ = rollout_log._read_chat_live_delta(path, after_byte=0)
     first_marker, = markers(first)

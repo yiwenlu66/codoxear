@@ -222,7 +222,9 @@ def _preceding_codex_checkpoint(log_path: Path, before_byte: int) -> JsonlRecord
     """Resolve only a split Codex notification/checkpoint pair, bounded to 64 KiB."""
     lower_bound = max(0, before_byte - 64 * 1024)
     for record in _iter_jsonl_records_reverse(log_path, before=before_byte):
-        if record.start < lower_bound:
+        # Bound intervening records, not the checkpoint's summary size: the
+        # immediately preceding checkpoint can itself be larger than 64 KiB.
+        if record.end <= lower_bound:
             break
         if _single_chat_event(record.obj) is not None:
             return record if codex_compaction_source(record.obj) == "checkpoint" else None
