@@ -50,6 +50,13 @@
         --font-3xl: 20px;
         --ctl: 44px;
         --ctl-chrome: 32px;
+        /* The header band is the ordinary 56px of chrome *plus* the device's
+           top safe-area inset. On a notched phone the inset is space added
+           above the controls; folding it into a fixed 56px box instead
+           collapses the content box to zero and clips the 32px controls at
+           the notch. Everything that positions itself against the header
+           (the toast) reads this token, so the two cannot drift. */
+        --topbar-h: calc(56px + env(safe-area-inset-top));
         --dialog-control-h: var(--ctl-chrome);
         --dialog-group-gap: var(--space-5);
         --sidebar-w: 320px;
@@ -850,7 +857,12 @@
       }
       .topbar {
         padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-3) var(--space-5);
-        height: 56px;
+        height: var(--topbar-h);
+        /* The band's height is authoritative: as a column flex item it would
+           otherwise be shrunk by whatever else the column demands (an expanded
+           composer), which squeezes the inset straight back out of it and
+           re-clips the controls against overflow: hidden. */
+        flex: 0 0 auto;
         box-sizing: border-box;
         border-bottom: 1px solid var(--border);
         background: var(--panel);
@@ -905,7 +917,7 @@
       }
       .toast {
         position: fixed;
-        top: calc(56px + 44px + var(--space-2) + env(safe-area-inset-top));
+        top: calc(var(--topbar-h) + var(--ctl) + var(--space-2));
         right: var(--space-5);
         z-index: 95;
         margin: 0;
@@ -2213,7 +2225,10 @@ select {
       }
       .composer[data-height="tall"] textarea {
         height: var(--composer-tall-h, calc(var(--appH, 100dvh) * 0.55));
-        max-height: calc(var(--appH, 100dvh) - 140px);
+        /* App height less the chrome the composer shares the column with: the
+           header (which carries the safe-area inset) and the chat header row.
+           The leftover is the composer's own chrome. */
+        max-height: calc(var(--appH, 100dvh) - var(--topbar-h) - var(--ctl) - 40px);
         overflow-y: auto;
       }
       .composer[data-height="full"] {
@@ -4099,7 +4114,7 @@ select {
         .toast {
           left: 50%;
           right: auto;
-          top: calc(56px + 44px + var(--space-2) + env(safe-area-inset-top));
+          top: calc(var(--topbar-h) + var(--ctl) + var(--space-2));
           transform: translateX(-50%);
           max-width: min(88vw, 360px);
           text-align: center;
