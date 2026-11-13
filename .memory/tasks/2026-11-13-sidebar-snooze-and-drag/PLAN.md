@@ -1,8 +1,8 @@
 # Sidebar snooze + drag — feature plan (v4)
 
-Plan only, nothing implemented. Previews: `preview-custom.png` / `preview-custom-families.png` is the
-final snooze control (`design-a4/`); `preview-desktop.png` / `preview-phone.png` are the drag states
-(`mockup.html`). Everything rendered from the real `app.css` + theme tokens in Chrome.
+Plan only, nothing implemented. Previews: `preview-desktop.png` / `preview-phone.png` (the snooze field
+before/after, and the drag states) and `mockup.html`. `design-a4/` + `preview-custom*.png` are a rejected
+alternative kept for the record. Everything rendered from the real `app.css` + theme tokens in Chrome.
 
 ---
 
@@ -68,8 +68,8 @@ dependency, so `/edit` keeps its current whole-row contract and is not touched b
 **The platform pickers stay.** The browser's own date/time UI is fine; the defect was the size of the
 closed box in the resting state: 44px tall and 16px type beside 32px chips.
 
-Proposed (mock: `mockup.html`, previews `preview-desktop.png` / `preview-phone.png`, third and fourth
-dialogs of the "after" row):
+Proposed (mock: `mockup.html`; the second dialog of `preview-desktop.png` / `preview-phone.png` is the
+after state):
 
 ```css
 #editViewer .customSnoozeRow {                 /* was minmax(0,1fr) 140px */
@@ -215,11 +215,10 @@ is still in Later, so it appears already in the right slot) and then `snooze {in
 | `tests/test_snooze_indefinite.py` (new) | cleaner mutual exclusion; sparse keys; prune ignores an indefinite snooze; listing `snoozed`; diagnostics parity; remap carries the key |
 | `tests/test_snooze_routes.py` (new) | `/snooze` set + clear, 401, unknown session 404, atomic sidecar write |
 | `tests/test_reorder_offset.py` (new) | midpoint/top/bottom targets; only the dragged row's offset changes; result order via `listing_priority` + `sort_session_rows`; clamp path reports `applied: false`; the exact-1.0 neighbour tie |
-| `tests/test_snooze_presets.py` (extend) | presets unchanged; `nextSnoozeDays`/`snoozeTimeSlots` local and DST-safe |
+| `tests/test_snooze_presets.py` (extend) | preset resolution unchanged; `snoozePresetEpoch` still returns null for non-presets |
 | `tests/test_sidebar_drag_module.py` (new, VM) | `classifyDrop` truth table from §4.1; insertion-index math (above first, below last, header, refuse zone, single card, source=Later); payload builder; same-index no-op |
-| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; panel open/close per §3; day tap keeps the panel, time tap closes it; period tap commits nothing; Today clamp |
-| `tests/test_dialog_menu_placement.py` (new) | `data-fit-whole`: full `scrollHeight`, below → above → over, and unflagged menus unchanged |
-| `tests/test_snooze_panel_layout.py` (new, VM) | no scroll container inside the panel; header not truncated at 360 with the widest real answer; day/period/slot hit boxes ≥44 in both axes |
+| `tests/test_frontend_session_edit_module.py` (extend) | indefinite chip mapping on open/save; the custom row reveals the two native fields and writes the local epoch of the chosen day+time |
+| `scripts/docker_snooze_field_verify.sh` (new) | the closed date/time fields at 393 and 1100 in all three families: computed height equals the chip box, no clipped value (`scrollWidth === clientWidth`), the indicator still opens the platform picker, and the `min-height: var(--ctl)` wrapper activates the field |
 | `scripts/docker_sidebar_drag_verify.sh` (new) | real server + broker: synthesized pointer sequence reorders Now and the next `GET /api/sessions` agrees; Now→Later sets `snoozed_indefinitely`; Later→Now wakes at the dropped slot; tmux order follows |
 
 `tests/test_sidebar_render_order.py` is untouched — `sort_session_rows` does not change.
@@ -232,9 +231,8 @@ desktop drag; the synthesized-pointer harness proves our handler, not the platfo
 ## 7. Phasing
 
 1. **Indefinite snooze** — store/listing/diagnostics + `/snooze` + the chip.
-2. **Custom picker** — `design-a4/` markup and CSS, the `data-fit-whole` branch in
-   `app_dialog_menu.js`, `composedPath()` click-away, `app_snooze.js` month/period helpers, and the
-   dialog's panel wiring.
+2. **Custom field sizing** — the four CSS rules in §3 plus the `min-height: var(--ctl)` wrapper, then the
+   device checks (value clipping at 32px, indicator behaviour, wrapper activation).
 3. **`/reorder`** — the offset computation, tests, `curl` a permutation and check
    `GET /api/sessions` plus the tmux window order.
 4. **Drag gesture** — `app_sidebar_drag.js`, `app_sessions.js` integration, the §4.4 rules.
@@ -251,3 +249,9 @@ desktop drag; the synthesized-pointer harness proves our handler, not the platfo
   decided by the device test.
 - **The two boundaries** (§1, §4.2) are visible: a drop above a row pinned at exactly 1.0 falls to the
   tiebreak, and a target outside the offset range is clamped. Both are reported, not hidden.
+- **Platform field height.** A 32px `input[type=date|time]` is the one thing that cannot be proven from
+  Chrome on Linux: some platforms give these controls an intrinsic minimum. Fallback if a real device
+  disagrees is a 36px box behind `(pointer: coarse)`, measured rather than guessed.
+- **Type step on phones.** Fields stay 16px under the anti-zoom floor while chips are 14px. If that step
+  turns out to bother you in the hand, the only way to remove it is to take these two controls off the
+  `!important` list — which trades a 2px difference for possible page zoom on focus.
