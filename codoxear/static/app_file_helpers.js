@@ -102,9 +102,9 @@ function listFromFilesField(val) {
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
   }
 
-  function fileVideoPreviewErrorText(err) {
+  function fileMediaPreviewErrorText(err) {
     const raw = err && err.message ? String(err.message) : String(err || "");
-    return raw.trim() || "compatible video preview failed";
+    return raw.trim() || "compatible media preview failed";
   }
 
   function fileSearchScore(candidate, query) {
@@ -444,4 +444,4 @@ function listFromFilesField(val) {
     return btoaFunc(bin);
   }
 
-export { listFromFilesField, listFromFileRecords, stripPathLocationSuffix, isTextFileKind, isDiffableFileKind, isPreviewableFileKind, isPreviewableFilePath, MARKDOWN_EXTENSIONS, HTML_EXTENSIONS, blockedFileMessage, formatPriorityOffset, fileVideoPreviewErrorText, fileSearchScore, normalizeDraftFilePath, filePickerFoldedSearchText, filePickerOriginalRangeForFolded, filePickerMatchRanges, filePickerMatchRangesForQuery, filePickerCandidateScore, compareFilePickerEntries, normalizeFileCandidateSource, filePickerSectionLabel, duplicateFilePickerPaths, rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle, positionAfterInsertedText, fileEditorDeleteCommandForKey, dataTransferHasFiles, extractFilesFromClipboardData, extractFilesFromDropData, attachmentSafeStem, attachmentExtensionLower, attachmentIsLikelyHeic, attachmentLooksLikeImage, bytesToBase64 };
+export { listFromFilesField, listFromFileRecords, stripPathLocationSuffix, isTextFileKind, isDiffableFileKind, isPreviewableFileKind, isPreviewableFilePath, MARKDOWN_EXTENSIONS, HTML_EXTENSIONS, blockedFileMessage, formatPriorityOffset, fileMediaPreviewErrorText, fileSearchScore, normalizeDraftFilePath, filePickerFoldedSearchText, filePickerOriginalRangeForFolded, filePickerMatchRanges, filePickerMatchRangesForQuery, filePickerCandidateScore, compareFilePickerEntries, normalizeFileCandidateSource, filePickerSectionLabel, duplicateFilePickerPaths, rawByteDuplicatePaths, filePickerIdentityHint, filePickerTitle, positionAfterInsertedText, fileEditorDeleteCommandForKey, dataTransferHasFiles, extractFilesFromClipboardData, extractFilesFromDropData, attachmentSafeStem, attachmentExtensionLower, attachmentIsLikelyHeic, attachmentLooksLikeImage, bytesToBase64 };

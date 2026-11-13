@@ -153,7 +153,7 @@
     const devicePixelRatio = requireFunction(options.devicePixelRatio, "devicePixelRatio");
     const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
     const disposePdfRender = requireFunction(options.disposePdfRender, "disposePdfRender");
-    const clearFileVideo = requireFunction(options.clearFileVideo, "clearFileVideo");
+    const clearFileMedia = requireFunction(options.clearFileMedia, "clearFileMedia");
     const setFileRenderSurface = requireFunction(options.setFileRenderSurface, "setFileRenderSurface");
     const renderDownloadFallback = requireFunction(options.renderDownloadFallback, "renderDownloadFallback");
     const isCurrentFileOpenRequest = requireFunction(options.isCurrentFileOpenRequest, "isCurrentFileOpenRequest");
@@ -165,7 +165,7 @@
     function preparePdfSurface(rel) {
       disposeFileEditor();
       disposePdfRender();
-      clearFileVideo();
+      clearFileMedia();
       host.innerHTML = "";
       setFileRenderSurface("diff");
       host.scrollTop = 0;

@@ -27,7 +27,7 @@ VIEWER_SCRIPTS = [
     module_path(name)
     for name in (
         "app_file_candidates.js", "app_file_candidate_state.js", "app_file_viewer_operations.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
-        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",
+        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_media.js",
         "app_file_mode.js", "app_file_render_surface.js", "app_file_viewer_controller.js", "app_file_viewer.js",
     )
 ]
@@ -249,7 +249,7 @@ const fallback = viewer.createFileFallbackRuntime({
   host, el,
   normalizeLineNumber: (value) => Number(value) || null,
   requestAnimationFrame: (fn) => fn(),
-  disposeFileEditor: noop, disposePdfRender: noop, clearFileVideo: noop,
+  disposeFileEditor: noop, disposePdfRender: noop, clearFileMedia: noop,
   setFileRenderSurface: noop, setFileEditorKind: noop, applyPlainTextFallbackState: noop,
   updateFileTouchToolbar: noop, currentSessionId: () => 's1',
   markdownPreviewHtml: () => '<p>md</p>', upgradeCandidateFileRefs: noop,
@@ -263,8 +263,8 @@ const events = [];
 const controller = {
   prepareFileLoadResult: () => ({ kind: 'text', text: '<h1>x</h1>', renderPreview: true, previewKind: 'html', previewUrl: '/api/sessions/s1/file/raw/docs/report.html', status: 'docs/report.html - preview' }),
   isCurrentFileOpenRequest: () => true,
-  handleActiveVideoLoadError: () => true,
-  handleActiveVideoLoadedMetadata: () => true,
+  handleActiveMediaLoadError: () => true,
+  handleActiveMediaLoadedMetadata: () => true,
 };
 const loadRuntime = viewer.createFileLoadResultRuntime({
   controller,
@@ -277,8 +277,8 @@ const loadRuntime = viewer.createFileLoadResultRuntime({
   renderBlockedFileNotice: noop,
   renderPdfFile: async () => true,
   showImage: noop,
-  showVideo: noop,
-  loadCompatibleVideoPreview: async () => true,
+  showMedia: noop,
+  loadCompatibleMediaPreview: async () => true,
 });
 (async () => {
   await loadRuntime.apply('docs/report.html', { kind: 'html', text: '<h1>x</h1>' }, { requestId: 1 }, { viewMode: 'preview' });

@@ -30,7 +30,7 @@ const runtime = viewer.createFilePdfRenderRuntime({ host, el: node,
   retryFileOpen: request => retryImpl(request),
   handleAuthLoss: () => events.push('auth-loss'), createCanvas: () => ({ style: {}, getContext: () => ({}) }),
   devicePixelRatio: () => 1, disposeFileEditor() {}, disposePdfRender() { active = null; events.push('dispose'); },
-  clearFileVideo() {}, setFileRenderSurface() {}, renderDownloadFallback: (...args) => fallbacks.push(args),
+  clearFileMedia() {}, setFileRenderSurface() {}, renderDownloadFallback: (...args) => fallbacks.push(args),
   isCurrentFileOpenRequest: () => current, setActivePdfRenderState: state => { active = state; },
   isActivePdfRenderState: state => active === state, updateFileTouchToolbar() {},
   IntersectionObserverCtor: class { constructor(callback) { observerCallback = callback; } observe() {} disconnect() {} },
@@ -63,9 +63,9 @@ process.stdout.write(JSON.stringify({ plan, fallbackPlan, kind: controller.curre
 const viewer = ctx.window.CodoxearFileViewer;
 const events = [], request = { id: 1 };
 const runtime = viewer.createFileLoadResultRuntime({
- controller: { prepareFileLoadResult: () => ({ kind: 'office', pdfUrl: '/preview.pdf', downloadUrl: '/original.docx', status: 'done' }), isCurrentFileOpenRequest: () => true, handleActiveVideoLoadError() {}, handleActiveVideoLoadedMetadata() {} },
+ controller: { prepareFileLoadResult: () => ({ kind: 'office', pdfUrl: '/preview.pdf', downloadUrl: '/original.docx', status: 'done' }), isCurrentFileOpenRequest: () => true, handleActiveMediaLoadError() {}, handleActiveMediaLoadedMetadata() {} },
  resolveAppUrl: url => '/prefix' + url, setStatus: status => events.push(['status', status]),
- disposeFileEditor() {}, renderMonacoDiff() {}, renderMonacoFile() {}, renderFilePreview() {}, renderBlockedFileNotice() {}, showImage() {}, showVideo() {}, loadCompatibleVideoPreview() {},
+ disposeFileEditor() {}, renderMonacoDiff() {}, renderMonacoFile() {}, renderFilePreview() {}, renderBlockedFileNotice() {}, showImage() {}, showMedia() {}, loadCompatibleMediaPreview() {},
  renderPdfFile: async (rel, url, req, preview) => { events.push(['pdf', rel, url, req === request, preview]); return { error: 'LibreOffice is not installed' }; },
 });
 (async () => { const result = await runtime.apply('report.docx', {}, request); process.stdout.write(JSON.stringify({ result, events })); })();

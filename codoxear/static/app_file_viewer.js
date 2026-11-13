@@ -5,7 +5,7 @@ import * as CodoxearFilePasteDialog from "./app_file_paste_dialog.js";
 import * as CodoxearFilePdf from "./app_file_pdf.js";
 import * as CodoxearFileRenderSurface from "./app_file_render_surface.js";
 import * as CodoxearFileUnsavedDialog from "./app_file_unsaved_dialog.js";
-import * as CodoxearFileVideo from "./app_file_video.js";
+import * as CodoxearFileMedia from "./app_file_media.js";
 import * as CodoxearFileViewerController from "./app_file_viewer_controller.js";
 import * as CodoxearFileViewerLifecycle from "./app_file_viewer_lifecycle.js";
 import * as CodoxearFileViewerPanel from "./app_file_viewer_panel.js";
@@ -159,7 +159,7 @@ function requireFunction(value, name) {
   const { createFileUnsavedDialogRuntime } = CodoxearFileUnsavedDialog;
   const { createFilePasteDialogRuntime } = CodoxearFilePasteDialog;
   const { createFilePdfRenderRuntime } = CodoxearFilePdf;
-  const { createFileVideoPreviewRuntime } = CodoxearFileVideo;
+  const { createFileMediaPreviewRuntime } = CodoxearFileMedia;
   const { createFileModeControlsRuntime } = CodoxearFileMode;
   const { createFileRenderSurfaceRuntime } = CodoxearFileRenderSurface;
   const { createFileViewerController } = CodoxearFileViewerController;
@@ -346,7 +346,7 @@ function requireFunction(value, name) {
       return {
         disposeFileEditor: requireFunction(options.disposeFileEditor, "disposeFileEditor"),
         disposePdfRender: requireFunction(options.disposePdfRender, "disposePdfRender"),
-        clearFileVideo: requireFunction(options.clearFileVideo, "clearFileVideo"),
+        clearFileMedia: requireFunction(options.clearFileMedia, "clearFileMedia"),
         setFileRenderSurface: requireFunction(options.setFileRenderSurface, "setFileRenderSurface"),
         setFileEditorKind: requireFunction(options.setFileEditorKind, "setFileEditorKind"),
         applyPlainTextFallbackState: requireFunction(options.applyPlainTextFallbackState, "applyPlainTextFallbackState"),
@@ -360,7 +360,7 @@ function requireFunction(value, name) {
 
     function prepareFallbackSurface(deps) {
       deps.disposeFileEditor();
-      deps.clearFileVideo();
+      deps.clearFileMedia();
       deps.setFileRenderSurface("diff");
       return true;
     }
@@ -420,8 +420,8 @@ function requireFunction(value, name) {
     if (!controller || typeof controller !== "object") throw new TypeError("file viewer dependency missing: controller");
     const prepareFileLoadResult = requireFunction(controller.prepareFileLoadResult, "controller.prepareFileLoadResult").bind(controller);
     const isCurrentFileOpenRequest = requireFunction(controller.isCurrentFileOpenRequest, "controller.isCurrentFileOpenRequest").bind(controller);
-    const handleActiveVideoLoadError = requireFunction(controller.handleActiveVideoLoadError, "controller.handleActiveVideoLoadError").bind(controller);
-    const handleActiveVideoLoadedMetadata = requireFunction(controller.handleActiveVideoLoadedMetadata, "controller.handleActiveVideoLoadedMetadata").bind(controller);
+    const handleActiveMediaLoadError = requireFunction(controller.handleActiveMediaLoadError, "controller.handleActiveMediaLoadError").bind(controller);
+    const handleActiveMediaLoadedMetadata = requireFunction(controller.handleActiveMediaLoadedMetadata, "controller.handleActiveMediaLoadedMetadata").bind(controller);
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
     const setStatus = requireFunction(options.setStatus, "setStatus");
     const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
@@ -431,8 +431,8 @@ function requireFunction(value, name) {
     const renderBlockedFileNotice = requireFunction(options.renderBlockedFileNotice, "renderBlockedFileNotice");
     const renderPdfFile = requireFunction(options.renderPdfFile, "renderPdfFile");
     const showImage = requireFunction(options.showImage, "showImage");
-    const showVideo = requireFunction(options.showVideo, "showVideo");
-    const loadCompatibleVideoPreview = requireFunction(options.loadCompatibleVideoPreview, "loadCompatibleVideoPreview");
+    const showMedia = requireFunction(options.showMedia, "showMedia");
+    const loadCompatibleMediaPreview = requireFunction(options.loadCompatibleMediaPreview, "loadCompatibleMediaPreview");
 
     async function apply(rel, result, request, { viewMode = "file" } = {}) {
       const loadPlan = prepareFileLoadResult(rel, result, request, { viewMode });
@@ -464,18 +464,19 @@ function requireFunction(value, name) {
         setStatus(rendered.error ? `${rel} - preview unavailable: ${rendered.error}` : loadPlan.status);
         return true;
       }
-      if (loadPlan.kind === "video") {
-        showVideo(loadPlan, {
+      if (loadPlan.kind === "video" || loadPlan.kind === "audio") {
+        showMedia(loadPlan, {
           resolveAppUrl,
           setStatus,
-          loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
-          handleError: (plan, helpers) => handleActiveVideoLoadError(plan.token, {
+          loadPreview: (nextToken, options) => loadCompatibleMediaPreview(nextToken, options),
+          handleError: (plan, helpers) => handleActiveMediaLoadError(plan.token, {
             rel: plan.rel,
+            kind: plan.kind,
             previewUrl: plan.previewUrl,
-            clearVideoHandlers: helpers.clearVideoHandlers,
+            clearMediaHandlers: helpers.clearMediaHandlers,
             loadPreview: helpers.loadPreview,
           }),
-          handleLoadedMetadata: (plan) => handleActiveVideoLoadedMetadata(plan.token),
+          handleLoadedMetadata: (plan) => handleActiveMediaLoadedMetadata(plan.token),
         });
         return true;
       }
@@ -1100,4 +1101,4 @@ function requireFunction(value, name) {
     return Object.freeze({ ensure });
   }
 
-export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileVideoPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };
+export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileMediaPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };

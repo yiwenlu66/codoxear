@@ -142,19 +142,21 @@
   }
 
 
-  function createFileVideoPreviewRuntime(options = {}) {
+  function createFileMediaPreviewRuntime(options = {}) {
     const controller = options.controller;
-    if (!controller || typeof controller.loadCompatibleVideoPreview !== "function" || typeof controller.handleFileVideoPreviewButtonPress !== "function" || typeof controller.currentActiveVideoPreviewToken !== "function") {
+    if (!controller || typeof controller.loadCompatibleMediaPreview !== "function" || typeof controller.handleFileMediaPreviewButtonPress !== "function" || typeof controller.currentActiveMediaPreviewToken !== "function") {
       throw new TypeError("file viewer dependency missing: controller");
     }
     const fetchPreview = requireFunction(options.fetchPreview, "fetchPreview");
     const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
     const handleAuthLoss = requireFunction(options.handleAuthLoss, "handleAuthLoss");
-    const errorText = requireFunction(options.errorText, "fileVideoPreviewErrorText");
+    const errorText = requireFunction(options.errorText, "fileMediaPreviewErrorText");
     const video = options.video;
     if (!video || typeof video.load !== "function") throw new TypeError("file viewer dependency missing: video");
+    const audio = options.audio;
+    if (!audio || typeof audio.load !== "function") throw new TypeError("file viewer dependency missing: audio");
 
-    async function prepareCompatibleVideoPreview(previewUrl) {
+    async function prepareCompatibleMediaPreview(previewUrl) {
       const res = await fetchPreview(resolveAppUrl(previewUrl), { headers: { Range: "bytes=0-0" } });
       if (res.status === 401) {
         handleAuthLoss();
@@ -170,32 +172,33 @@
             detail = await res.text();
           } catch (_) {}
         }
-        throw new Error(detail || `video preview failed (${res.status})`);
+        throw new Error(detail || `media preview failed (${res.status})`);
       }
       return true;
     }
 
-    function loadCompatibleVideoPreviewDom(previewUrl) {
-      video.src = resolveAppUrl(previewUrl);
-      video.load();
+    function loadCompatibleMediaPreviewDom(kind, previewUrl) {
+      const media = kind === "audio" ? audio : video;
+      media.src = resolveAppUrl(previewUrl);
+      media.load();
       return true;
     }
 
-    async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
-      return await controller.loadCompatibleVideoPreview(expectedToken, {
+    async function loadCompatibleMediaPreview(expectedToken = "", { explicit = false } = {}) {
+      return await controller.loadCompatibleMediaPreview(expectedToken, {
         explicit,
-        preparePreview: (previewUrl) => prepareCompatibleVideoPreview(previewUrl),
-        loadPreviewDom: (previewUrl) => loadCompatibleVideoPreviewDom(previewUrl),
+        preparePreview: (previewUrl) => prepareCompatibleMediaPreview(previewUrl),
+        loadPreviewDom: (kind, previewUrl) => loadCompatibleMediaPreviewDom(kind, previewUrl),
         errorText,
       });
     }
 
     async function handleButtonPress() {
-      const token = controller.currentActiveVideoPreviewToken();
-      return await controller.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));
+      const token = controller.currentActiveMediaPreviewToken();
+      return await controller.handleFileMediaPreviewButtonPress(token, (nextToken, options) => loadCompatibleMediaPreview(nextToken, options));
     }
 
-    return Object.freeze({ handleButtonPress, loadCompatibleVideoPreview, loadCompatibleVideoPreviewDom, prepareCompatibleVideoPreview });
+    return Object.freeze({ handleButtonPress, loadCompatibleMediaPreview, loadCompatibleMediaPreviewDom, prepareCompatibleMediaPreview });
   }
 
-export { createFileVideoPreviewRuntime };
+export { createFileMediaPreviewRuntime };

@@ -401,10 +401,10 @@ import * as CodoxearWiring from "./app_wiring.js";
         }));
         const {
           fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
-      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn,
+      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileMediaPreviewBtn, fileDownloadBtn,
       fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
-      fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
+      fileDiff, fileImage, fileVideo, fileAudio, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
       filePasteBackdrop, filePasteInput, filePasteDialog, fileVimModeChip, sendChoiceBackdrop, sendChoice,
       appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
       appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,
@@ -851,7 +851,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           storageSetItem, stripPathLocationSuffix,
           useTouchFileEditorControls: () => codoxearViewport.useTouchFileEditorControls(),
           filePickerField, filePickerMenu, filePickerInput, fileStatus, fileDiff, fileImage,
-          fileVideo, fileVideoPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
+          fileVideo, fileAudio, fileMediaPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
           fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
           fileTouchDownBtn, fileTouchRightBtn, fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn,
           fileBackdrop, fileViewer, fileCloseBtn, fileUnsavedBackdrop, fileUnsavedDialog,

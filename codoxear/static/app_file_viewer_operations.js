@@ -1,5 +1,5 @@
   function requireFunction(value, name) { if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`); return value; }
-  const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
+  const BROWSER_SAFE_MEDIA_TYPES = Object.freeze({ video: new Set(["video/mp4", "video/webm", "video/ogg"]), audio: new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/flac"]) });
   const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
   function fileSaveConflictTarget(sessionId, identity) {
     return Object.freeze({
@@ -11,18 +11,19 @@
   }
   function createFileViewerOperationsRuntime(options = {}) {
     const { el, fileStatus, fileEditButton, iconSvg, currentSessionId, currentFileSessionId, normalizeSessionId, normalizeFileApiPath, isFileViewerOpen, hideFileUnsavedDialog, resetFileSearchState, closeFilePickerMenu, isTextFileKind, isDiffableFileKind, confirmReload, promptUnsavedFileChoice, restoreFileEditorText, hideFileViewer, setFilePath, resetFileViewerPanel, applyFileLoadResult, normalizeDraftFilePath, inspectSessionFilePath, api, focusEditor, disposeOpenRender, isPreviewableFileKind, updateFileTouchToolbar, hasBlockingFileEditorModal, isTextEntryTarget, eventTargetElement, isActiveFileEditorInput, focusActiveFileCodeEditor, nowMs, setToast, renderMonacoFile, getFileEditorText, fmtBytes, applyFileMode, rememberOpenedFile, renderFilePickerMenu, currentFileViewMode, currentFileNonDiffMode, setFileViewMode, currentFileEditMode, currentFileEditorKind, setFileEditorKind, setFileEditMode, currentActiveFileKind, currentActiveFileText, currentActiveFileEditable, currentActiveFileVersion, currentActiveFileDraft, applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState, currentActiveFileIdentity, currentActiveFileLine, startFileOpenRequest, isCurrentFileOpenRequest, normalizeExplicitFileOpenMode, resolveFileOpenMode, isFileOpenAbortError, activeFileEntry, isGitFileCandidatePath, currentFileCandidateGitStateFresh, activeFileCanEnterEditMode, activeFileEditorWritable, activeFileEditorInsertIdleTextWritable, currentFileEditorState, isUnavailable, blockUnavailableFileAction, fileEntryForPath, resetActiveFileBufferState, resolveFileOpenViewMode, isFileViewerSessionUnavailable, rememberActiveFileSelection, setActiveFileIdentity } = options;
-    let activeSaveConflict = null, fileSaveSeq = 0, activeFileSaveToken = 0, fileSavePending = false, fileDirty = false, fileUnsavedPromptResolver = null, activeVideoFallback = null, activePdfRender = null;
-    function activeVideoFallbackSnapshot() {
-      const state = activeVideoFallback;
-      return state ? Object.freeze({ token: state.token, previewUrl: state.previewUrl, used: Boolean(state.used), preparing: Boolean(state.preparing), rel: state.rel, size: state.size }) : null;
+    let activeSaveConflict = null, fileSaveSeq = 0, activeFileSaveToken = 0, fileSavePending = false, fileDirty = false, fileUnsavedPromptResolver = null, activeMediaFallback = null, activeMediaToken = "", activeMediaKind = "", activePdfRender = null;
+    function activeMediaFallbackSnapshot() {
+      const state = activeMediaFallback;
+      return state ? Object.freeze({ kind: state.kind, token: state.token, previewUrl: state.previewUrl, used: Boolean(state.used), preparing: Boolean(state.preparing), rel: state.rel, size: state.size }) : null;
     }
 
-    function setActiveVideoFallback(nextState) {
+    function setActiveMediaFallback(nextState) {
       if (!nextState || !nextState.previewUrl) {
-        activeVideoFallback = null;
+        activeMediaFallback = null;
         return null;
       }
-      activeVideoFallback = {
+      activeMediaFallback = {
+        kind: nextState.kind === "audio" ? "audio" : "video",
         token: String(nextState.token || ""),
         previewUrl: String(nextState.previewUrl || ""),
         used: Boolean(nextState.used),
@@ -30,15 +31,17 @@
         rel: String(nextState.rel || ""),
         size: typeof nextState.size === "number" ? nextState.size : 0,
       };
-      return activeVideoFallbackSnapshot();
+      return activeMediaFallbackSnapshot();
     }
 
-    function clearActiveVideoFallback() {
-      activeVideoFallback = null;
+    function clearActiveMediaFallback() {
+      activeMediaFallback = null;
+      activeMediaToken = "";
+      activeMediaKind = "";
     }
 
-    function currentActiveVideoFallback() {
-      return activeVideoFallbackSnapshot();
+    function currentActiveMediaFallback() {
+      return activeMediaFallbackSnapshot();
     }
 
     function setActivePdfRenderState(state) {
@@ -82,63 +85,62 @@
       return true;
     }
 
-    function currentActiveVideoPreviewToken() {
-      const state = activeVideoFallback;
+    function currentActiveMediaPreviewToken() {
+      const state = activeMediaFallback;
       return state && state.token ? state.token : "";
     }
 
-    function normalizedVideoContentType(value) {
+    function currentActiveMediaKind() { return activeMediaKind || (activeMediaFallback && activeMediaFallback.kind) || ""; }
+
+    function normalizedMediaContentType(value) {
       return typeof value === "string" ? value.split(";", 1)[0].trim().toLowerCase() : "";
     }
 
-    function prepareActiveVideoLoadResult(rel, result, request) {
-      applyActiveFileNonTextState("video");
-      if (!result || typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
-      const path = String(rel || "video");
-      const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
+    function prepareActiveMediaLoadResult(rel, result, request) {
+      const kind = result.kind;
+      applyActiveFileNonTextState(kind);
+      if (typeof result.media_url !== "string" || !result.media_url) throw new Error(`invalid ${kind} response`);
+      const path = String(rel || kind);
+      const expectedType = kind === "audio" ? "audio/mpeg" : "video/mp4";
+      const previewUrl = typeof result.media_preview_url === "string" && normalizedMediaContentType(result.preview_content_type) === expectedType ? result.media_preview_url : "";
       const size = typeof result.size === "number" ? result.size : 0;
-      const contentType = normalizedVideoContentType(result.content_type);
+      const contentType = normalizedMediaContentType(result.content_type);
       const token = `${request.requestId}:${path}:${nowMs()}`;
-      const shouldPreviewFirst = Boolean(previewUrl && contentType && !BROWSER_SAFE_VIDEO_TYPES.has(contentType));
-      setActiveVideoFallback(previewUrl ? { token, previewUrl, rel: path, size } : null);
+      const safeTypes = BROWSER_SAFE_MEDIA_TYPES[kind];
+      const shouldPreviewFirst = Boolean(previewUrl && !(safeTypes && safeTypes.has(contentType)));
+      setActiveMediaFallback(previewUrl ? { kind, token, previewUrl, rel: path, size } : null);
+      activeMediaToken = token;
+      activeMediaKind = kind;
       applyFileMode();
-      return Object.freeze({
-        token,
-        rel: path,
-        videoUrl: result.video_url,
-        previewUrl,
-        size,
-        contentType,
-        shouldPreviewFirst,
-        initialStatus: `${path} - video - ${fmtBytes(size)}`,
-      });
+      return Object.freeze({ kind, token, rel: path, mediaUrl: result.media_url, previewUrl, size, contentType, shouldPreviewFirst, initialStatus: `${path} - ${kind} - ${fmtBytes(size)}` });
     }
 
-    function handleActiveVideoLoadError(token, options = {}) {
-      const clearVideoHandlers = requireFunction(options.clearVideoHandlers, "clearVideoHandlers");
-      const loadPreview = requireFunction(options.loadPreview, "loadCompatibleVideoPreview");
+    function handleActiveMediaLoadError(token, options = {}) {
+      const clearMediaHandlers = requireFunction(options.clearMediaHandlers, "clearMediaHandlers");
+      const loadPreview = requireFunction(options.loadPreview, "loadCompatibleMediaPreview");
       const expectedToken = String(token || "");
-      const previewUrl = typeof options.previewUrl === "string" ? options.previewUrl : "";
-      const fallback = activeVideoFallback;
-      const rel = String((fallback && fallback.rel) || options.rel || "video");
-      if (!fallback || fallback.token !== expectedToken) {
-        if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
+      const fallback = activeMediaFallback;
+      if (expectedToken !== activeMediaToken && (!fallback || fallback.token !== expectedToken)) return false;
+      const kind = (fallback && fallback.kind) || options.kind || activeMediaKind || "video";
+      const rel = String((fallback && fallback.rel) || options.rel || kind);
+      if (!fallback) {
+        fileStatus.textContent = `${rel} - ${kind} unsupported`;
         return false;
       }
-      if (clearUsedCompatibleVideoPreview(expectedToken)) {
-        clearVideoHandlers();
-        fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
+      if (fallback.token !== expectedToken) return false;
+      if (clearUsedCompatibleMediaPreview(expectedToken)) {
+        clearMediaHandlers();
+        fileStatus.textContent = `${rel} - ${kind} preview unavailable after conversion`;
         return true;
       }
       void loadPreview(expectedToken, { explicit: false });
       return true;
     }
 
-    function handleActiveVideoLoadedMetadata(token) {
-      const expectedToken = String(token || "");
-      const fallback = activeVideoFallback;
-      if (!fallback || fallback.token !== expectedToken || !fallback.used) return false;
-      fileStatus.textContent = `${fallback.rel || "video"} - compatible video preview - ${fmtBytes(fallback.size)}`;
+    function handleActiveMediaLoadedMetadata(token) {
+      const fallback = activeMediaFallback;
+      if (!fallback || fallback.token !== String(token || "") || !fallback.used) return false;
+      fileStatus.textContent = `${fallback.rel || fallback.kind} - compatible ${fallback.kind} preview - ${fmtBytes(fallback.size)}`;
       return true;
     }
 
@@ -177,8 +179,8 @@
           status: `${path} - document preview - ${fmtBytes(size)}`,
         });
       }
-      if (result.kind === "video") {
-        return Object.freeze({ kind: "video", ...prepareActiveVideoLoadResult(path, result, request) });
+      if (result.kind === "video" || result.kind === "audio") {
+        return prepareActiveMediaLoadResult(path, result, request);
       }
       if (result.kind === "download_only") {
         applyActiveFileNonTextState("download_only");
@@ -208,18 +210,18 @@
       return Object.freeze({ kind: "text", text: result.text, renderPreview, previewKind: renderPreview ? textKind : "", previewUrl, status: statusParts.join(" - ") });
     }
 
-    function beginCompatibleVideoPreview(expectedToken = "") {
-      const state = activeVideoFallback;
+    function beginCompatibleMediaPreview(expectedToken = "") {
+      const state = activeMediaFallback;
       const token = String(expectedToken || "");
       if (!state || (token && state.token !== token) || state.used || state.preparing) return null;
       state.preparing = true;
       applyFileMode();
-      return activeVideoFallbackSnapshot();
+      return activeMediaFallbackSnapshot();
     }
 
-    function completeCompatibleVideoPreview(preview) {
+    function completeCompatibleMediaPreview(preview) {
       const token = preview && preview.token ? String(preview.token) : "";
-      const state = activeVideoFallback;
+      const state = activeMediaFallback;
       if (!state || (token && state.token !== token)) return false;
       state.used = true;
       state.preparing = false;
@@ -227,42 +229,42 @@
       return true;
     }
 
-    function failCompatibleVideoPreview(preview) {
+    function failCompatibleMediaPreview(preview) {
       const token = preview && preview.token ? String(preview.token) : "";
-      const state = activeVideoFallback;
+      const state = activeMediaFallback;
       if (!state || (token && state.token !== token)) return false;
       state.preparing = false;
       applyFileMode();
       return true;
     }
 
-    async function loadCompatibleVideoPreview(expectedToken = "", options = {}) {
-      const preparePreview = requireFunction(options.preparePreview, "prepareCompatibleVideoPreview");
-      const loadPreviewDom = requireFunction(options.loadPreviewDom, "loadCompatibleVideoPreviewDom");
-      const errorText = requireFunction(options.errorText, "fileVideoPreviewErrorText");
+    async function loadCompatibleMediaPreview(expectedToken = "", options = {}) {
+      const preparePreview = requireFunction(options.preparePreview, "prepareCompatibleMediaPreview");
+      const loadPreviewDom = requireFunction(options.loadPreviewDom, "loadCompatibleMediaPreviewDom");
+      const errorText = requireFunction(options.errorText, "fileMediaPreviewErrorText");
       const explicit = Boolean(options.explicit);
-      const state = beginCompatibleVideoPreview(expectedToken);
+      const state = beginCompatibleMediaPreview(expectedToken);
       if (!state) return false;
-      const rel = state.rel || currentActiveFileIdentity().path || "video";
-      fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
+      const rel = state.rel || currentActiveFileIdentity().path || state.kind;
+      fileStatus.textContent = explicit ? `${rel} - building compatible ${state.kind} preview...` : `${rel} - trying compatible ${state.kind} preview...`;
       try {
         await preparePreview(state.previewUrl);
-        if (!completeCompatibleVideoPreview(state)) return false;
-        fileStatus.textContent = `${rel} - loading compatible video preview...`;
-        loadPreviewDom(state.previewUrl);
+        if (!completeCompatibleMediaPreview(state)) return false;
+        fileStatus.textContent = `${rel} - loading compatible ${state.kind} preview...`;
+        loadPreviewDom(state.kind, state.previewUrl);
         return true;
       } catch (err) {
-        if (failCompatibleVideoPreview(state)) {
+        if (failCompatibleMediaPreview(state)) {
           fileStatus.textContent = `${rel} - ${errorText(err)}`;
         }
         return false;
       }
     }
 
-    function clearUsedCompatibleVideoPreview(token) {
-      const state = activeVideoFallback;
+    function clearUsedCompatibleMediaPreview(token) {
+      const state = activeMediaFallback;
       if (!state || state.token !== String(token || "") || !state.used) return false;
-      activeVideoFallback = null;
+      activeMediaFallback = null;
       applyFileMode();
       return true;
     }
@@ -278,10 +280,11 @@
       const isPreview = viewMode === "preview";
       const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));
       const previewable = Boolean(!draft && isPreviewableFileKind(currentActiveFileKind()));
-      const fallback = activeVideoFallback;
+      const fallback = activeMediaFallback;
       const videoVisible = Boolean(fallback && fallback.previewUrl && !fallback.used);
       const videoPreparing = Boolean(fallback && fallback.preparing);
-      const videoTitle = videoPreparing ? "Building compatible MP4 preview" : "Use compatible MP4 preview";
+      const format = fallback && fallback.kind === "audio" ? "MP3" : "MP4";
+      const videoTitle = `${videoPreparing ? "Building" : "Use"} compatible ${format} preview`;
       return Object.freeze({
         diffActive: Boolean(hasPath && isDiff),
         previewActive: Boolean(hasPath && isPreview),
@@ -291,9 +294,9 @@
         // With no file open the file actions have nothing to act on: hide them
         // instead of showing a row of disabled controls.
         fileActionsVisible: hasPath,
-        videoPreviewVisible: videoVisible,
-        videoPreviewDisabled: Boolean(!videoVisible || videoPreparing),
-        videoPreviewTitle: videoTitle,
+        mediaPreviewVisible: videoVisible,
+        mediaPreviewDisabled: Boolean(!videoVisible || videoPreparing),
+        mediaPreviewTitle: videoTitle,
         markdownPreviewVisible: previewable,
         shouldHidePasteDialog: viewMode !== "file",
         shouldExitEditMode: Boolean(viewMode !== "file" && currentFileEditMode()),
@@ -736,8 +739,8 @@
       return true;
     }
 
-    async function handleFileVideoPreviewButtonPress(token, loadPreview) {
-      const loadCompatiblePreview = requireFunction(loadPreview, "loadCompatibleVideoPreview");
+    async function handleFileMediaPreviewButtonPress(token, loadPreview) {
+      const loadCompatiblePreview = requireFunction(loadPreview, "loadCompatibleMediaPreview");
       return await loadCompatiblePreview(token || "", { explicit: true });
     }
 
@@ -902,7 +905,7 @@
 
 
     return Object.freeze({
-      setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict
+      setActiveMediaFallback, clearActiveMediaFallback, currentActiveMediaFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveMediaPreviewToken, currentActiveMediaKind, prepareActiveMediaLoadResult, handleActiveMediaLoadError, handleActiveMediaLoadedMetadata, prepareFileLoadResult, beginCompatibleMediaPreview, completeCompatibleMediaPreview, failCompatibleMediaPreview, loadCompatibleMediaPreview, clearUsedCompatibleMediaPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileMediaPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict
     });
   }
 

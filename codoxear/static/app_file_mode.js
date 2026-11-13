@@ -146,7 +146,7 @@
     const diffButton = requireModeControlButton(options.diffButton, "fileModeDiffButton");
     const previewButton = requireModeControlButton(options.previewButton, "fileModePreviewButton");
     const downloadButton = requireModeControlButton(options.downloadButton, "fileDownloadButton");
-    const videoPreviewButton = requireModeControlButton(options.videoPreviewButton, "fileVideoPreviewButton");
+    const mediaPreviewButton = requireModeControlButton(options.mediaPreviewButton, "fileMediaPreviewButton");
     const hideFilePasteDialog = requireFunction(options.hideFilePasteDialog, "hideFilePasteDialog");
     const setFileEditMode = requireFunction(options.setFileEditMode, "setFileEditMode");
     const syncFileEditorReadOnly = requireFunction(options.syncFileEditorReadOnly, "syncFileEditorReadOnly");
@@ -161,10 +161,10 @@
       downloadButton.disabled = modeState.downloadDisabled;
       diffButton.hidden = modeState.fileActionsVisible === false;
       downloadButton.hidden = modeState.fileActionsVisible === false;
-      videoPreviewButton.style.display = modeState.videoPreviewVisible ? "" : "none";
-      videoPreviewButton.disabled = modeState.videoPreviewDisabled;
-      videoPreviewButton.title = modeState.videoPreviewTitle;
-      videoPreviewButton.setAttribute("aria-label", modeState.videoPreviewTitle);
+      mediaPreviewButton.style.display = modeState.mediaPreviewVisible ? "" : "none";
+      mediaPreviewButton.disabled = modeState.mediaPreviewDisabled;
+      mediaPreviewButton.title = modeState.mediaPreviewTitle;
+      mediaPreviewButton.setAttribute("aria-label", modeState.mediaPreviewTitle);
       previewButton.style.display = modeState.markdownPreviewVisible ? "" : "none";
       if (modeState.shouldHidePasteDialog) hideFilePasteDialog();
       if (modeState.shouldExitEditMode) setFileEditMode(false);

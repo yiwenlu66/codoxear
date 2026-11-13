@@ -44,10 +44,10 @@ def eval_file_helpers_real_order() -> dict:
           priorityPositive: helpers.formatPriorityOffset(1.234),
           priorityNegative: helpers.formatPriorityOffset(-0.5),
           priorityInvalid: helpers.formatPriorityOffset(Number.NaN),
-          videoErrorMessage: helpers.fileVideoPreviewErrorText(new Error(" bad codec ")),
-          videoErrorString: helpers.fileVideoPreviewErrorText(" transcode failed \\n"),
-          videoErrorBlank: helpers.fileVideoPreviewErrorText(new Error("   ")),
-          videoErrorNull: helpers.fileVideoPreviewErrorText(null),
+          mediaErrorMessage: helpers.fileMediaPreviewErrorText(new Error(" bad codec ")),
+          mediaErrorString: helpers.fileMediaPreviewErrorText(" transcode failed \\n"),
+          mediaErrorBlank: helpers.fileMediaPreviewErrorText(new Error("   ")),
+          mediaErrorNull: helpers.fileMediaPreviewErrorText(null),
           fileScoreNoQuery: helpers.fileSearchScore("/tmp/project", "   "),
           fileScoreExact: helpers.fileSearchScore("/tmp/project", " /TMP/PROJECT "),
           fileScoreBaseExact: helpers.fileSearchScore("/tmp/project", "project"),
@@ -180,10 +180,10 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["priorityPositive"], "+1.23")
         self.assertEqual(result["priorityNegative"], "-0.50")
         self.assertEqual(result["priorityInvalid"], "0.00")
-        self.assertEqual(result["videoErrorMessage"], "bad codec")
-        self.assertEqual(result["videoErrorString"], "transcode failed")
-        self.assertEqual(result["videoErrorBlank"], "compatible video preview failed")
-        self.assertEqual(result["videoErrorNull"], "compatible video preview failed")
+        self.assertEqual(result["mediaErrorMessage"], "bad codec")
+        self.assertEqual(result["mediaErrorString"], "transcode failed")
+        self.assertEqual(result["mediaErrorBlank"], "compatible media preview failed")
+        self.assertEqual(result["mediaErrorNull"], "compatible media preview failed")
         self.assertEqual(result["fileScoreNoQuery"], 0)
         self.assertEqual(result["fileScoreExact"], 12000)
         self.assertEqual(result["fileScoreBaseExact"], 10000)

@@ -70,8 +70,8 @@
   function bindFilePickerInteractions(options = {}) {
     const { eventBindings, fileBtn, showFileViewer, filePickerInput, filePickerInputRuntime,
       fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, handleFileDiffModeButtonPress,
-      handleFilePreviewModeButtonPress, handleFileEditButtonPress, fileVideoPreviewBtn,
-      fileVideoPreviewRuntime, fileDownloadBtn, fileDownloadRuntime, activeFileDownloadApiPath,
+      handleFilePreviewModeButtonPress, handleFileEditButtonPress, fileMediaPreviewBtn,
+      fileMediaPreviewRuntime, fileDownloadBtn, fileDownloadRuntime, activeFileDownloadApiPath,
       codoxearFileViewer, fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn,
       fileTouchLeftBtn, fileTouchDownBtn, fileTouchRightBtn, toggleFileTouchSelectionMode,
       copyActiveFileSelection, pasteFromClipboardIntoActiveFile, handleFileTouchMoveButtonPress,
@@ -104,10 +104,10 @@ eventBindings.on(fileEditBtn, 'click', async (e) => {
   e.stopPropagation();
   await handleFileEditButtonPress();
 });
-eventBindings.on(fileVideoPreviewBtn, 'click', (e) => {
+eventBindings.on(fileMediaPreviewBtn, 'click', (e) => {
   e.preventDefault();
   e.stopPropagation();
-  void fileVideoPreviewRuntime.handleButtonPress();
+  void fileMediaPreviewRuntime.handleButtonPress();
 });
 
 eventBindings.on(fileDownloadBtn, 'click', (e) => {

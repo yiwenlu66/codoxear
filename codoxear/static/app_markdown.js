@@ -427,7 +427,7 @@ import * as CodoxearUrls from "./app_application.js";
   }
 
   // Browser-decodable video containers, mirroring the file viewer's
-  // BROWSER_SAFE_VIDEO_TYPES (mp4/webm/ogg). Anything else (mkv, avi, mov,
+  // BROWSER_SAFE_MEDIA_TYPES.video (mp4/webm/ogg). Anything else (mkv, avi, mov,
   // ...) resolves to null so the player collapses to a file link whose
   // viewer offers the transcoded compatible preview instead of a dead
   // inline player.

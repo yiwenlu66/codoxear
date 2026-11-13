@@ -93,7 +93,7 @@ function requireFunction(value, name) {
     let activeFileEditable = false;
     let activeFileVersion = "";
     let activeFileDraft = false;
-    let activeVideoFallback = null;
+    let activeMediaFallback = null;
     let activePdfRender = null;
     let unavailableSessionId = "";
     let fileSessionSelections = new Map();
@@ -360,7 +360,7 @@ function requireFunction(value, name) {
     }
     function applyActiveFileNonTextState(kind) {
       const nextKind = String(kind || "");
-      if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "office" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
+      if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "office" && nextKind !== "video" && nextKind !== "audio" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
       activeFileKind = nextKind;
       activeFileText = "";
       activeFileEditable = false;
@@ -636,7 +636,7 @@ function requireFunction(value, name) {
       rememberActiveFileSelection: rememberActiveFileSelection,
       setActiveFileIdentity: setActiveFileIdentity,
     }));
-    const { setActiveVideoFallback, clearActiveVideoFallback, currentActiveVideoFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveVideoPreviewToken, prepareActiveVideoLoadResult, handleActiveVideoLoadError, handleActiveVideoLoadedMetadata, prepareFileLoadResult, beginCompatibleVideoPreview, completeCompatibleVideoPreview, failCompatibleVideoPreview, loadCompatibleVideoPreview, clearUsedCompatibleVideoPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileVideoPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict } = operations;
+    const { setActiveMediaFallback, clearActiveMediaFallback, currentActiveMediaFallback, setActivePdfRenderState, takeActivePdfRenderState, clearActivePdfRenderState, isActivePdfRenderState, disposeActivePdfRender, currentActiveMediaPreviewToken, currentActiveMediaKind, prepareActiveMediaLoadResult, handleActiveMediaLoadError, handleActiveMediaLoadedMetadata, prepareFileLoadResult, beginCompatibleMediaPreview, completeCompatibleMediaPreview, failCompatibleMediaPreview, loadCompatibleMediaPreview, clearUsedCompatibleMediaPreview, currentFileModeControlState, syncFileEditorReadOnly, updateFileEditButton, isFileSavePending, currentFileDirty, setFileDirty, clearActiveFileSaveState, beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest, buildActiveFileSaveBody, renderActiveFileSaveError, applyActiveFileSaveSuccess, submitActiveFileSave, saveActiveFileEdits, prepareFileEditorTextRestore, finishFileEditorTextRestore, discardActiveFileEdits, isFileUnsavedPromptPending, fileUnsavedPromptPlan, beginFileUnsavedPrompt, resolveFileUnsavedPrompt, applyPlainTextFallbackState, maybeHandleUnsavedFileChanges, handleFileUnsavedSaveChoice, handleFileUnsavedDiscardChoice, handleFileUnsavedCancelChoice, setFileViewModeWithGuard, requestHideFileViewer, openFilePathWithGuard, openFilePathWithResolvedMode, openDraftFilePathWithGuard, openDraftFilePath, finalizeFileOpenSuccess, fileEditorShortcutBlocked, handleFileDiffModeButtonPress, handleFilePreviewModeButtonPress, handleFileEditButtonPress, handleFileEditorSaveShortcut, handleFileMediaPreviewButtonPress, activeFileDownloadApiPath, openFilePath, applyDraftFileLoad, renderFileOpenError, renderDraftFileOpenError, fetchFileOpenResult, isSaveConflictCurrent, reloadSaveConflict, keepEditingSaveConflict, currentSaveConflict, renderSaveConflict } = operations;
     return Object.freeze({
       renderSaveConflict,
       reloadSaveConflict,
@@ -768,24 +768,25 @@ function requireFunction(value, name) {
       takeFileUnsavedReturnFocusElement,
       currentFileNonDiffMode,
       setFileViewMode,
-      setActiveVideoFallback,
-      clearActiveVideoFallback,
-      currentActiveVideoFallback,
+      setActiveMediaFallback,
+      clearActiveMediaFallback,
+      currentActiveMediaFallback,
       setActivePdfRenderState,
       takeActivePdfRenderState,
       clearActivePdfRenderState,
       isActivePdfRenderState,
       disposeActivePdfRender,
-      currentActiveVideoPreviewToken,
-      prepareActiveVideoLoadResult,
-      handleActiveVideoLoadError,
-      handleActiveVideoLoadedMetadata,
+      currentActiveMediaPreviewToken,
+      currentActiveMediaKind,
+      prepareActiveMediaLoadResult,
+      handleActiveMediaLoadError,
+      handleActiveMediaLoadedMetadata,
       prepareFileLoadResult,
-      beginCompatibleVideoPreview,
-      completeCompatibleVideoPreview,
-      failCompatibleVideoPreview,
-      loadCompatibleVideoPreview,
-      clearUsedCompatibleVideoPreview,
+      beginCompatibleMediaPreview,
+      completeCompatibleMediaPreview,
+      failCompatibleMediaPreview,
+      loadCompatibleMediaPreview,
+      clearUsedCompatibleMediaPreview,
       currentFileModeControlState,
       syncFileEditorReadOnly,
       updateFileEditButton,
@@ -794,7 +795,7 @@ function requireFunction(value, name) {
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,
       handleFileEditorSaveShortcut,
-      handleFileVideoPreviewButtonPress,
+      handleFileMediaPreviewButtonPress,
       activeFileDownloadApiPath,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,

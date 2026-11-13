@@ -195,15 +195,15 @@ function requireFunction(value, name) {
       "aria-label": "Edit file",
       html: iconSvg("edit"),
     });
-    const fileVideoPreviewBtn = el("button", {
-      id: "fileVideoPreviewBtn",
+    const fileMediaPreviewBtn = el("button", {
+      id: "fileMediaPreviewBtn",
       class: "icon-btn",
       type: "button",
-      title: "Use compatible MP4 preview",
-      "aria-label": "Use compatible MP4 preview",
+      title: "Use compatible media preview",
+      "aria-label": "Use compatible media preview",
       html: iconSvg("play"),
     });
-    fileVideoPreviewBtn.style.display = "none";
+    fileMediaPreviewBtn.style.display = "none";
     const fileDownloadBtn = el("button", {
       id: "fileDownloadBtn",
       class: "icon-btn",
@@ -289,16 +289,18 @@ function requireFunction(value, name) {
     const fileVimModeChip = el("span", { id: "fileVimMode", class: "fileVimMode", text: "", "aria-hidden": "true" });
     const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
     const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
+    const fileAudio = el("audio", { id: "fileAudio", class: "fileAudio", controls: true, preload: "metadata" });
     const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer", tabindex: "-1" }, [
       el("div", { class: "fileViewerHeader" }, [
         el("div", { class: "title", text: "View file" }),
-        el("div", { class: "actions" }, [fileVimModeChip, fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
+        el("div", { class: "actions" }, [fileVimModeChip, fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileMediaPreviewBtn, fileDownloadBtn, fileCloseBtn]),
       ]),
       el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
       fileStatus,
       fileDiff,
       fileImage,
       fileVideo,
+      fileAudio,
       fileTouchToolbar,
     ]);
     root.appendChild(fileBackdrop);
@@ -616,10 +618,10 @@ function requireFunction(value, name) {
 
     return Object.freeze({
       fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
-      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn,
+      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileMediaPreviewBtn, fileDownloadBtn,
       fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
-      fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
+      fileDiff, fileImage, fileVideo, fileAudio, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
       filePasteBackdrop, filePasteInput, filePasteDialog, fileVimModeChip, sendChoiceBackdrop, sendChoice,
       appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
       appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,

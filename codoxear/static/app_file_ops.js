@@ -391,7 +391,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
       sessionDisplayName, setPickerButtonContent, storageGetItem,
       storageSetItem, stripPathLocationSuffix, useTouchFileEditorControls,
       filePickerField, filePickerMenu, filePickerInput, fileStatus, fileDiff, fileImage,
-      fileVideo, fileVideoPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
+      fileVideo, fileAudio, fileMediaPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
       fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
       fileTouchDownBtn, fileTouchRightBtn, fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn,
       fileBackdrop, fileViewer, fileCloseBtn, fileUnsavedBackdrop, fileUnsavedDialog,
@@ -496,7 +496,7 @@ const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime(wiring.
   requestAnimationFrame: (callback) => requestAnimationFrame(callback),
   disposeFileEditor: () => disposeFileEditor(),
   disposePdfRender: () => disposePdfRender(),
-  clearFileVideo: () => clearFileVideo(),
+  clearFileMedia: () => clearFileMedia(),
   setFileRenderSurface: (surface) => setFileRenderSurface(surface),
   setFileEditorKind: (kind) => setFileEditorKind(kind),
   applyPlainTextFallbackState: () => fileViewerController.applyPlainTextFallbackState(),
@@ -526,7 +526,7 @@ const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wirin
   devicePixelRatio: () => window.devicePixelRatio || 1,
   disposeFileEditor: () => disposeFileEditor(),
   disposePdfRender: () => disposePdfRender(),
-  clearFileVideo: () => clearFileVideo(),
+  clearFileMedia: () => clearFileMedia(),
   setFileRenderSurface: (surface) => setFileRenderSurface(surface),
   renderDownloadFallback: (rel, url, reason, recovery) => renderDownloadFallback(rel, url, reason, recovery),
   isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
@@ -548,14 +548,15 @@ const fileRenderSurfaceRuntime = codoxearFileViewer.createFileRenderSurfaceRunti
   diff: fileDiff,
   image: fileImage,
   video: fileVideo,
-  videoPreviewButton: fileVideoPreviewBtn,
-  clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
+  audio: fileAudio,
+  mediaPreviewButton: fileMediaPreviewBtn,
+  clearActiveMediaFallback: () => fileViewerController.clearActiveMediaFallback(),
 }));
 const fileModeControlsRuntime = codoxearFileViewer.createFileModeControlsRuntime(wiring.createFileModeControlsOptions({
   diffButton: fileModeDiffBtn,
   previewButton: fileModePreviewBtn,
   downloadButton: fileDownloadBtn,
-  videoPreviewButton: fileVideoPreviewBtn,
+  mediaPreviewButton: fileMediaPreviewBtn,
   hideFilePasteDialog: () => hideFilePasteDialog(),
   setFileEditMode: (mode) => fileEditModeController.setFileEditMode(mode),
   syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
@@ -646,8 +647,8 @@ function isCurrentFileOpenRequest(request) {
   return fileViewerController.isCurrentFileOpenRequest(request);
 }
 
-function clearFileVideo() {
-  return fileRenderSurfaceRuntime.clearVideo();
+function clearFileMedia() {
+  return fileRenderSurfaceRuntime.clearMedia();
 }
 
 function setFileRenderSurface(surface) {
@@ -1052,13 +1053,14 @@ const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleR
     }
   },
 }));
-const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime(wiring.createFileVideoPreviewOptions({
+const fileMediaPreviewRuntime = codoxearFileViewer.createFileMediaPreviewRuntime(wiring.createFileMediaPreviewOptions({
   controller: fileViewerController,
   fetchPreview: (url, options) => fetch(url, options),
   resolveAppUrl: (url) => resolveAppUrl(url),
   handleAuthLoss: () => handleAppAuthLoss(),
-  errorText: (error) => codoxearFileHelpers.fileVideoPreviewErrorText(error),
+  errorText: (error) => codoxearFileHelpers.fileMediaPreviewErrorText(error),
   video: fileVideo,
+  audio: fileAudio,
 }));
 const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime(wiring.createFileLoadResultOptions({
   controller: fileViewerController,
@@ -1073,8 +1075,8 @@ const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime(wir
   renderBlockedFileNotice: (rel, reason, viewerMaxBytes, size) => renderBlockedFileNotice(rel, reason, viewerMaxBytes, size),
   renderPdfFile: (rel, url, request, preview) => renderPdfFile(rel, url, request, preview),
   showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
-  showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
-  loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options),
+  showMedia: (loadPlan, options) => fileRenderSurfaceRuntime.showMedia(loadPlan, options),
+  loadCompatibleMediaPreview: (token, options) => fileMediaPreviewRuntime.loadCompatibleMediaPreview(token, options),
 }));
 const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime(wiring.createFileCandidateRefreshOptions({
   controller: fileViewerController,
@@ -1201,8 +1203,8 @@ filePickerOpsBinding.bindFilePickerInteractions(wiring.createFilePickerInteracti
   handleFileDiffModeButtonPress: handleFileDiffModeButtonPress,
   handleFilePreviewModeButtonPress: handleFilePreviewModeButtonPress,
   handleFileEditButtonPress: handleFileEditButtonPress,
-  fileVideoPreviewBtn: fileVideoPreviewBtn,
-  fileVideoPreviewRuntime: fileVideoPreviewRuntime,
+  fileMediaPreviewBtn: fileMediaPreviewBtn,
+  fileMediaPreviewRuntime: fileMediaPreviewRuntime,
   fileDownloadBtn: fileDownloadBtn,
   fileDownloadRuntime: fileDownloadRuntime,
   activeFileDownloadApiPath: activeFileDownloadApiPath,

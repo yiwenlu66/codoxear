@@ -2936,6 +2936,14 @@ select {
         border-radius: var(--radius-card);
         background: var(--video-bg);
       }
+      .fileAudio {
+        display: none;
+        width: min(100%, 720px);
+        margin: 0 auto;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-card);
+        background: var(--paper);
+      }
       .filePdfPages {
         min-height: 100%;
         padding: var(--space-5);

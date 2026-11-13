@@ -87,9 +87,9 @@
     return value;
   }
 
-  function requireVideoNode(value) {
+  function requireMediaNode(value, name) {
     if (!value || !value.style || typeof value.removeAttribute !== "function" || typeof value.load !== "function") {
-      throw new TypeError("file viewer dependency missing: fileVideo");
+      throw new TypeError(`file viewer dependency missing: ${name}`);
     }
     return value;
   }
@@ -145,16 +145,18 @@
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
     const image = requireImageNode(options.image);
-    const video = requireVideoNode(options.video);
-    const videoPreviewButton = requireStyledNode(options.videoPreviewButton, "fileVideoPreviewButton");
-    const clearActiveVideoFallback = requireFunction(options.clearActiveVideoFallback, "clearActiveVideoFallback");
+    const video = requireMediaNode(options.video, "fileVideo");
+    const audio = requireMediaNode(options.audio, "fileAudio");
+    const mediaPreviewButton = requireStyledNode(options.mediaPreviewButton, "fileMediaPreviewButton");
+    const clearActiveMediaFallback = requireFunction(options.clearActiveMediaFallback, "clearActiveMediaFallback");
 
     function setSurface(surface) {
       const next = String(surface || "");
-      if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
+      if (next !== "diff" && next !== "image" && next !== "video" && next !== "audio") throw new Error("invalid file render surface");
       diff.style.display = next === "diff" ? "block" : "none";
       image.style.display = next === "image" ? "block" : "none";
       video.style.display = next === "video" ? "block" : "none";
+      audio.style.display = next === "audio" ? "block" : "none";
       return next;
     }
 
@@ -163,64 +165,73 @@
       return true;
     }
 
-    function clearVideo() {
-      clearActiveVideoFallback();
-      videoPreviewButton.style.display = "none";
-      videoPreviewButton.disabled = true;
-      video.onerror = null;
-      video.onloadedmetadata = null;
-      if (typeof video.pause === "function") video.pause();
-      video.removeAttribute("src");
-      video.load();
-      video.style.display = "none";
+    function clearMediaHandlers(kind) {
+      const node = kind === "audio" ? audio : video;
+      node.onerror = null;
+      node.onloadedmetadata = null;
+      return true;
+    }
+
+    function unloadMedia(kind) {
+      const node = kind === "audio" ? audio : video;
+      clearMediaHandlers(kind);
+      if (typeof node.pause === "function") node.pause();
+      node.removeAttribute("src");
+      node.load();
+      node.style.display = "none";
+    }
+
+    function clearMedia() {
+      clearActiveMediaFallback();
+      mediaPreviewButton.style.display = "none";
+      mediaPreviewButton.disabled = true;
+      unloadMedia("video");
+      unloadMedia("audio");
       return true;
     }
 
     function reset() {
       clearImage();
-      clearVideo();
+      clearMedia();
       setSurface("diff");
       return true;
     }
 
     function showImage(src, alt = "") {
-      clearVideo();
+      clearMedia();
       image.src = String(src || "");
       image.alt = String(alt || "");
       setSurface("image");
       return true;
     }
 
-    function clearVideoHandlers() {
-      video.onerror = null;
-      video.onloadedmetadata = null;
-      return true;
-    }
-
-    function showVideo(loadPlan = {}, callbacks = {}) {
+    function showMedia(loadPlan = {}, callbacks = {}) {
       const resolveAppUrl = requireFunction(callbacks.resolveAppUrl, "resolveAppUrl");
       const setStatus = requireFunction(callbacks.setStatus, "setStatus");
       const loadPreview = requireFunction(callbacks.loadPreview, "loadPreview");
       const handleError = requireFunction(callbacks.handleError, "handleError");
       const handleLoadedMetadata = requireFunction(callbacks.handleLoadedMetadata, "handleLoadedMetadata");
       const token = String(loadPlan.token || "");
-      video.onerror = () => {
-        handleError(loadPlan, { clearVideoHandlers, loadPreview });
+      const kind = loadPlan.kind === "audio" ? "audio" : "video";
+      const media = kind === "audio" ? audio : video;
+      unloadMedia(kind === "audio" ? "video" : "audio");
+      media.onerror = () => {
+        handleError(loadPlan, { clearMediaHandlers: () => clearMediaHandlers(kind), loadPreview });
       };
-      video.onloadedmetadata = () => {
+      media.onloadedmetadata = () => {
         handleLoadedMetadata(loadPlan);
       };
-      setSurface("video");
+      setSurface(kind);
       if (loadPlan.shouldPreviewFirst) {
         void loadPreview(token, { explicit: false });
       } else {
-        video.src = resolveAppUrl(loadPlan.videoUrl);
+        media.src = resolveAppUrl(loadPlan.mediaUrl);
         setStatus(loadPlan.initialStatus);
       }
       return true;
     }
 
-    return Object.freeze({ clearImage, clearVideo, clearVideoHandlers, reset, setSurface, showImage, showVideo });
+    return Object.freeze({ clearImage, clearMedia, clearMediaHandlers, reset, setSurface, showImage, showMedia });
   }
 
 export { createFileRenderSurfaceRuntime };

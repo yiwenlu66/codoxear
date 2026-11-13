@@ -10,7 +10,7 @@ VIEWER_SCRIPTS = [
     module_path(name)
     for name in (
         "app_file_candidates.js", "app_file_candidate_state.js", "app_file_viewer_operations.js", "app_file_download.js", "app_file_viewer_lifecycle.js", "app_file_viewer_panel.js",
-        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_video.js",
+        "app_file_unsaved_dialog.js", "app_file_paste_dialog.js", "app_file_pdf.js", "app_file_media.js",
         "app_file_mode.js", "app_file_render_surface.js", "app_file_viewer_controller.js", "app_file_viewer.js",
     )
 ]
@@ -40,6 +40,157 @@ process.stdout.write(JSON.stringify({ frozen: Object.isFrozen(module), error }))
         )
         self.assertTrue(result["frozen"])
         self.assertEqual(result["error"], "file viewer dependency missing: el")
+
+    def test_audio_media_surface_fallback_and_cleanup(self) -> None:
+        result = run_vm(
+            r"""
+const { createFileViewerOperationsRuntime } = ctx.window.CodoxearFileViewerOperations;
+const viewer = ctx.window.CodoxearFileViewer;
+const status = { textContent: '' };
+const noop = () => {};
+const opts = new Proxy({
+  fileStatus: status, nowMs: () => 10, fmtBytes: n => `${n}B`,
+  currentActiveFileIdentity: () => ({ path: 'track.ogg' }),
+  currentFileViewMode: () => 'file', currentActiveFileDraft: () => false,
+  isCurrentFileOpenRequest: () => true,
+}, { get: (target, key) => key in target ? target[key] : noop });
+const ops = createFileViewerOperationsRuntime(opts);
+const mediaNode = () => ({ style: {}, src: '', pauses: 0, loads: 0,
+  pause() { this.pauses++; }, load() { this.loads++; }, removeAttribute(name) { if (name === 'src') this.src = ''; } });
+const audio = mediaNode(), video = mediaNode();
+const surface = viewer.createFileRenderSurfaceRuntime({ diff: { style: {} }, image: { style: {}, removeAttribute() {} }, audio, video, mediaPreviewButton: { style: {} }, clearActiveMediaFallback: ops.clearActiveMediaFallback });
+const previewCalls = [];
+const callbacks = { resolveAppUrl: url => `resolved:${url}`, setStatus: text => status.textContent = text,
+  loadPreview: (token, options) => previewCalls.push([token, options.explicit]),
+  handleError: (plan, helpers) => ops.handleActiveMediaLoadError(plan.token, { kind: plan.kind, rel: plan.rel, ...helpers }),
+  handleLoadedMetadata: plan => ops.handleActiveMediaLoadedMetadata(plan.token) };
+const request = { requestId: 1 };
+const payload = { kind: 'audio', media_url: '/raw', media_preview_url: '/mp3', preview_content_type: 'audio/mpeg', size: 100, content_type: 'audio/mpeg' };
+const raw = ops.prepareFileLoadResult('track.mp3', payload, request);
+const audioButton = ops.currentFileModeControlState();
+surface.showMedia(raw, callbacks);
+const rawState = { audio: audio.src, video: video.src, visible: audio.style.display };
+const ogg = ops.prepareFileLoadResult('track.ogg', { ...payload, content_type: 'audio/ogg' }, request);
+surface.showMedia(ogg, callbacks);
+const preview = ops.beginCompatibleMediaPreview(ogg.token);
+ops.completeCompatibleMediaPreview(preview);
+audio.onloadedmetadata();
+const metadata = status.textContent;
+const usedButton = ops.currentFileModeControlState();
+ops.setActiveMediaFallback({ kind: 'video', token: 'v', previewUrl: '/mp4' });
+const videoButton = ops.currentFileModeControlState();
+ops.clearActiveMediaFallback();
+const emptyButton = ops.currentFileModeControlState();
+audio.src = 'playing-audio'; video.src = 'playing-video';
+const before = { a: [audio.pauses, audio.loads], v: [video.pauses, video.loads] };
+surface.reset();
+const cleanup = { audio: [audio.src, audio.pauses - before.a[0], audio.loads - before.a[1], audio.style.display], video: [video.src, video.pauses - before.v[0], video.loads - before.v[1], video.style.display] };
+process.stdout.write(JSON.stringify({ rawState, previewCalls, token: ogg.token, metadata, audioButton, usedButton, videoButton, emptyButton, cleanup }));
+"""
+        )
+        self.assertEqual(result["rawState"], {"audio": "resolved:/raw", "video": "", "visible": "block"})
+        self.assertEqual(result["previewCalls"], [[result["token"], False]])
+        self.assertEqual(result["metadata"], "track.ogg - compatible audio preview - 100B")
+        self.assertEqual(result["audioButton"]["mediaPreviewTitle"], "Use compatible MP3 preview")
+        self.assertTrue(result["audioButton"]["mediaPreviewVisible"])
+        self.assertFalse(result["usedButton"]["mediaPreviewVisible"])
+        self.assertEqual(result["videoButton"]["mediaPreviewTitle"], "Use compatible MP4 preview")
+        self.assertTrue(result["videoButton"]["mediaPreviewVisible"])
+        self.assertFalse(result["emptyButton"]["mediaPreviewVisible"])
+        self.assertEqual(result["cleanup"], {"audio": ["", 1, 1, "none"], "video": ["", 1, 1, "none"]})
+
+    def test_media_error_recovery_converts_once_then_reports(self) -> None:
+        # A trusted MIME type is a bet, and the element's error is the recovery:
+        # the first failure converts with no user action, the converted file's
+        # own failure is reported instead of retried forever.
+        result = run_vm(
+            r"""
+const { createFileViewerOperationsRuntime } = ctx.window.CodoxearFileViewerOperations;
+const viewer = ctx.window.CodoxearFileViewer;
+const status = { textContent: '' };
+const noop = () => {};
+const opts = new Proxy({
+  fileStatus: status, nowMs: () => 10, fmtBytes: n => `${n}B`,
+  currentActiveFileIdentity: () => ({ path: 'clip.mp4' }),
+  currentFileViewMode: () => 'file', currentActiveFileDraft: () => false,
+  isCurrentFileOpenRequest: () => true,
+}, { get: (target, key) => key in target ? target[key] : noop });
+const ops = createFileViewerOperationsRuntime(opts);
+const mediaNode = () => ({ style: {}, src: '', pause() {}, load() {},
+  removeAttribute(name) { if (name === 'src') this.src = ''; } });
+const audio = mediaNode(), video = mediaNode();
+const surface = viewer.createFileRenderSurfaceRuntime({ diff: { style: {} }, image: { style: {}, removeAttribute() {} }, audio, video, mediaPreviewButton: { style: {} }, clearActiveMediaFallback: ops.clearActiveMediaFallback });
+const previewCalls = [];
+const callbacks = { resolveAppUrl: url => `resolved:${url}`, setStatus: text => status.textContent = text,
+  loadPreview: (token, options) => previewCalls.push([token, options.explicit]),
+  handleError: (plan, helpers) => ops.handleActiveMediaLoadError(plan.token, { kind: plan.kind, rel: plan.rel, ...helpers }),
+  handleLoadedMetadata: plan => ops.handleActiveMediaLoadedMetadata(plan.token) };
+const plan = ops.prepareFileLoadResult('clip.mp4', { kind: 'video', media_url: '/raw', media_preview_url: '/mp4', preview_content_type: 'video/mp4', size: 9, content_type: 'video/mp4' }, { requestId: 7 });
+surface.showMedia(plan, callbacks);
+const firstSrc = video.src;
+video.onerror();
+const afterFirstError = { calls: previewCalls.map((call) => call[1]), status: status.textContent, preparing: ops.currentFileModeControlState().mediaPreviewTitle };
+ops.completeCompatibleMediaPreview({ token: plan.token });
+video.onerror();
+const afterSecondError = { status: status.textContent, calls: previewCalls.length, visible: ops.currentFileModeControlState().mediaPreviewVisible, handlersCleared: video.onerror === null };
+process.stdout.write(JSON.stringify({ firstSrc, afterFirstError, afterSecondError }));
+"""
+        )
+        self.assertEqual(result["firstSrc"], "resolved:/raw")
+        self.assertEqual(result["afterFirstError"]["calls"], [False])
+        self.assertEqual(result["afterSecondError"]["calls"], 1)
+        self.assertEqual(result["afterSecondError"]["status"], "clip.mp4 - video preview unavailable after conversion")
+        self.assertFalse(result["afterSecondError"]["visible"])
+        self.assertTrue(result["afterSecondError"]["handlersCleared"])
+
+    def test_media_preview_transport_and_stale_completion(self) -> None:
+        result = run_vm(
+            r"""
+const opsFactory = ctx.window.CodoxearFileViewerOperations.createFileViewerOperationsRuntime;
+const viewer = ctx.window.CodoxearFileViewer;
+const status = { textContent: '' }, noop = () => {};
+const deps = new Proxy({ fileStatus: status, nowMs: () => 1, fmtBytes: n => `${n}B`,
+  currentActiveFileIdentity: () => ({ path: 'a.ogg' }), currentFileViewMode: () => 'file',
+  currentActiveFileDraft: () => false, isCurrentFileOpenRequest: () => true,
+}, { get: (t, k) => k in t ? t[k] : noop });
+const controller = opsFactory(deps);
+const audio = { src: '', load() { this.loaded = (this.loaded || 0) + 1; } };
+const video = { src: '', load() {} };
+let pendingResolve;
+const requests = [];
+const runtime = viewer.createFileMediaPreviewRuntime({ controller, audio, video, resolveAppUrl: p => `app:${p}`,
+  handleAuthLoss: noop, errorText: e => e.message,
+  fetchPreview: (url, options) => { requests.push([url, options.headers.Range]); return new Promise(resolve => { pendingResolve = resolve; }); }
+});
+const payload = {kind:'audio',media_url:'/raw',media_preview_url:'/converted',preview_content_type:'audio/mpeg',content_type:'audio/ogg',size:7};
+(async () => {
+  const first = controller.prepareFileLoadResult('a.ogg', payload, {requestId: 1});
+  const old = runtime.loadCompatibleMediaPreview(first.token, {explicit: false});
+  controller.clearActiveMediaFallback();
+  pendingResolve({ok:true,status:206});
+  const staleResult = await old;
+  const second = controller.prepareFileLoadResult('b.ogg', payload, {requestId: 2});
+  const current = runtime.loadCompatibleMediaPreview(second.token, {explicit: true});
+  const building = status.textContent;
+  pendingResolve({ok:true,status:206});
+  const currentResult = await current;
+  const loading = status.textContent;
+  controller.handleActiveMediaLoadedMetadata(second.token);
+  const metadata = status.textContent;
+  let clear = 0, retries = 0;
+  controller.handleActiveMediaLoadError(second.token, { kind:'audio', rel:'b.ogg', clearMediaHandlers: () => clear++, loadPreview: () => retries++ });
+  process.stdout.write(JSON.stringify({ staleResult, currentResult, requests, building, loading, metadata, src:audio.src, video:video.src, loaded:audio.loaded, clear, retries, failed:status.textContent }));
+})().catch(err => { console.error(err); process.exit(1); });
+"""
+        )
+        self.assertFalse(result["staleResult"])
+        self.assertTrue(result["currentResult"])
+        self.assertEqual(result["requests"], [["app:/converted", "bytes=0-0"], ["app:/converted", "bytes=0-0"]])
+        self.assertEqual(result["building"], "b.ogg - building compatible audio preview...")
+        self.assertEqual(result["loading"], "b.ogg - loading compatible audio preview...")
+        self.assertEqual(result["metadata"], "b.ogg - compatible audio preview - 7B")
+        self.assertEqual((result["src"], result["video"], result["loaded"]), ("app:/converted", "", 1))
+        self.assertEqual((result["clear"], result["retries"], result["failed"]), (1, 0, "b.ogg - audio preview unavailable after conversion"))
 
     def test_pdf_loader_versions_module_and_worker_urls(self) -> None:
         result = run_vm(
@@ -291,8 +442,8 @@ process.stdout.write(JSON.stringify({
             r'''
 const module = ctx.window.CodoxearFileViewer; const node = () => ({ style: {}, disabled: false, attrs: {}, classList: { toggle(name, on) { this[name] = on; } }, setAttribute(k, v) { this.attrs[k] = v; } });
 const diff = node(), preview = node(), download = node(), video = node();
-const mode = { diffActive: true, previewActive: false, diffDisabled: false, previewDisabled: true, downloadDisabled: false, videoPreviewVisible: true, videoPreviewDisabled: false, videoPreviewTitle: 'Convert preview', markdownPreviewVisible: true, shouldHidePasteDialog: false, shouldExitEditMode: false };
-const controls = module.createFileModeControlsRuntime({ diffButton: diff, previewButton: preview, downloadButton: download, videoPreviewButton: video, hideFilePasteDialog() {}, setFileEditMode() {}, syncFileEditorReadOnly() {}, updateFileEditButton() {} });
+const mode = { diffActive: true, previewActive: false, diffDisabled: false, previewDisabled: true, downloadDisabled: false, mediaPreviewVisible: true, mediaPreviewDisabled: false, mediaPreviewTitle: 'Convert preview', markdownPreviewVisible: true, shouldHidePasteDialog: false, shouldExitEditMode: false };
+const controls = module.createFileModeControlsRuntime({ diffButton: diff, previewButton: preview, downloadButton: download, mediaPreviewButton: video, hideFilePasteDialog() {}, setFileEditMode() {}, syncFileEditorReadOnly() {}, updateFileEditButton() {} });
 controls.apply(mode);
 const toolbar = node(), dpad = node(), select = node(), copy = node(), paste = node(), actions = node();
 const touch = module.createFileTouchToolbarRuntime({ toolbar, dpad, selectButton: select, copyButton: copy, pasteButton: paste, actions });
