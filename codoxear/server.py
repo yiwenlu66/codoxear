@@ -93,7 +93,7 @@ from .file_view import inspect_downloadable_file as _inspect_downloadable_file
 from .file_view import inspect_openable_file as _inspect_openable_file
 from .file_view import read_client_file_view as _read_client_file_view
 from .file_view import read_text_or_image as _read_text_or_image
-from .video_preview import ensure_video_preview as _ensure_video_preview_impl
+from .media_preview import ensure_media_preview as _ensure_media_preview_impl
 from .office_preview import ensure_office_preview as _ensure_office_preview_impl
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
@@ -450,8 +450,8 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
     return False
 
 
-def _ensure_video_preview(path: Path) -> Path:
-    return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
+def _ensure_media_preview(path: Path, kind: str) -> Path:
+    return _ensure_media_preview_impl(path, kind=kind, preview_dir=MEDIA_PREVIEW_DIR)
 
 
 def _ensure_office_preview(path: Path) -> Path:

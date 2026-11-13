@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from codoxear import dependency_doctor as doctor
-from codoxear import video_preview, voice_hls
+from codoxear import media_preview, voice_hls
 from codoxear.system_dependencies import resolve_executable
 
 
@@ -82,6 +82,20 @@ class DoctorTests(unittest.TestCase):
         encode = next(c for c in calls if "libx264" in c)
         self.assertIn("aac", encode)
         self.assertEqual(encode[-3:], ["-f", "null", "-"])
+        # The audio preview path needs its own encoder, and a build that has
+        # libx264 but not libmp3lame must not read as healthy.
+        audio = next(c for c in calls if "libmp3lame" in c)
+        self.assertEqual(audio[-3:], ["-f", "null", "-"])
+        self.assertIn("libmp3lame", checks["media"]["detail"])
+
+    def test_mp3_encoder_failure_is_not_binary_success(self):
+        def run(args, **kwargs):
+            if "libmp3lame" in args:
+                return subprocess.CompletedProcess(args, 1, "", "Unknown encoder 'libmp3lame'")
+            return successful_run(args, **kwargs)
+        checks = doctor.check_dependencies(["media"], resolve=fake_resolve, run=run)
+        self.assertEqual(checks["media"]["status"], "error")
+        self.assertIn("libmp3lame", checks["media"]["detail"])
 
     def test_codec_failure_is_not_binary_success(self):
         def run(args, **kwargs):
@@ -236,9 +250,9 @@ class RuntimeResolutionTests(unittest.TestCase):
             self.assertEqual(probe.call_args.args[0][0], "/native/bin/ffprobe")
 
     def test_video_reports_missing_resolved_binary(self):
-        with patch.object(video_preview, "resolve_executable", return_value=None):
+        with patch.object(media_preview, "resolve_executable", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "ffmpeg is required"):
-                video_preview._generate_video_preview(Path("source.mov"), Path("preview.mp4"), preview_dir=Path("/unused"))
+                media_preview._generate_media_preview(Path("source.mov"), Path("preview.mp4"), kind="video", preview_dir=Path("/unused"))
 
 
 if __name__ == "__main__":

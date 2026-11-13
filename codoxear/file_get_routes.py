@@ -17,7 +17,7 @@ from .file_types import raw_file_content_type
 from .image_dimensions import read_image_dimensions
 from .file_view import ClientFileView
 from .server_routing import match_session_file_raw_route
-from .video_preview import video_response_payload
+from .media_preview import MEDIA_PREVIEW_KINDS, media_response_payload
 from .office_preview import office_response_payload
 
 
@@ -79,14 +79,15 @@ def session_file_read_payload(
             "size": int(view.size),
             "pdf_url": f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
         }
-    if view.kind == "video":
-        payload = video_response_payload(
+    if view.kind in {"video", "audio"}:
+        payload = media_response_payload(
+            kind=view.kind,
             path_obj=path_obj,
             rel=rel_text,
             size=int(view.size),
             content_type=view.content_type,
-            video_url=f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
-            preview_url=f"/api/sessions/{session_id}/file/video_preview?{rel_for_url}{git_suffix}",
+            media_url=f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
+            preview_url=f"/api/sessions/{session_id}/file/media_preview?{rel_for_url}{git_suffix}",
         )
         payload.update(token_fields)
         return payload
@@ -145,7 +146,7 @@ class FileGetRouteDeps:
     list_session_relative_files: Callable[[Path], list[str]]
     list_session_relative_file_entries: Callable[[Path], list[dict[str, Any]]]
     file_kind: Callable[[Path, bytes], tuple[str, str | None]]
-    ensure_video_preview: Callable[[Path], Path]
+    ensure_media_preview: Callable[[Path, str], Path]
     ensure_office_preview: Callable[[Path], Path]
     inspect_downloadable_file: Callable[[Path], int]
     download_disposition: Callable[[Path], str]
@@ -201,9 +202,9 @@ def handle_file_get_route(
         _handle_session_file_blob(handler, session_id=session_id, query=query, manager=manager, deps=deps)
         return True
 
-    session_id = match_session_route(path, "file", "video_preview")
+    session_id = match_session_route(path, "file", "media_preview")
     if session_id is not None:
-        _handle_session_file_video_preview(handler, session_id=session_id, query=query, manager=manager, deps=deps)
+        _handle_session_file_media_preview(handler, session_id=session_id, query=query, manager=manager, deps=deps)
         return True
 
     session_id = match_session_route(path, "file", "office_preview")
@@ -235,8 +236,8 @@ def handle_absolute_file_preview_route(
     if path == "/api/files/blob":
         _handle_absolute_file_blob(handler, query=query, deps=deps)
         return True
-    if path == "/api/files/video_preview":
-        _handle_absolute_file_video_preview(handler, query=query, deps=deps)
+    if path == "/api/files/media_preview":
+        _handle_absolute_file_media_preview(handler, query=query, deps=deps)
         return True
     if path == "/api/files/office_preview":
         _handle_absolute_file_office_preview(handler, query=query, deps=deps)
@@ -540,11 +541,11 @@ def _handle_session_image_dimensions(handler: Any, *, session_id: str, query: st
     _send_image_dimensions(handler, path_obj=path_obj, deps=deps)
 
 
-def _handle_session_file_video_preview(handler: Any, *, session_id: str, query: str, manager: Any, deps: FileGetRouteDeps) -> None:
+def _handle_session_file_media_preview(handler: Any, *, session_id: str, query: str, manager: Any, deps: FileGetRouteDeps) -> None:
     path_obj = _session_file_path_for_preview(handler, session_id=session_id, query=query, manager=manager, deps=deps)
     if path_obj is None:
         return
-    _send_video_preview(handler, path_obj=path_obj, deps=deps)
+    _send_media_preview(handler, path_obj=path_obj, deps=deps)
 
 
 def _handle_session_file_office_preview(handler: Any, *, session_id: str, query: str, manager: Any, deps: FileGetRouteDeps) -> None:
@@ -579,13 +580,13 @@ def _handle_absolute_image_dimensions(handler: Any, *, query: str, deps: FileGet
     _send_image_dimensions(handler, path_obj=path_obj, deps=deps)
 
 
-def _handle_absolute_file_video_preview(handler: Any, *, query: str, deps: FileGetRouteDeps) -> None:
+def _handle_absolute_file_media_preview(handler: Any, *, query: str, deps: FileGetRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
     path_obj = _absolute_file_path(handler, query=query, deps=deps)
     if path_obj is None:
         return
-    _send_video_preview(handler, path_obj=path_obj, deps=deps)
+    _send_media_preview(handler, path_obj=path_obj, deps=deps)
 
 
 def _absolute_file_path(handler: Any, *, query: str, deps: FileGetRouteDeps) -> Path | None:
@@ -628,7 +629,7 @@ def _send_preview_blob(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) 
     if prefix is None:
         return
     kind, content_type = deps.file_kind(path_obj, prefix)
-    if kind in {"video", "office"}:
+    if kind in {"video", "audio", "office"}:
         deps.send_inline_file_response(handler, path_obj, content_type or "application/octet-stream")
         return
     if kind not in {"image", "pdf"} or content_type is None:
@@ -646,16 +647,16 @@ def _send_image_dimensions(handler: Any, *, path_obj: Path, deps: FileGetRouteDe
     deps.json_response(handler, 200, {"width": width, "height": height})
 
 
-def _send_video_preview(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> None:
+def _send_media_preview(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> None:
     prefix = _read_prefix(handler, path_obj=path_obj, deps=deps)
     if prefix is None:
         return
     kind, _content_type = deps.file_kind(path_obj, prefix)
-    if kind != "video":
-        deps.json_response(handler, 400, {"error": "file is not a video"})
+    if kind not in {"video", "audio"}:
+        deps.json_response(handler, 400, {"error": "file is not a media file"})
         return
     try:
-        preview = deps.ensure_video_preview(path_obj)
+        preview = deps.ensure_media_preview(path_obj, kind)
     except FileNotFoundError as e:
         deps.json_response(handler, 404, {"error": str(e)})
         return
@@ -663,9 +664,9 @@ def _send_video_preview(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps)
         deps.json_response(handler, 403, {"error": str(e)})
         return
     except RuntimeError as e:
-        deps.json_response(handler, 500, {"error": f"video preview failed: {e}"})
+        deps.json_response(handler, 500, {"error": f"media preview failed: {e}"})
         return
-    deps.send_inline_file_response(handler, preview, "video/mp4")
+    deps.send_inline_file_response(handler, preview, MEDIA_PREVIEW_KINDS[kind]["content_type"])
 
 
 def _send_office_preview(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> None:

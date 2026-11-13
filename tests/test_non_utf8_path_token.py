@@ -91,7 +91,7 @@ def _file_get_deps(manager: _FakeManager):
         list_session_relative_files=server._list_session_relative_files,
         list_session_relative_file_entries=server._list_session_relative_file_entries,
         file_kind=server._file_kind,
-        ensure_video_preview=server._ensure_video_preview,
+        ensure_media_preview=server._ensure_media_preview,
         ensure_office_preview=server._ensure_office_preview,
         inspect_downloadable_file=server._inspect_downloadable_file,
         download_disposition=server._download_disposition,

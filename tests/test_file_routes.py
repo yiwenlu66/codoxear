@@ -164,7 +164,7 @@ def test_session_file_read_payload_builds_html_preview_url_only_for_html() -> No
         assert "preview_url" not in payload
 
 
-def test_session_file_read_payload_builds_git_aware_video_urls() -> None:
+def test_session_file_read_payload_builds_git_aware_media_urls() -> None:
     payload = session_file_read_payload(
         session_id="sid",
         path_obj=Path("/tmp/movie.mp4"),
@@ -173,8 +173,8 @@ def test_session_file_read_payload_builds_git_aware_video_urls() -> None:
         git_path=True,
     )
     assert payload["kind"] == "video"
-    assert payload["video_url"] == "/api/sessions/sid/file/blob?path=dir/movie.mp4&git_path=1"
-    assert payload["video_preview_url"] == "/api/sessions/sid/file/video_preview?path=dir/movie.mp4&git_path=1"
+    assert payload["media_url"] == "/api/sessions/sid/file/blob?path=dir/movie.mp4&git_path=1"
+    assert payload["media_preview_url"] == "/api/sessions/sid/file/media_preview?path=dir/movie.mp4&git_path=1"
 
 
 class _FakeHandler:
@@ -270,7 +270,7 @@ def _file_get_deps(**overrides):
         list_session_relative_files=lambda _base: ["note.txt"],
         list_session_relative_file_entries=lambda _base: [{"path": "note.txt"}],
         file_kind=lambda _path, _prefix: ("text", None),
-        ensure_video_preview=lambda path: path.with_suffix(".preview.mp4"),
+        ensure_media_preview=lambda path, kind: path.with_suffix(".preview.mp4"),
         ensure_office_preview=lambda path: path.with_suffix(".preview.pdf"),
         inspect_downloadable_file=lambda _path: 5,
         download_disposition=lambda path: f"attachment; filename={path.name}",
@@ -579,22 +579,22 @@ def test_handle_absolute_file_preview_route_maps_prefix_symlink_rejection() -> N
         assert inline == []
 
 
-def test_handle_absolute_file_preview_route_maps_video_preview_runtime_error() -> None:
+def test_handle_absolute_file_preview_route_maps_media_preview_runtime_error() -> None:
     with tempfile.TemporaryDirectory() as td:
         video = Path(td) / "clip.mp4"
         video.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 16)
         deps, responses, inline, _attachments = _file_get_deps(
             file_kind=lambda _path, _prefix: ("video", "video/mp4"),
-            ensure_video_preview=lambda _path: (_ for _ in ()).throw(RuntimeError("ffmpeg failed")),
+            ensure_media_preview=lambda _path, kind: (_ for _ in ()).throw(RuntimeError("ffmpeg failed")),
         )
         handled = handle_absolute_file_preview_route(
             _FakeHandler(),
-            path="/api/files/video_preview",
+            path="/api/files/media_preview",
             query="path=" + urllib.parse.quote(str(video)),
             deps=deps,
         )
         assert handled is True
-        assert responses == [(500, {"error": "video preview failed: ffmpeg failed"})]
+        assert responses == [(500, {"error": "media preview failed: ffmpeg failed"})]
         assert inline == []
 
 
@@ -828,3 +828,78 @@ def test_global_file_read_payload_keeps_git_path_media_urls_session_relative() -
         view=ClientFileView(kind="image", size=12, content_type="image/svg+xml"),
     )
     assert payload["image_url"] == "/api/sessions/s/file/blob?path=assets/icon.svg&git_path=1"
+
+
+def test_audio_payload_uses_shared_media_urls():
+    payload = session_file_read_payload(
+        session_id="sid", path_obj=Path("/repo/voice.ogg"), rel="voice.ogg",
+        view=ClientFileView(kind="audio", size=12, content_type="audio/ogg"), git_path=True,
+    )
+    assert payload["kind"] == "audio"
+    assert payload["preview_content_type"] == "audio/mpeg"
+    assert payload["media_url"] == "/api/sessions/sid/file/blob?path=voice.ogg&git_path=1"
+    assert payload["media_preview_url"] == "/api/sessions/sid/file/media_preview?path=voice.ogg&git_path=1"
+
+
+def test_absolute_audio_preview_dispatches_mp3():
+    with tempfile.TemporaryDirectory() as td:
+        audio = Path(td) / "voice.ogg"
+        audio.write_bytes(b"OggSvoice")
+        preview = Path(td) / "voice.mp3"
+        preview.write_bytes(b"mp3")
+        calls = []
+        deps, responses, inline, _ = _file_get_deps(
+            file_kind=lambda _path, _prefix: ("audio", "audio/ogg"),
+            ensure_media_preview=lambda path, kind: calls.append((path, kind)) or preview,
+        )
+        assert handle_absolute_file_preview_route(_FakeHandler(), path="/api/files/media_preview", query="path=" + urllib.parse.quote(str(audio)), deps=deps)
+        assert calls == [(audio, "audio")]
+        assert responses == [] and inline == [(preview, "audio/mpeg")]
+
+
+def test_audio_session_blob_and_preview_support_byte_ranges(tmp_path):
+    source = tmp_path / "voice.ogg"
+    source.write_bytes(b"OggSabcdefghij")
+    preview = tmp_path / "voice.mp3"
+    preview.write_bytes(b"ID3abcdefghijk")
+    deps, responses, _, _ = _file_get_deps(
+        resolve_existing_session_file=resolve_existing_session_file,
+        file_kind=lambda path, prefix: ("audio", "audio/ogg"),
+        ensure_media_preview=lambda path, kind: preview,
+        send_inline_file_response=send_inline_file_response,
+    )
+    for action, expected_type, content in [("blob", "audio/ogg", source.read_bytes()), ("media_preview", "audio/mpeg", preview.read_bytes())]:
+        handler = _StreamingHandler()
+        handler.headers["Range"] = "bytes=2-5"
+        assert handle_file_get_route(handler, path=f"/api/sessions/s/file/{action}", query="path=voice.ogg", manager=_FakeManager(str(tmp_path)), deps=deps, match_session_route=_match_session_route)
+        assert handler.status == 206
+        assert dict(handler.sent_headers)["Content-Type"] == expected_type
+        assert dict(handler.sent_headers)["Content-Range"] == f"bytes 2-5/{len(content)}"
+        assert handler.wfile.getvalue() == content[2:6]
+    assert responses == []
+
+
+def test_global_audio_git_payload_uses_session_media_routes():
+    payload = global_file_read_payload(
+        request=GlobalFileRequest(path="audio/voice.ogg", session_id="s", git_path=True),
+        path_obj=Path("/repo/audio/voice.ogg"), rel_for_url="audio/voice.ogg",
+        view=ClientFileView(kind="audio", size=12, content_type="audio/ogg"),
+    )
+    assert payload["media_url"] == "/api/sessions/s/file/blob?path=audio/voice.ogg&git_path=1"
+    assert payload["media_preview_url"] == "/api/sessions/s/file/media_preview?path=audio/voice.ogg&git_path=1"
+    assert payload["preview_content_type"] == "audio/mpeg"
+
+
+def test_session_media_preview_rejects_non_media_and_reports_encoder_error(tmp_path):
+    path = tmp_path / "document.txt"
+    path.write_text("not media")
+    manager = _FakeManager(str(tmp_path))
+    for kind, expected in [("text", (400, {"error": "file is not a media file"})), ("audio", (500, {"error": "media preview failed: bad codec"}))]:
+        deps, responses, inline, _ = _file_get_deps(
+            resolve_existing_session_file=resolve_existing_session_file,
+            file_kind=lambda _path, _prefix: (kind, None),
+            ensure_media_preview=lambda _path, _kind: (_ for _ in ()).throw(RuntimeError("bad codec")),
+        )
+        assert handle_file_get_route(_FakeHandler(), path="/api/sessions/s/file/media_preview", query="path=document.txt", manager=manager, deps=deps, match_session_route=_match_session_route)
+        assert responses == [expected]
+        assert inline == []

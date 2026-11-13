@@ -362,7 +362,7 @@ self.addEventListener("fetch", (event) => {
   // Native media/derivative clients own streaming and Range semantics. These
   // conversions can spend unbounded time before headers, so a reachability
   // race or cached full response is the wrong transport policy for them.
-  if (/^\/api\/(?:sessions\/[^/]+\/file|files)\/(?:office|video)_preview$/.test(pathname)) return;
+  if (/^\/api\/(?:sessions\/[^/]+\/file|files)\/(?:office|media)_preview$/.test(pathname)) return;
   // Cache.match has no partial-response semantics: never answer a Range
   // request with a cached full 200, and never bring 206 into a cache write.
   if (request.headers && typeof request.headers.has === "function" && request.headers.has("range")) return;

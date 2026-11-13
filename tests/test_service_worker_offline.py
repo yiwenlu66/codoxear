@@ -447,9 +447,9 @@ def test_derivative_and_range_requests_bypass_interception_at_root_and_prefix() 
         const base = new URL(scope).pathname;
         const derivativePaths = [
           '/api/sessions/s1/file/office_preview?path=deck.pptx',
-          '/api/sessions/s1/file/video_preview?path=clip.mkv',
+          '/api/sessions/s1/file/media_preview?path=clip.mkv',
           '/api/files/office_preview?path=/tmp/deck.pptx',
-          '/api/files/video_preview?path=/tmp/clip.mkv',
+          '/api/files/media_preview?path=/tmp/clip.mkv',
         ];
         for (const path of derivativePaths) {
           const event = dispatch('fetch', { request: request(base.slice(0, -1) + path) });

@@ -62,7 +62,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
     assert config.ATTACH_UPLOAD_BODY_MAX_BYTES == 65544
     assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"
     assert config.UNATTENDED_PROMPT_PATH == config.APP_DIR / "unattended_prompt.txt"
-    assert config.VIDEO_PREVIEW_DIR == config.APP_DIR / "video_previews"
+    assert config.MEDIA_PREVIEW_DIR == config.APP_DIR / "media_previews"
     assert config.CC_SETTINGS_PATH == config.CC_HOME / "settings.json"
 
 
@@ -74,7 +74,7 @@ def test_export_server_config_populates_legacy_server_global_names() -> None:
 
     assert target["_DOTENV"] == config.DOTENV_PATH
     assert target["APP_DIR"] == config.APP_DIR
-    assert target["VIDEO_PREVIEW_DIR"] == config.VIDEO_PREVIEW_DIR
+    assert target["MEDIA_PREVIEW_DIR"] == config.MEDIA_PREVIEW_DIR
     assert target["UNATTENDED_PATH"] == config.UNATTENDED_PATH
     assert target["UNATTENDED_PROMPT_PATH"] == config.UNATTENDED_PROMPT_PATH
     assert target["CC_SETTINGS_PATH"] == config.CC_SETTINGS_PATH

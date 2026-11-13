@@ -29,7 +29,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "SIDEBAR_META_PATH",
     "HIDDEN_SESSIONS_PATH",
     "FILE_HISTORY_PATH",
-    "VIDEO_PREVIEW_DIR",
+    "MEDIA_PREVIEW_DIR",
     "OFFICE_PREVIEW_DIR",
     "QUEUE_PATH",
     "DRAFT_PATH",
@@ -115,7 +115,7 @@ class ServerConfig:
     SIDEBAR_META_PATH: Path
     HIDDEN_SESSIONS_PATH: Path
     FILE_HISTORY_PATH: Path
-    VIDEO_PREVIEW_DIR: Path
+    MEDIA_PREVIEW_DIR: Path
     OFFICE_PREVIEW_DIR: Path
     QUEUE_PATH: Path
     DRAFT_PATH: Path
@@ -282,7 +282,7 @@ def build_server_config(
         SIDEBAR_META_PATH=app_dir / "session_sidebar.json",
         HIDDEN_SESSIONS_PATH=app_dir / "hidden_sessions.json",
         FILE_HISTORY_PATH=app_dir / "session_files.json",
-        VIDEO_PREVIEW_DIR=app_dir / "video_previews",
+        MEDIA_PREVIEW_DIR=app_dir / "media_previews",
         OFFICE_PREVIEW_DIR=app_dir / "office_previews",
         QUEUE_PATH=app_dir / "session_queues.json",
         DRAFT_PATH=app_dir / "session_drafts.json",

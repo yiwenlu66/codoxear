@@ -49,3 +49,28 @@ def test_raw_file_content_type_covers_documents_assets_and_text_fallback() -> No
     assert file_types.raw_file_content_type(Path("font.woff2")) == "font/woff2"
     assert file_types.raw_file_content_type(Path("note.py")) == "text/plain; charset=utf-8"
     assert file_types.raw_file_content_type(Path("blob.bin")) == "application/octet-stream"
+
+
+def test_audio_classification_and_ogg_disambiguation() -> None:
+    for name, raw, expected in [
+        ("song.mp3", b"", ("audio", "audio/mpeg")),
+        ("song.m4a", b"", ("audio", "audio/mp4")),
+        ("song.unknown", b"ID3abc", ("audio", "audio/mpeg")),
+        ("song.unknown", b"\xff\xfb", ("audio", "audio/mpeg")),
+        ("song.unknown", b"RIFFxxxxWAVE", ("audio", "audio/wav")),
+        ("song.unknown", b"fLaCabc", ("audio", "audio/flac")),
+        ("song.unknown", b"FORMxxxxAIFF", ("audio", "audio/aiff")),
+        ("song.unknown", b"OggSxxxvorbis", ("audio", "audio/ogg")),
+        ("movie.unknown", b"OggSxxx\x80theora", ("video", "video/ogg")),
+        ("movie.ogg", b"OggSxxx\x80theora", ("video", "video/ogg")),
+        ("movie.ogv", b"OggSxxxvorbis", ("video", "video/ogg")),
+        ("movie.mp4", b"ID3", ("video", "video/mp4")),
+    ]:
+        assert file_types.file_kind(Path(name), raw) == expected
+
+
+def test_ogg_audio_view_is_passthrough(tmp_path: Path) -> None:
+    path = tmp_path / "voice.ogg"
+    path.write_bytes(b"OggS\x00vorbis\x00")
+    view = read_client_file_view(path)
+    assert (view.kind, view.content_type, view.text) == ("audio", "audio/ogg", None)

@@ -28,7 +28,7 @@ from codoxear.git_routes import GitRouteDeps
 from codoxear.git_routes import handle_git_get_route
 from codoxear.server import _current_git_branch
 from codoxear.server import _download_disposition
-from codoxear.server import _ensure_video_preview
+from codoxear.server import _ensure_media_preview
 from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_downloadable_file
 from codoxear.server import _inspect_openable_file
@@ -187,7 +187,7 @@ def _file_get_deps(manager=None, **overrides):
         list_session_relative_files=server._list_session_relative_files,
         list_session_relative_file_entries=server._list_session_relative_file_entries,
         file_kind=server._file_kind,
-        ensure_video_preview=server._ensure_video_preview,
+        ensure_media_preview=server._ensure_media_preview,
         ensure_office_preview=server._ensure_office_preview,
         inspect_downloadable_file=server._inspect_downloadable_file,
         download_disposition=server._download_disposition,
@@ -434,7 +434,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             _single_byte_range("bytes=100-110", 100)
 
     @unittest.skipIf(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, "ffmpeg and ffprobe required")
-    def test_video_preview_transcodes_odd_dimensions_to_browser_safe_mp4(self) -> None:
+    def test_media_preview_transcodes_odd_dimensions_to_browser_safe_mp4(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             src = td_path / "odd.mkv"
@@ -454,10 +454,10 @@ class TestInspectOpenableFile(unittest.TestCase):
                 ],
                 check=True,
             )
-            old_dir = server.VIDEO_PREVIEW_DIR
+            old_dir = server.MEDIA_PREVIEW_DIR
             try:
-                server.VIDEO_PREVIEW_DIR = td_path / "previews"
-                preview = _ensure_video_preview(src)
+                server.MEDIA_PREVIEW_DIR = td_path / "previews"
+                preview = _ensure_media_preview(src, "video")
                 info = subprocess.check_output(
                     [
                         "ffprobe",
@@ -478,10 +478,10 @@ class TestInspectOpenableFile(unittest.TestCase):
                 self.assertContains("width=162", info)
                 self.assertContains("height=92", info)
             finally:
-                server.VIDEO_PREVIEW_DIR = old_dir
+                server.MEDIA_PREVIEW_DIR = old_dir
 
     @unittest.skipIf(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, "ffmpeg and ffprobe required")
-    def test_video_preview_transcodes_to_browser_safe_mp4(self) -> None:
+    def test_media_preview_transcodes_to_browser_safe_mp4(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             src = td_path / "clip.mkv"
@@ -508,10 +508,10 @@ class TestInspectOpenableFile(unittest.TestCase):
                 ],
                 check=True,
             )
-            old_dir = server.VIDEO_PREVIEW_DIR
+            old_dir = server.MEDIA_PREVIEW_DIR
             try:
-                server.VIDEO_PREVIEW_DIR = td_path / "previews"
-                preview = _ensure_video_preview(src)
+                server.MEDIA_PREVIEW_DIR = td_path / "previews"
+                preview = _ensure_media_preview(src, "video")
                 self.assertEqual(preview.suffix, ".mp4")
                 self.assertTrue(preview.exists())
                 info = subprocess.check_output(
@@ -532,7 +532,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                 self.assertContains("codec_name=h264", info)
                 self.assertContains("pix_fmt=yuv420p", info)
             finally:
-                server.VIDEO_PREVIEW_DIR = old_dir
+                server.MEDIA_PREVIEW_DIR = old_dir
 
     # --- Converted route-handler tests (direct handle_*_route calls) ---
     #
@@ -641,7 +641,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             "/api/sessions/s/file/search?q=note",
             "/api/sessions/s/file/list",
             "/api/sessions/s/file/blob?path=note.md",
-            "/api/sessions/s/file/video_preview?path=clip.mp4",
+            "/api/sessions/s/file/media_preview?path=clip.mp4",
             "/api/sessions/s/file/download?path=note.md",
         ]
         git_routes = [
@@ -689,13 +689,13 @@ class TestInspectOpenableFile(unittest.TestCase):
             manager = _FakeManager(str(root))
             session_routes = [
                 ("/api/sessions/s/file/blob", f"path={urllib.parse.quote(preview.name)}"),
-                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(preview.name)}"),
+                ("/api/sessions/s/file/media_preview", f"path={urllib.parse.quote(preview.name)}"),
             ]
             absolute_routes = [
                 "/api/files/blob",
-                "/api/files/video_preview",
+                "/api/files/media_preview",
             ]
-            # Session blob/video_preview: resolve_existing_session_file raises.
+            # Session blob/media_preview: resolve_existing_session_file raises.
             for route_path, query in session_routes:
                 with self.subTest(route=route_path):
                     deps, responses, _inline, _attachments = _file_get_deps(
@@ -711,7 +711,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                     )
                     self.assertTrue(handled)
                     self.assertEqual(responses, [(403, {"error": "denied"})])
-            # Absolute blob/video_preview: resolve_existing_absolute_file raises.
+            # Absolute blob/media_preview: resolve_existing_absolute_file raises.
             for route in absolute_routes:
                 with self.subTest(route=route):
                     deps, responses, _inline, _attachments = _file_get_deps(
@@ -735,9 +735,9 @@ class TestInspectOpenableFile(unittest.TestCase):
             manager = _FakeManager(str(root))
             session_routes = [
                 ("/api/sessions/s/file/blob", f"path={urllib.parse.quote(preview.name)}"),
-                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(preview.name)}"),
+                ("/api/sessions/s/file/media_preview", f"path={urllib.parse.quote(preview.name)}"),
             ]
-            absolute_routes = ["/api/files/blob", "/api/files/video_preview"]
+            absolute_routes = ["/api/files/blob", "/api/files/media_preview"]
             cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
             for exc, expected_status in cases:
                 for route_path, query in session_routes:
@@ -775,7 +775,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(status, expected_status)
                         self.assertContains(str(exc), str(payload.get("error", "")))
 
-    def test_video_preview_generation_file_errors_are_route_local(self) -> None:
+    def test_media_preview_generation_file_errors_are_route_local(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             video = root / "clip.mp4"
@@ -783,15 +783,15 @@ class TestInspectOpenableFile(unittest.TestCase):
 
             manager = _FakeManager(str(root))
             session_routes = [
-                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(video.name)}"),
+                ("/api/sessions/s/file/media_preview", f"path={urllib.parse.quote(video.name)}"),
             ]
-            absolute_routes = ["/api/files/video_preview"]
+            absolute_routes = ["/api/files/media_preview"]
             cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
             for exc, expected_status in cases:
                 for route_path, query in session_routes:
                     with self.subTest(route=route_path, exc=type(exc).__name__):
                         deps, responses, _inline, _attachments = _file_get_deps(
-                            ensure_video_preview=lambda _path: (_ for _ in ()).throw(exc),
+                            ensure_media_preview=lambda _path, kind: (_ for _ in ()).throw(exc),
                         )
                         handled = handle_file_get_route(
                             _FakeHandler(),
@@ -809,7 +809,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                 for route in absolute_routes:
                     with self.subTest(route=route, exc=type(exc).__name__):
                         deps, responses, _inline, _attachments = _file_get_deps(
-                            ensure_video_preview=lambda _path: (_ for _ in ()).throw(exc),
+                            ensure_media_preview=lambda _path, kind: (_ for _ in ()).throw(exc),
                         )
                         handled = handle_absolute_file_preview_route(
                             _FakeHandler(),

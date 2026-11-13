@@ -12,6 +12,32 @@ OFFICE_CONTENT_TYPES = {
     ".ppt": "application/vnd.ms-powerpoint",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
+AUDIO_CONTENT_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".wav": "audio/wav",
+    ".wave": "audio/wav",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".spx": "audio/ogg",
+    ".weba": "audio/webm",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+    ".aifc": "audio/aiff",
+    ".wma": "audio/x-ms-wma",
+    ".amr": "audio/amr",
+    ".mka": "audio/x-matroska",
+    ".ac3": "audio/ac3",
+    ".ape": "audio/x-ape",
+    ".mid": "audio/midi",
+    ".midi": "audio/midi",
+    ".caf": "audio/x-caf",
+    ".au": "audio/basic",
+}
+
 VIDEO_CONTENT_TYPES = {
     ".3gp": "video/3gpp",
     ".avi": "video/x-msvideo",
@@ -94,6 +120,26 @@ RAW_FILE_CONTENT_TYPES = {
     "ogg": "audio/ogg",
     "mp3": "audio/mpeg",
     "wav": "audio/wav",
+    "m4a": "audio/mp4",
+    "aac": "audio/aac",
+    "wave": "audio/wav",
+    "flac": "audio/flac",
+    "oga": "audio/ogg",
+    "opus": "audio/ogg",
+    "spx": "audio/ogg",
+    "weba": "audio/webm",
+    "aiff": "audio/aiff",
+    "aif": "audio/aiff",
+    "aifc": "audio/aiff",
+    "wma": "audio/x-ms-wma",
+    "amr": "audio/amr",
+    "mka": "audio/x-matroska",
+    "ac3": "audio/ac3",
+    "ape": "audio/x-ape",
+    "mid": "audio/midi",
+    "midi": "audio/midi",
+    "caf": "audio/x-caf",
+    "au": "audio/basic",
 }
 
 
@@ -146,6 +192,28 @@ def pdf_content_type(path: Path, raw: bytes) -> str | None:
     return None
 
 
+def audio_content_type(path: Path, raw: bytes) -> str | None:
+    suffix = path.suffix.lower()
+    # A declared video extension always keeps its video identity (.ogv, .mp4,
+    # .mkv, ...), and inside Ogg the codec header decides: .ogg/.oga are used
+    # for both Vorbis/Opus audio and Theora video.
+    if suffix in VIDEO_CONTENT_TYPES:
+        return None
+    if raw.startswith(b"OggS"):
+        return None if b"\x80theora" in raw else "audio/ogg"
+    if suffix in AUDIO_CONTENT_TYPES:
+        return AUDIO_CONTENT_TYPES[suffix]
+    if raw.startswith(b"ID3") or (len(raw) >= 2 and raw[0] == 0xFF and (raw[1] & 0xE0) == 0xE0):
+        return "audio/mpeg"
+    if raw.startswith(b"fLaC"):
+        return "audio/flac"
+    if raw.startswith(b"RIFF") and raw[8:12] == b"WAVE":
+        return "audio/wav"
+    if raw.startswith(b"FORM") and raw[8:12] in {b"AIFF", b"AIFC"}:
+        return "audio/aiff"
+    return None
+
+
 def video_content_type(path: Path, raw: bytes) -> str | None:
     ctype = VIDEO_CONTENT_TYPES.get(path.suffix.lower())
     if ctype is not None:
@@ -154,7 +222,7 @@ def video_content_type(path: Path, raw: bytes) -> str | None:
         return "video/mp4"
     if raw.startswith(b"\x1a\x45\xdf\xa3"):
         return "video/webm"
-    if raw.startswith(b"OggS"):
+    if raw.startswith(b"OggS") and b"\x80theora" in raw:
         return "video/ogg"
     return None
 
@@ -169,6 +237,9 @@ def file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
     ctype = pdf_content_type(path, raw)
     if ctype is not None:
         return "pdf", ctype
+    ctype = audio_content_type(path, raw)
+    if ctype is not None:
+        return "audio", ctype
     ctype = video_content_type(path, raw)
     if ctype is not None:
         return "video", ctype

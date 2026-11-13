@@ -15,6 +15,8 @@ from .system_dependencies import resolve_executable
 
 def _positive_int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
+    if raw is None:
+        raw = os.environ.get(name.replace("MEDIA_PREVIEW", "VIDEO_PREVIEW"))
     if raw is None or not str(raw).strip():
         return default
     try:
@@ -24,10 +26,13 @@ def _positive_int_env(name: str, default: int) -> int:
     return max(0, value)
 
 
-VIDEO_PREVIEW_CACHE_MAX_FILES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_FILES", 256)
-VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)
-VIDEO_PREVIEW_FAILURE_TTL_SECONDS = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_FAILURE_TTL_SECONDS", 15)
-VIDEO_PREVIEW_FAILURE_MAX_ENTRIES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_FAILURE_MAX_ENTRIES", 512)
+MEDIA_PREVIEW_CACHE_MAX_FILES = _positive_int_env("CODEX_WEB_MEDIA_PREVIEW_MAX_FILES", 256)
+MEDIA_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_MEDIA_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)
+MEDIA_PREVIEW_FAILURE_TTL_SECONDS = _positive_int_env("CODEX_WEB_MEDIA_PREVIEW_FAILURE_TTL_SECONDS", 15)
+MEDIA_PREVIEW_FAILURE_MAX_ENTRIES = _positive_int_env("CODEX_WEB_MEDIA_PREVIEW_FAILURE_MAX_ENTRIES", 512)
+
+
+MEDIA_PREVIEW_KINDS = {"video": {"suffix": ".mp4", "content_type": "video/mp4"}, "audio": {"suffix": ".mp3", "content_type": "audio/mpeg"}}
 
 
 class _PreviewLock:
@@ -42,34 +47,35 @@ _PREVIEW_FAILURES_GUARD = threading.Lock()
 _PREVIEW_FAILURES: dict[Path, tuple[float, str]] = {}
 
 
-def video_response_payload(
+def media_response_payload(
     *,
     path_obj: Path,
     size: int,
     content_type: str | None,
-    video_url: str,
+    kind: str,
+    media_url: str,
     preview_url: str,
     rel: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "ok": True,
-        "kind": "video",
+        "kind": kind,
         "content_type": content_type or "application/octet-stream",
-        "preview_content_type": "video/mp4",
+        "preview_content_type": MEDIA_PREVIEW_KINDS[kind]["content_type"],
         "path": path_json_text(path_obj),
         "size": int(size),
-        "video_url": video_url,
-        "video_preview_url": preview_url,
+        "media_url": media_url,
+        "media_preview_url": preview_url,
     }
     if rel is not None:
         payload["rel"] = str(rel)
     return payload
 
 
-def video_preview_path(path: Path, *, preview_dir: Path) -> Path:
+def media_preview_path(path: Path, *, kind: str, preview_dir: Path) -> Path:
     st = path.stat()
     payload = f"{path.resolve()}\0{int(st.st_size)}\0{int(st.st_mtime_ns)}".encode("utf-8", errors="surrogateescape")
-    return preview_dir / f"{hashlib.sha256(payload).hexdigest()}.mp4"
+    return preview_dir / f"{hashlib.sha256(payload).hexdigest()}{MEDIA_PREVIEW_KINDS[kind]['suffix']}"
 
 
 def _preview_ready(path: Path) -> bool:
@@ -102,7 +108,7 @@ def _prune_preview_failures_locked(now: float) -> None:
     expired = [path for path, (expires_at, _message) in _PREVIEW_FAILURES.items() if expires_at <= now]
     for path in expired:
         _PREVIEW_FAILURES.pop(path, None)
-    cap = max(0, int(VIDEO_PREVIEW_FAILURE_MAX_ENTRIES))
+    cap = max(0, int(MEDIA_PREVIEW_FAILURE_MAX_ENTRIES))
     if cap <= 0:
         _PREVIEW_FAILURES.clear()
         return
@@ -115,7 +121,7 @@ def _prune_preview_failures_locked(now: float) -> None:
 
 
 def _cached_preview_failure(path: Path) -> str | None:
-    ttl = max(0, int(VIDEO_PREVIEW_FAILURE_TTL_SECONDS))
+    ttl = max(0, int(MEDIA_PREVIEW_FAILURE_TTL_SECONDS))
     if ttl <= 0:
         return None
     now = time.monotonic()
@@ -128,8 +134,8 @@ def _cached_preview_failure(path: Path) -> str | None:
 
 
 def _remember_preview_failure(path: Path, exc: BaseException) -> None:
-    ttl = max(0, int(VIDEO_PREVIEW_FAILURE_TTL_SECONDS))
-    cap = max(0, int(VIDEO_PREVIEW_FAILURE_MAX_ENTRIES))
+    ttl = max(0, int(MEDIA_PREVIEW_FAILURE_TTL_SECONDS))
+    cap = max(0, int(MEDIA_PREVIEW_FAILURE_MAX_ENTRIES))
     if ttl <= 0 or cap <= 0:
         return
     message = str(exc).strip() or type(exc).__name__
@@ -145,43 +151,42 @@ def _clear_preview_failure(path: Path) -> None:
         _PREVIEW_FAILURES.pop(path, None)
 
 
-def _generate_video_preview(path: Path, out: Path, *, preview_dir: Path) -> Path:
+def _generate_media_preview(path: Path, out: Path, *, kind: str, preview_dir: Path) -> Path:
     ffmpeg = resolve_executable("ffmpeg")
     if ffmpeg is None:
-        raise RuntimeError("ffmpeg is required for compatible video previews")
+        raise RuntimeError("ffmpeg is required for compatible media previews")
     preview_dir.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.stem}.{os.getpid()}.{secrets.token_hex(8)}.tmp.mp4")
+    tmp = out.with_name(f".{out.stem}.{os.getpid()}.{secrets.token_hex(8)}.tmp{out.suffix}")
     unlink_quiet(tmp)
-    cmd = [
-        ffmpeg,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        str(path),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0?",
-        "-vf",
-        "scale=ceil(iw/2)*2:ceil(ih/2)*2",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        str(tmp),
-    ]
+    if kind == "audio":
+        # MP3 is the one lossy format every target client decodes, including the
+        # iOS WebKit clients that cannot read Ogg/Vorbis, Ogg/Opus or WMA.
+        stream_args = ["-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-q:a", "2", "-f", "mp3"]
+    else:
+        stream_args = [
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            # yuv420p needs even dimensions; odd source sizes gain one padding row/column.
+            "-vf",
+            "scale=ceil(iw/2)*2:ceil(ih/2)*2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+        ]
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(path), *stream_args, str(tmp)]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
         if proc.returncode != 0:
@@ -190,27 +195,27 @@ def _generate_video_preview(path: Path, out: Path, *, preview_dir: Path) -> Path
         if not tmp.exists() or tmp.stat().st_size <= 0:
             raise RuntimeError("ffmpeg produced an empty preview")
         os.replace(tmp, out)
-        prune_video_preview_cache(preview_dir, keep=out)
+        prune_media_preview_cache(preview_dir, keep=out)
         return out
     finally:
         unlink_quiet(tmp)
 
 
-def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
-    out = video_preview_path(path, preview_dir=preview_dir)
+def ensure_media_preview(path: Path, *, kind: str, preview_dir: Path) -> Path:
+    out = media_preview_path(path, kind=kind, preview_dir=preview_dir)
     if _preview_ready(out):
-        prune_video_preview_cache(preview_dir, keep=out)
+        prune_media_preview_cache(preview_dir, keep=out)
         return out
     entry = _acquire_preview_lock(out)
     try:
         if _preview_ready(out):
-            prune_video_preview_cache(preview_dir, keep=out)
+            prune_media_preview_cache(preview_dir, keep=out)
             return out
         cached_failure = _cached_preview_failure(out)
         if cached_failure:
-            raise RuntimeError(f"recent video preview generation failed: {cached_failure}")
+            raise RuntimeError(f"recent media preview generation failed: {cached_failure}")
         try:
-            generated = _generate_video_preview(path, out, preview_dir=preview_dir)
+            generated = _generate_media_preview(path, out, kind=kind, preview_dir=preview_dir)
         except RuntimeError as exc:
             _remember_preview_failure(out, exc)
             raise
@@ -220,15 +225,15 @@ def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
         _release_preview_lock(out, entry)
 
 
-def prune_video_preview_cache(
+def prune_media_preview_cache(
     preview_dir: Path,
     *,
     keep: Path | None = None,
     max_files: int | None = None,
     max_bytes: int | None = None,
 ) -> None:
-    file_cap = VIDEO_PREVIEW_CACHE_MAX_FILES if max_files is None else max(0, int(max_files))
-    byte_cap = VIDEO_PREVIEW_CACHE_MAX_BYTES if max_bytes is None else max(0, int(max_bytes))
+    file_cap = MEDIA_PREVIEW_CACHE_MAX_FILES if max_files is None else max(0, int(max_files))
+    byte_cap = MEDIA_PREVIEW_CACHE_MAX_BYTES if max_bytes is None else max(0, int(max_bytes))
     if not preview_dir.exists():
         return
     try:
@@ -237,7 +242,9 @@ def prune_video_preview_cache(
         keep_resolved = keep
     entries: list[tuple[float, int, Path, bool]] = []
     total = 0
-    for path in preview_dir.glob("*.mp4"):
+    for path in preview_dir.iterdir():
+        if path.suffix not in {item["suffix"] for item in MEDIA_PREVIEW_KINDS.values()}:
+            continue
         if path.name.startswith("."):
             continue
         try:

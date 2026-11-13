@@ -125,6 +125,17 @@ def check_dependencies(
             ], run)
             if not ok:
                 failure = f"libx264 + AAC encoding probe failed: {output}"
+        if not failure and group == "media":
+            # Audio previews encode MP3. A build without libmp3lame would pass
+            # every other check and only fail when a user opens a file the
+            # browser cannot decode itself.
+            ok, output = _command([
+                paths["ffmpeg"], "-hide_banner", "-loglevel", "error", "-nostdin",
+                "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "0.1",
+                "-c:a", "libmp3lame", "-f", "null", "-",
+            ], run)
+            if not ok:
+                failure = f"libmp3lame encoding probe failed: {output}"
         if not failure and group == "git":
             with tempfile.TemporaryDirectory(prefix="codoxear-doctor-git-") as temp:
                 ok, output = _command([paths["git"], "init", "--bare", str(Path(temp) / "probe.git")], run)
@@ -144,7 +155,7 @@ def check_dependencies(
                     failure = f"Office text-to-PDF probe failed: {output}"
         detail = failure or "; ".join(versions.values())
         if not failure and group == "media":
-            detail += "; libx264 + AAC encoding succeeded"
+            detail += "; libx264 + AAC + libmp3lame encoding succeeded"
         if not failure and group == "office":
             detail += "; basic text-to-PDF probe succeeded" if probe_office else "; conversion not probed (use --probe-office)"
             detail += "; Writer/Calc/Impress module capabilities unverified; explicit --install --office always ensures module packages"
