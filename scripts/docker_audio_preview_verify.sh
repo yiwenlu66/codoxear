@@ -306,12 +306,50 @@ fatal_console = [x for x in console if isinstance(x, dict) and re.search(r"\b(?:
 def played(state):
     return state.get("mediaError") is None and isinstance(state.get("currentTime"), (int, float)) and state["currentTime"] > 0.1 and not state.get("paused")
 
+def played(state):
+    return (
+        state.get("mediaError") is None
+        and isinstance(state.get("currentTime"), (int, float))
+        and state["currentTime"] > 0.1
+        and not state.get("paused")
+    )
+
+def duration_in_range(state):
+    return isinstance(state.get("duration"), (int, float)) and 0.5 <= state["duration"] <= 3
+
 checks = {
-  "A_mp3_plays_from_original": bool(isinstance(tone_options, list) and tone_options and tone.get("audioVisible") is True and tone.get("videoVisible") is False and tone.get("previewSrc") is False and isinstance(tone.get("src"), str) and "/file/blob?" in tone["src"] and isinstance(tone.get("statusLine"), str) and tone["statusLine"].startswith("tone.mp3 - audio - ") and played(tone) and isinstance(tone.get("duration"), (int, float)) and 0.5 <= tone["duration"] <= 3,
-  "B_ogg_converts_and_plays": bool(ogg_options and ogg.get("converted") is True and played(ogg) and isinstance(ogg.get("duration"), (int, float)) and 0.5 <= ogg["duration"] <= 3 and isinstance(ogg.get("statusLine"), str) and ogg["statusLine"].startswith("speech.ogg - compatible audio preview") and ogg_response.get("status") == 206 and ogg_response.get("contentType") == "audio/mpeg" and ogg_response.get("acceptRanges") == "bytes" and isinstance(ogg_response.get("contentRange"), str) and ogg_response["contentRange"].startswith("bytes 0-0/")),
-  "C_close_stops_playback": stopped.get("src") in (None, "") and stopped.get("audioVisible") is False and stopped.get("paused") is True and stopped.get("viewerOpen") is False,
-  "D_mkv_still_converts_and_plays": bool(mkv_options and isinstance(mkv.get("statusLine"), str) and mkv["statusLine"].startswith("clip.mkv - compatible video preview") and mkv.get("converted") is True and mkv.get("videoVisible") is True and mkv.get("audioVisible") is False and played(mkv) and isinstance(mkv.get("videoWidth"), int) and mkv["videoWidth"] > 0 and isinstance(mkv.get("duration"), (int, float)) and mkv["duration"] > 0.2),
-  "E_no_js_errors": errors == [] and not fatal_console,
+    "A_mp3_plays_from_original": bool(
+        isinstance(tone_options, list) and tone_options
+        and tone.get("audioVisible") is True and tone.get("videoVisible") is False
+        and tone.get("previewSrc") is False
+        and isinstance(tone.get("src"), str) and "/file/blob?" in tone["src"]
+        and isinstance(tone.get("statusLine"), str) and tone["statusLine"].startswith("tone.mp3 - audio - ")
+        and played(tone) and duration_in_range(tone)
+    ),
+    "B_ogg_converts_and_plays": bool(
+        ogg_options and ogg.get("converted") is True
+        and isinstance(ogg.get("statusLine"), str) and ogg["statusLine"].startswith("speech.ogg - compatible audio preview")
+        and played(ogg) and duration_in_range(ogg)
+        and ogg_response.get("status") == 206
+        and ogg_response.get("contentType") == "audio/mpeg"
+        and ogg_response.get("acceptRanges") == "bytes"
+        and isinstance(ogg_response.get("contentRange"), str)
+        and ogg_response["contentRange"].startswith("bytes 0-0/")
+    ),
+    "C_close_stops_playback": bool(
+        stopped.get("src") in (None, "")
+        and stopped.get("audioVisible") is False
+        and stopped.get("paused") is True
+        and stopped.get("viewerOpen") is False
+    ),
+    "D_mkv_still_converts_and_plays": bool(
+        mkv_options and mkv.get("converted") is True
+        and isinstance(mkv.get("statusLine"), str) and mkv["statusLine"].startswith("clip.mkv - compatible video preview")
+        and mkv.get("videoVisible") is True and mkv.get("audioVisible") is False
+        and isinstance(mkv.get("videoWidth"), int) and mkv["videoWidth"] > 0
+        and played(mkv) and isinstance(mkv.get("duration"), (int, float)) and mkv["duration"] > 0.2
+    ),
+    "E_no_js_errors": bool(errors == [] and not fatal_console),
 }
 report = {
   "commit": sys.argv[2], "pass": all(checks.values()), "checks": checks,
