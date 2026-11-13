@@ -93,3 +93,6 @@ Append-only. Timestamps are local (Asia/Shanghai unless noted).
   - pageErrors [], console [] (no fatal lines).
 - Screenshots kept in this task directory: audio-mp3.png,
   audio-ogg-converted.png.
+- Run 3 (commit ac6d922e, app code identical to 76877f20 for every non-script
+  file) emitted `pass: true` for all five checks; the machine report is kept as
+  `verify-report.json` in this task directory.

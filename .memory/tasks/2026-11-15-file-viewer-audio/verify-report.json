@@ -1,0 +1,87 @@
+{
+  "commit": "ac6d922e3d43a95b19fb68e2e804f05161f8d91e",
+  "pass": true,
+  "checks": {
+    "A_mp3_plays_from_original": true,
+    "B_ogg_converts_and_plays": true,
+    "C_close_stops_playback": true,
+    "D_mkv_still_converts_and_plays": true,
+    "E_no_js_errors": true
+  },
+  "observed": {
+    "toneOptions": [
+      {
+        "id": "filePickerOption-0",
+        "text": "tone.mp3"
+      }
+    ],
+    "tone": {
+      "audioVisible": true,
+      "currentTime": 0.453098,
+      "duration": 1.2,
+      "mediaError": null,
+      "paused": false,
+      "previewControlTitle": "Use compatible MP3 preview",
+      "previewControlVisible": true,
+      "previewSrc": false,
+      "readyState": 4,
+      "src": "http://127.0.0.1:19644/api/sessions/broker-215/file/blob?path=tone.mp3",
+      "statusLine": "tone.mp3 - audio - 5.66 KB",
+      "videoVisible": false
+    },
+    "oggOptions": [
+      {
+        "id": "filePickerOption-0",
+        "text": "speech.ogg"
+      }
+    ],
+    "ogg": {
+      "converted": true,
+      "currentTime": 0.655884,
+      "duration": 1.2,
+      "mediaError": null,
+      "paused": false,
+      "readyState": 4,
+      "src": "http://127.0.0.1:19644/api/sessions/broker-215/file/media_preview?path=speech.ogg",
+      "statusLine": "speech.ogg - compatible audio preview - 5.79 KB"
+    },
+    "oggDerived": {
+      "acceptRanges": "bytes",
+      "contentRange": "bytes 0-0/5924",
+      "contentType": "audio/mpeg",
+      "status": 206
+    },
+    "stopped": {
+      "audioVisible": false,
+      "paused": true,
+      "src": null,
+      "viewerOpen": false
+    },
+    "mkvOptions": [
+      {
+        "id": "filePickerOption-0",
+        "text": "clip.mkv"
+      }
+    ],
+    "mkv": {
+      "audioVisible": false,
+      "converted": true,
+      "currentTime": 0.630609,
+      "duration": 0.928005,
+      "mediaError": null,
+      "readyState": 4,
+      "src": "http://127.0.0.1:19644/api/sessions/broker-215/file/media_preview?path=clip.mkv",
+      "statusLine": "clip.mkv - compatible video preview - 13.1 KB",
+      "videoVisible": true,
+      "videoWidth": 160
+    },
+    "pageErrors": [],
+    "fatalConsole": [],
+    "console": []
+  },
+  "artifacts": {
+    "mp3Screenshot": "/tmp/codoxear-audio-verify.aRPtF0/audio-mp3.png",
+    "convertedScreenshot": "/tmp/codoxear-audio-verify.aRPtF0/audio-ogg-converted.png",
+    "containerLog": "/tmp/codoxear-audio-verify.aRPtF0/container.log"
+  }
+}

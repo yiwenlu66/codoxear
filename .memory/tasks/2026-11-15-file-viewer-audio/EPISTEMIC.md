@@ -66,6 +66,17 @@ gains a second element inside one media fallback state. Evidence for this is
 that every video-specific branch either reads the kind or sets the encoder,
 both of which are one-line parameterizations.
 
+## Confirmed by the browser run
+
+The mechanism claims above are now observations, not predictions: an MP3 plays
+from `/file/blob` with the clock advancing, an Ogg Vorbis file converts and
+plays from `/file/media_preview` (206, `audio/mpeg`, `bytes 0-0/5924`), closing
+the viewer leaves `src: null` and `paused: true`, and an MKV still converts and
+plays in the video surface (videoWidth 160). No page errors, no console lines.
+The open question about iOS error timing no longer gates anything: Ogg/Opus are
+converted *before* the element ever sees them, so the error path is a fallback
+for formats we declared trusted, covered by the VM test.
+
 ## What would most change the model
 
 A real-browser measurement showing that the raw-blob `<audio>` element fails on
