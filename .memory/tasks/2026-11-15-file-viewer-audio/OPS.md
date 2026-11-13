@@ -96,3 +96,16 @@ Append-only. Timestamps are local (Asia/Shanghai unless noted).
 - Run 3 (commit ac6d922e, app code identical to 76877f20 for every non-script
   file) emitted `pass: true` for all five checks; the machine report is kept as
   `verify-report.json` in this task directory.
+
+## 2026-11-15 (coordination close-out)
+
+- codox-tip confirmed its scope is app.css pending-chip geometry,
+  upload_fault_proxy.py, upload regression/browser scripts and tests, and task
+  memory — no app_file_*.js, shell, wiring, routes or file_types. It will not
+  rebuild or stage the bundle.
+- Answered: my app.css work is already committed (71564572, the `.fileAudio`
+  hunk only, staged as a single hunk out of the shared file), so the file is
+  theirs for the remaining attachment hunk; nothing of mine references
+  stagedAttachment selectors. Also handed over the symbol renames and reported
+  that `test_hint_mode_coverage` fails on HEAD on their `draftUndoBtn`
+  (ad34ae3e), not on this change.
