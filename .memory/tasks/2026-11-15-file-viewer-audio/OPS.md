@@ -41,3 +41,55 @@ Append-only. Timestamps are local (Asia/Shanghai unless noted).
 - Wrote `scripts/docker_audio_preview_verify.sh` (fixture media + A/B/C/D
   checks: mp3 direct play, ogg conversion, close stops playback, mkv video
   regression).
+
+## 2026-11-15 (integration)
+
+- Server half: 189 targeted tests green including `test_audio_preview_real_ffmpeg`
+  (WAV -> MP3, ffprobe reports one audio stream with codec mp3).
+- Client half: wiring guard passed, bundle rebuilt, VM behavior tests green.
+- Integration fixes I made myself: `tests/test_frontend_toast_routing.py` still
+  loaded `app_file_video.js`; `tests/test_frontend_file_helpers_source.py` still
+  called `fileVideoPreviewErrorText` (and expected the old default text); the
+  PDF/fallback seam `clearFileVideo` -> `clearFileMedia`; `TestVideoPreviewCache`
+  -> `TestMediaPreviewCache`; `_generate_media_preview` built the video argv then
+  overwrote it for audio (now one per-kind branch); added a VM test for the
+  error-recovery path (trusted type errors once -> converts, converted file
+  errors -> reported, no loop); added a `libmp3lame` probe to `codoxear-doctor`.
+- Full suite: 2975 passed, 1 failed — `test_hint_mode_coverage` (`draftUndoBtn`),
+  which fails on HEAD from the concurrent session's committed draft-undo work,
+  not from this change. The concurrent session's uncommitted `app.css`
+  attachment-chip hunk and `scripts/docker_upload_pill_geometry_verify.*` were
+  left unstaged; `.fileAudio` was staged as a single hunk from `app.css`.
+- Commits: 83ff7dfc (server pipeline), 71564572 (client media surface),
+  76877f20 (docs + Docker audio verifier). Pushed to origin/main.
+- Armed `scripts/docker_audio_preview_verify.sh HEAD` detached for the
+  real-browser run (pid 3742631, log /tmp/audio-verify-watch.log).
+
+## 2026-11-15 (browser verification)
+
+- Run 1 (commit 76877f20) failed in the harness: the picker's only row is
+  `filePickerOption-0`, and the script hardcoded `-1`. Fixed by clicking the
+  menu's first row and pinning the opened fixture by its status line
+  (af04757f).
+- Run 2 (commit af04757f) collected every browser observation with PASS, but
+  the report block had unclosed `bool(` expressions, so it died writing
+  report.json and never printed the verdict. Re-running that block against the
+  recorded artifacts produced pass=true; fixed the script (ac6d922e) and
+  re-ran so the verifier itself emits PASS.
+- Run 2 observations (raw, in /tmp/codoxear-audio-verify.el76R2):
+  - MP3: `#fileAudio` visible, `#fileVideo` hidden, src = `/file/blob?path=tone.mp3`
+    (no conversion), `tone.mp3 - audio - 5.66 KB`, currentTime 0.451/1.2 s,
+    paused false, readyState 4, mediaError null, control titled
+    "Use compatible MP3 preview".
+  - Ogg Vorbis: src = `/file/media_preview?path=speech.ogg`, status
+    `speech.ogg - compatible audio preview - 5.79 KB`, currentTime 0.655/1.2 s,
+    readyState 4, no error; the derivative answers 206 with
+    `content-type: audio/mpeg`, `accept-ranges: bytes`,
+    `content-range: bytes 0-0/5924`.
+  - Close: src null, paused true, element hidden, viewer closed.
+  - MKV: src = `/file/media_preview?path=clip.mkv`, status
+    `clip.mkv - compatible video preview - 13.1 KB`, videoWidth 160,
+    currentTime 0.639/0.928 s — the video path still converts and plays.
+  - pageErrors [], console [] (no fatal lines).
+- Screenshots kept in this task directory: audio-mp3.png,
+  audio-ogg-converted.png.
