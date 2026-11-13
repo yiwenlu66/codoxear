@@ -1,0 +1,24 @@
+{
+  "contentRect": {
+    "bottom": 151.9375,
+    "height": 53,
+    "left": 6,
+    "right": 385,
+    "top": 98.9375,
+    "width": 379,
+    "x": 6,
+    "y": 98.9375
+  },
+  "deleteRect": {
+    "bottom": 141.4375,
+    "height": 32,
+    "left": 16,
+    "right": 48,
+    "top": 109.4375,
+    "width": 32,
+    "x": 16,
+    "y": 109.4375
+  },
+  "id": "broker-39",
+  "swipeX": "-104"
+}

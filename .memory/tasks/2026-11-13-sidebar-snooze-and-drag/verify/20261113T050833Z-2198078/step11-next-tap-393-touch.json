@@ -1,0 +1,21 @@
+{
+  "clicked": "broker-57",
+  "delayAfterPollSeconds": 0.55,
+  "dom": [
+    {
+      "active": true,
+      "group": "now",
+      "id": "broker-57"
+    },
+    {
+      "active": false,
+      "group": "now",
+      "id": "broker-75"
+    },
+    {
+      "active": false,
+      "group": "now",
+      "id": "broker-39"
+    }
+  ]
+}

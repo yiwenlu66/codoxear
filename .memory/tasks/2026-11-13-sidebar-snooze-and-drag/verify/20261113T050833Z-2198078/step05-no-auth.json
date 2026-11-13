@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/broker-39/reorder",
+  "request": {
+    "above": "broker-75",
+    "below": "broker-57"
+  },
+  "auth": false,
+  "status": 401,
+  "response": {
+    "error": "unauthorized"
+  }
+}

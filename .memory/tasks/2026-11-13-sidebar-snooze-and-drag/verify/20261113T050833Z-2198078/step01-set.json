@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/broker-75/snooze",
+  "request": {
+    "indefinite": true
+  },
+  "auth": true,
+  "status": 200,
+  "response": {
+    "ok": true,
+    "snooze_until": null,
+    "snoozed_indefinitely": true
+  }
+}

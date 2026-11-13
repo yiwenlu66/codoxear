@@ -357,3 +357,41 @@ resolution, API commits) and the card-region CSS; a second implementer added the
 
 Full suite: 2954 passed, 1 failed — `test_hint_mode_coverage` (`draftUndoBtn`), which I reproduced in a
 clean worktree at HEAD, so it is pre-existing and unrelated.
+
+## 2026-11-13 — Docker verification of 71ffff93
+
+Verifier: `scripts/docker_sidebar_snooze_drag_verify.sh` (commit-pinned, own container/port/HOME, real
+server + broker + tmux, server-only restart). Evidence root
+`.memory/tasks/2026-11-13-sidebar-snooze-and-drag/verify/20261113T050833Z-2198078/` (`report.json`,
+per-step JSON, 12 picker screenshots + resting-field screenshots).
+
+Steps 1–13 pass with evidence in hand:
+- indefinite set/clear round trip, `snoozed:true` and grouped after both Now rows; the flag is on disk
+  and survives a server-only restart (broker PIDs unchanged);
+- an indefinite snooze is not pruned while a timed snooze one hour in the past on another session is
+  (`snoozed:false`, timestamp null) — the two representations really are distinct;
+- reorder: `[75,57,39] → [75,39,57]` with `priority_offset` written **only** for the dragged row
+  (−0.65 → −0.35; the other two unchanged), and 400/400/404/401 for the error cases;
+- `tmux list-windows` equals the sidebar order (`gamma, alpha, beta`);
+- dialog, all six variants: seven chips with `Indefinitely`, native date/time fields at **32px** in
+  **44px** wrappers beside 32px chips, `scrollWidth === clientWidth` (148/148 phone, 210/210 desktop),
+  indicator clicks open the native popups (12 screenshots), save → Later → reopen selects the chip →
+  clear → Now; no console errors or unhandled rejections;
+- drag at 393×852 (400ms hold, `desktop:false`) and 1100×900 (8px mouse pull): reorder
+  `[75,39,57] → [57,75,39]` and `[57,75,39] → [39,57,75]`, API and DOM agreeing; Now→Later sets
+  `snoozed_indefinitely:true`; Later→Now wakes it first in the block.
+
+Step 14 reported a "failure" that is an error in my brief, not in the product: the touch card's action
+groups are Delete on the LEFT (`leftMax: 72`) and Edit/Duplicate on the RIGHT (`rightMax: 104`), so a
+left swipe correctly reveals Edit/Duplicate (`swipeX: -104`) and a **right** swipe reveals Delete. The
+verifier's observation is right; my expected direction was inverted, and the action-group wiring is
+untouched by this change. What step 14 did establish: the swipe still engages and reveals its actions
+after drags on the same cards, and a post-drop click leaves selection unchanged while the next tap
+selects.
+
+Verifier also corrected a fact I had wrong twice: the canonical file is `session_sidebar.json`
+(`server_config.SIDEBAR_META_PATH`); `sidebar_meta` is only the Python attribute name. Both `AGENTS.md`
+and the plan are corrected.
+
+Not proven, and not claimed: physical iOS Safari / Android Chrome (intrinsic field height, real touch
+and scroll arbitration), and a rapid second tap inside the 550ms post-drop suppression window.

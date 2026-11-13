@@ -1,0 +1,12 @@
+{
+  "broker-39": {
+    "priority_offset": -0.65
+  },
+  "broker-57": {
+    "priority_offset": -0.45
+  },
+  "broker-75": {
+    "priority_offset": -0.25,
+    "snoozed_indefinitely": true
+  }
+}

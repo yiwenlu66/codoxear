@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "393-clay",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-393-clay.json"
+  },
+  {
+    "variant": "393-paper",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-393-paper.json"
+  },
+  {
+    "variant": "393-slate",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-393-slate.json"
+  },
+  {
+    "variant": "1100-clay",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-1100-clay.json"
+  },
+  {
+    "variant": "1100-paper",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-1100-paper.json"
+  },
+  {
+    "variant": "1100-slate",
+    "toast": "conversation updated",
+    "reopenedIndefiniteActive": true,
+    "fields": "step07-08-1100-slate.json"
+  }
+]

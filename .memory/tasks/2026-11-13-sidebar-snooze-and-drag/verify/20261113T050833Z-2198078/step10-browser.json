@@ -1,0 +1,18 @@
+{
+  "errors": {
+    "success": true,
+    "data": {
+      "errors": []
+    },
+    "error": null
+  },
+  "console": {
+    "success": true,
+    "data": {
+      "messages": [],
+      "origin": "http://127.0.0.1:32800/#session=broker-75"
+    },
+    "error": null
+  },
+  "unhandledRejections": []
+}

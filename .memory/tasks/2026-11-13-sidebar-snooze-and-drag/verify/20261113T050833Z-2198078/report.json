@@ -1,0 +1,125 @@
+{
+  "commit": "71ffff93d0327ea8258eea227b710503c2f13f79",
+  "base": "http://127.0.0.1:32800",
+  "container": "codoxear-sidebar-verify-2198078",
+  "steps": {
+    "1": {
+      "status": "pass",
+      "evidence": [
+        "step01-set.json",
+        "step01-list.json"
+      ]
+    },
+    "2": {
+      "status": "pass",
+      "evidence": [
+        "step02-disk.json",
+        "step02-restarted-list.json",
+        "step02-processes.json"
+      ]
+    },
+    "3": {
+      "status": "pass",
+      "evidence": [
+        "step03-expiry-list.json",
+        "step03-pruned-disk.json"
+      ]
+    },
+    "4": {
+      "status": "pass",
+      "evidence": [
+        "step04-clear.json",
+        "step04-list.json"
+      ]
+    },
+    "5": {
+      "status": "pass",
+      "evidence": [
+        "step05-before.json",
+        "step05-reorder.json",
+        "step05-after.json",
+        "step05-offset-diff.json",
+        "step05-{both-null,unknown-neighbor,unknown-session,no-auth}.json"
+      ]
+    },
+    "6": {
+      "status": "pass",
+      "evidence": [
+        "step06-tmux.json"
+      ]
+    },
+    "7": {
+      "status": "pass",
+      "evidence": [
+        "step07-08-{393,1100}-{clay,paper,slate}.json"
+      ]
+    },
+    "8": {
+      "status": "pass",
+      "evidence": [
+        "step07-08-{393,1100}-{clay,paper,slate}.json",
+        "step08-picker-*.png"
+      ]
+    },
+    "9": {
+      "status": "pass",
+      "evidence": [
+        "step09-dialog-matrix.json",
+        "step09-{snoozed,cleared}-*.json"
+      ]
+    },
+    "10": {
+      "status": "pass",
+      "evidence": [
+        "step10-browser.json"
+      ]
+    },
+    "11": {
+      "status": "pass",
+      "evidence": [
+        "step11-{before,dom-before,gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "12": {
+      "status": "pass",
+      "evidence": [
+        "step12-{gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "13": {
+      "status": "pass",
+      "evidence": [
+        "step13-{gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "14": {
+      "status": "fail",
+      "evidence": [
+        "left swipe did not reveal delete action (step14-delete-hit.json)"
+      ]
+    }
+  },
+  "residualRisks": [
+    "Linux Chromium with synthetic pointers does not prove physical iOS/Android picker or scroll arbitration.",
+    "Step 14 left-swipe -> Delete differs from observed existing action direction; no regression claim is justified without a pre-feature baseline.",
+    "Post-drop synthetic click suppression and a next click after polling + 550ms were observed; rapid exact-once suppression was not run.",
+    "Backend CLI is an offline idle stub; server, broker, launch API, persisted state, and tmux are real."
+  ],
+  "result": "fail",
+  "failure": {
+    "step": 14,
+    "message": "left swipe did not reveal delete action (step14-delete-hit.json)",
+    "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 298, in <module>\n  File \"<stdin>\", line 28, in check\nAssertionError: left swipe did not reveal delete action (step14-delete-hit.json)\n"
+  },
+  "manualNotes": "Canonical disk file is session_sidebar.json (the task called it sidebar_meta.json). Final run waited explicitly for the correct touch/desktop DOM branches. Native date/time popups were visually inspected in the screenshots. Earlier directories contain verifier-development failures, not additional product defects.",
+  "observedDefect": {
+    "step": 14,
+    "classification": "acceptance mismatch; regression not established",
+    "description": "Left swipe exposes Edit and Duplicate, not Delete.",
+    "evidence": [
+      "step14-left-swipe.json",
+      "step14-delete-hit.json",
+      "step14-left-swipe.png"
+    ]
+  }
+}

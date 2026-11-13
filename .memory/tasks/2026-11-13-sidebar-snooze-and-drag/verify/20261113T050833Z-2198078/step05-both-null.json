@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/broker-39/reorder",
+  "request": {
+    "above": null,
+    "below": null
+  },
+  "auth": true,
+  "status": 400,
+  "response": {
+    "error": "above or below required"
+  }
+}

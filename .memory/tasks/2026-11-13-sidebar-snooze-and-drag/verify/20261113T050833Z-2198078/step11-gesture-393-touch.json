@@ -1,0 +1,22 @@
+{
+  "active": true,
+  "desktop": false,
+  "drop": [],
+  "pointer": "touch",
+  "selected": [
+    "broker-75"
+  ],
+  "sid": "broker-57",
+  "source": {
+    "x": 82,
+    "y": 247.4375
+  },
+  "target": {
+    "x": 82,
+    "y": 102.9375
+  },
+  "viewport": {
+    "height": 852,
+    "width": 393
+  }
+}
