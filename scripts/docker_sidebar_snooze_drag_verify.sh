@@ -3,13 +3,16 @@
 # archive; the only substitute is the idle backend CLI (the broker is real).
 set -euo pipefail
 if [[ "${1:-}" == --help ]]; then
-  echo 'Usage: scripts/docker_sidebar_snooze_drag_verify.sh [commit] (default 71ffff93)'
+  echo 'Usage: scripts/docker_sidebar_snooze_drag_verify.sh [commit] (default HEAD)'
   exit 0
 fi
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ref="${1:-71ffff93}"
+ref="${1:-HEAD}"
 commit="$(git -C "$repo" rev-parse --verify "${ref}^{commit}")"
-[[ "$commit" == 71ffff93* ]] || { echo 'Refusing a snapshot other than 71ffff93' >&2; exit 2; }
+# The snapshot must be a commit, never the working tree: other work is in flight
+# in the checkout and `git archive` is what keeps it out of the verified bytes.
+[[ -n "$commit" ]] || { echo "cannot resolve $ref to a commit" >&2; exit 2; }
+printf 'verifying %s (%s)\n' "$ref" "$commit" >&2
 [[ -z "${CODEXEAR_APP_DIR:-}${CODEX_WEB_APP_DIR:-}" ]] || { echo 'Unset host app-dir overrides' >&2; exit 2; }
 artifacts="$repo/.memory/tasks/2026-11-13-sidebar-snooze-and-drag/verify/$(date -u +%Y%m%dT%H%M%SZ)-$$"
 mkdir -p "$artifacts/build"
