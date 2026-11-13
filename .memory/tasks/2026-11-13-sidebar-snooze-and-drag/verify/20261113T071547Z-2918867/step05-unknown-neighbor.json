@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/broker-40/reorder",
+  "request": {
+    "above": "unknown",
+    "below": "broker-58"
+  },
+  "auth": true,
+  "status": 400,
+  "response": {
+    "error": "unknown neighbour"
+  }
+}

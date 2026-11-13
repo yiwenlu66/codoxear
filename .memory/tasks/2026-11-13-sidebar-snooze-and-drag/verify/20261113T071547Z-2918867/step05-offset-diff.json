@@ -1,0 +1,15 @@
+{
+  "changed": [
+    "broker-40"
+  ],
+  "before": {
+    "broker-76": -0.25,
+    "broker-58": -0.45,
+    "broker-40": -0.65
+  },
+  "after": {
+    "broker-76": -0.25,
+    "broker-40": -0.35,
+    "broker-58": -0.45
+  }
+}

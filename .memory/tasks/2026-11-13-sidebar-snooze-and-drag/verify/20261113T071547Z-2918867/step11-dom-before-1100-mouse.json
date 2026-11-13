@@ -1,0 +1,17 @@
+[
+  {
+    "active": true,
+    "group": "now",
+    "id": "broker-58"
+  },
+  {
+    "active": false,
+    "group": "now",
+    "id": "broker-76"
+  },
+  {
+    "active": false,
+    "group": "now",
+    "id": "broker-40"
+  }
+]

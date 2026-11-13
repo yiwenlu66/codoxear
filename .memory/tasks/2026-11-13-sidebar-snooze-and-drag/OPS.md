@@ -415,3 +415,18 @@ Diagnosis by measurement in Chromium against the real `app.css`:
 
 `scripts/docker_sidebar_snooze_drag_verify.sh` step 8 now asserts both: the Reset label must fit its
 content box, and the dependency picker's height must equal the chip height with no horizontal clipping.
+
+## 2026-11-13 — verifier green, deployed 63e5c963
+
+`scripts/docker_sidebar_snooze_drag_verify.sh HEAD` → **14/14 pass**, `report.json` `result: pass`,
+commit `63e5c963` (app bytes identical to the two follow-up CSS fixes). Deployed that snapshot;
+`/` → 200, unauthenticated `/api/sessions` → 401, service active, smoke test passed.
+
+Two failures on the way there were both in the verifier, not the product, and both are worth keeping:
+- The expected commit was hardcoded (`Refusing a snapshot other than 71ffff93`); it now resolves and
+  records whatever ref it is given and refuses only a non-commit (so the working tree can never be the
+  source of verified bytes).
+- Step 14 asserted the wrong swipe direction (the touch card keeps Delete in the `leftMax: 72` group, so
+  a *rightward* swipe reveals it) and then hit-tested during the reveal's CSS transition, where the
+  content still covers the button. It now tests both directions, on separate cards, after the
+  transform settles (450ms), and records the target rect, the hit element and `inside`.

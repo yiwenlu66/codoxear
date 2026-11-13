@@ -1,0 +1,108 @@
+{
+  "commit": "63e5c963225e24c8dd17d62a5d6b7bf634663305",
+  "base": "http://127.0.0.1:32803",
+  "container": "codoxear-sidebar-verify-2918867",
+  "steps": {
+    "1": {
+      "status": "pass",
+      "evidence": [
+        "step01-set.json",
+        "step01-list.json"
+      ]
+    },
+    "2": {
+      "status": "pass",
+      "evidence": [
+        "step02-disk.json",
+        "step02-restarted-list.json",
+        "step02-processes.json"
+      ]
+    },
+    "3": {
+      "status": "pass",
+      "evidence": [
+        "step03-expiry-list.json",
+        "step03-pruned-disk.json"
+      ]
+    },
+    "4": {
+      "status": "pass",
+      "evidence": [
+        "step04-clear.json",
+        "step04-list.json"
+      ]
+    },
+    "5": {
+      "status": "pass",
+      "evidence": [
+        "step05-before.json",
+        "step05-reorder.json",
+        "step05-after.json",
+        "step05-offset-diff.json",
+        "step05-{both-null,unknown-neighbor,unknown-session,no-auth}.json"
+      ]
+    },
+    "6": {
+      "status": "pass",
+      "evidence": [
+        "step06-tmux.json"
+      ]
+    },
+    "7": {
+      "status": "pass",
+      "evidence": [
+        "step07-08-{393,1100}-{clay,paper,slate}.json"
+      ]
+    },
+    "8": {
+      "status": "pass",
+      "evidence": [
+        "step07-08-{393,1100}-{clay,paper,slate}.json",
+        "step08-picker-*.png"
+      ]
+    },
+    "9": {
+      "status": "pass",
+      "evidence": [
+        "step09-dialog-matrix.json",
+        "step09-{snoozed,cleared}-*.json"
+      ]
+    },
+    "10": {
+      "status": "pass",
+      "evidence": [
+        "step10-browser.json"
+      ]
+    },
+    "11": {
+      "status": "pass",
+      "evidence": [
+        "step11-{before,dom-before,gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "12": {
+      "status": "pass",
+      "evidence": [
+        "step12-{gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "13": {
+      "status": "pass",
+      "evidence": [
+        "step13-{gesture,after}-{393-touch,1100-mouse}.json"
+      ]
+    },
+    "14": {
+      "status": "pass",
+      "evidence": [
+        "step11-gesture-*.json",
+        "step14-right-swipe-delete.json",
+        "step14-left-swipe-edit.json"
+      ]
+    }
+  },
+  "residualRisks": [
+    "Linux Chromium with synthetic pointers does not prove physical iOS/Android picker or scroll arbitration."
+  ],
+  "result": "pass"
+}

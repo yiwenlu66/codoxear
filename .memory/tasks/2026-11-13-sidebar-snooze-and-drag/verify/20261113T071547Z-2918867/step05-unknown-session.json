@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/unknown/reorder",
+  "request": {
+    "above": "broker-76",
+    "below": "broker-58"
+  },
+  "auth": true,
+  "status": 404,
+  "response": {
+    "error": "unknown session"
+  }
+}

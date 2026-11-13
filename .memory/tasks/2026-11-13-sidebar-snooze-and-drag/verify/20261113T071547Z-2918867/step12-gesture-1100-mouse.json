@@ -1,0 +1,27 @@
+{
+  "active": true,
+  "desktop": true,
+  "drop": [
+    {
+      "group": "later",
+      "kind": "snooze"
+    }
+  ],
+  "pointer": "mouse",
+  "selected": [
+    "broker-40"
+  ],
+  "sid": "broker-40",
+  "source": {
+    "x": 83,
+    "y": 127.4375
+  },
+  "target": {
+    "x": 83,
+    "y": 306.90625
+  },
+  "viewport": {
+    "height": 900,
+    "width": 1100
+  }
+}

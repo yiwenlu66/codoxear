@@ -1,0 +1,15 @@
+{
+  "method": "POST",
+  "path": "/api/sessions/broker-40/reorder",
+  "request": {
+    "above": "broker-76",
+    "below": "broker-58"
+  },
+  "auth": true,
+  "status": 200,
+  "response": {
+    "ok": true,
+    "priority_offset": -0.35,
+    "applied": true
+  }
+}

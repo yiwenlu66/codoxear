@@ -1,0 +1,355 @@
+{
+  "api": [
+    {
+      "session_id": "broker-40",
+      "thread_id": "broker-40",
+      "pid": 44,
+      "broker_pid": 40,
+      "agent_backend": "pi",
+      "pi_thinking_command": false,
+      "session_name_control": false,
+      "backend_session_name": "",
+      "slash_commands": [
+        {
+          "name": "model",
+          "description": "Select model (opens selector UI)"
+        },
+        {
+          "name": "new",
+          "description": "Start a new session"
+        },
+        {
+          "name": "share",
+          "description": "Share session as a secret GitHub gist"
+        },
+        {
+          "name": "copy",
+          "description": "Copy last agent message to clipboard"
+        },
+        {
+          "name": "name",
+          "description": "Set session display name"
+        },
+        {
+          "name": "session",
+          "description": "Show session info and stats"
+        },
+        {
+          "name": "changelog",
+          "description": "Show changelog entries"
+        },
+        {
+          "name": "hotkeys",
+          "description": "Show all keyboard shortcuts"
+        },
+        {
+          "name": "logout",
+          "description": "Remove provider authentication"
+        },
+        {
+          "name": "compact",
+          "description": "Manually compact the session context"
+        },
+        {
+          "name": "reload",
+          "description": "Reload extensions, skills, prompts, themes, and context files"
+        }
+      ],
+      "owned": true,
+      "transport": "tmux",
+      "cwd": "/tmp/ws/alpha",
+      "start_ts": 1794554161.9735801,
+      "updated_ts": 1794554161.9735801,
+      "log_path": null,
+      "queue_len": 0,
+      "queue_recovery": false,
+      "pending_attachment": false,
+      "attachments_revision": 0,
+      "staged_attachments": [],
+      "commit_unknown_send": false,
+      "commit_unknown_send_text": null,
+      "commit_unknown_send_ts": null,
+      "send_verdict": null,
+      "token": null,
+      "thinking": 0,
+      "thinking_tokens": 0,
+      "tools": 0,
+      "system": 0,
+      "unattended_enabled": false,
+      "unattended_request": "",
+      "unattended_cooldown_minutes": 5,
+      "unattended_remaining_injections": 10,
+      "alias": "",
+      "display_name": "alpha",
+      "draft_updated_ts": 0.0,
+      "files": [],
+      "model_provider": null,
+      "preferred_auth_method": null,
+      "provider_choice": "openai-api",
+      "model": null,
+      "reasoning_effort": null,
+      "service_tier": null,
+      "tmux_session": "codoxear",
+      "tmux_window": "alpha-e9d218",
+      "launch_id": "launch-1794554161880-555b9e1b",
+      "spawn_nonce": "e9d218c656d8f195",
+      "priority_offset": -0.24,
+      "snooze_until": null,
+      "snoozed_indefinitely": false,
+      "dependency_session_id": null,
+      "time_priority": 0.9985569855219026,
+      "base_priority": 0.7585569855219026,
+      "final_priority": 0.7585569855219026,
+      "blocked": false,
+      "snoozed": false,
+      "lost": false,
+      "subagents_running": 0,
+      "subagent_details": [],
+      "git_branch": null,
+      "busy": false
+    },
+    {
+      "session_id": "broker-58",
+      "thread_id": "broker-58",
+      "pid": 62,
+      "broker_pid": 58,
+      "agent_backend": "pi",
+      "pi_thinking_command": false,
+      "session_name_control": false,
+      "backend_session_name": "",
+      "slash_commands": [
+        {
+          "name": "model",
+          "description": "Select model (opens selector UI)"
+        },
+        {
+          "name": "new",
+          "description": "Start a new session"
+        },
+        {
+          "name": "share",
+          "description": "Share session as a secret GitHub gist"
+        },
+        {
+          "name": "copy",
+          "description": "Copy last agent message to clipboard"
+        },
+        {
+          "name": "name",
+          "description": "Set session display name"
+        },
+        {
+          "name": "session",
+          "description": "Show session info and stats"
+        },
+        {
+          "name": "changelog",
+          "description": "Show changelog entries"
+        },
+        {
+          "name": "hotkeys",
+          "description": "Show all keyboard shortcuts"
+        },
+        {
+          "name": "logout",
+          "description": "Remove provider authentication"
+        },
+        {
+          "name": "compact",
+          "description": "Manually compact the session context"
+        },
+        {
+          "name": "reload",
+          "description": "Reload extensions, skills, prompts, themes, and context files"
+        }
+      ],
+      "owned": true,
+      "transport": "tmux",
+      "cwd": "/tmp/ws/beta",
+      "start_ts": 1794554162.0890744,
+      "updated_ts": 1794554162.0890744,
+      "log_path": null,
+      "queue_len": 0,
+      "queue_recovery": false,
+      "pending_attachment": false,
+      "attachments_revision": 0,
+      "staged_attachments": [],
+      "commit_unknown_send": false,
+      "commit_unknown_send_text": null,
+      "commit_unknown_send_ts": null,
+      "send_verdict": null,
+      "token": null,
+      "thinking": 0,
+      "thinking_tokens": 0,
+      "tools": 0,
+      "system": 0,
+      "unattended_enabled": false,
+      "unattended_request": "",
+      "unattended_cooldown_minutes": 5,
+      "unattended_remaining_injections": 10,
+      "alias": "",
+      "display_name": "beta",
+      "draft_updated_ts": 0.0,
+      "files": [],
+      "model_provider": null,
+      "preferred_auth_method": null,
+      "provider_choice": "openai-api",
+      "model": null,
+      "reasoning_effort": null,
+      "service_tier": null,
+      "tmux_session": "codoxear",
+      "tmux_window": "beta-ba95b4",
+      "launch_id": "launch-1794554162001-39a76b9c",
+      "spawn_nonce": "ba95b43d4067dffc",
+      "priority_offset": -0.245,
+      "snooze_until": null,
+      "snoozed_indefinitely": false,
+      "dependency_session_id": null,
+      "time_priority": 0.9985569855219026,
+      "base_priority": 0.7535569855219026,
+      "final_priority": 0.7535569855219026,
+      "blocked": false,
+      "snoozed": false,
+      "lost": false,
+      "subagents_running": 0,
+      "subagent_details": [],
+      "git_branch": null,
+      "busy": false
+    },
+    {
+      "session_id": "broker-76",
+      "thread_id": "broker-76",
+      "pid": 80,
+      "broker_pid": 76,
+      "agent_backend": "pi",
+      "pi_thinking_command": false,
+      "session_name_control": false,
+      "backend_session_name": "",
+      "slash_commands": [
+        {
+          "name": "model",
+          "description": "Select model (opens selector UI)"
+        },
+        {
+          "name": "new",
+          "description": "Start a new session"
+        },
+        {
+          "name": "share",
+          "description": "Share session as a secret GitHub gist"
+        },
+        {
+          "name": "copy",
+          "description": "Copy last agent message to clipboard"
+        },
+        {
+          "name": "name",
+          "description": "Set session display name"
+        },
+        {
+          "name": "session",
+          "description": "Show session info and stats"
+        },
+        {
+          "name": "changelog",
+          "description": "Show changelog entries"
+        },
+        {
+          "name": "hotkeys",
+          "description": "Show all keyboard shortcuts"
+        },
+        {
+          "name": "logout",
+          "description": "Remove provider authentication"
+        },
+        {
+          "name": "compact",
+          "description": "Manually compact the session context"
+        },
+        {
+          "name": "reload",
+          "description": "Reload extensions, skills, prompts, themes, and context files"
+        }
+      ],
+      "owned": true,
+      "transport": "tmux",
+      "cwd": "/tmp/ws/gamma",
+      "start_ts": 1794554162.210336,
+      "updated_ts": 1794554162.210336,
+      "log_path": null,
+      "queue_len": 0,
+      "queue_recovery": false,
+      "pending_attachment": false,
+      "attachments_revision": 0,
+      "staged_attachments": [],
+      "commit_unknown_send": false,
+      "commit_unknown_send_text": null,
+      "commit_unknown_send_ts": null,
+      "send_verdict": null,
+      "token": null,
+      "thinking": 0,
+      "thinking_tokens": 0,
+      "tools": 0,
+      "system": 0,
+      "unattended_enabled": false,
+      "unattended_request": "",
+      "unattended_cooldown_minutes": 5,
+      "unattended_remaining_injections": 10,
+      "alias": "",
+      "display_name": "gamma",
+      "draft_updated_ts": 0.0,
+      "files": [],
+      "model_provider": null,
+      "preferred_auth_method": null,
+      "provider_choice": "openai-api",
+      "model": null,
+      "reasoning_effort": null,
+      "service_tier": null,
+      "tmux_session": "codoxear",
+      "tmux_window": "gamma-b918ed",
+      "launch_id": "launch-1794554162116-65e467d1",
+      "spawn_nonce": "b918ed3bbd5f6e09",
+      "priority_offset": -0.25,
+      "snooze_until": null,
+      "snoozed_indefinitely": false,
+      "dependency_session_id": null,
+      "time_priority": 0.9985569855219026,
+      "base_priority": 0.7485569855219026,
+      "final_priority": 0.7485569855219026,
+      "blocked": false,
+      "snoozed": false,
+      "lost": false,
+      "subagents_running": 0,
+      "subagent_details": [],
+      "git_branch": null,
+      "busy": false
+    }
+  ],
+  "dom": [
+    {
+      "active": false,
+      "group": "now",
+      "id": "broker-40"
+    },
+    {
+      "active": true,
+      "group": "now",
+      "id": "broker-58"
+    },
+    {
+      "active": false,
+      "group": "now",
+      "id": "broker-76"
+    }
+  ],
+  "before": [
+    "broker-58",
+    "broker-76",
+    "broker-40"
+  ],
+  "after": [
+    "broker-40",
+    "broker-58",
+    "broker-76"
+  ]
+}

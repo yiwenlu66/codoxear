@@ -1,0 +1,27 @@
+{
+  "active": true,
+  "desktop": false,
+  "drop": [
+    {
+      "group": "now",
+      "kind": "wake"
+    }
+  ],
+  "pointer": "touch",
+  "selected": [
+    "broker-58"
+  ],
+  "sid": "broker-58",
+  "source": {
+    "x": 81,
+    "y": 283.375
+  },
+  "target": {
+    "x": 81,
+    "y": 79.96875
+  },
+  "viewport": {
+    "height": 852,
+    "width": 393
+  }
+}

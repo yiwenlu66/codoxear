@@ -1,0 +1,12 @@
+{
+  "id": "broker-40",
+  "swipeX": "72",
+  "hit": {},
+  "inside": true,
+  "target": {
+    "height": 32,
+    "left": 16,
+    "top": 109.4375,
+    "width": 32
+  }
+}

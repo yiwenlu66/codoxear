@@ -1,0 +1,17 @@
+{
+  "sidebar_ids": [
+    "broker-76",
+    "broker-40",
+    "broker-58"
+  ],
+  "sidebar_names": [
+    "gamma",
+    "alpha",
+    "beta"
+  ],
+  "tmux_names": [
+    "gamma",
+    "alpha",
+    "beta"
+  ]
+}
