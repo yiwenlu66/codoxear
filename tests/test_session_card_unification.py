@@ -30,6 +30,7 @@ HARNESS = textwrap.dedent(
         appendChild(child) { if (child) { child.parentNode = this; this.children.push(child); } return child; },
         remove() { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); if (i >= 0) this.parentNode.children.splice(i, 1); this.parentNode = null; },
         addEventListener(type, listener) { (listeners[type] ||= []).push(listener); },
+        getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; },
         listeners,
         classList: {
           add(name) { if (!classes(value).includes(name)) value.attrs.class = `${value.attrs.class || ""} ${name}`.trim(); },

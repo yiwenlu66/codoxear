@@ -111,6 +111,8 @@ def handle_control_post_route(
     route_handlers = (
         ("delete", None, _handle_delete),
         ("edit", None, _handle_edit),
+        ("snooze", None, _handle_snooze),
+        ("reorder", None, _handle_reorder),
         ("rename", None, _handle_rename),
         ("pending_attachment", "clear", _handle_pending_attachment_clear),
         ("attachments", "delete", _handle_attachment_delete),
@@ -177,6 +179,7 @@ def _handle_edit(handler: Any, *, session_id: str, manager: Any, deps: ControlRo
             name=name,
             priority_offset=obj.get("priority_offset"),
             snooze_until=obj.get("snooze_until"),
+            snoozed_indefinitely=obj.get("snoozed_indefinitely", False),
             dependency_session_id=obj.get("dependency_session_id"),
         )
     except KeyError:
@@ -190,6 +193,37 @@ def _handle_edit(handler: Any, *, session_id: str, manager: Any, deps: ControlRo
         200,
         {"ok": True, "alias": alias, **sidebar_meta, "name_propagation": _propagate_session_name(manager, session_id)},
     )
+
+
+def _handle_snooze(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    obj = deps.read_json_body(handler)
+    indefinite = obj.get("indefinite")
+    if not isinstance(indefinite, bool):
+        deps.json_response(handler, 400, {"error": "indefinite must be a boolean"})
+        return
+    try:
+        result = manager.snooze_session(session_id, indefinite=indefinite)
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    deps.json_response(handler, 200, {"ok": True, **result})
+
+
+def _handle_reorder(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    obj = deps.read_json_body(handler)
+    try:
+        result = manager.reorder_session(session_id, above=obj.get("above"), below=obj.get("below"))
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    except ValueError as exc:
+        deps.json_response(handler, 400, {"error": str(exc)})
+        return
+    deps.json_response(handler, 200, {"ok": True, **result})
 
 
 def _handle_rename(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:

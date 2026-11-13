@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .session_cleaners import clean_priority_offset, sidebar_snoozed
 from .session_display import sidebar_display_name
 from .session_model import Session
 from .session_store import SessionStore
@@ -91,6 +92,7 @@ class ActiveSessionRowFacts:
     final_priority: float
     blocked: bool
     snoozed: bool
+    snoozed_indefinitely: bool = False
     lost: bool = False
     pi_thinking_command: bool = False
     # Live session-title control, and the backend's own recorded title. The
@@ -152,6 +154,28 @@ def listing_priority(
     base_priority = clip01(time_priority + priority_offset)
     final_priority = 0.0 if (snoozed or blocked) else base_priority
     return ListingPriority(time_priority=time_priority, base_priority=base_priority, final_priority=final_priority)
+
+
+def reorder_target_offset(
+    *, time_priority: float, above_priority: float | None, below_priority: float | None,
+) -> tuple[float, bool]:
+    """Compute one row's offset; report bounds that prevent its target score."""
+    if above_priority is None and below_priority is None:
+        raise ValueError("above or below required")
+    if above_priority is not None and below_priority is not None:
+        target = (above_priority + below_priority) / 2
+    elif below_priority is not None:
+        target = below_priority + 0.005
+    else:
+        target = above_priority - 0.005
+    rounded = round(target - time_priority, 4)
+    offset = clean_priority_offset(max(-1.0, min(1.0, rounded)))
+    # A clipped score of 1 cannot outrank a neighbour already at 1: the
+    # unchanged recency tiebreak, rather than this offset, decides their order.
+    saturated_tie = clip01(time_priority + offset) == 1.0 and (
+        above_priority == 1.0 or below_priority == 1.0
+    )
+    return offset, offset == rounded and not saturated_tie
 
 
 def _queue_has_recovery_item(queue: Sequence[Any]) -> bool:
@@ -315,6 +339,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "spawn_nonce": facts.spawn_nonce,
         "priority_offset": facts.priority_offset,
         "snooze_until": facts.snooze_until,
+        "snoozed_indefinitely": facts.snoozed_indefinitely,
         "dependency_session_id": facts.dependency_session_id,
         "time_priority": facts.time_priority,
         "base_priority": facts.base_priority,
@@ -422,7 +447,11 @@ def build_active_session_rows_snapshot(
         dependency_session_id = sidebar_state.dependency_session_id
         sidebar_dirty = sidebar_dirty or sidebar_state.dirty
         blocked = dependency_session_id is not None
-        snoozed = snooze_until is not None and snooze_until > now_ts
+        snoozed = sidebar_snoozed(
+            snoozed_indefinitely=sidebar_state.snoozed_indefinitely,
+            snooze_until=snooze_until,
+            now_ts=now_ts,
+        )
         priority = listing_priority(
             now_ts=now_ts,
             updated_ts=updated_ts,
@@ -503,6 +532,7 @@ def build_active_session_rows_snapshot(
                     spawn_nonce=s.spawn_nonce,
                     priority_offset=priority_offset,
                     snooze_until=snooze_until,
+                    snoozed_indefinitely=sidebar_state.snoozed_indefinitely,
                     dependency_session_id=dependency_session_id,
                     time_priority=priority.time_priority,
                     base_priority=priority.base_priority,
@@ -618,6 +648,7 @@ def build_orphan_recovery_rows(
                 "spawn_nonce": None,
                 "priority_offset": 0.0,
                 "snooze_until": None,
+                "snoozed_indefinitely": False,
                 "dependency_session_id": None,
                 "time_priority": 1.0,
                 "base_priority": 1.0,

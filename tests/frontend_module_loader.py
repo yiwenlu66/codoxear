@@ -86,6 +86,7 @@ MODULE_NAMESPACES = {
     "app_session_title.js": ["CodoxearSessionTitle"],
     "app_settings.js": ["CodoxearSettings"],
     "app_sessions.js": ["CodoxearSessions"],
+    "app_sidebar_drag.js": ["CodoxearSidebarDrag"],
     "app_shell.js": ["CodoxearShell"],
     "app_snooze.js": ["CodoxearSnooze"],
     "app_sse.js": ["CodoxearSse"],
@@ -188,6 +189,7 @@ def module_path(module_name: str) -> Path:
         ("app_picker_geometry.js", "CodoxearPickerGeometry"),
         ("app_file_helpers.js", "CodoxearFileHelpers"),
         ("app_snooze.js", "CodoxearSnooze"),
+        ("app_sidebar_drag.js", "CodoxearSidebarDrag"),
     ):
         if re.search(rf'^import\s+\*\s+as\s+{namespace}\s+from', source, re.MULTILINE):
             helper = strip_esm((STATIC / dependency).read_text(encoding="utf-8"), dependency)

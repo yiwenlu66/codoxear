@@ -48,6 +48,16 @@ def clean_snooze_until(value: Any) -> float | None:
     return out
 
 
+def clean_snoozed_indefinitely(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("snoozed_indefinitely must be a boolean")
+    return value
+
+
+def sidebar_snoozed(*, snoozed_indefinitely: bool, snooze_until: float | None, now_ts: float) -> bool:
+    return snoozed_indefinitely or (snooze_until is not None and snooze_until > now_ts)
+
+
 def clean_dependency_session_id(value: Any) -> str | None:
     if value in (None, ""):
         return None

@@ -46,6 +46,11 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-2);
   }
+  .mockDialog .snoozeInputCell {
+    display: flex; align-items: center; min-width: 0; min-height: var(--ctl);
+  }
+  .mockDialog .customSnoozeRow input[type="date"],
+  .mockDialog .customSnoozeRow input[type="time"] { width: 100%; min-width: 0; }
   .mockDialog input[type="date"],
   .mockDialog input[type="time"] {
     height: var(--dialog-control-h);
@@ -154,8 +159,8 @@ authored here: the calendar + time wheel, the drop indicator, and the drop zone.
             <button class="choiceChip active" type="button"><span class="chipLabel">Custom…</span><span class="chipTime"></span></button>
           </div>
           <div class="customSnoozeRow" style="display:grid">
-            <input type="date" value="2026-11-18" aria-label="Snooze date">
-            <input type="time" value="09:30" step="1800" aria-label="Snooze time">
+            <label class="snoozeInputCell"><input type="date" value="2026-11-18" aria-label="Snooze date"></label>
+            <label class="snoozeInputCell"><input type="time" value="09:30" step="1800" aria-label="Snooze time"></label>
           </div>
         </label>
         <label class="field"><span class="fieldLabel">Depends on</span>

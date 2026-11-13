@@ -81,7 +81,9 @@ after state):
   height: var(--dialog-control-h);             /* 32px — the chip plane, down from 44px */
   min-height: var(--dialog-control-h);
   padding: 0 var(--space-3);
-  font-size: var(--font-md);                   /* 13px desktop; the coarse floor keeps 16px */
+  /* no font-size here: a dialog-scoped rule may not own typography
+     (tests/test_form_typography_roles.py). These fields ride the entry plane:
+     --font-lg, plus the 16px anti-zoom floor on coarse pointers. */
   line-height: normal;
   border-radius: var(--radius-control);
 }
@@ -98,10 +100,10 @@ after state):
 No new component, no JS, no overlay, no change to the pickers themselves. The `Indefinitely` chip
 (§2) remains the only addition to the chip row.
 
-**Measured** (Chrome, `getBoundingClientRect`/`getComputedStyle`): desktop viewport — chip 32px/13px,
-date field 32px/13px, time field 32px/13px. Narrow viewport (`max-width: 880px` branch) — chips
-32px/14px, fields 32px/16px: height parity holds, and the 2px type step is the iOS anti-zoom `!important`
-floor (`app.css:4095-4106`), deliberately untouched.
+**Measured** (Chrome, `getBoundingClientRect`/`getComputedStyle`): the box is 32px on both plans.
+Desktop — chip 32px/13px, fields 32px/14px (`--font-lg`, the same entry plane the name input uses).
+Narrow viewport — chips 32px/14px, fields 32px/16px, the anti-zoom floor (`app.css:4095-4106`)
+untouched. Height parity is the fix; the fields keep the field plane's type.
 
 **Hit area.** An `<input>` is a replaced element and cannot carry the `::after` outset chips use, so a
 32px box would be a 32px target on a phone. Wrap each field in a `min-height: var(--ctl)` label

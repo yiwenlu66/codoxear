@@ -57,6 +57,7 @@ def render_grouped_sidebar() -> dict:
             this.parentNode = null;
           }}
           addEventListener() {{}}
+          getBoundingClientRect() {{ return {{ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }}; }}
           setPointerCapture() {{}}
           releasePointerCapture() {{}}
         }}

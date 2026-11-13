@@ -22,6 +22,7 @@ def test_sidebar_active_class_tracks_selected_store_without_lifecycle_writer() -
           if (attrs["data-session-id"]) out.dataset.sessionId = attrs["data-session-id"];
           out.appendChild = (child) => {{ if (child) {{ child.parentNode = out; out.children.push(child); }} return child; }};
           out.addEventListener = () => {{}};
+          out.getBoundingClientRect = () => ({{ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }});
           out.remove = () => {{ if (out.parentNode) out.parentNode.children = out.parentNode.children.filter((child) => child !== out); }};
           Object.defineProperty(out, "childElementCount", {{ get: () => out.children.length }});
           Object.defineProperty(out, "innerHTML", {{ get: () => "", set: () => {{ out.children = []; }} }});

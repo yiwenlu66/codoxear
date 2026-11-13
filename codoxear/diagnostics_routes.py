@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 import time
 
+from .session_cleaners import sidebar_snoozed
 from .session_runtime import select_runtime_token
 
 
@@ -75,11 +76,17 @@ def handle_diagnostics_get_route(
     except ValueError:
         git_branch = None
     updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
-    elapsed_s = max(0.0, deps.time_fn() - updated_ts)
+    now_ts = deps.time_fn()
+    elapsed_s = max(0.0, now_ts - updated_ts)
     time_priority = deps.sidebar_time_priority_from_elapsed_seconds(elapsed_s)
     base_priority = deps.clip01(time_priority + float(sidebar_meta["priority_offset"]))
     blocked = sidebar_meta["dependency_session_id"] is not None
-    snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > deps.time_fn()
+    snoozed_indefinitely = sidebar_meta.get("snoozed_indefinitely", False)
+    snoozed = sidebar_snoozed(
+        snoozed_indefinitely=snoozed_indefinitely,
+        snooze_until=sidebar_meta["snooze_until"],
+        now_ts=now_ts,
+    )
     final_priority = 0.0 if (snoozed or blocked) else base_priority
     pi_bridge_marker = None
     if s.agent_backend == "pi" and deps.read_pi_bridge_marker_state is not None:
@@ -120,6 +127,8 @@ def handle_diagnostics_get_route(
             "final_priority": final_priority,
             "priority_offset": sidebar_meta["priority_offset"],
             "snooze_until": sidebar_meta["snooze_until"],
+            "snoozed_indefinitely": snoozed_indefinitely,
+            "snoozed": snoozed,
             "dependency_session_id": sidebar_meta["dependency_session_id"],
             "pi_bridge_marker": pi_bridge_marker,
         },

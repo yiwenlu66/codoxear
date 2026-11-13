@@ -1277,11 +1277,22 @@ class SessionManager:
     def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
         return self._ui_state_coordinator_for_manager().sidebar_meta_get(session_id)
 
-    def sidebar_meta_set(self, session_id: str, *, priority_offset: Any, snooze_until: Any, dependency_session_id: Any) -> dict[str, Any]:
-        return self._ui_state_coordinator_for_manager().sidebar_meta_set(session_id, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id)
+    def sidebar_meta_set(self, session_id: str, *, priority_offset: Any, snooze_until: Any, dependency_session_id: Any, snoozed_indefinitely: Any = False) -> dict[str, Any]:
+        return self._ui_state_coordinator_for_manager().sidebar_meta_set(session_id, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id, snoozed_indefinitely=snoozed_indefinitely)
 
-    def edit_session(self, session_id: str, *, name: str, priority_offset: Any, snooze_until: Any, dependency_session_id: Any) -> tuple[str, dict[str, Any]]:
-        return self._ui_state_coordinator_for_manager().edit_session(session_id, name=name, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id)
+    def edit_session(self, session_id: str, *, name: str, priority_offset: Any, snooze_until: Any, dependency_session_id: Any, snoozed_indefinitely: Any = False) -> tuple[str, dict[str, Any]]:
+        return self._ui_state_coordinator_for_manager().edit_session(session_id, name=name, priority_offset=priority_offset, snooze_until=snooze_until, dependency_session_id=dependency_session_id, snoozed_indefinitely=snoozed_indefinitely)
+
+    def snooze_session(self, session_id: str, *, indefinite: bool) -> dict[str, Any]:
+        return self._ui_state_coordinator_for_manager().snooze_session(session_id, indefinite=indefinite)
+
+    def reorder_session(self, session_id: str, *, above: str | None, below: str | None) -> dict[str, Any]:
+        listing = self._list_coordinator_for_manager()
+        return self._ui_state_coordinator_for_manager().reorder_session(
+            session_id, above=above, below=below, now_ts=listing.now(),
+            half_life_seconds=listing.priority_half_life_seconds,
+            bucket_seconds=listing.priority_bucket_seconds,
+        )
 
     def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
         return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(session_id, sock)

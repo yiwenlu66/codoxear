@@ -16,6 +16,7 @@ from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
 from .file_upload import validate_staged_attachment_file_target
 from .draft_store import DraftStore
+from .session_cleaners import clean_snoozed_indefinitely
 from .quick_workspace import is_quick_cwd
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
@@ -70,6 +71,7 @@ class SidebarSessionState:
     snooze_until: float | None
     dependency_session_id: str | None
     dirty: bool
+    snoozed_indefinitely: bool = False
 
 
 @dataclass(frozen=True)
@@ -331,9 +333,12 @@ class SessionStore:
                 continue
             offset = self.clean_priority_offset(value.get("priority_offset"))
             snooze_until = self.clean_snooze_until(value.get("snooze_until"))
+            snoozed_indefinitely = clean_snoozed_indefinitely(value.get("snoozed_indefinitely", False))
             dependency_session_id = self.clean_dependency_session_id(value.get("dependency_session_id"))
             entry: dict[str, Any] = {"priority_offset": offset}
-            if snooze_until is not None:
+            if snoozed_indefinitely:
+                entry["snoozed_indefinitely"] = True
+            elif snooze_until is not None:
                 entry["snooze_until"] = snooze_until
             if dependency_session_id is not None:
                 entry["dependency_session_id"] = dependency_session_id
@@ -349,13 +354,14 @@ class SessionStore:
             meta0 = {}
         priority_offset = self.clean_priority_offset(meta0.get("priority_offset"))
         snooze_until = self.clean_snooze_until(meta0.get("snooze_until"))
+        snoozed_indefinitely = clean_snoozed_indefinitely(meta0.get("snoozed_indefinitely", False))
         dependency_session_id = self.clean_dependency_session_id(meta0.get("dependency_session_id"))
         dirty = False
         if dependency_session_id == session_id or (dependency_session_id is not None and dependency_session_id not in active_session_ids):
             dependency_session_id = None
             meta0.pop("dependency_session_id", None)
             dirty = True
-        if snooze_until is not None and snooze_until <= now_ts:
+        if not snoozed_indefinitely and snooze_until is not None and snooze_until <= now_ts:
             snooze_until = None
             meta0.pop("snooze_until", None)
             dirty = True
@@ -364,6 +370,7 @@ class SessionStore:
             snooze_until=snooze_until,
             dependency_session_id=dependency_session_id,
             dirty=dirty,
+            snoozed_indefinitely=snoozed_indefinitely,
         )
 
     def load_hidden_sessions(self) -> set[str]:

@@ -91,7 +91,7 @@ const global = window;
     }
 
     function setEditSnoozeMode(mode) {
-      snoozeMode = ["none", "evening", "tomorrow", "weekend", "nextWeek", "custom"].includes(mode) ? mode : "none";
+      snoozeMode = ["none", "evening", "tomorrow", "weekend", "nextWeek", "indefinitely", "custom"].includes(mode) ? mode : "none";
       for (const [value, button] of editSnoozeModeButtons.entries()) button.classList.toggle("active", value === snoozeMode);
       editSnoozeCustomRow.style.display = snoozeMode === "custom" ? "grid" : "none";
     }
@@ -168,7 +168,10 @@ const global = window;
       const matchingPreset = Number.isFinite(snoozeUntil) && snoozeUntil > 0
         ? presets.find((preset) => Math.floor(snoozeUntil) === preset.epoch)
         : null;
-      if (matchingPreset) {
+      if (session.snoozed_indefinitely === true) {
+        setEditSnoozeMode("indefinitely");
+        fillCustomSnoozeInputs(CodoxearSnooze.snoozePresetEpoch("tomorrow", currentNow));
+      } else if (matchingPreset) {
         setEditSnoozeMode(matchingPreset.mode);
         fillCustomSnoozeInputs(matchingPreset.epoch);
       } else if (snoozeUntil > currentNow / 1000) {
@@ -196,7 +199,7 @@ const global = window;
         const parsed = Date.parse(`${dateRaw}T${timeRaw}`);
         if (!Number.isFinite(parsed)) { editStatus.textContent = "Invalid snooze time."; return; }
         snoozeUntil = Math.floor(parsed / 1000);
-      } else if (snoozeMode !== "none") {
+      } else if (snoozeMode !== "none" && snoozeMode !== "indefinitely") {
         snoozeUntil = CodoxearSnooze.snoozePresetEpoch(snoozeMode, now());
       }
       try {
@@ -206,6 +209,7 @@ const global = window;
           name: String(editNameInput.value || ""),
           priority_offset: Number(editPriorityRange.value || 0),
           snooze_until: snoozeUntil,
+          snoozed_indefinitely: snoozeMode === "indefinitely",
           dependency_session_id: String(editDependencyBtn.dataset.value || "") || null,
         }});
         await refreshSessions();

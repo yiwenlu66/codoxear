@@ -260,6 +260,9 @@
         overflow: auto;
         flex: 1;
         min-height: 0;
+        /* Positioning context for the drag insertion line: it scrolls with the
+           cards it annotates, so it is absolutely placed in content space. */
+        position: relative;
         -webkit-overflow-scrolling: touch;
       }
       .sidebarEmptyHint {
@@ -370,6 +373,51 @@
         background: var(--paper);
         display: block;
         touch-action: pan-y;
+      }
+      /* Drag: the card keeps its place and only its chrome lifts; a single 2px
+         insertion line names the slot, and the destination block's own header
+         becomes the cross-block target. Tokens only, nothing reflows under the
+         pointer, no backdrop. */
+      .session[data-dragging="true"] {
+        border-color: var(--ink);
+        box-shadow: var(--shadow-pop);
+        cursor: grabbing;
+      }
+      body[data-dragging="true"] {
+        cursor: grabbing;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .dropIndicator {
+        position: absolute;
+        left: var(--space-2);
+        right: var(--space-2);
+        height: 2px;
+        margin-top: -1px;
+        border-radius: var(--radius-pill);
+        background: var(--ink);
+        pointer-events: none;
+        z-index: 3;
+      }
+      .dropIndicator[hidden] {
+        display: none;
+      }
+      .sessionGroupHeader[data-drop="snooze"],
+      .sessionGroupHeader[data-drop="wake"] {
+        border: 1px solid var(--ink);
+        border-radius: var(--radius-control);
+        background: var(--wash);
+        color: var(--ink);
+      }
+      .sessionGroupHeader[data-drop="snooze"] .sessionGroupLabel::after {
+        content: " · drop to snooze indefinitely";
+      }
+      .sessionGroupHeader[data-drop="wake"] .sessionGroupLabel::after {
+        content: " · drop to wake";
+      }
+      .sessionGroupHeader[data-drop="refuse"] {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
       .sessionSwipe {
         position: relative;
@@ -3815,10 +3863,52 @@ select {
         display: none;
       }
 
+      /* Shown by the controller only in Custom… mode. Its geometry lives in the
+         scoped rule below, which out-specifies the phone single-column rule. */
       .customSnoozeRow {
         display: none;
-        grid-template-columns: minmax(0, 1fr) 140px;
-        gap: var(--space-4);
+      }
+      /* Snooze: the platform's own date/time pickers, with the closed field on the
+         chip plane — same 32px box as .choiceChip, same type step, same radius. The
+         UA's inner editable box and indicator are what made the field read bigger
+         than its own height. The wrapper carries the 44px tap region because an
+         <input> is a replaced element and cannot wear the chips' ::after outset. */
+      .formViewer .customSnoozeRow {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: var(--space-2);
+      }
+      .formViewer .snoozeInputCell {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        min-height: var(--ctl);
+      }
+      .formViewer .customSnoozeRow input[type="date"],
+      .formViewer .customSnoozeRow input[type="time"] {
+        width: 100%;
+        min-width: 0;
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
+        padding: 0 var(--space-3);
+        /* Type stays on the dialog's entry plane (--font-lg, and the 16px
+           anti-zoom floor on coarse pointers). A dialog rule may not own
+           typography here — the type planes retune as a unit (see
+           tests/test_form_typography_roles.py). */
+        line-height: normal;
+        border-radius: var(--radius-control);
+      }
+      .formViewer .customSnoozeRow input[type="date"]::-webkit-datetime-edit,
+      .formViewer .customSnoozeRow input[type="time"]::-webkit-datetime-edit {
+        padding: 0;
+        line-height: normal;
+      }
+      .formViewer .customSnoozeRow input[type="date"]::-webkit-calendar-picker-indicator,
+      .formViewer .customSnoozeRow input[type="time"]::-webkit-calendar-picker-indicator {
+        width: var(--font-lg);
+        height: var(--font-lg);
+        margin: 0 0 0 var(--space-2);
+        padding: 0;
+        opacity: 0.55;
       }
       .sliderRow {
         display: flex;
@@ -4270,8 +4360,7 @@ select {
           border-radius: var(--radius-card);
           padding: var(--space-5);
         }
-        .formGrid.twoCol,
-        .customSnoozeRow {
+        .formGrid.twoCol {
           grid-template-columns: 1fr;
         }
         .pickerInputRow {

@@ -360,6 +360,7 @@ def launch_attempt_row(
         "tmux_window": clean_optional_text(record.get("tmux_window")),
         "priority_offset": 0.0,
         "snooze_until": None,
+        "snoozed_indefinitely": False,
         "dependency_session_id": None,
         "time_priority": 1.0,
         "base_priority": 1.0,

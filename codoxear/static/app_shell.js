@@ -533,6 +533,7 @@ function requireFunction(value, name) {
       ["tomorrow", "Tomorrow"],
       ["weekend", "This weekend"],
       ["nextWeek", "Next week"],
+      ["indefinitely", "Indefinitely"],
       ["custom", "Custom…"],
     ]) {
       const btn = el("button", {
@@ -548,8 +549,8 @@ function requireFunction(value, name) {
     const editSnoozeCustomDate = el("input", { id: "editSnoozeCustomDate", type: "date" });
     const editSnoozeCustomTime = el("input", { id: "editSnoozeCustomTime", type: "time", step: "60" });
     const editSnoozeCustomRow = el("div", { class: "customSnoozeRow", id: "editSnoozeCustomRow" }, [
-      editSnoozeCustomDate,
-      editSnoozeCustomTime,
+      el("label", { class: "snoozeInputCell" }, [editSnoozeCustomDate]),
+      el("label", { class: "snoozeInputCell" }, [editSnoozeCustomTime]),
     ]);
     const editDependencyBtn = el("button", {
       id: "editDependencyBtn",
@@ -575,8 +576,13 @@ function requireFunction(value, name) {
           el("span", { class: "fieldLabel", text: "Priority offset" }),
           el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
         ]),
-        el("label", { class: "field" }, [
-          el("span", { class: "fieldLabel", text: "Snooze" }),
+        /* A field group, not a label: this one holds several controls (the chips,
+           and inside them the two date/time labels), and an enclosing <label>
+           would forward stray taps to its first labelable descendant — the
+           "No snooze" chip. Nesting labels is also invalid, and a tap on the
+           date field would then fire both the field and that chip. */
+        el("div", { class: "field", role: "group", "aria-labelledby": "editSnoozeLabel" }, [
+          el("span", { class: "fieldLabel", id: "editSnoozeLabel", text: "Snooze" }),
           editSnoozeButtons,
           editSnoozeCustomRow,
         ]),

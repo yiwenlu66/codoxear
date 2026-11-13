@@ -18,7 +18,14 @@ JS = textwrap.dedent("""
         text: attrs && attrs.text != null ? attrs.text : undefined,
         appendChild(c){ this.children.push(c); return c; },
         find(pred){ return this.children.find(pred) || null; },
+        addEventListener(){},
+        getBoundingClientRect(){ return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; },
         classList: { add: () => {}, remove: () => {} },
+        // A real DOM node has these; the controller binds gestures on the card
+        // and measures geometry once one starts.
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        getBoundingClientRect: () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }),
       };
       if (Array.isArray(children)) children.forEach(c => node.appendChild(c));
       return node;

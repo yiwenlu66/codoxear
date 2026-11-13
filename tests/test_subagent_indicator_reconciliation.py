@@ -111,6 +111,7 @@ def _run_surface_projection(rows: list[dict]) -> dict:
             out.parentElement = null;
           }};
           out.addEventListener = () => {{}};
+          out.getBoundingClientRect = () => ({{ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }});
           Object.defineProperty(out, "childElementCount", {{ get: () => out.children.length }});
           Object.defineProperty(out, "innerHTML", {{ set: () => {{ out.children = []; }} }});
           let textValue = "";

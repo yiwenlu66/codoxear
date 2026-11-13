@@ -1,4 +1,6 @@
 
+import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
+
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`sessions controller dependency missing: ${name}`);
     return value;
@@ -77,6 +79,277 @@
       openSwipeSessionId = null;
       openSwipeTargetX = 0;
       if (refreshDeferred) void refreshSessions().catch((error) => consoleError("refreshSessions failed after swipe close", error));
+    }
+
+    // --- Drag: reorder inside Now, drop on Later to snooze indefinitely, drop
+    // on Now to wake. One gesture session at a time. Geometry and drop decisions
+    // are pure functions in app_sidebar_drag.js; the server owns order and
+    // computes the dragged row's offset, so a drop resolves to ids only.
+    let draggingSessionId = null;
+    let dragSession = null;
+    let suppressClickUntil = 0;
+
+    function dragBlocks() {
+      const blocks = [];
+      let current = null;
+      for (const node of sessionsWrap.children) {
+        const classes = node.classList;
+        if (!classes) continue;
+        if (classes.contains("sessionGroupHeader")) {
+          current = { group: (node.dataset && node.dataset.sessionGroup) || "", header: node, cards: [] };
+          blocks.push(current);
+          continue;
+        }
+        if (classes.contains("session") && node.dataset && node.dataset.sessionId) {
+          if (!current) { current = { group: "now", header: null, cards: [] }; blocks.push(current); }
+          const rect = node.getBoundingClientRect();
+          current.cards.push({ id: node.dataset.sessionId, el: node, top: rect.top, height: rect.height });
+        }
+      }
+      return blocks;
+    }
+
+    function dragGroupOf(blocks, sessionId) {
+      for (const block of blocks) {
+        if (block.cards.some((card) => card.id === sessionId)) return block.group;
+      }
+      return "";
+    }
+
+    function dragBlockSpan(blocks, index, container) {
+      const block = blocks[index];
+      const headerRect = block.header ? block.header.getBoundingClientRect() : null;
+      const firstTop = block.cards.length ? block.cards[0].top : container.bottom;
+      const start = headerRect ? headerRect.top : firstTop;
+      const next = blocks[index + 1];
+      let end = container.bottom;
+      if (next) {
+        const nextHeader = next.header ? next.header.getBoundingClientRect() : null;
+        end = nextHeader ? nextHeader.top : (next.cards.length ? next.cards[0].top : container.bottom);
+      }
+      return { start, end };
+    }
+
+    function dragTargetAt(blocks, pointerY, container) {
+      if (pointerY < container.top || pointerY > container.bottom) return { group: "", block: null };
+      for (let index = 0; index < blocks.length; index += 1) {
+        const span = dragBlockSpan(blocks, index, container);
+        if (pointerY >= span.start && pointerY < span.end) return { group: blocks[index].group, block: blocks[index] };
+      }
+      // Past the whole list: below it is the Later zone, above it the Now zone.
+      // That is what keeps each cross-block target reachable when the opposite
+      // block has no rows yet.
+      const lastSpan = blocks.length ? dragBlockSpan(blocks, blocks.length - 1, container) : null;
+      if (lastSpan && pointerY >= lastSpan.end) return { group: "later", block: null };
+      return { group: "now", block: null };
+    }
+
+    function dragEnsureHeader(group) {
+      if (!dragSession || !group) return null;
+      for (const node of sessionsWrap.children) {
+        if (node.classList && node.classList.contains("sessionGroupHeader") && node.dataset.sessionGroup === group) return node;
+      }
+      const header = renderSessionGroupHeader({ key: group, label: group === "later" ? "Later" : "Now", count: 0 });
+      header.dataset.ephemeral = "true";
+      if (group === "later") sessionsWrap.appendChild(header);
+      else sessionsWrap.insertBefore(header, sessionsWrap.firstElementChild);
+      dragSession.ephemeral.push(header);
+      return header;
+    }
+
+    function dragSetDropState(group, kind) {
+      for (const node of sessionsWrap.children) {
+        if (!node.classList || !node.classList.contains("sessionGroupHeader")) continue;
+        const nodeGroup = node.dataset.sessionGroup || "";
+        const state = nodeGroup === group && (kind === "snooze" || kind === "wake" || kind === "refuse") ? kind : "";
+        if (state) node.dataset.drop = state;
+        else delete node.dataset.drop;
+      }
+    }
+
+    function dragShowLine(lineY, containerTop) {
+      if (!dragSession) return;
+      let line = dragSession.line;
+      if (!line) {
+        const doc = sessionsWrap.ownerDocument;
+        line = doc.createElement("div");
+        line.className = "dropIndicator";
+        sessionsWrap.appendChild(line);
+        dragSession.line = line;
+      }
+      line.hidden = false;
+      line.style.top = `${Math.round(lineY - containerTop + sessionsWrap.scrollTop)}px`;
+    }
+
+    function dragHideLine() {
+      if (dragSession && dragSession.line) dragSession.line.hidden = true;
+    }
+
+    function updateDrag(pointerX, pointerY) {
+      if (!dragSession) return;
+      dragSession.pointerX = pointerX;
+      dragSession.pointerY = pointerY;
+      const container = sessionsWrap.getBoundingClientRect();
+      const blocks = dragBlocks();
+      const target = dragTargetAt(blocks, pointerY, container);
+      const block = target.block;
+      const payload = CodoxearSidebarDrag.dragPayload({
+        sourceGroup: dragSession.sourceGroup,
+        targetGroup: target.group,
+        overHeader: Boolean(block && (!block.cards.length || pointerY < block.cards[0].top)),
+        sourceId: dragSession.sessionId,
+        targetIds: block ? block.cards.map((card) => card.id) : [],
+        cards: block ? block.cards : [],
+        pointerY,
+      });
+      dragSession.payload = payload;
+      if (payload.kind === "reorder" || payload.kind === "wake") {
+        const others = block ? block.cards.filter((card) => card.id !== dragSession.sessionId) : [];
+        const headerBottom = block && block.header ? block.header.getBoundingClientRect().bottom : container.top;
+        dragShowLine(CodoxearSidebarDrag.insertionLineY(others, payload.index === null ? 0 : payload.index, headerBottom), container.top);
+      } else {
+        dragHideLine();
+      }
+      dragSetDropState(payload.kind === "snooze" || payload.kind === "wake" || payload.kind === "refuse" ? target.group : "", payload.kind);
+      if (payload.kind === "snooze") dragEnsureHeader("later");
+      if (payload.kind === "wake") dragEnsureHeader("now");
+    }
+
+    function dragTeardown() {
+      const session = dragSession;
+      draggingSessionId = null;
+      dragSession = null;
+      if (!session) return;
+      if (session.raf) session.cancelRaf(session.raf);
+      for (const [type, handler, options] of session.listeners) session.doc.removeEventListener(type, handler, options);
+      if (session.line && session.line.parentNode) session.line.parentNode.removeChild(session.line);
+      for (const node of session.ephemeral) if (node.parentNode) node.parentNode.removeChild(node);
+      delete session.card.dataset.dragging;
+      delete session.doc.body.dataset.dragging;
+      dragSetDropState("", "none");
+      if (refreshDeferred) void refreshSessions().catch((error) => consoleError("refreshSessions failed after drag", error));
+    }
+
+    async function commitDrop(payload, sessionId) {
+      try {
+        const needsNeighbours = payload.kind === "reorder" || payload.kind === "wake";
+        if (needsNeighbours && (payload.above !== null || payload.below !== null)) {
+          const result = await api(`/api/sessions/${sessionId}/reorder`, {
+            method: "POST",
+            body: { above: payload.above, below: payload.below },
+          });
+          if (result && result.applied === false) setToast("landed at the nearest free slot");
+        }
+        if (payload.kind === "snooze") {
+          await api(`/api/sessions/${sessionId}/snooze`, { method: "POST", body: { indefinite: true } });
+        } else if (payload.kind === "wake") {
+          await api(`/api/sessions/${sessionId}/snooze`, { method: "POST", body: { indefinite: false } });
+        }
+      } catch (error) {
+        setToast(`move failed: ${error && error.message ? error.message : "unknown error"}`);
+      } finally {
+        await refreshSessions().catch(() => {});
+      }
+    }
+
+    function endDrag(cancelled) {
+      const session = dragSession;
+      if (!session) return;
+      const payload = cancelled ? { kind: "none" } : (session.payload || { kind: "none" });
+      const writes = payload.kind === "reorder" || payload.kind === "snooze" || payload.kind === "wake";
+      dragTeardown();
+      if (!writes) return;
+      suppressClickUntil = performanceNow() + 500;
+      void commitDrop(payload, session.sessionId);
+    }
+
+    function beginDrag(sessionId, card, pointerX, pointerY) {
+      if (dragSession) return;
+      const doc = sessionsWrap.ownerDocument;
+      if (!doc) return;
+      const sourceGroup = dragGroupOf(dragBlocks(), sessionId);
+      if (sourceGroup !== "now" && sourceGroup !== "later") return;
+      const view = doc.defaultView || {};
+      const raf = typeof view.requestAnimationFrame === "function" ? view.requestAnimationFrame.bind(view) : null;
+      const cancelRaf = typeof view.cancelAnimationFrame === "function" ? view.cancelAnimationFrame.bind(view) : () => {};
+      const listen = (type, handler, options) => {
+        doc.addEventListener(type, handler, options);
+        return [type, handler, options];
+      };
+      closeOpenSwipe();
+      draggingSessionId = sessionId;
+      card.dataset.dragging = "true";
+      doc.body.dataset.dragging = "true";
+      const session = { sessionId, sourceGroup, card, pointerX, pointerY, payload: { kind: "none" }, line: null, ephemeral: [], raf: 0, listeners: [], doc, raf0: raf, cancelRaf };
+      dragSession = session;
+      session.listeners.push(listen("pointermove", (event) => { event.preventDefault(); updateDrag(event.clientX, event.clientY); }, true));
+      session.listeners.push(listen("pointerup", () => endDrag(false), true));
+      session.listeners.push(listen("pointercancel", () => endDrag(true), true));
+      session.listeners.push(listen("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); endDrag(true); } }, true));
+      // A pointer event's preventDefault does not stop scrolling; a touch scroll
+      // that has not started yet is what this cancels.
+      session.listeners.push(listen("touchmove", (event) => { if (event.cancelable) event.preventDefault(); }, { passive: false }));
+      dragEnsureHeader(sourceGroup === "now" ? "later" : "now");
+      if (raf) {
+        const tick = () => {
+          if (!dragSession) return;
+          const rect = sessionsWrap.getBoundingClientRect();
+          const delta = CodoxearSidebarDrag.autoScrollStep(rect.top, rect.bottom, dragSession.pointerY);
+          if (delta) {
+            const before = sessionsWrap.scrollTop;
+            sessionsWrap.scrollTop = before + delta;
+            if (sessionsWrap.scrollTop !== before) updateDrag(dragSession.pointerX, dragSession.pointerY);
+          }
+          dragSession.raf = raf(tick);
+        };
+        session.raf = raf(tick);
+      }
+      updateDrag(pointerX, pointerY);
+    }
+
+    // Activation: a still hold on touch/pen (the list scrolls, so movement first
+    // is a scroll), a short vertical pull on mouse. Horizontal intent stays with
+    // the swipe's own gate.
+    function bindCardDrag(card, pressTarget, sessionId) {
+      let pending = null;
+      const clearPending = () => {
+        if (pending && pending.timer) pending.clearTimer(pending.timer);
+        pending = null;
+      };
+      pressTarget.addEventListener("pointerdown", (event) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        if (dragSession) return;
+        const doc = sessionsWrap.ownerDocument;
+        const view = doc && doc.defaultView ? doc.defaultView : {};
+        const setTimer = typeof view.setTimeout === "function" ? view.setTimeout.bind(view) : null;
+        const clearTimer = typeof view.clearTimeout === "function" ? view.clearTimeout.bind(view) : () => {};
+        clearPending();
+        pending = { x: event.clientX, y: event.clientY, timer: null, setTimer, clearTimer, pointerType: event.pointerType };
+        if (event.pointerType !== "mouse" && setTimer) {
+          pending.timer = setTimer(() => {
+            const start = pending;
+            pending = null;
+            if (start && !dragSession) beginDrag(sessionId, card, start.x, start.y);
+          }, 380);
+        }
+      });
+      pressTarget.addEventListener("pointermove", (event) => {
+        if (dragSession) return;
+        if (!pending) return;
+        const dx = event.clientX - pending.x;
+        const dy = event.clientY - pending.y;
+        if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy) * 0.7) { clearPending(); return; }
+        if (pending.pointerType === "mouse") {
+          if (Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+            clearPending();
+            beginDrag(sessionId, card, event.clientX, event.clientY);
+          }
+          return;
+        }
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPending();
+      });
+      pressTarget.addEventListener("pointerup", clearPending);
+      pressTarget.addEventListener("pointercancel", clearPending);
     }
 
     function bindSwipe(content, sessionId, { leftMax, rightMax }) {
@@ -163,11 +436,13 @@
     function render(entries, { swipeActions = false } = {}) {
       const selectedId = sessionState.get("selected");
       const sidebarEntries = Array.isArray(entries) ? entries : [];
-      if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
+      // A live gesture owns its nodes: neither a swipe nor a drag may be wiped by
+      // a poll. The flush happens when the gesture ends.
+      if ((openSwipeSessionId || draggingSessionId) && sessionsWrap.childElementCount > 0) {
         refreshDeferred = true;
         return false;
       }
-      const applyingDeferredRefresh = refreshDeferred && !openSwipeSessionId;
+      const applyingDeferredRefresh = refreshDeferred && !openSwipeSessionId && !draggingSessionId;
       const signature = sidebarRenderSignature(sidebarEntries, { selectedId, swipeActions });
       const unchanged = !applyingDeferredRefresh && sessionsWrap.childElementCount > 0 && signature === lastRenderSignature;
       if (applyingDeferredRefresh) refreshDeferred = false;
@@ -303,7 +578,9 @@
               openSwipeContent = content;
             }
             bindSwipe(content, sessionId, { leftMax: 72, rightMax: editActions.length ? 104 : 0 });
+            bindCardDrag(card, content, sessionId);
             card.onclick = () => {
+              if (performanceNow() < suppressClickUntil) return;
               if (Math.abs(Number(content.dataset.swipeX || 0)) > 2) { closeOpenSwipe(); return; }
               setSidebarOpen(false);
               if (launchPending) { setToast("session still starting"); return; }
@@ -319,7 +596,9 @@
             card.appendChild(content);
             card.appendChild(inlineActions);
             card.classList.add("desktop");
+            bindCardDrag(card, card, sessionId);
             card.onclick = () => {
+              if (performanceNow() < suppressClickUntil) return;
               if (launchPending) { setToast("session still starting"); return; }
               void selectSession(sessionId);
             };
@@ -356,6 +635,7 @@
       hasDeferredRefresh: () => refreshDeferred,
       dispose() {
         unsubscribeSelected();
+        endDrag(true);
         openSwipeContent = null;
         openSwipeSessionId = null;
         openSwipeTargetX = 0;

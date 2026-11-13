@@ -331,3 +331,29 @@ Measured after the change in the root `mockup.html` (Chrome):
 New constraint discovered while writing this: an `<input>` is a replaced element and cannot carry the
 `::after` hit-area outset, so a 32px box is a 32px tap target. Plan now wraps each field in a
 `min-height: var(--ctl)` label for the 44px region.
+
+## 2026-11-13 — implementation (all three features)
+
+Server (implementer 1): sparse `snoozed_indefinitely` + one predicate consumed by listing and
+diagnostics; `/snooze` and `/reorder` routes; `reorder_target_offset` pure function; `/edit` accepts the
+flag. 162 + 31 tests green.
+
+Edit dialog (implementer 2): `Indefinitely` chip, open/save mapping, the four field rules.
+17 tests green. Reviewed: its CSS placed the fields at 32px but I had to remove its
+`font-size: var(--font-md)` declaration — `tests/test_form_typography_roles.py` forbids any dialog-scoped
+rule from owning typography (the dialog's type planes retune as a unit on coarse pointers). The fields
+therefore ride the entry plane (`--font-lg`, 16px on coarse), which is the same plane as the name input.
+
+Edit dialog, my fixes after review: the snooze field container was `<label class="field">` wrapping chips
+and now nested `<label class="snoozeInputCell">`s — nested labels forward taps to the outer label's first
+labelable descendant ("No snooze"), so a tap on the date field would have fired both. The field is now
+`div role="group" aria-labelledby`. Also scoped `.snoozeInputCell`, deleted the two declarations the new
+rule supersedes, and dropped the dead `.customSnoozeRow` entry from the phone single-column rule.
+
+Drag: the first implementer wrote only `app_sidebar_drag.js` (pure helpers, good) and timed out after an
+hour without integration. I wrote the gesture in `app_sessions.js` (deferral, click suppression, drop
+resolution, API commits) and the card-region CSS; a second implementer added the loader registration,
+66 VM assertions, and completed five test stubs with `addEventListener`/`getBoundingClientRect`.
+
+Full suite: 2954 passed, 1 failed — `test_hint_mode_coverage` (`draftUndoBtn`), which I reproduced in a
+clean worktree at HEAD, so it is pre-existing and unrelated.
