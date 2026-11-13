@@ -395,3 +395,23 @@ and the plan are corrected.
 
 Not proven, and not claimed: physical iOS Safari / Android Chrome (intrinsic field height, real touch
 and scroll arbitration), and a rapid second tap inside the 550ms post-drop suppression window.
+
+## 2026-11-13 — follow-up from the deployed app: Reset label, Depends on box
+
+User report with a screenshot: the Reset button's margin is wrong and the "Depends on" box is still large.
+
+Diagnosis by measurement in Chromium against the real `app.css`:
+- Reset is `<button class="icon-btn text-btn subtleBtn">Reset</button>`. The dialog control contract
+  (`.formViewer .icon-btn`, specificity 0,2,0) forces **every** icon button in a dialog to a 32×32
+  square, which is right for glyph chrome and wrong for a text button: the label measured 36.6px in a
+  32px box with 10px padding, so it spilled outside its own border — the "wrong margin". `.icon-btn.text-btn`
+  already had the right geometry (`width: auto; min-width: 46px; padding: 0 10px`) but lost on specificity.
+  Fix: exempt `.text-btn` in the four dialog viewers, next to the square contract. Measured after:
+  59×32 box, text 36.6px, fits (content box 37px).
+- "Depends on" is `.filePickerBtn.dialogPickerBtn`, which `.formViewer .dialogPickerBtn` pins to
+  `--ctl` = 44px — the field plane, beside 32px chips and the new 32px date/time fields. Fix:
+  `#editViewer .dialogPickerBtn` at `--dialog-control-h` with `padding: 0 var(--space-4)` (12px of
+  vertical padding cannot fit a 32px box). Measured after: 32px, `scrollWidth == clientWidth`.
+
+`scripts/docker_sidebar_snooze_drag_verify.sh` step 8 now asserts both: the Reset label must fit its
+content box, and the dependency picker's height must equal the chip height with no horizontal clipping.

@@ -46,6 +46,9 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-2);
   }
+  /* mirrors of the two #editViewer-scoped fixes (a mock can hold one id only) */
+  .mockDialog .icon-btn.text-btn { width: auto; min-width: 46px; padding: 0 var(--space-4); }
+  .mockDialog .dialogPickerBtn { height: var(--dialog-control-h); min-height: var(--dialog-control-h); padding: 0 var(--space-4); }
   .mockDialog .snoozeInputCell {
     display: flex; align-items: center; min-width: 0; min-height: var(--ctl);
   }

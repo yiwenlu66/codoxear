@@ -3410,6 +3410,17 @@ select {
         height: var(--dialog-control-h);
         min-height: var(--dialog-control-h);
       }
+      /* Text-bearing chrome is not icon-only chrome. The square contract above
+         is for glyph buttons; applied to a text button it produced a 32px box
+         whose label ("Reset") overflowed it. */
+      .formViewer .icon-btn.text-btn,
+      .queueViewer .icon-btn.text-btn,
+      .diagViewer .icon-btn.text-btn,
+      .helpViewer .icon-btn.text-btn {
+        width: auto;
+        min-width: 46px;
+        padding: 0 var(--space-4);
+      }
       .formViewer .choiceChip {
         position: relative;
         width: auto;
@@ -3504,6 +3515,14 @@ select {
         align-items: center;
         justify-content: space-between;
         gap: var(--space-5);
+      }
+      /* The dependency picker is a field on the same plane as the snooze
+         date/time fields: chip height, and no vertical padding — 12px top and
+         bottom cannot fit a 32px box and would clip the label. */
+      #editViewer .dialogPickerBtn {
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
+        padding: 0 var(--space-4);
       }
       .sidePickerBtn {
         width: 100%;
