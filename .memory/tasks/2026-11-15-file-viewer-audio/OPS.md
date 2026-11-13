@@ -109,3 +109,12 @@ Append-only. Timestamps are local (Asia/Shanghai unless noted).
   stagedAttachment selectors. Also handed over the symbol renames and reported
   that `test_hint_mode_coverage` fails on HEAD on their `draftUndoBtn`
   (ad34ae3e), not on this change.
+- A late pi-notify delivery reported run 1's harness failure ("tone.mp3 picker
+  row missing", exit 1). Re-ran the verifier in the foreground against the
+  deployable commit 62f98440 as an independent confirmation: `PASS: audio
+  playback verified at 62f98440660c`, artifacts
+  /tmp/codoxear-audio-verify.VJcVZb, all five checks true (mp3 blob playback
+  0.46/1.20 s, ogg derivative 206 audio/mpeg bytes 0-0/5924 at 0.65/1.20 s,
+  close leaves src null + paused, mkv videoWidth 160 at 0.64/0.93 s, no page
+  errors). Committed with an explicit pathspec so the concurrent session's
+  staged entries were not touched.
