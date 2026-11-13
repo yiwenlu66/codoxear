@@ -4446,14 +4446,19 @@ select {
   font-size: var(--font-sm);
 }
 
-.stagedAttachmentChip[data-pending] .stagedAttachmentRemove {
+/* The 44px cancel target belongs to the recovery layout above. A chip whose
+   upload is merely in flight keeps the completed chip's single-line geometry,
+   so the target comes from the hit lane and never from a taller visual box.
+   The lane leaves the chip, so its 44px are reached upward: its bottom edge
+   stays above the composer's entry row (which keeps every pixel its own hit
+   surface covers) while its top edge stays inside the composer band. */
+.stagedAttachmentChip[data-failed] .stagedAttachmentRemove {
   width: 44px;
   min-height: 44px;
 }
-.stagedAttachmentChip[data-pending] .stagedAttachmentRemove::after {
+.stagedAttachmentChip[data-failed] .stagedAttachmentRemove::after {
   inset: 0;
 }
-.stagedAttachmentChip[data-pending] {
-  height: auto;
-  min-height: var(--ctl-chrome);
+.stagedAttachmentChip[data-pending]:not([data-failed]) .stagedAttachmentRemove::after {
+  inset: -17px -13px -9px;
 }

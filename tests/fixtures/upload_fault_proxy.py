@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 lock = threading.Lock()
 state = {"lose_next": False, "fail_status": False, "cut_next": False,
-         "stale_catalog": False, "delay": 0, "uploads": [], "status": [],
+         "stale_catalog": False, "delay": 0, "delay_upload": 0, "uploads": [], "status": [],
          "active_catalog": 0, "max_catalog": 0, "catalog_reads": 0}
 catalog = None
 
@@ -69,7 +69,7 @@ class Proxy(BaseHTTPRequestHandler):
                     "bytes": len(body), "declared": self.headers.get("Content-Length"),
                     "type": self.headers.get("Content-Type"), "sha256": hashlib.sha256(body).hexdigest(),
                     "cut": cut, "lost_response": lose})
-            delay = state["delay"] if is_catalog else 0
+            delay = state["delay"] if is_catalog else state["delay_upload"] if is_upload else 0
             stale = state["stale_catalog"] and is_catalog and catalog is not None
             if is_catalog:
                 state["catalog_reads"] += 1

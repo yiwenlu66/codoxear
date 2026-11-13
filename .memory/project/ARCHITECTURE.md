@@ -38,11 +38,11 @@ A staged chip has one geometry for two states. An in-flight chip renders the
 completed chip's exact single-line box (`height: var(--ctl-chrome)`) — only the
 `[data-failed]` recovery layout may grow, because it carries a wrapped reason
 plus Retry. The in-flight cancel keeps its 44px target in the button's `::after`
-hit lane (`inset: -16px -13px -10px`), never in a 44px visual box: a pending
+hit lane (`inset: -17px -13px -9px`), never in a 44px visual box: a pending
 `height: auto` plus a 44px-tall button once inflated the in-flight pill to 46px
 against the completed 32px and shifted the whole composer by 14px. The lane is
 asymmetric on purpose — it leaves the 32px chip, so its 44px are reached upward
-and its bottom edge stops above the composer's entry row, which keeps the pixels
+and its bottom edge stops above the composer's entry row, which keeps every pixel
 its own hit surface covers. Declarations are pinned by
 `tests/test_staged_attachment_chip_css.py`; the real cascade and hit testing by
 `scripts/docker_upload_pill_geometry_verify.sh`.

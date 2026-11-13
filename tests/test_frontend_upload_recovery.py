@@ -335,10 +335,13 @@ def test_recovery_css_keeps_error_reason_wrapped_and_retry_touch_sized() -> None
     assert reason["overflow-wrap"] == "anywhere"
     assert retry["min-height"] == "44px"
     assert retry["min-width"] == "44px"
-    cancel = styles[".stagedAttachmentChip[data-pending] .stagedAttachmentRemove"]
+    cancel = styles[".stagedAttachmentChip[data-failed] .stagedAttachmentRemove"]
     assert cancel["width"] == "44px"
     assert cancel["min-height"] == "44px"
-    assert styles[".stagedAttachmentChip[data-pending]"]["height"] == "auto"
+    # Only the failure layout declares its own box. A chip whose upload is merely
+    # in flight keeps the completed chip's single-line geometry and derives its
+    # 44px cancel target from the button's hit lane; that contract is pinned by
+    # tests/test_staged_attachment_chip_css.py.
 
 
 def test_unknown_upload_remains_send_blocking_when_retry_hits_a_session_blocker() -> None:
