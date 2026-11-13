@@ -39,40 +39,35 @@
     content: ""; position: absolute; inset: -2px;
   }
   .mockDialog .customSnoozeRow .pickerButtonPrimary { font-size: var(--font-md); }
-  /* proposed: custom row is a calendar + time wheel, stacked, no dropdowns */
+  /* Proposed: the browser's own date/time pickers, with the closed box on the
+     CHIP plane — same 32px box, same type step, same border/radius/fill as
+     .choiceChip. The native picker UI is untouched. */
   .mockDialog .customSnoozeRow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-3);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-2);
   }
-  .calHead { display: flex; align-items: center; justify-content: space-between; }
-  .calTitle { font-size: var(--font-md); font-weight: 600; }
-  .calWeek, .calGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-  .calWeek span {
-    text-align: center; font-size: var(--font-xs); color: var(--muted);
-    text-transform: uppercase; letter-spacing: .06em; padding-bottom: var(--space-1);
+  .mockDialog input[type="date"],
+  .mockDialog input[type="time"] {
+    height: var(--dialog-control-h);
+    min-height: var(--dialog-control-h);
+    padding: 0 var(--space-3);
+    font-size: var(--font-md);
+    line-height: normal;
   }
-  .calCell {
-    min-height: 44px; border: 0; background: transparent; border-radius: var(--radius-control);
-    font-family: inherit; font-size: var(--font-md); color: var(--text);
-    font-variant-numeric: tabular-nums;
+  /* the UA's inner editable box and indicator are what inflate the field */
+  .mockDialog input[type="date"]::-webkit-datetime-edit,
+  .mockDialog input[type="time"]::-webkit-datetime-edit {
+    padding: 0;
+    line-height: normal;
   }
-  .calCell.past { color: var(--muted); opacity: .45; }
-  .calCell.today { box-shadow: inset 0 0 0 1px var(--border); }
-  .calCell.selected { background: var(--ink); color: var(--paper); font-weight: 600; }
-  .snoozeTimeWheel {
-    max-height: 132px; overflow-y: auto; scroll-snap-type: y mandatory;
-    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  .mockDialog input[type="date"]::-webkit-calendar-picker-indicator,
+  .mockDialog input[type="time"]::-webkit-calendar-picker-indicator {
+    width: var(--font-lg);
+    height: var(--font-lg);
+    margin: 0 0 0 var(--space-2);
+    padding: 0;
+    opacity: 0.55;
   }
-  .wheelRow {
-    height: 44px; display: flex; align-items: center; justify-content: center;
-    scroll-snap-align: center; font-size: var(--font-md); color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
-  .wheelRow.selected {
-    color: var(--ink); font-weight: 600; background: var(--wash);
-    box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border);
-  }
-  .mockDialog .pickerField { position: relative; }
   .mockSidebar { width: min(320px, 100%); border: 1px solid var(--border); background: var(--paper); padding: 8px; border-radius: var(--radius-card); }
   .mockSidebar .sessions { overflow: visible; padding: 4px; position: relative; }
   /* proposed drag affordances */
@@ -159,16 +154,8 @@ authored here: the calendar + time wheel, the drop indicator, and the drop zone.
             <button class="choiceChip active" type="button"><span class="chipLabel">Custom…</span><span class="chipTime"></span></button>
           </div>
           <div class="customSnoozeRow" style="display:grid">
-            <div class="snoozeCalendar" role="group" aria-label="Snooze date">
-              <div class="calHead">
-                <button class="icon-btn" type="button" aria-label="Previous month"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
-                <span class="calTitle">November 2026</span>
-                <button class="icon-btn" type="button" aria-label="Next month"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>
-              </div>
-              <div class="calWeek"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
-              <div class="calGrid"><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><button class="calCell past" type="button" disabled>1</button><button class="calCell past" type="button" disabled>2</button><button class="calCell past" type="button" disabled>3</button><button class="calCell past" type="button" disabled>4</button><button class="calCell past" type="button" disabled>5</button><button class="calCell past" type="button" disabled>6</button><button class="calCell past" type="button" disabled>7</button><button class="calCell past" type="button" disabled>8</button><button class="calCell past" type="button" disabled>9</button><button class="calCell past" type="button" disabled>10</button><button class="calCell past" type="button" disabled>11</button><button class="calCell today" type="button" aria-current="date">12</button><button class="calCell" type="button">13</button><button class="calCell" type="button">14</button><button class="calCell" type="button">15</button><button class="calCell" type="button">16</button><button class="calCell" type="button">17</button><button class="calCell selected" type="button" aria-pressed="true">18</button><button class="calCell" type="button">19</button><button class="calCell" type="button">20</button><button class="calCell" type="button">21</button><button class="calCell" type="button">22</button><button class="calCell" type="button">23</button><button class="calCell" type="button">24</button><button class="calCell" type="button">25</button><button class="calCell" type="button">26</button><button class="calCell" type="button">27</button><button class="calCell" type="button">28</button><button class="calCell" type="button">29</button><button class="calCell" type="button">30</button><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span><span class="calCell blank"></span></div>
-            </div>
-            <div class="snoozeTimeWheel" id="mockWheel" aria-label="Snooze time"><div class="wheelRow">7:00am</div><div class="wheelRow">7:30am</div><div class="wheelRow">8:00am</div><div class="wheelRow">8:30am</div><div class="wheelRow selected">9:00am</div><div class="wheelRow">9:30am</div><div class="wheelRow">10:00am</div><div class="wheelRow">10:30am</div><div class="wheelRow">11:00am</div><div class="wheelRow">11:30am</div><div class="wheelRow">12:00pm</div></div>
+            <input type="date" value="2026-11-18" aria-label="Snooze date">
+            <input type="time" value="09:30" step="1800" aria-label="Snooze time">
           </div>
         </label>
         <label class="field"><span class="fieldLabel">Depends on</span>
@@ -179,7 +166,7 @@ authored here: the calendar + time wheel, the drop indicator, and the drop zone.
       </div>
       <div class="formActions"><button type="button">Cancel</button><button class="primary" type="button">Save</button></div>
     </div>
-    <div class="cap">After — Custom: month calendar (cells 44px tall, ≥46px wide at 393px viewport) and a snapping time wheel. No dropdowns.</div>
+    <div class="cap">After — the platforms’ own pickers, closed box on the chip plane: 32px, same type step, same border and radius as the chips beside it.</div>
   </div>
 
   <!-- 3. AFTER, indefinite -->
@@ -275,14 +262,5 @@ authored here: the calendar + time wheel, the drop indicator, and the drop zone.
 
 </div>
 <div class="mockHint">Grab of drag: while dragging a Later card, the Now header reads “Now · drop to wake”.</div>
-<script>
-  // Mock only: settle the wheel on its selected row (the real control snaps on scroll).
-  const wheel = document.getElementById("mockWheel");
-  if (wheel) {
-    const rows = [...wheel.children];
-    const index = rows.findIndex((row) => row.classList.contains("selected"));
-    if (index > 1) wheel.scrollTop = (index - 1) * 44;
-  }
-</script>
 </body>
 </html>

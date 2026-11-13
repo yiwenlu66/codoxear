@@ -311,3 +311,23 @@ the live answer lives in the panel header; the header then carries two dates, di
 
 Model feedback submitted for the designer session: rating 5, request-id dd237ea5-49b8-4326-ba70-137e4650d653
 (the session produced a1→a4 under three steers; rated once, at the end).
+
+## 2026-11-13 — user ruling: native pickers stay, only the closed box was too large
+
+User: "i actually believe browser-native selector ui is ok. my actual comment is the data and time boxes
+are too large when not opening picker ui."
+
+That reclassifies everything above §3-of-the-plan: the calendar panel (`design-a4/`) is not the answer to
+the request. The artifact and its measurements stay in the repo as the record, and the plan's §3 is
+replaced by a four-rule change to the closed field.
+
+Measured after the change in the root `mockup.html` (Chrome):
+- desktop viewport: chip 32px/13px, date field 32px/13px, time field 32px/13px (was 44px/16px-ish);
+- narrow viewport (`max-width: 880px` branch): chip 32px/14px, fields 32px/16px — height parity holds;
+  the 2px type step is `app.css:4095-4106`'s anti-zoom `!important`, left alone.
+- `::-webkit-datetime-edit` padding and the picker indicator are what made the field read larger than
+  its own height; both are addressed in the proposed rules.
+
+New constraint discovered while writing this: an `<input>` is a replaced element and cannot carry the
+`::after` hit-area outset, so a 32px box is a 32px tap target. Plan now wraps each field in a
+`min-height: var(--ctl)` label for the 44px region.

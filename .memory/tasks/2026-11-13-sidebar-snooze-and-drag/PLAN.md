@@ -63,68 +63,65 @@ dependency, so `/edit` keeps its current whole-row contract and is not touched b
 
 ---
 
-## 3. Custom date/time control — final design
+## 3. Custom date/time control
 
-Designed and measured by a subagent; artifacts and reasoning in `design-a4/` (mockup with
-`?state=&theme=&mode=&pick=`), rendered in `preview-custom.png` and `preview-custom-families.png`.
+**The platform pickers stay.** The browser's own date/time UI is fine; the defect was the size of the
+closed box in the resting state: 44px tall and 16px type beside 32px chips.
 
-**Shape.** `Custom…` is the trigger. The picker is a panel anchored to that chip, reusing the
-`.filePickerMenu.dialogPickerMenu` chrome (1px `--border`, `--radius-card`, `--shadow-pop`,
-`--paper`) and `positionDialogMenu`. **Inline growth is 0px** — the dialog is 558px at 393 in every
-state — and the panel is 322×445px.
+Proposed (mock: `mockup.html`, previews `preview-desktop.png` / `preview-phone.png`, third and fourth
+dialogs of the "after" row):
 
-**Panel contents, top to bottom**
+```css
+#editViewer .customSnoozeRow {                 /* was minmax(0,1fr) 140px */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+#editViewer .customSnoozeRow input[type="date"],
+#editViewer .customSnoozeRow input[type="time"] {
+  height: var(--dialog-control-h);             /* 32px — the chip plane, down from 44px */
+  min-height: var(--dialog-control-h);
+  padding: 0 var(--space-3);
+  font-size: var(--font-md);                   /* 13px desktop; the coarse floor keeps 16px */
+  line-height: normal;
+  border-radius: var(--radius-control);
+}
+/* the UA's inner box is what makes the field read bigger than its height */
+#editViewer input[type="date"]::-webkit-datetime-edit,
+#editViewer input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: normal; }
+#editViewer input[type="date"]::-webkit-calendar-picker-indicator,
+#editViewer input[type="time"]::-webkit-calendar-picker-indicator {
+  width: var(--font-lg); height: var(--font-lg);
+  margin: 0 0 0 var(--space-2); padding: 0; opacity: 0.55;
+}
+```
 
-1. *Header, one 32px row.* Left: the live answer `Wed 18 Nov, 9:30am` — `--font-md`, `--text`,
-   `nowrap`, `flex: 0 0 auto`, `aria-live="polite"`, written by the same formatter call that fills the
-   chip's `.chipTime` so the two cannot drift. Right: `‹ Nov 2026 ›` — month at `--font-sm`/`--muted`
-   in a 60px `min-width` so the arrows never move, arrows are the standard 32px `.icon-btn` with 44px
-   hit areas, `‹` disabled on the current month.
-2. *Weekday row* `Mo … Su`, `--font-sm`, muted.
-3. *Day grid* — Monday-first, **six fixed week rows** so the panel never changes height. Each day is a
-   32×32 `.choiceChip` centred in a 44×44 track whose `::after` fills the track, so hit areas tile
-   without overlap. Past days disabled and borderless; today at weight 600; the chosen day carries a
-   2px ink edge (1px border + 1px inset ink ring — the `.agentBackendTab.active` language the app
-   already uses).
-4. *Period tabs* `Night · Morning · Afternoon · Evening`, 32px, with **two independent marks**:
-   `--wash` fill = the period on view, 2px ink edge = this period holds the chosen time. A fully past
-   period is disabled; the Today clamp moves the period on view.
-5. *Slot grid* — a fixed 6 × 2 grid of that period's twelve half-hours, labels `h:mm` with the
-   meridiem carried by the tab, each slot 32px visual in a 44px pitch, chosen slot with the same 2px
-   ink edge.
+No new component, no JS, no overlay, no change to the pickers themselves. The `Indefinitely` chip
+(§2) remains the only addition to the chip row.
 
-**Interaction.** Opening `Custom…` fills it like a preset and opens the panel. A day tap commits and
-keeps the panel open; a time tap commits and closes it; a period tap commits nothing; an outside tap or
-picking a preset closes it. Nothing is ever pending. When closed, the chip's existing `.chipTime` slot
-reads `· Wed 18 Nov, 2pm`, exactly the way presets read `· 9am`. "The 9th of next month at 9am" is four
-taps: `Custom… › 9 9:00`.
+**Measured** (Chrome, `getBoundingClientRect`/`getComputedStyle`): desktop viewport — chip 32px/13px,
+date field 32px/13px, time field 32px/13px. Narrow viewport (`max-width: 880px` branch) — chips
+32px/14px, fields 32px/16px: height parity holds, and the 2px type step is the iOS anti-zoom `!important`
+floor (`app.css:4095-4106`), deliberately untouched.
 
-**Measured** (Chrome, `getBoundingClientRect`/`getComputedStyle`, hit box = border box + `::after`):
-day chip 32×32 → 44×44 at a 44px pitch; period tab 72.5×32 → 78.5×44; slot 46.3×32 → 52.3×44; header
-308×32 with the widest real answer (`Wed 12 May, 12:30am`, 139.6px) fitting at 360 with 18.4px of slack
-and no truncation; **no scroll container anywhere in the panel** (`scrollHeight === clientHeight` at
-393×852, 393×660, 360×640, 430×932, 1100×900); `.formBody` never scrolls.
+**Hit area.** An `<input>` is a replaced element and cannot carry the `::after` outset chips use, so a
+32px box would be a 32px target on a phone. Wrap each field in a `min-height: var(--ctl)` label
+(`.snoozeInputCell { display: flex; align-items: center }`); the wrapper supplies the 44px tap region and
+the label's activation focuses the field.
 
-**Two narrow product changes this design needs**, both found by measurement:
+**Device checks before shipping** (the one thing the mock cannot prove): on iOS Safari and Android
+Chrome, that the value is not clipped at 32px in both `mm/dd/yyyy` and `HH:MM` locale forms, that the
+indicator still opens the picker, and that the wrapper's 44px region activates the field. If a phone
+platform turns out to force extra intrinsic height on these fields, the fallback is a 36px box for
+`(pointer: coarse)` only — measured, not guessed.
 
-- `positionDialogMenu` caps a menu at half the viewport and flips only under 220px of free space, so a
-  445px panel gets cut. Add an **opt-in `data-fit-whole` branch**: use the full `scrollHeight`, place
-  below if it fits, else above if it fits, else over the anchor from the larger side. Menus without the
-  flag behave byte-identically.
-- Click-away must use `event.composedPath()`. A day tap re-renders the grid, so `target.closest()` sees
-  a detached node and closes the panel mid-selection.
+**Not adopted** (artifacts kept in `design-a4/`, superseded by this ruling): a chip-plane trigger with a
+calendar panel, month grid, period tabs and slot grid. It was correct in every constraint we set and it
+is the wrong answer to the actual request — the platform picker was never the problem.
 
-**Consequence to keep in mind:** at 393×852 the panel fits neither side (417px below, 367px above), so
-it opens *over* the `Custom…` chip — which is exactly why the live answer lives in the panel header. At
-430×932 it opens below; at 1100×900 above.
-
-**Rejected in review, with the reason each time** — native `<input type=date|time>` (44px box and 16px
-type beside 32px chips, UA chrome); 32px pickers on the *field* plane at 44px (the size difference, once
-more); dropdown lists of days and times ("you use dropdown for datetime?"); an inline month calendar plus
-time wheel (470px block; 44px *visible* boxes where the app's rule is that hit area is not visual size;
-three competing selection languages; nested vertical scroller); per-segment arrow steppers (ten targets,
-repeated tapping for distant dates); horizontal chip strips (a month becomes a 1,800px fling; clipped
-half-chips read as glitches).
+The rejected shapes, with reasons, for the record: native inputs at 44px/16px beside 32px chips; 32px
+pickers on the *field* plane at 44px; dropdown lists of days and times; an inline month calendar plus
+time wheel (470px, 44px *visible* boxes, three competing selection languages, nested scroller);
+per-segment arrow steppers (ten targets); horizontal chip strips (a month becomes a 1,800px fling).
 
 ## 4. Drag
 
