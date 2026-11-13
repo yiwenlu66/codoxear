@@ -523,16 +523,16 @@ try:
            f"p=Path('{DEMO}/large.pdf'); p.write_bytes(base64.b64decode('{large_pdf}')); "
            "f=p.open('ab'); f.truncate(8*1024*1024); f.close()")
     video_status, _, video_payload = read_payload("clip.mkv")
-    video_preview_url = video_payload.get("video_preview_url") or ""
+    media_preview_url = video_payload.get("media_preview_url") or ""
     video_range_status, video_range_headers, video_range_body = (None, {}, b"")
-    if video_preview_url:
+    if media_preview_url:
         video_range_status, video_range_headers, video_range_body = api(
-            "GET", video_preview_url, headers={"Range": "bytes=0-0"}, raw=True)
+            "GET", media_preview_url, headers={"Range": "bytes=0-0"}, raw=True)
     check("7a_video_fixture_and_native_range",
-          video_status == 200 and video_payload.get("kind") == "video" and bool(video_preview_url)
+          video_status == 200 and video_payload.get("kind") == "video" and bool(media_preview_url)
           and video_range_status == 206 and len(video_range_body) == 1,
           {"read_status": video_status, "kind": video_payload.get("kind"),
-           "preview_url": video_preview_url, "range_status": video_range_status,
+           "preview_url": media_preview_url, "range_status": video_range_status,
            "range_bytes": len(video_range_body), "content_range": video_range_headers.get("Content-Range")})
 
     browser("open", BASE + "/")
@@ -739,8 +739,8 @@ try:
     derivative_urls = [
         payloads["deck.ppt"]["payload"]["preview_url"],
         "/api/files/office_preview?" + urllib.parse.urlencode({"path": f"{DEMO}/report.docx"}),
-        video_preview_url,
-        "/api/files/video_preview?" + urllib.parse.urlencode({"path": f"{DEMO}/clip.mkv"}),
+        media_preview_url,
+        "/api/files/media_preview?" + urllib.parse.urlencode({"path": f"{DEMO}/clip.mkv"}),
     ]
     derivative_results = browser_eval("""(async () => {
       const results = [];

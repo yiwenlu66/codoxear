@@ -34,6 +34,19 @@ consumed or the connection closed before reuse. Upload recovery never sends a
 prompt. API, persistence-v2 migration, downgrade and verification details live
 in [Attachment uploads: consistency and recovery](../../docs/attachment-upload-robustness.md).
 
+A staged chip has one geometry for two states. An in-flight chip renders the
+completed chip's exact single-line box (`height: var(--ctl-chrome)`) — only the
+`[data-failed]` recovery layout may grow, because it carries a wrapped reason
+plus Retry. The in-flight cancel keeps its 44px target in the button's `::after`
+hit lane (`inset: -16px -13px -10px`), never in a 44px visual box: a pending
+`height: auto` plus a 44px-tall button once inflated the in-flight pill to 46px
+against the completed 32px and shifted the whole composer by 14px. The lane is
+asymmetric on purpose — it leaves the 32px chip, so its 44px are reached upward
+and its bottom edge stops above the composer's entry row, which keeps the pixels
+its own hit surface covers. Declarations are pinned by
+`tests/test_staged_attachment_chip_css.py`; the real cascade and hit testing by
+`scripts/docker_upload_pill_geometry_verify.sh`.
+
 ### Widget rule
 
 Element + render + subscription in one module:
@@ -294,7 +307,7 @@ bug (see `.memory/tasks/2026-10-24-subagent-resume-model-routing/`).
 ### Offline cold-load authority
 The canonical SW cache/readiness contract is in AGENTS.md. Activation must warm the uncontrolled first navigation's shell and versioned dependencies; runtime fetch caching alone requires an extra visit. `/api/me` is boot-only: when activation precedes authentication, successful login must refresh it after best-effort worker readiness, otherwise an authenticated UI can render online yet have no cached auth snapshot for offline boot. Theme links are generated dynamically, so the SW warms its explicit family list at the shared asset version; the behavioral activation test pins the list against actual theme files. Transcript caches remain populated only by opening sessions online.
 
-Network-first response delivery and cache durability are separate lifetimes: delivery settles at headers, a synchronous clone is stored under the fetch event's pre-registered `waitUntil`, and cache-write failures cannot reject the live answer. The race no longer bounds a peer that sends headers and then stalls the body. Static/warm-up writes remain awaited. In-scope session and absolute `office_preview`/`video_preview` routes, plus every Range request, bypass interception so native streaming/206 semantics cannot be replaced by a cached full 200. Derivatives therefore have no service-worker offline fallback; non-Range blob/raw/download caching is unchanged.
+Network-first response delivery and cache durability are separate lifetimes: delivery settles at headers, a synchronous clone is stored under the fetch event's pre-registered `waitUntil`, and cache-write failures cannot reject the live answer. The race no longer bounds a peer that sends headers and then stalls the body. Static/warm-up writes remain awaited. In-scope session and absolute `office_preview`/`media_preview` routes, plus every Range request, bypass interception so native streaming/206 semantics cannot be replaced by a cached full 200. Derivatives therefore have no service-worker offline fallback; non-Range blob/raw/download caching is unchanged.
 
 ## Deployment runtime resolution (verified 2026-10-10)
 

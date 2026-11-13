@@ -118,3 +118,16 @@ Append-only. Timestamps are local (Asia/Shanghai unless noted).
   close leaves src null + paused, mkv videoWidth 160 at 0.64/0.93 s, no page
   errors). Committed with an explicit pathspec so the concurrent session's
   staged entries were not touched.
+
+## 2026-11-15 (stale-consumer sweep)
+
+- Found one more consumer of the old names by grepping the whole tree:
+  `scripts/docker_office_preview_verify.py` read `video_payload["video_preview_url"]`
+  and fetched `/api/files/video_preview`, which the rename would have broken
+  silently (empty URL → the check's `bool(media_preview_url)` gate would have
+  reported a false failure). Updated to `media_preview_url` /
+  `/api/files/media_preview` and `py_compile`d.
+- `.memory/project/ARCHITECTURE.md`'s service-worker note still named the
+  `video_preview` derivative route; corrected to `media_preview`.
+- Remaining `video_preview` spellings are intentional: the env-var fallback in
+  `media_preview.py` (+ its test) and historical `recon/`/task snapshots.
