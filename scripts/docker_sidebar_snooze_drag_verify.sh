@@ -359,12 +359,23 @@ mkdir -p "$HOME/.local/share/codoxear" /tmp/ws/alpha /tmp/ws/beta /tmp/ws/gamma
     # edit actions in its RIGHT group (`rightMax: 104`), so a rightward swipe
     # reveals Delete and a leftward swipe reveals Edit/Duplicate. Both directions
     # must still work after the drags above.
-    right=ev("""(() => { const c=document.querySelectorAll('#sessions .session')[0], p=c.querySelector('.sessionContent'), r=p.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2; const fire=(t,px)=>p.dispatchEvent(new PointerEvent(t,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:88,button:0,clientX:px,clientY:y})); fire('pointerdown',x); fire('pointermove',x+70); fire('pointerup',x+70); const d=c.querySelector('.sessionDel'), dr=d.getBoundingClientRect(), hit=document.elementFromPoint(dr.left+dr.width/2, dr.top+dr.height/2); return {id:c.dataset.sessionId, swipeX:p.dataset.swipeX, deleteHit: hit===d||d.contains(hit), hitClass: hit&&hit.className}; })()""")
-    save('step14-right-swipe-delete',right); shot('step14-right-swipe')
-    check(right['deleteHit'],'right swipe did not reveal the delete action (step14-right-swipe-delete.json)')
-    left=ev("""(() => { const c=document.querySelectorAll('#sessions .session')[1], p=c.querySelector('.sessionContent'), r=p.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2; const fire=(t,px)=>p.dispatchEvent(new PointerEvent(t,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:89,button:0,clientX:px,clientY:y})); fire('pointerdown',x); fire('pointermove',x-100); fire('pointerup',x-100); const b=c.querySelector('.sessionActions.right .icon-btn'), br=b.getBoundingClientRect(), hit=document.elementFromPoint(br.left+br.width/2, br.top+br.height/2); return {id:c.dataset.sessionId, swipeX:p.dataset.swipeX, editHit: hit===b||b.contains(hit), hitClass: hit&&hit.className}; })()""")
-    save('step14-left-swipe-edit',left); shot('step14-left-swipe')
-    check(left['editHit'],'left swipe did not reveal the edit actions (step14-left-swipe-edit.json)')
+    def swipe_on(index, dx, pointer_id):
+        return ev(f"""(() => {{ const c=document.querySelectorAll('#sessions .session')[{index}], p=c.querySelector('.sessionContent'), r=p.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2; const fire=(t,px)=>p.dispatchEvent(new PointerEvent(t,{{bubbles:true,cancelable:true,pointerType:'touch',pointerId:{pointer_id},button:0,clientX:px,clientY:y}})); fire('pointerdown',x); fire('pointermove',x+({dx})); fire('pointerup',x+({dx})); return {{id:c.dataset.sessionId, swipeX:p.dataset.swipeX}}; }})()""")
+
+    def hit_in(index, selector):
+        return ev(f"""(() => {{ const c=document.querySelectorAll('#sessions .session')[{index}], n=c.querySelector({selector!r}), r=n.getBoundingClientRect(), hit=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2); return {{target:{{left:r.left,top:r.top,width:r.width,height:r.height}}, hit: hit&&(hit.className||hit.tagName), inside: hit===n||n.contains(hit)}}; }})()""")
+
+    right=swipe_on(0,70,88)
+    save('step14-right-swipe',right); time.sleep(.45); shot('step14-right-swipe')
+    # The reveal is a CSS transform: hit-test only after the transition settles.
+    right_hit=hit_in(0,".sessionDel")
+    save('step14-right-swipe-delete',{**right,**right_hit})
+    check(right['swipeX']=='72' and right_hit['inside'],f"right swipe did not reveal the delete action: {right} {right_hit}")
+    left=swipe_on(1,-100,89)
+    save('step14-left-swipe',left); time.sleep(.45); shot('step14-left-swipe')
+    left_hit=hit_in(1,".sessionActions.right .icon-btn")
+    save('step14-left-swipe-edit',{**left,**left_hit})
+    check(left['swipeX']=='-104' and left_hit['inside'],f"left swipe did not reveal the edit actions: {left} {left_hit}")
     passed(14,'step11-gesture-*.json','step14-right-swipe-delete.json','step14-left-swipe-edit.json')
     save('final-browser-errors',json.loads(browser('errors','--json')))
     report['result']='pass'
