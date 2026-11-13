@@ -106,7 +106,7 @@ routes never install packages.
 | Git | Required by `codoxear-sessiond` when initializing its root repository, by the deployment script, and by Git/diff features. Keep `git` on the launching process's PATH for those existing workflows. |
 | LibreOffice (Writer, Calc, Impress) | Optional Word (`.doc/.docx`), Excel (`.xls/.xlsx`), and PowerPoint (`.ppt/.pptx`) PDF previews. Originals remain available for download. |
 | Noto fonts | Recommended baseline and CJK coverage for readable document previews. Additional script-specific Noto families may be needed; substitute fonts do not guarantee identical Office layout or pagination. |
-| FFmpeg **with libx264 and AAC**, plus ffprobe | Optional browser-compatible local video conversion and merged voice HLS. Browser-native videos still play without conversion tools; missing tools/codecs produce an explicit preview error. |
+| FFmpeg **with libx264, AAC, and libmp3lame**, plus ffprobe | Optional browser-compatible local audio and video conversion, and merged voice HLS. Browser-native audio/video still plays without conversion tools; missing tools/codecs produce an explicit preview error. |
 | tmux | Optional “Create in tmux” sessions. Ordinary broker sessions do not require it. |
 
 Check everything, or only a selected feature:
