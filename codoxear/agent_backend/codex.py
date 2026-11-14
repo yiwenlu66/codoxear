@@ -30,7 +30,9 @@ class CodexBackend(AgentBackend):
         return out
 
     def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from ..rollout_events import _codex_item_completed_item
         from ..rollout_events import _codex_event_text
+        from ..rollout_events import _codex_user_item_text
         from ..rollout_events import _event_ts
         from ..rollout_events import _text_message_id
 
@@ -56,6 +58,46 @@ class CodexBackend(AgentBackend):
             if not isinstance(payload, dict):
                 raise ValueError("invalid event_msg payload")
             payload_type = payload.get("type")
+            if payload_type == "item_completed":
+                item = _codex_item_completed_item(row)
+                if item is None:
+                    return None
+                ts = _event_ts(row)
+                if ts is None:
+                    completed_at_ms = payload.get("completed_at_ms")
+                    if isinstance(completed_at_ms, (int, float)):
+                        ts = float(completed_at_ms) / 1000.0
+                item_type = item.get("type")
+                if item_type == "UserMessage":
+                    message = _codex_user_item_text(row)
+                    if message is None:
+                        return None
+                    event = {"role": "user", "text": message}
+                    if ts is not None:
+                        event["ts"] = ts
+                    return event
+                if item_type == "AgentMessage":
+                    content = item.get("content")
+                    if not isinstance(content, list):
+                        return None
+                    message = "".join(
+                        part["text"]
+                        for part in content
+                        if isinstance(part, dict) and part.get("type") == "Text" and isinstance(part.get("text"), str)
+                    )
+                    if not message.strip():
+                        return None
+                    message_class = "final_response" if item.get("phase") == "final_answer" else "narration"
+                    event = {
+                        "role": "assistant",
+                        "text": message,
+                        "message_class": message_class,
+                        "message_id": _text_message_id(message_class=message_class, text=message, ts=ts),
+                    }
+                    if ts is not None:
+                        event["ts"] = ts
+                    return event
+                return None
             if payload_type == "user_message":
                 message = payload.get("message")
                 if not isinstance(message, str):
