@@ -1,5 +1,9 @@
   function requireFunction(value, name) { if (typeof value !== "function") throw new TypeError(`file viewer dependency missing: ${name}`); return value; }
   const BROWSER_SAFE_MEDIA_TYPES = Object.freeze({ video: new Set(["video/mp4", "video/webm", "video/ogg"]), audio: new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/flac"]) });
+  // A file reply missing the fields this page reads comes from another app
+  // version: an old page against a new server, or a reply the service worker
+  // saved before a deploy. Reloading fetches a matching page and reply.
+  const FILE_REPLY_VERSION_MISMATCH_MESSAGE = "page and server versions don't match — reload the page";
   const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
   function fileSaveConflictTarget(sessionId, identity) {
     return Object.freeze({
@@ -99,7 +103,7 @@
     function prepareActiveMediaLoadResult(rel, result, request) {
       const kind = result.kind;
       applyActiveFileNonTextState(kind);
-      if (typeof result.media_url !== "string" || !result.media_url) throw new Error(`invalid ${kind} response`);
+      if (typeof result.media_url !== "string" || !result.media_url) throw new Error(FILE_REPLY_VERSION_MISMATCH_MESSAGE);
       const path = String(rel || kind);
       const expectedType = kind === "audio" ? "audio/mpeg" : "video/mp4";
       const previewUrl = typeof result.media_preview_url === "string" && normalizedMediaContentType(result.preview_content_type) === expectedType ? result.media_preview_url : "";
@@ -146,7 +150,7 @@
 
     function prepareFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
       if (!isCurrentFileOpenRequest(request)) return null;
-      if (!result || typeof result.kind !== "string") throw new Error("invalid response");
+      if (!result || typeof result.kind !== "string") throw new Error(FILE_REPLY_VERSION_MISMATCH_MESSAGE);
       const path = String(rel || "");
       if (result.kind === "diff") {
         const baseText = typeof result.baseText === "string" ? result.baseText : "";
@@ -157,13 +161,13 @@
       }
       if (result.kind === "image") {
         applyActiveFileNonTextState("image");
-        if (typeof result.image_url !== "string" || !result.image_url) throw new Error("invalid image response");
+        if (typeof result.image_url !== "string" || !result.image_url) throw new Error(FILE_REPLY_VERSION_MISMATCH_MESSAGE);
         const size = typeof result.size === "number" ? result.size : 0;
         return Object.freeze({ kind: "image", imageUrl: result.image_url, alt: path, status: `${path} - ${fmtBytes(size)}` });
       }
       if (result.kind === "pdf") {
         applyActiveFileNonTextState("pdf");
-        if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error("invalid pdf response");
+        if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error(FILE_REPLY_VERSION_MISMATCH_MESSAGE);
         const size = typeof result.size === "number" ? result.size : 0;
         return Object.freeze({ kind: "pdf", pdfUrl: result.pdf_url, status: `${path} - PDF - ${fmtBytes(size)}` });
       }
@@ -187,7 +191,7 @@
         const size = typeof result.size === "number" ? result.size : 0;
         return Object.freeze({ kind: "download_only", reason: String(result.reason || ""), viewerMaxBytes: Number(result.viewer_max_bytes || 0), size, status: `${path} - download only - ${fmtBytes(size)}` });
       }
-      if (typeof result.text !== "string") throw new Error("invalid response");
+      if (typeof result.text !== "string") throw new Error(FILE_REPLY_VERSION_MISMATCH_MESSAGE);
       const textKind = String(result.kind || "");
       applyActiveFileTextState({ kind: isPreviewableFileKind(textKind) ? textKind : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });
       // HTML preview renders the document from a server-provided URL (a real
