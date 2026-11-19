@@ -30,6 +30,8 @@ from .session_snapshot_routes import handle_snapshot_delete_route
 from .session_snapshot_routes import handle_snapshot_get_route
 from .session_snapshot_routes import handle_snapshot_post_route
 from .static_routes import handle_static_get_route
+from .update_routes import handle_update_get_route
+from .update_routes import handle_update_post_route
 from .voice_routes import handle_voice_get_route
 from .voice_routes import handle_voice_post_route
 
@@ -61,6 +63,7 @@ class ServerHandlerDeps:
     message_route_deps: Callable[[], Any]
     control_route_deps: Callable[[], Any]
     hook_route_deps: Callable[[], Any]
+    update_route_deps: Callable[[], Any]
 
 
 class CodoxearHandler(http.server.BaseHTTPRequestHandler):
@@ -277,6 +280,8 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 match_session_route=self.deps.match_session_route,
             ):
                 return
+            if handle_update_get_route(self, path=path, deps=self.deps.update_route_deps()):
+                return
             self.send_error(404)
         except KeyError:
             self.deps.json_response(self, 404, {"error": "unknown session"})
@@ -352,6 +357,8 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 return
             if handle_hook_post_route(self, path=path, deps=self.deps.hook_route_deps()):
                 return
+            if handle_update_post_route(self, path=path, deps=self.deps.update_route_deps()):
+                return
             self.send_error(404)
         except KeyError:
             self.deps.json_response(self, 404, {"error": "unknown session"})
@@ -413,5 +420,6 @@ def make_server_handler(server: Any) -> type[CodoxearHandler]:
             message_route_deps=lambda: server._route_deps_factory().message_route_deps(),
             control_route_deps=lambda: server._route_deps_factory().control_route_deps(),
             hook_route_deps=lambda: server._route_deps_factory().hook_route_deps(),
+            update_route_deps=lambda: server._route_deps_factory().update_route_deps(),
         )
     )

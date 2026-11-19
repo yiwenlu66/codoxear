@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .auth_routes import AuthRouteDeps
@@ -22,6 +24,7 @@ from .session_routes import SessionRouteDeps
 from .session_snapshot_routes import SnapshotRouteDeps
 from .static_routes import StaticRouteDeps
 from .token_signal import TokenObservation
+from .update_routes import UpdateRouteDeps
 from .voice_routes import VoiceRouteDeps
 
 
@@ -99,6 +102,22 @@ class ServerRouteDepsFactory:
         return HookRouteDeps(
             read_body=server._read_body,
             json_response=server._json_response,
+        )
+
+    def update_route_deps(self) -> UpdateRouteDeps:
+        server = self.server
+        # The service's WorkingDirectory is the deployed snapshot worktree, and
+        # that worktree's HEAD is the code actually running; the pipx-installed
+        # package this process imports from is not a checkout at all. The update
+        # command is read once here so no route handler touches the environment.
+        return UpdateRouteDeps(
+            require_auth=server._require_auth,
+            json_response=server._json_response,
+            read_body=server._read_body,
+            read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+            app_dir=server.APP_DIR,
+            working_dir=Path.cwd(),
+            update_command=os.environ.get("CODOXEAR_UPDATE_COMMAND", ""),
         )
 
     def control_route_deps(self) -> ControlRouteDeps:
