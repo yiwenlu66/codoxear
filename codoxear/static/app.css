@@ -540,9 +540,6 @@
         .typingDot {
           animation: none;
         }
-        .updateSpinner {
-          animation: none;
-        }
       }
       /* A selected card uses the same solid two-pixel perimeter on the
          touch and desktop branches without changing its layout dimensions. */
@@ -4497,6 +4494,9 @@ select {
         /* Family geometry, not a literal: paper's ring is square like every
            other paper radius, clay/slate round it to a circle. */
         border-radius: var(--radius-dot);
+        /* Progress, not attention: the adjacent text ("Checking…"/"Updating…")
+           carries the state, and the global reduced-motion block keeps its
+           pinned list of decorative animations. */
         animation: updateSpin 0.7s linear infinite;
         vertical-align: -2px;
         margin-right: var(--space-2);
