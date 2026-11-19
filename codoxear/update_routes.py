@@ -24,7 +24,7 @@ ReadBody = Callable[[Any], bytes]
 ReadJsonBody = Callable[..., dict[str, Any]]
 
 CHECK_PATH = "/api/update/check"
-CHECK_POST_PATH = "/api/update/settings"
+SETTINGS_PATH = "/api/update/settings"
 APPLY_PATH = "/api/update/apply"
 
 # A status left at "running" longer than this is treated as lost: the runner is
@@ -69,7 +69,7 @@ def handle_update_get_route(handler: Any, *, path: str, deps: UpdateRouteDeps) -
 
 
 def handle_update_post_route(handler: Any, *, path: str, deps: UpdateRouteDeps) -> bool:
-    if path == CHECK_POST_PATH:
+    if path == SETTINGS_PATH:
         return _handle_settings_post(handler, deps=deps)
     if path == APPLY_PATH:
         return _handle_apply_post(handler, deps=deps)
