@@ -18,12 +18,19 @@ Rules, in order:
    ``cleared`` so the title is not silently re-adopted as if the user had set it.
 3. With no alias and no user clear, a title the user set in the terminal is
    adopted into the alias store — once. Adoption never fights a user clear.
-4. A backend that cannot be reached is retried on a bounded backoff. It never
+4. A session nobody has named is given its default name (cwd basename, numbered
+   only when a live session already holds it) and that name is projected, so a
+   backend never keeps an empty title while the sidebar shows a name. A default
+   is recorded as such: a title the user then types in the backend's own TUI
+   supersedes it, which is exactly rule 3 applied to a name the user did not
+   choose. Without this, Pi's intercom and delegation identity falls back to a
+   generated ``subagent-chat-<session id>`` label.
+5. A backend that cannot be reached is retried on a bounded backoff. It never
    blocks the rename: the alias is already saved and the failure is reported.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping
 
 from .agent_backend import normalize_agent_backend
 from .session_cleaners import clean_alias
@@ -33,6 +40,16 @@ from .session_cleaners import clean_alias
 # that comes back later still receives the name, without polling it every tick.
 _RETRY_DELAYS = (15.0, 60.0, 300.0)
 
+# Where a projected name came from. A ``default`` name was assigned by codoxear
+# because the session had none, so a title the user types in the backend's own
+# TUI outranks it; a name the user chose in codoxear does not yield.
+ORIGIN_DEFAULT = "default"
+
+
+def _origin(record: Mapping[str, Any]) -> str:
+    value = record.get("origin")
+    return value if isinstance(value, str) else ""
+
 
 @dataclass(frozen=True)
 class SessionNameProjectionDeps:
@@ -41,6 +58,9 @@ class SessionNameProjectionDeps:
     alias_get: Callable[[str], str]
     alias_cleared: Callable[[str], bool]
     alias_set: Callable[[str, str], str]
+    # Assign the store's default name when it holds none; returns the name now
+    # in the store. This is the one producer of default names.
+    alias_assign_default: Callable[[str], str]
     sock_call: Callable[..., dict[str, Any]]
     applied: Callable[[], MutableMapping[str, dict[str, Any]]]
     set_applied: Callable[[dict[str, dict[str, Any]]], None]
@@ -158,8 +178,23 @@ class SessionNameProjection:
         record = self._record(key)
         state = record.get("state") if isinstance(record.get("state"), str) else ""
         record_name = record.get("name") if isinstance(record.get("name"), str) else ""
+        observed = snapshot["observed"]
+
+        if not desired and not self.deps.alias_cleared(session_id) and not observed:
+            # Nobody has named this session and the backend carries no title of
+            # its own: assign the default name now, so a fresh session is never
+            # nameless in the backend's own UI (Pi's session_info / intercom
+            # identity, Codex's thread name, Claude Code's resume title).
+            desired = self.deps.alias_assign_default(session_id)
+            if desired:
+                return self._push(session_id, snapshot, key, desired, record, origin=ORIGIN_DEFAULT)
 
         if desired:
+            if _origin(record) == ORIGIN_DEFAULT and observed and observed != desired:
+                # The name in place is one codoxear assigned, not one the user
+                # chose, and the backend now carries a different title: the user
+                # named it in the terminal, so that title wins.
+                return self._adopt(session_id, backend, key, observed)
             if record_name == desired and state in ("applied", "adopted", "pending"):
                 return {"ok": True, "backend": backend, "reason": "unchanged", "name": desired}
             if record_name == desired and state == "unsupported":
@@ -180,7 +215,6 @@ class SessionNameProjection:
         # backend title — a wrong clear destroys a name the user set in the
         # terminal, and the recorded `cleared` state then blocks re-adoption.
         if not self.deps.alias_cleared(session_id):
-            observed = snapshot["observed"]
             if observed and record_name != observed:
                 return self._adopt(session_id, backend, key, observed)
             return {"ok": True, "backend": backend, "reason": "no-alias"}
@@ -205,11 +239,13 @@ class SessionNameProjection:
         key: str,
         name: str,
         previous: dict[str, Any],
+        *,
+        origin: str = "",
     ) -> dict[str, Any]:
         backend = snapshot["backend"]
         sock = snapshot.get("sock_path")
         if sock is None:
-            return self._record_failure(key, name, previous, {"reason": "transport", "detail": "no control socket"}, backend)
+            return self._record_failure(key, name, previous, {"reason": "transport", "detail": "no control socket"}, backend, origin)
         try:
             reply = self.deps.sock_call(
                 sock,
@@ -217,14 +253,14 @@ class SessionNameProjection:
                 timeout_s=2.0,
             )
         except Exception as exc:
-            return self._record_failure(key, name, previous, {"reason": "transport", "detail": f"{type(exc).__name__}: {exc}"}, backend)
+            return self._record_failure(key, name, previous, {"reason": "transport", "detail": f"{type(exc).__name__}: {exc}"}, backend, origin)
         if not isinstance(reply, dict):
-            return self._record_failure(key, name, previous, {"reason": "transport", "detail": "invalid broker reply"}, backend)
+            return self._record_failure(key, name, previous, {"reason": "transport", "detail": "invalid broker reply"}, backend, origin)
         reason = reply.get("reason") if isinstance(reply.get("reason"), str) else ""
 
         if reply.get("ok") is True:
             if reply.get("pending") is True:
-                self._store(key, {"state": "pending", "name": name, "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]})
+                self._store(key, _record_with_origin({"state": "pending", "name": name, "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]}, origin))
                 return {"ok": True, "backend": backend, "reason": "pending", "name": name}
             effective = reply.get("name") if isinstance(reply.get("name"), str) else name
             if not name:
@@ -233,7 +269,7 @@ class SessionNameProjection:
                 # cleared so an old title is never re-adopted).
                 self._store(key, {"state": "cleared", "name": "", "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]})
                 return {"ok": True, "backend": backend, "reason": "cleared"}
-            self._store(key, {"state": "applied", "name": effective, "attempts": 1, "ts": self.deps.now(), "control": snapshot["control"]})
+            self._store(key, _record_with_origin({"state": "applied", "name": effective, "attempts": 1, "ts": self.deps.now(), "control": snapshot["control"]}, origin))
             return {"ok": True, "backend": backend, "reason": "applied", "name": effective}
 
         if reply.get("unsupported") is True or reason in ("unsupported", "unsupported-clear"):
@@ -241,10 +277,10 @@ class SessionNameProjection:
             # an old Pi bridge that later reloads advertises the capability and
             # the next poll retries automatically.
             state_value = "cleared" if not name else "unsupported"
-            self._store(key, {"state": state_value, "name": name, "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]})
+            self._store(key, _record_with_origin({"state": state_value, "name": name, "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]}, origin))
             return {"ok": False, "backend": backend, "reason": reason or "unsupported", "name": name}
 
-        return self._record_failure(key, name, previous, {"reason": reason or "error", "detail": str(reply.get("error") or reply.get("detail") or "")}, backend)
+        return self._record_failure(key, name, previous, {"reason": reason or "error", "detail": str(reply.get("error") or reply.get("detail") or "")}, backend, origin)
 
     def _record_failure(
         self,
@@ -253,11 +289,12 @@ class SessionNameProjection:
         previous: dict[str, Any],
         failure: dict[str, str],
         backend: str,
+        origin: str = "",
     ) -> dict[str, Any]:
         attempts = previous.get("attempts") if isinstance(previous.get("attempts"), int) else 0
         attempts = int(attempts) + 1
         control = previous.get("control") is True
-        self._store(key, {"state": "failed", "name": name, "attempts": attempts, "ts": self.deps.now(), "control": control})
+        self._store(key, _record_with_origin({"state": "failed", "name": name, "attempts": attempts, "ts": self.deps.now(), "control": control}, origin))
         return {
             "ok": False,
             "backend": backend,
@@ -276,6 +313,14 @@ class SessionNameProjection:
             return {"ok": True, "backend": backend, "reason": "unchanged"}
         self._store(key, {"state": "adopted", "name": alias, "attempts": 0, "ts": self.deps.now(), "control": True})
         return {"ok": True, "backend": backend, "reason": "adopted", "name": alias}
+
+
+def _record_with_origin(record: dict[str, Any], origin: str) -> dict[str, Any]:
+    """Carry where a projected name came from, so a default yields to a title
+    the user set in the backend's own TUI (see ORIGIN_DEFAULT)."""
+    if origin:
+        record["origin"] = origin
+    return record
 
 
 def _retry_delay(record: dict[str, Any]) -> float:

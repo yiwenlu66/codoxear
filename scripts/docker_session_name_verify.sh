@@ -7,7 +7,11 @@
 # real session JSONL and a real bridge extension.
 #
 # Scenario:
-#   1. a terminal-set title (`/name`) is adopted as the codoxear display name
+#   0. a session nobody named is given its default name (cwd basename) and Pi
+#      carries it, so Pi's own identity is never the generated
+#      `subagent-chat-<id>` fallback while the sidebar shows a name
+#   1. a terminal-set title (`/name`) is adopted as the codoxear display name,
+#      superseding the default codoxear assigned
 #   2. renaming in codoxear appends exactly one `session_info` row to the Pi log
 #   3. repeating the same rename appends nothing
 #   4. clearing the name appends an empty `session_info` and stays cleared
@@ -207,13 +211,47 @@ rename() {
     "http://127.0.0.1:${port}/api/sessions/${session_id}/rename" > "$artifacts/rename-${2}.json"
 }
 
-# --- Step 0: the live bridge advertises the capability -----------------------
+# --- Prelude: the live bridge advertises the capability ----------------------
 for _ in $(seq 1 120); do
   control="$(row_field session_name_control || true)"
   [[ "$control" == "True" ]] && break
   sleep 0.25
 done
 [[ "${control:-}" == "True" ]] || fail "bridge never advertised session_name_control (got ${control:-unset})"
+
+# --- Step 0: an unnamed session gets its default name -----------------------
+# Any transcript read refreshes the sidecar, which is the trigger that assigns a
+# default name to a session nobody has named yet.
+curl -fsS -b "$cookie" "http://127.0.0.1:${port}/api/sessions/${session_id}/messages/export" \
+  > "$artifacts/export-before-name.json" || fail "transcript export failed"
+
+cwd_basename="$(python3 - "$artifacts/sessions.json" <<'PY'
+import json, os, sys
+rows = json.load(open(sys.argv[1], encoding="utf-8"))
+if isinstance(rows, dict):
+    rows = rows.get("sessions") or []
+for row in rows or []:
+    if isinstance(row, dict) and row.get("session_id"):
+        print(os.path.basename(str(row.get("cwd") or "").rstrip("/")))
+        break
+PY
+)"
+[[ -n "$cwd_basename" ]] || fail "session row has no cwd to derive a default name from"
+
+for _ in $(seq 1 120); do
+  rows="$(log_rows)"
+  alias_value="$(row_field alias || true)"
+  [[ "${alias_value:-}" == "$cwd_basename" ]] && break
+  sleep 0.25
+done
+[[ "${alias_value:-}" == "$cwd_basename" ]] || fail "unnamed session was not given the default name (alias=${alias_value:-unset}, expected ${cwd_basename})"
+python3 - "$rows" "$cwd_basename" "$artifacts/default-name.json" <<'PY' || fail "the default name never reached the Pi session log"
+import json, sys
+data = json.loads(sys.argv[1])
+expected = sys.argv[2]
+assert data.get("names") == [expected], data
+json.dump(data, open(sys.argv[3], "w", encoding="utf-8"))
+PY
 
 # --- Step 1: a title typed in the terminal is adopted ------------------------
 curl -fsS -b "$cookie" -H 'Content-Type: application/json' \
@@ -245,7 +283,7 @@ for _ in $(seq 1 120); do
   [[ "$alias_value" == "terminal title" ]] && break
   sleep 0.25
 done
-[[ "${alias_value:-}" == "terminal title" ]] || fail "terminal title was not adopted as the display name (got ${alias_value:-unset})"
+[[ "${alias_value:-}" == "terminal title" ]] || fail "terminal title was not adopted over the assigned default (got ${alias_value:-unset})"
 
 # --- Step 2: a codoxear rename reaches Pi -----------------------------------
 rename "web name" 1
@@ -276,7 +314,7 @@ python3 - "$rows" "$artifacts/after-rename.json" <<'PY' || fail "the rename neve
 import json, sys
 data = json.loads(sys.argv[1])
 assert (data.get("names") or [])[-1:] == ["web name"], data
-assert data.get("count") == 2, data
+assert data.get("count") == 3, data
 json.dump(data, open(sys.argv[2], "w", encoding="utf-8"))
 PY
 
@@ -293,7 +331,7 @@ rows="$(log_rows)"
 python3 - "$rows" <<'PY' || fail "repeated rename appended a duplicate session_info row"
 import json, sys
 data = json.loads(sys.argv[1])
-assert data.get("count") == 2, data
+assert data.get("count") == 3, data
 PY
 
 # --- Step 4: clearing the name clears the Pi title and stays cleared --------
@@ -314,7 +352,7 @@ python3 - "$rows" <<'PY' || fail "clearing the alias did not clear the Pi sessio
 import json, sys
 data = json.loads(sys.argv[1])
 assert (data.get("names") or [])[-1:] == [""], data
-assert data.get("count") == 3, data
+assert data.get("count") == 4, data
 PY
 
 # The cleared identity stays cleared: the previous title is not re-adopted.
@@ -322,5 +360,5 @@ sleep 2.5
 alias_value="$(row_field alias || true)"
 [[ -z "${alias_value:-}" ]] || fail "cleared name was re-adopted (alias=${alias_value})"
 
-echo "PASS: Pi session name propagation verified (session ${session_id})"
+echo "PASS: Pi default + propagated session names verified (session ${session_id}, default ${cwd_basename})"
 echo "artifacts=$artifacts"

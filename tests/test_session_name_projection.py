@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from codoxear.session_default_name import default_session_name
 from codoxear.session_name_projection import SessionNameProjection
 from codoxear.session_name_projection import SessionNameProjectionDeps
 from codoxear.session_name_projection import identity_key
@@ -16,6 +17,7 @@ class Harness:
         self.session = SimpleNamespace(
             agent_backend=backend,
             thread_id=thread_id,
+            cwd="/home/tester/repo",
             sock_path=Path("/tmp/fake.sock"),
             log_path=Path("/tmp/fake.jsonl"),
             session_name_control=control,
@@ -28,6 +30,7 @@ class Harness:
         self.calls: list[dict[str, Any]] = []
         self.replies: list[dict[str, Any]] = []
         self.alias_writes: list[tuple[str, str]] = []
+        self.defaults_assigned: list[str] = []
         self.fail_next: list[Exception] = []
         self.now = 1000.0
         self.projection = SessionNameProjection(
@@ -39,6 +42,7 @@ class Harness:
                 # clear; a missing key means nothing is known about the name.
                 alias_cleared=lambda sid: self.aliases.get(sid) == "",
                 alias_set=self._alias_set,
+                alias_assign_default=self._alias_assign_default,
                 sock_call=self._sock_call,
                 applied=lambda: self.applied,
                 set_applied=self._set_applied,
@@ -53,6 +57,26 @@ class Harness:
         cleaned = " ".join(name.split()).strip()
         self.aliases[session_id] = cleaned
         return cleaned
+
+    def _alias_assign_default(self, session_id: str) -> str:
+        """Mirrors the store: never overwrite an entry, number against live names."""
+        if session_id in self.aliases:
+            return self.aliases.get(session_id, "")
+        session = self.sessions.get(session_id)
+        if session is None:
+            raise KeyError("unknown session")
+        taken = []
+        for sid, other in self.sessions.items():
+            if sid == session_id:
+                continue
+            name = self.aliases.get(sid) or str(getattr(other, "backend_session_name", "") or "")
+            if name:
+                taken.append(name)
+        name = default_session_name(getattr(session, "cwd", ""), taken)
+        if name:
+            self.aliases[session_id] = name
+            self.defaults_assigned.append(name)
+        return name
 
     def _sock_call(self, sock: Any, req: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
         self.calls.append({"sock": sock, **req})
@@ -267,12 +291,129 @@ def test_a_missing_alias_never_erases_a_backend_title() -> None:
     h.aliases["s1"] = "Alpha"
     h.replies = [{"ok": True, "backend": "pi", "name": "Alpha"}]
     assert h.projection.reconcile("s1")["reason"] == "applied"
+    h.session.backend_session_name = "Alpha"  # the broker reports the title it now owns
 
     # The alias disappears without an explicit clear (what a lost save looks like).
     h.aliases.pop("s1")
     h.calls.clear()
     result = h.projection.reconcile("s1")
     assert result["reason"] in ("no-alias", "adopted")
-    # No clear was pushed to the backend, and the title was not destroyed.
-    assert all(call.get("name") != "" for call in h.calls)
+    # No clear was pushed to the backend, no default renamed it, and the title was
+    # not destroyed.
+    assert h.calls == []
+    assert h.defaults_assigned == []
     assert h.applied["pi:thread-1"]["state"] != "cleared"
+
+
+def test_an_unnamed_session_receives_its_default_name() -> None:
+    """A session nobody named is named from its cwd, and the backend hears it.
+
+    The bug this closes: the sidebar showed the cwd while Pi's own session title
+    stayed empty, so Pi's intercom / delegation identity fell back to a generated
+    ``subagent-chat-<session id>`` label.
+    """
+    h = Harness()
+    result = h.projection.reconcile("s1")
+    assert result["reason"] == "applied"
+    assert result["name"] == "repo"
+    assert h.aliases == {"s1": "repo"}
+    assert h.calls == [{"sock": Path("/tmp/fake.sock"), "cmd": "name", "name": "repo", "thread_id": "thread-1"}]
+    # The name is recorded as ours, so a terminal title may still supersede it.
+    assert h.applied["pi:thread-1"]["origin"] == "default"
+
+    # It is assigned once: a second reconcile neither renames nor re-pushes.
+    assert h.projection.reconcile("s1")["reason"] == "unchanged"
+    assert len(h.calls) == 1
+    assert h.defaults_assigned == ["repo"]
+
+
+def test_default_names_are_numbered_against_live_sessions() -> None:
+    h = Harness()
+    h.sessions["s2"] = SimpleNamespace(
+        agent_backend="pi",
+        thread_id="thread-2",
+        cwd="/home/tester/repo",
+        sock_path=Path("/tmp/fake2.sock"),
+        log_path=None,
+        session_name_control=True,
+        backend_session_name="",
+    )
+    assert h.projection.reconcile("s1")["name"] == "repo"
+    assert h.projection.reconcile("s2")["name"] == "repo-2"
+    assert h.aliases == {"s1": "repo", "s2": "repo-2"}
+
+
+def test_a_terminal_title_outranks_an_assigned_default() -> None:
+    """A default is a convenience, not a decision: the user's own title wins."""
+    h = Harness()
+    assert h.projection.reconcile("s1")["reason"] == "applied"
+    assert h.aliases == {"s1": "repo"}
+
+    h.session.backend_session_name = "typed in the terminal"
+    result = h.projection.reconcile("s1")
+    assert result["reason"] == "adopted"
+    assert h.aliases == {"s1": "typed in the terminal"}
+    # The adopted name is the alias now, so it is not re-pushed or re-adopted.
+    calls = len(h.calls)
+    assert h.projection.reconcile("s1")["reason"] == "unchanged"
+    assert len(h.calls) == calls
+
+
+def test_a_user_rename_does_not_yield_to_a_stale_backend_title() -> None:
+    """Only a *default* yields. A name chosen in codoxear is the authority."""
+    h = Harness()
+    h.aliases["s1"] = "Mine"
+    assert h.projection.reconcile("s1")["reason"] == "applied"
+
+    h.session.backend_session_name = "something else"
+    assert h.projection.reconcile("s1")["reason"] == "unchanged"
+    assert h.aliases == {"s1": "Mine"}
+
+
+def test_an_explicit_clear_never_earns_a_default() -> None:
+    h = Harness()
+    h.aliases["s1"] = "Alpha"
+    h.projection.reconcile("s1")
+
+    h.calls.clear()
+    h.aliases["s1"] = ""  # what the user's rename-to-empty writes
+    assert h.projection.reconcile("s1")["reason"] == "cleared"
+    assert [call["name"] for call in h.calls] == [""]
+
+    h.calls.clear()
+    assert h.projection.reconcile("s1")["reason"] == "cleared"
+    assert h.calls == []
+    assert h.defaults_assigned == []
+    assert h.aliases == {"s1": ""}
+
+
+def test_a_failed_default_push_still_yields_to_a_terminal_title() -> None:
+    """The backend may be unreachable when the default is assigned.
+
+    A title the user then sets in the backend's own TUI must still win once it
+    arrives, otherwise the retry would overwrite the name the user chose.
+    """
+    h = Harness()
+    h.fail_next = [OSError("broker down")]
+    assert h.projection.reconcile("s1")["ok"] is False
+    assert h.applied["pi:thread-1"]["state"] == "failed"
+    assert h.applied["pi:thread-1"]["origin"] == "default"
+
+    h.session.backend_session_name = "typed in the terminal"
+    assert h.projection.reconcile("s1")["reason"] == "adopted"
+    assert h.aliases == {"s1": "typed in the terminal"}
+    # The pending retry is gone: no default is pushed over the user's title.
+    h.now += 400.0
+    assert h.projection.reconcile("s1")["reason"] == "unchanged"
+    assert [call["name"] for call in h.calls] == ["repo"]
+
+
+def test_an_unsupported_default_push_still_yields_to_a_terminal_title() -> None:
+    h = Harness(control=False)
+    h.replies = [{"ok": False, "backend": "pi", "unsupported": True, "reason": "unsupported"}]
+    assert h.projection.reconcile("s1")["reason"] == "unsupported"
+    assert h.applied["pi:thread-1"]["origin"] == "default"
+
+    h.session.backend_session_name = "typed in the terminal"
+    assert h.projection.reconcile("s1")["reason"] == "adopted"
+    assert h.aliases == {"s1": "typed in the terminal"}

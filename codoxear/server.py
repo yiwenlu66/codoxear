@@ -1267,6 +1267,10 @@ class SessionManager:
     def alias_get(self, session_id: str) -> str:
         return self._ui_state_coordinator_for_manager().alias_get(session_id)
 
+    def alias_assign_default(self, session_id: str) -> str:
+        """Give an unnamed session its default name; a no-op once any name is known."""
+        return self._ui_state_coordinator_for_manager().alias_assign_default(session_id)
+
     def reconcile_session_name(self, session_id: str) -> dict[str, Any]:
         """Project the alias store onto the backend's own session title."""
         return self._session_name_coordinator_for_manager().reconcile(session_id)

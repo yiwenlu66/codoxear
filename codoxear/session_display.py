@@ -15,6 +15,13 @@ from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 
+def cwd_display_basename(cwd: Any) -> str:
+    """The directory-name form of a cwd: ``/a/b/`` -> ``b``, empty when unknown."""
+    if not isinstance(cwd, str) or not cwd.strip():
+        return ""
+    return PurePosixPath(cwd.rstrip("/")).name
+
+
 def sidebar_display_name(row: Mapping[str, Any]) -> str:
     """The sidebar's name for one row: trimmed alias, else the cwd basename.
 
@@ -24,9 +31,4 @@ def sidebar_display_name(row: Mapping[str, Any]) -> str:
     alias = row.get("alias")
     if isinstance(alias, str) and alias.strip():
         return alias.strip()
-    cwd = row.get("cwd")
-    if isinstance(cwd, str) and cwd.strip():
-        name = PurePosixPath(cwd.rstrip("/")).name
-        if name:
-            return name
-    return ""
+    return cwd_display_basename(row.get("cwd"))

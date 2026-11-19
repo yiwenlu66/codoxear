@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, MutableMapping
 
 from .session_cleaners import clean_snoozed_indefinitely, sidebar_snoozed
+from .session_default_name import default_session_name
 from .session_listing import listing_priority, reorder_target_offset
 from .session_model import Session
 
@@ -64,6 +65,58 @@ class SessionUiStateCoordinator:
         with self.lock:
             alias = self.aliases().get(session_id)
         return alias if isinstance(alias, str) else ""
+
+    def _names_in_use_locked(self, *, exclude_session_id: str) -> list[str]:
+        """Every other live session's assigned name.
+
+        A default may not duplicate a name that already exists — an alias the
+        user chose, or a title the backend reported — because the sidebar, the
+        tmux mirror and the backend titles all read those. A session that has no
+        name yet contributes nothing: it is about to be assigned one, and counting
+        its cwd basename here would hand the plain name to whichever session
+        happened to be reconciled last.
+        """
+        aliases = self.aliases()
+        names: list[str] = []
+        for sid, session in self.sessions().items():
+            if sid == exclude_session_id:
+                continue
+            alias = aliases.get(sid)
+            name = alias if isinstance(alias, str) else ""
+            if not name:
+                observed = getattr(session, "backend_session_name", "")
+                name = observed if isinstance(observed, str) else ""
+            if name:
+                names.append(name)
+        return names
+
+    def alias_assign_default(self, session_id: str) -> str:
+        """Give one unnamed session its default name, or report what it already has.
+
+        The assigned name is stored in the alias map itself, because the sidebar,
+        the tmux mirror, and the backend title all read that one authority — a
+        second "default name" store would let the displayed name and the backend
+        name disagree. An existing entry means the user decided (a rename, or the
+        empty entry that records an explicit clear), so nothing is assigned then.
+        """
+        assigned = ""
+        with self.lock:
+            session = self.sessions().get(session_id)
+            if session is None:
+                raise KeyError("unknown session")
+            aliases = self.aliases()
+            if session_id in aliases:
+                existing = aliases.get(session_id)
+                return existing if isinstance(existing, str) else ""
+            assigned = default_session_name(
+                getattr(session, "cwd", ""),
+                self._names_in_use_locked(exclude_session_id=session_id),
+            )
+            if assigned:
+                aliases[session_id] = assigned
+        if assigned:
+            self.save_aliases()
+        return assigned
 
     def alias_clear(self, session_id: str) -> None:
         with self.lock:
