@@ -23,6 +23,7 @@ import * as CodoxearSessionState from "./app_session_state.js";
 import * as CodoxearSessionTitle from "./app_session_title.js";
 import * as CodoxearTranscriptRender from "./app_transcript_render.js";
 import * as CodoxearUnattended from "./app_unattended.js";
+import * as CodoxearUpdate from "./app_update.js";
 import * as CodoxearWiring from "./app_wiring.js";
 
 
@@ -279,6 +280,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           if (quickSessionController) quickSessionController.dispose();
           if (voiceController) voiceController.dispose();
           if (settingsDialogController) settingsDialogController.dispose();
+          if (updateSectionController) updateSectionController.dispose();
           if (unattendedController) unattendedController.dispose();
           if (fileOpsController) fileOpsController.dispose();
           filePickerSearchState.dispose();
@@ -423,6 +425,7 @@ import * as CodoxearWiring from "./app_wiring.js";
 
         let newSessionDialogController = null;
         let settingsDialogController = null;
+        let updateSectionController = null;
         let modalIsolationTargets = null;
         modalPolicyController = CodoxearModal.createModalPolicyController(wiring.createModalPolicyOptions({
           app,
@@ -470,6 +473,26 @@ import * as CodoxearWiring from "./app_wiring.js";
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
 
+        // The Updates section is built before the Settings dialog, which mounts
+        // it as its last section. Its badge rides the sidebar Settings control:
+        // the composition creates the dot because the shell must not know about
+        // updates, and the section's availability callback only toggles it.
+        const settingsSideButton = $("#settingsBtnSide");
+        const settingsUpdateBadge = el("span", { class: "settingsBtnBadge", "aria-hidden": "true", style: "display:none" });
+        settingsSideButton.appendChild(settingsUpdateBadge);
+        updateSectionController = CodoxearUpdate.createUpdateSection(wiring.createUpdateSectionOptions({
+          el,
+          api,
+          setToast,
+          copyToClipboard,
+          setTimeout,
+          clearTimeout,
+          windowTarget: window,
+          onUpdateAvailable: (available) => {
+            settingsUpdateBadge.style.display = available ? "" : "none";
+          },
+        }));
+
         // One flat Settings dialog: appearance controls plus the voice
         // controller's inline "Voice & notifications" section. The dialog
         // owns visibility; the voice controller is told when its section is
@@ -483,6 +506,9 @@ import * as CodoxearWiring from "./app_wiring.js";
           voiceSection: voiceSettingsSection,
           activateVoiceSection: () => voiceController.activateSettingsSection(),
           deactivateVoiceSection: () => voiceController.deactivateSettingsSection(),
+          updateSection: updateSectionController.section,
+          activateUpdateSection: () => updateSectionController.activate(),
+          deactivateUpdateSection: () => updateSectionController.deactivate(),
           documentTarget: document,
           ElementCtor: HTMLElement,
           prepareModalOpen,
@@ -1332,6 +1358,7 @@ import * as CodoxearWiring from "./app_wiring.js";
 	          } finally {
               if (appDisposed) return;
 	            resizeComposer();
+              void updateSectionController.pageLoadCheck();
 
 	            scheduleSessionsPoll();
             scheduleSecondaryPoll();

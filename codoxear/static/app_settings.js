@@ -6,10 +6,13 @@ import * as CodoxearModal from "./app_modal.js";
 // surface; this dialog only renders that controller's state and forwards
 // user intent to it.
 //
-// The "Voice & notifications" section is built and rendered by app_voice.js;
-// this dialog mounts that section below Appearance and reports its own
-// visibility to the voice controller (activate on show, deactivate on hide)
-// so the voice form is seeded while visible and its draft is dropped on close.
+// The "Voice & notifications" section is built and rendered by app_voice.js
+// and the "Updates" section by app_update.js; this dialog mounts those
+// sections below Appearance and reports its own visibility to their owners
+// (activate on show, deactivate on hide) so each form is seeded while visible
+// and its drafts are dropped on close. The dialog is a section host: a section
+// it is not handed is simply not mounted, and its lifecycle hooks default to
+// no-ops, so the dialog never requires a feature it does not host.
 
 const FAMILY_LABELS = Object.freeze({ paper: "Paper", clay: "Clay", slate: "Slate" });
 const MODE_LABELS = Object.freeze({ system: "System", light: "Light", dark: "Dark" });
@@ -37,6 +40,11 @@ function createSettingsDialogController(options = {}) {
   const voiceSection = requireNode(options.voiceSection, "voiceSection");
   const activateVoiceSection = requireFunction(options.activateVoiceSection, "activateVoiceSection");
   const deactivateVoiceSection = requireFunction(options.deactivateVoiceSection, "deactivateVoiceSection");
+  const updateSection = options.updateSection === undefined || options.updateSection === null
+    ? null
+    : requireNode(options.updateSection, "updateSection");
+  const activateUpdateSection = typeof options.activateUpdateSection === "function" ? options.activateUpdateSection : () => {};
+  const deactivateUpdateSection = typeof options.deactivateUpdateSection === "function" ? options.deactivateUpdateSection : () => {};
   const documentTarget = options.documentTarget;
   const ElementCtor = options.ElementCtor;
   if (!documentTarget || typeof documentTarget !== "object") throw new TypeError("settings dependency missing: documentTarget");
@@ -136,6 +144,7 @@ function createSettingsDialogController(options = {}) {
         ]),
       ]),
       voiceSection,
+      ...(updateSection ? [updateSection] : []),
     ]),
   ]);
   root.appendChild(backdrop);
@@ -196,6 +205,7 @@ function createSettingsDialogController(options = {}) {
     afterModalVisibilityChanged();
     focusModalSurface(viewer);
     activateVoiceSection();
+    activateUpdateSection();
   }
 
   function hide() {
@@ -204,6 +214,7 @@ function createSettingsDialogController(options = {}) {
     returnFocusElement = null;
     flushCustomCss();
     deactivateVoiceSection();
+    deactivateUpdateSection();
     backdrop.style.display = "none";
     viewer.style.display = "none";
     if (typeof viewer.close === "function" && viewer.open) viewer.close();

@@ -378,6 +378,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS` (default `4.0`)
 - `CODEX_WEB_GIT_CHANGED_FILES_MAX` (default `400`)
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
+- `CODOXEAR_UPDATE_COMMAND` (default empty) — shell command the server runs to apply a self-update (see [Self-update](#self-update) below)
 
 Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 
@@ -390,6 +391,28 @@ Backend-specific session logs live under the backend home:
 - Codex: `~/.codex/sessions/rollout-*.jsonl`
 - Pi: `~/.pi/agent/sessions/*.jsonl`
 - Claude Code: `~/.claude/projects/**/*.jsonl` (main project logs; Codoxear ignores `subagents/` logs)
+
+## Self-update
+
+Codoxear can check for updates and apply them from the web UI.
+
+**How it works:** The server compares its git HEAD against the remote branch. When updates are available, the Settings dialog shows the count and an "Update now" button. Clicking it spawns a detached process that runs your configured update command, then the server restarts at the new commit and the page reloads automatically.
+
+**Setup:** Set `CODOXEAR_UPDATE_COMMAND` to a shell command that pulls, installs, and restarts the server. The command runs with the server's working directory as cwd and inherits its environment. Examples:
+
+| Setup | Command |
+|---|---|
+| systemd + pipx + deploy script | `CODOXEAR_UPDATE_COMMAND=/path/to/codoxear/scripts/deploy.sh origin/main` |
+| Docker (container restart policy) | `CODOXEAR_UPDATE_COMMAND="git pull && pip install -e . && kill 1"` |
+| Bare terminal | `CODOXEAR_UPDATE_COMMAND="git pull && pip install -e . && pkill -f codoxear.server"` |
+
+**Auto-update:** The Settings dialog has an "Update automatically" checkbox. When enabled and a command is configured, the server applies available updates automatically on the next page load — no manual click needed.
+
+**When not configured:** The UI shows available update counts but no button. A setup guide directs the user to start an agent session in the installation directory and send "Set up Codoxear auto-updates".
+
+**Failure recovery:** If an update fails, the previous version keeps running. The UI shows a diagnostic guide directing the user to an agent session with a prompt that points at `~/.local/share/codoxear/update.log`.
+
+**Safety:** The update command is entirely yours — Codoxear only invokes it. Live agent sessions (brokers, backend CLIs) are not affected by a server restart. The command is responsible for validation, installation, and restart.
 
 ## License
 

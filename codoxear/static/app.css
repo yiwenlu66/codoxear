@@ -540,6 +540,9 @@
         .typingDot {
           animation: none;
         }
+        .updateSpinner {
+          animation: none;
+        }
       }
       /* A selected card uses the same solid two-pixel perimeter on the
          touch and desktop branches without changing its layout dimensions. */
@@ -3388,6 +3391,13 @@ select {
         outline: 2px solid var(--focus-ring);
         outline-offset: 2px;
       }
+      /* A checkbox the current environment cannot use (an update command that
+         is not configured) reads as unavailable instead of unresponsive; the
+         reason is stated in the adjacent hint. */
+      .checkField input[type="checkbox"]:disabled {
+        cursor: default;
+        opacity: 0.55;
+      }
       #newSessionViewer .checkField {
         gap: var(--space-2);
         min-height: 18px;
@@ -4462,3 +4472,123 @@ select {
 .stagedAttachmentChip[data-pending]:not([data-failed]) .stagedAttachmentRemove::after {
   inset: -17px -13px -9px;
 }
+
+      /* ── Update section (Settings › Updates) ──
+         Server state is one line plus one action; the setup guidance is the
+         only multi-paragraph content. The apply button wears the app's primary
+         component so every family keeps its own primary treatment. */
+      .updateStatusLine {
+        font-size: var(--font-md);
+        line-height: 1.5;
+      }
+      .updateStatusLine .accent {
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .updateStatusLine.muted {
+        color: var(--muted);
+      }
+      .updateSpinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--hairline);
+        border-top-color: var(--accent);
+        /* Family geometry, not a literal: paper's ring is square like every
+           other paper radius, clay/slate round it to a circle. */
+        border-radius: var(--radius-dot);
+        animation: updateSpin 0.7s linear infinite;
+        vertical-align: -2px;
+        margin-right: var(--space-2);
+      }
+      @keyframes updateSpin {
+        to { transform: rotate(360deg); }
+      }
+      .updateErrorLine {
+        color: var(--text-error);
+        font-size: var(--font-sm);
+        line-height: 1.5;
+      }
+      /* The section is a stretching column; a primary action stays the width
+         of its own label. */
+      .updateApplyBtn {
+        align-self: flex-start;
+        margin-top: var(--space-4);
+        font-weight: 500;
+      }
+      .updateActionHint {
+        margin-top: 0;
+      }
+      .updateSetupBox {
+        padding: var(--space-4) var(--space-5);
+        background: var(--wash);
+        border-radius: var(--radius-control);
+        font-size: var(--font-sm);
+        line-height: 1.6;
+      }
+      .updateSetupBox p {
+        margin: 0 0 var(--space-3);
+      }
+      .updateSetupBox p:last-of-type {
+        margin-bottom: 0;
+      }
+      .updateStepNum {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        margin-inline-end: var(--space-2);
+        border-radius: var(--radius-dot);
+        background: var(--accent);
+        color: var(--on-accent);
+        font-size: var(--font-2xs);
+        font-weight: 600;
+        vertical-align: middle;
+      }
+      /* A real button: the guidance is copyable by keyboard and hint mode, not
+         only by pointer. */
+      .updatePromptBox {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+        width: 100%;
+        /* Full-width row, but still a real 44px control in the touch plane. */
+        min-height: var(--ctl);
+        margin-top: var(--space-3);
+        font-family: var(--font-mono);
+        font-size: var(--font-sm);
+        text-align: left;
+      }
+      .updatePromptBox:hover {
+        border-color: var(--accent);
+      }
+      .updatePromptText {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .updateCopyIcon {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: var(--font-sm);
+      }
+      .updateAutoField {
+        margin-top: var(--space-4);
+      }
+      /* The badge rides the sidebar Settings control, which must therefore be
+         its positioning context. */
+      #settingsBtnSide {
+        position: relative;
+      }
+      .settingsBtnBadge {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        width: 7px;
+        height: 7px;
+        border-radius: var(--radius-dot);
+        background: var(--accent);
+        pointer-events: none;
+      }

@@ -228,6 +228,22 @@ scripts/deploy.sh <previous-commit>
 
 That repoints the same snapshot worktree and service at the previous committed code; it does not move or delete live brokers, backend CLIs, sockets, uploads, or session state. Do not restart via process matching or manually point the service back at the editable checkout.
 
+## Self-update
+
+The server exposes `GET /api/update/check` and `POST /api/update/apply` behind the existing cookie auth. The check runs `git fetch` + compare against the remote branch; apply spawns a detached process that runs the env-configured update command and then the server restarts at the new commit. The UI lives in the Settings dialog's "Updates" section.
+
+`CODOXEAR_UPDATE_COMMAND` — the shell command the server executes to apply an update. It must pull, install, and restart the server. When unset, the UI shows the update count but no "Update now" button. `update_settings.json` in the app dir stores `{"auto_update": true|false}`; when enabled and a command is configured, the update applies automatically on the next page load.
+
+### Agent setup responsibility
+
+When an agent session sets up or modifies a Codoxear deployment (creates a deploy script, writes a systemd unit, configures Docker, etc.), it must also write `CODOXEAR_UPDATE_COMMAND` into the service's environment pointing at the deploy mechanism it just created. If the update command was successfully configured, the agent should also enable auto-update by writing `{"auto_update": true}` to `~/.local/share/codoxear/update_settings.json`, so the user gets automatic updates without visiting Settings. Example for a systemd+pipx setup:
+
+```
+CODOXEAR_UPDATE_COMMAND=/home/user/codoxear/scripts/deploy.sh origin/main
+```
+
+The Settings UI guides unconfigured users: it shows numbered steps telling them to open an agent session in the installation directory and send "Set up Codoxear auto-updates". When an update fails, the guidance changes to a diagnostic prompt pointing at `~/.local/share/codoxear/update.log`.
+
 ## Ops notes
 
 - Restarting `codoxear.server` does **not** lose session content. Sessions live in backend log files on disk; the server only reads them.
