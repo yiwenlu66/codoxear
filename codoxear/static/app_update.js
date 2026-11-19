@@ -222,7 +222,14 @@ function createUpdateSection(options = {}) {
       onUpdateAvailable(true);
       return;
     }
-    if (!resp || !resp.available) {
+    // The check itself can fail (no remote branch, unreadable commits). That is
+    // an unknown position, not "up to date" — most often it means this checkout
+    // has no upstream to compare against.
+    if (!resp || resp.error) {
+      render("check-failed", null);
+      return;
+    }
+    if (!resp.available) {
       render("uptodate", resp);
       onUpdateAvailable(false);
       return;
@@ -245,6 +252,13 @@ function createUpdateSection(options = {}) {
     try {
       resp = await api("/api/update/apply", { method: "POST", body: {} });
     } catch (e) {
+      // 409 means an update is already in flight (another client, or a second
+      // click): this browser is joining that transaction, not failing one.
+      if (e && e.status === 409) {
+        render("updating", lastCheck);
+        startUpdatePoll(lastCheck && lastCheck.latest_commit);
+        return;
+      }
       // The apply request was refused: the old version is still serving.
       render("failed", lastCheck);
       onUpdateAvailable(true);
@@ -256,14 +270,17 @@ function createUpdateSection(options = {}) {
   }
 
   function updateLanded(resp, targetCommit) {
-    // Either proof is enough. `available: false` says the server has nothing
-    // left to apply (so the page is now running against changed assets), and
-    // the target commit names the exact result the update was asked for. A
-    // response that still reports an update pending means the old process is
-    // still the one answering.
     if (!resp) return false;
-    if (!resp.available) return true;
-    return !!(targetCommit && resp.current_commit === targetCommit);
+    // A status of "running" is the transaction saying it is still in flight.
+    // The checkout can already show no pending update while the update command
+    // is still installing or restarting, and a reload in that window would load
+    // one version's assets against the other version's server. The runner
+    // writes "done" only after the command (and its restart) finishes.
+    if (lastStatusState(resp) === "running") return false;
+    // Otherwise either proof is enough: the exact commit the update targeted,
+    // or a server with nothing left to apply.
+    if (targetCommit && resp.current_commit === targetCommit) return true;
+    return !resp.available;
   }
 
   // One in-flight request at a time: a fixed interval would overlap checks
