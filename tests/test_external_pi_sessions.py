@@ -162,3 +162,43 @@ def test_xdg_external_directory(monkeypatch, tmp_path):
     monkeypatch.delenv("CODOXEAR_EXTERNAL_DIR", raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     assert external_dir() == tmp_path / "codoxear/external"
+
+
+def test_raft_agent_rows_are_named_from_the_memory_heading(tmp_path):
+    from codoxear.external_sessions import raft_agent_name
+
+    agents = tmp_path / ".raft" / "agents"
+    named = agents / "a35fba3f"
+    named.mkdir(parents=True)
+    (named / "MEMORY.md").write_text("\n# DexGEM-workflow\n\n## Role\n", encoding="utf-8")
+    cjk = agents / "966284f7"
+    cjk.mkdir()
+    (cjk / "MEMORY.md").write_text("# 陆逸武  \n## Role\n", encoding="utf-8")
+    no_heading = agents / "fa3fdbce"
+    no_heading.mkdir()
+    (no_heading / "MEMORY.md").write_text("notes first\n# Late heading\n", encoding="utf-8")
+    nested = named / "work"
+    nested.mkdir()
+    (nested / "MEMORY.md").write_text("# Not an agent\n", encoding="utf-8")
+    elsewhere = tmp_path / "project"
+    elsewhere.mkdir()
+    (elsewhere / "MEMORY.md").write_text("# Project memory\n", encoding="utf-8")
+
+    assert raft_agent_name(str(named), home=tmp_path) == "DexGEM-workflow"
+    assert raft_agent_name(str(cjk), home=tmp_path) == "陆逸武"
+    assert raft_agent_name(str(no_heading), home=tmp_path) == ""
+    assert raft_agent_name(str(agents / "missing"), home=tmp_path) == ""
+    assert raft_agent_name(str(nested), home=tmp_path) == ""
+    assert raft_agent_name(str(elsewhere), home=tmp_path) == ""
+
+
+def test_registry_row_prefers_pi_name_then_raft_name(external_bridge, tmp_path, monkeypatch):
+    from codoxear import external_sessions
+
+    _process, socket, _marker = external_bridge
+    monkeypatch.setattr(external_sessions, "raft_agent_name", lambda cwd: "Raft Agent" if cwd == str(tmp_path) else "")
+    registry = ExternalSessionRegistry(tmp_path)
+    assert registry.rows()[0]["display_name"] == "Raft Agent"
+    _request(socket, {"op": "set_session_name", "name": "Pi title"})
+    registry.scan(force=True)
+    assert registry.rows()[0]["display_name"] == "Pi title"

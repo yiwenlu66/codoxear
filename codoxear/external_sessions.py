@@ -28,6 +28,29 @@ def external_dir() -> Path:
     return Path(os.environ.get("CODOXEAR_EXTERNAL_DIR") or base / "codoxear/external").expanduser()
 
 
+def raft_agent_name(cwd: str, *, home: Path | None = None) -> str:
+    """The Raft agent name for a session whose cwd is a Raft agent folder.
+
+    Raft runs each agent in ``~/.raft/agents/<uuid>`` and never sets a Pi
+    session name; the only record of the agent's name is the ``# <name>``
+    heading that opens that folder's ``MEMORY.md``. Anything else is not a Raft
+    agent and yields ``""``.
+    """
+    folder = Path(cwd)
+    if not cwd or folder.parent != (home or Path.home()) / ".raft" / "agents":
+        return ""
+    try:
+        with (folder / "MEMORY.md").open(encoding="utf-8", errors="replace") as handle:
+            head = handle.read(4096)
+    except OSError:
+        return ""
+    for line in head.splitlines():
+        if line.strip():
+            match = re.match(r"#\s+(.+)", line.strip())
+            return match.group(1).strip()[:200] if match else ""
+    return ""
+
+
 def process_matches(pid: int, start: str | None) -> bool:
     if not pid_alive(pid):
         return False
@@ -199,7 +222,8 @@ class ExternalSessionRegistry:
                              "agent_backend": "pi", "external": True, "owned": False, "start_ts": session.start_ts,
                              "pid": session.codex_pid, "external_instance_id": session.external_instance_id,
                              "cwd": session.cwd, "log_path": str(session.log_path) if session.log_path else None,
-                             "display_name": session.backend_session_name or Path(session.cwd).name or "Pi",
+                             "display_name": session.backend_session_name or raft_agent_name(session.cwd)
+                             or Path(session.cwd).name or "Pi",
                              "busy": session.busy, "queue_len": 0, "updated_ts": updated,
                              "model": session.model, "model_provider": session.model_provider,
                              "reasoning_effort": session.reasoning_effort, "token": session.token,
