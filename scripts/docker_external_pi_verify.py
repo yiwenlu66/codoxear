@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shlex
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -17,7 +18,9 @@ from urllib.parse import quote
 
 args = argparse.ArgumentParser()
 args.add_argument("--port", type=int, required=True)
-PORT = args.parse_args().port
+args.add_argument("--broker-only", action="store_true", help="run the broker capability/name regression scenario only")
+OPTIONS = args.parse_args()
+PORT = OPTIONS.port
 HOME = Path.home()
 PROOF = HOME / "proof"
 PROOF.mkdir(exist_ok=True)
@@ -90,6 +93,114 @@ def logs(path):
 
 def has_message(path, role, text):
     return any(row.get("message", {}).get("role") == role and text in json.dumps(row["message"]) for row in logs(path))
+
+
+def broker_row(session_id):
+    return next((row for row in api("/api/sessions")["sessions"] if row["session_id"] == session_id), None)
+
+
+def bridge_call(path, payload):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(3)
+        connection.connect(str(path))
+        connection.sendall((json.dumps(payload) + "\n").encode())
+        response = b""
+        while b"\n" not in response:
+            chunk = connection.recv(65536)
+            if not chunk:
+                raise ConnectionError("Pi bridge closed without a response")
+            response += chunk
+        return json.loads(response.split(b"\n", 1)[0])
+
+
+def verify_broker_controls(pi):
+    started = time.monotonic()
+    barrier = PROOF / "broker-startup-release"
+    tmux("broker", f"cd {HOME}/broker-work; export CODEX_WEB_AGENT_BACKEND=pi CODOXEAR_BROKER_START_BARRIER={barrier}; exec codoxear-broker -- {pi.removeprefix('pi ')} --extension {HOME}/.pi/agent/extensions/000-broker-start-barrier.ts --provider local --model local-reasoning --thinking low")
+    first_listing = until(lambda: (listing := api("/api/sessions")) and len(listing["sessions"]) == 1 and listing)
+    sid = first_listing["sessions"][0]["session_id"]
+    marker = HOME / ".local/share/codoxear/pi-active-sessions" / f"{sid}.json"
+    caps = Path(f"{marker}.caps")
+    trace = []
+
+    def record(stage):
+        row = broker_row(sid)
+        value = {
+            "stage": stage, "elapsed_seconds": round(time.monotonic() - started, 3),
+            "row": row, "marker_exists": marker.exists(),
+            "marker": json.loads(marker.read_text()) if marker.exists() else None,
+            "socket_exists": Path(f"{marker}.bridge.sock").exists(),
+            "caps": json.loads(caps.read_text()) if caps.exists() else None,
+        }
+        trace.append(value)
+        save("broker-capability-timeline.json", trace)
+        return value
+
+    record("first-listing")
+    until(lambda: Path(f"{barrier}.waiting").exists())
+    passive = until(lambda: (row := broker_row(sid)) and row["pi_thinking_command"] and row["session_name_control"] and row)
+    # Hold the first model_select/session_start callback before bridge handlers.
+    # Caps/socket must already exist at factory load, without any registration.
+    record("load-caps-and-socket-before-first-lifecycle")
+    assert passive["log_path"] is None
+    assert not marker.exists()
+    assert caps.exists() and Path(f"{marker}.bridge.sock").exists()
+    assert json.loads(caps.read_text())["pid"] == passive["pid"]
+    assert bridge_call(Path(f"{marker}.bridge.sock"), {"op": "get_session_name"})["ok"]
+    barrier.touch()
+
+    def commands_ready():
+        row = broker_row(sid)
+        names = {command["name"] for command in row["slash_commands"]}
+        return row if row["pi_thinking_command"] and row["session_name_control"] and {"effort", "thinking"}.issubset(names) else None
+
+    until(commands_ready)
+    until(marker.exists)
+    record("session-start-registry-ready-before-first-send")
+    api(f"/api/sessions/{sid}/send", {"text": "BROKER still works"})
+    bound = until(lambda: (row := broker_row(sid)) and row.get("log_path") and row)
+    log = bound["log_path"]
+    until(lambda: has_message(log, "assistant", "BROKER still works"))
+    until(lambda: not broker_row(sid)["busy"])
+    assert has_message(log, "user", "BROKER still works")
+    post_turn = record("bound-after-assistant-turn")["row"]
+    assert post_turn["pi_thinking_command"] and post_turn["session_name_control"]
+    assert {"effort", "thinking"}.issubset({command["name"] for command in post_turn["slash_commands"]})
+    assert post_turn["reasoning_effort"] == "low"
+
+    effort_send = api(f"/api/sessions/{sid}/send", {"text": "/effort high"})
+    assert effort_send["queued"] is False and effort_send["queue_len"] == 0
+    until(lambda: any(row.get("type") == "thinking_level_change" and row.get("thinkingLevel") == "high" for row in logs(log)))
+    # A following turn proves the setting belongs to the same live Pi session
+    # and refreshes its existing lifecycle-owned live-settings projection.
+    api(f"/api/sessions/{sid}/send", {"text": "BROKER effort verification turn"})
+    until(lambda: has_message(log, "assistant", "BROKER effort verification turn"))
+    until(lambda: (row := broker_row(sid)) and not row["busy"] and row["reasoning_effort"] == "high" and row)
+    after_effort = record("effort-high-applied-and-next-turn-complete")["row"]
+
+    name = "Broker capability proof"
+    rename = api(f"/api/sessions/{sid}/rename", {"name": name})
+    assert rename["name_propagation"]["ok"] is True, rename
+    assert rename["name_propagation"]["name"] == name, rename
+    assert rename["name_propagation"]["reason"] == "applied", rename
+    until(lambda: any(row.get("type") == "session_info" and row.get("name") == name for row in logs(log)))
+    assert sum(row.get("type") == "session_info" and row.get("name") == name for row in logs(log)) == 1
+    repeat = api(f"/api/sessions/{sid}/rename", {"name": name})
+    assert repeat["name_propagation"]["ok"] is True, repeat
+    assert repeat["name_propagation"]["reason"] == "unchanged", repeat
+    assert sum(row.get("type") == "session_info" and row.get("name") == name for row in logs(log)) == 1
+    until(lambda: broker_row(sid)["display_name"] == name)
+    assert bridge_call(Path(f"{marker}.bridge.sock"), {"op": "get_session_name"})["name"] == name
+    final = record("rename-propagated-to-pi")["row"]
+    assert final["pi_thinking_command"] and final["session_name_control"]
+    proof = {"timeline": trace, "bound_after_turn": post_turn, "effort_submission": effort_send,
+             "after_effort": after_effort, "rename": rename, "repeat_rename": repeat, "final": final,
+             "thinking_level_changes": [row for row in logs(log) if row.get("type") == "thinking_level_change"],
+             "projected_name_rows": [row for row in logs(log) if row.get("type") == "session_info" and row.get("name") == name],
+             "passive_load_capabilities_and_socket": True, "effort_changed_live_pi": True,
+             "rename_reached_pi_once": True}
+    save("broker-controls.json", proof)
+    return first_listing, marker, proof
 
 
 def sdk_api(path="/", data=None):
@@ -167,7 +278,8 @@ try:
     (HOME / "broker-work").mkdir(exist_ok=True)
     (config / "models.json").write_text(json.dumps({"providers": {"local": {
         "baseUrl": "http://127.0.0.1:19722/v1", "apiKey": "fake-key", "api": "openai-completions",
-        "models": [{"id": "local-test", "reasoning": False, "contextWindow": 100000, "maxTokens": 4096, "input": ["text"]}],
+        "models": [{"id": "local-test", "reasoning": False, "contextWindow": 100000, "maxTokens": 4096, "input": ["text"]},
+                   {"id": "local-reasoning", "reasoning": True, "contextWindow": 100000, "maxTokens": 4096, "input": ["text"]}],
     }}}))
     (config / "settings.json").write_text(json.dumps({"defaultProvider": "local", "defaultModel": "local-test", "retry": {"enabled": False}, "quietStartup": True, "defaultProjectTrust": "always"}))
     provider = ThreadingHTTPServer(("127.0.0.1", 19722), Provider)
@@ -181,6 +293,19 @@ export default function(pi) {
       handler: (args) => pi.sendUserMessage("COMMAND dispatched " + args)
     });
   });
+}
+''')
+    (config / "extensions/000-broker-start-barrier.ts").write_text('''
+const fs = require("node:fs");
+export default function(pi) {
+  const target = process.env.CODOXEAR_BROKER_START_BARRIER;
+  if (!target) return;
+  const wait = async (event) => {
+    fs.writeFileSync(target + ".waiting", JSON.stringify({event:event.type, pid:process.pid}));
+    while (!fs.existsSync(target)) await new Promise(resolve => setTimeout(resolve, 25));
+  };
+  pi.on("model_select", wait);
+  pi.on("session_start", wait);
 }
 ''')
     (config / "extensions/sdk-lifecycle-probe.ts").write_text('''
@@ -200,6 +325,13 @@ export default function(pi) {
     server_log = open(PROOF / "server.log", "w")
     server = subprocess.Popen(["python3", "-m", "codoxear.server"], stdout=server_log, stderr=subprocess.STDOUT)
     until(lambda: api("/api/login", {"password": "external-test-password"}))
+    if OPTIONS.broker_only:
+        _, _, report["broker_controls"] = verify_broker_controls(pi)
+        save("report.json", report)
+        print(json.dumps(report, indent=2), flush=True)
+        server.terminate()
+        server.wait(timeout=10)
+        raise SystemExit(0)
     report["sdk_host"] = verify_sdk_host()
     tmux("external", f"cd {HOME}/external-work; export CODOXEAR_SDK_LIFECYCLE_LOG={PROOF}/external-lifecycle.jsonl; exec {pi}")
     tmux("child", f"cd {HOME}/child-work; export PI_SUBAGENT_CHILD=1; exec {pi}")
@@ -276,20 +408,13 @@ export default function(pi) {
     until(lambda: any(event["event"] == "session_start" and event.get("reason") == "reload" for event in logs(PROOF / "external-lifecycle.jsonl")))
     assert api("/api/sessions")["external"][0]["session_id"] == sid
     report["reload_identity"] = True
-    # Broker path + globally installed loader: one marker/socket, no external row.
-    tmux("broker", f"cd {HOME}/broker-work; export CODEX_WEB_AGENT_BACKEND=pi; exec codoxear-broker -- {pi.removeprefix('pi ')}")
-    broker_listing = until(lambda: (v := api("/api/sessions")) and len(v["sessions"]) == 1 and v)
+    # Broker path + globally installed loader: readiness and real controls,
+    # not merely an early listing snapshot before Pi has loaded its extensions.
+    broker_listing, marker, report["broker_controls"] = verify_broker_controls(pi)
     assert len(broker_listing["external"]) == 1, broker_listing
-    broker = broker_listing["sessions"][0]
-    caps = until(lambda: list((HOME / ".local/share/codoxear/pi-active-sessions").glob("*.caps")))
-    marker = Path(str(caps[0]).removesuffix(".caps"))
-    until(lambda: marker.exists())  # Pi session_start, not just broker sidecar creation.
-    api(f"/api/sessions/{broker['session_id']}/send", {"text": "BROKER still works"})
-    broker = until(lambda: (row := api("/api/sessions")["sessions"][0]) and row.get("log_path") and row)
-    until(lambda: has_message(broker["log_path"], "user", "BROKER still works"))
-    assert len(caps) == 1
-    assert json.loads(caps[0].read_text())["bridgeVersion"] == 5
-    report["broker_and_child_exclusion"] = broker_listing
+    assert len(list((HOME / ".local/share/codoxear/pi-active-sessions").glob("*.caps"))) == 1
+    report["broker_startup_first_listing"] = broker_listing
+    report["broker_and_child_exclusion"] = api("/api/sessions")
     assert len(list((HOME / ".local/share/codoxear/external").glob("pi-*.json"))) == 1
     # A nested Pi with inherited broker marker env must use its own external id.
     parent = json.loads(marker.read_text())

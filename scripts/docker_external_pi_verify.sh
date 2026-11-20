@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Real Pi + global extension + local streaming provider; all processes/data in Docker.
+# Includes broker load-time caps/socket, bound /effort and rename propagation.
 # Working-tree build by default, or pass a reviewed commit to verify its archive.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -88,4 +89,4 @@ done
 sudo docker logs "$container"
 [[ "$(sudo docker inspect -f '{{.State.ExitCode}}' "$container")" == 0 ]]
 sudo docker cp "$container:/home/tester/proof/report.json" "$artifacts/report.json"
-echo 'PASS: multi-session Pi SDK, lazy registration/disposal, terminal/broker controls and lifecycle'
+echo 'PASS: multi-session Pi SDK, broker passive readiness/effort/rename, terminal controls and lifecycle'
