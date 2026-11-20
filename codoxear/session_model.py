@@ -96,3 +96,4 @@ class Session:
     lost_since: float | None = None
     # Pi extension-owned discovery/control; never inserted into broker registry.
     external: bool = False
+    external_instance_id: str | None = None

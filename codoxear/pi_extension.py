@@ -18,7 +18,7 @@ def bridge_path() -> Path:
 
 
 def loader_content(target: Path) -> str:
-    return "// Managed by codoxear-pi-extension; uninstall with that command.\nexport { default } from " + json.dumps(str(target)) + ";\n"
+    return "// Managed by codoxear-pi-extension; uninstall with that command.\nexport { globalBridge as default } from " + json.dumps(str(target)) + ";\n"
 
 
 def extension_status(*, home: Path | None = None) -> dict:
@@ -29,12 +29,14 @@ def extension_status(*, home: Path | None = None) -> dict:
         content = loader.read_text(encoding="utf-8")
         # Parse our tiny generated loader so status also catches an old pipx
         # environment's dangling absolute target after a reinstall.
-        line = next(line for line in content.splitlines() if line.startswith("export { default } from "))
-        target = Path(json.loads(line.removeprefix("export { default } from ").removesuffix(";")))
+        prefixes = ("export { globalBridge as default } from ", "export { default } from ")
+        line = next(line for line in content.splitlines() if line.startswith(prefixes))
+        prefix = next(prefix for prefix in prefixes if line.startswith(prefix))
+        target = Path(json.loads(line.removeprefix(prefix).removesuffix(";")))
     except (OSError, ValueError, StopIteration, TypeError):
         return {"status": "error", "detail": f"Unrecognized Pi bridge loader: {loader}", "loader": str(loader)}
-    ok = target.is_file()
-    return {"status": "ok" if ok else "error", "detail": f"{loader} → {target}" + ("" if ok else " (dangling target; reinstall)"), "loader": str(loader), "target": str(target)}
+    problem = "dangling target; reinstall" if not target.is_file() else "legacy loader; reinstall for per-session broker deduplication" if prefix == prefixes[1] else ""
+    return {"status": "error" if problem else "ok", "detail": f"{loader} → {target}" + (f" ({problem})" if problem else ""), "loader": str(loader), "target": str(target)}
 
 
 def install(*, home: Path | None = None) -> dict:

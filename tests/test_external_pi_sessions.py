@@ -46,8 +46,7 @@ const pi = {
   getSessionName:()=>name, setSessionName:(v)=>{name=v;}, setThinkingLevel(){},
   sendUserMessage(text, options) { sends.push({text,options}); busy=true; fs.writeFileSync(folder+'/sends.json',JSON.stringify(sends)); }
 };
-bridge(pi); const count=registrations; bridge(pi);
-if(count!==registrations) throw new Error('duplicate listeners');
+bridge(pi);
 handlers.get('session_start')({reason:'startup'},ctx);
 process.stdin.resume();
 process.stdin.on('data',()=>{handlers.get('session_shutdown')({},ctx); process.exit(0);});
@@ -56,9 +55,9 @@ process.stdin.on('data',()=>{handlers.get('session_shutdown')({},ctx); process.e
     for key in ("CODEX_WEB_PI_ACTIVE_SESSION_FILE", "CODEX_WEB_PI_BRIDGE_PID", "PI_SUBAGENT_CHILD"):
         env.pop(key, None)
     process = subprocess.Popen(["node", str(harness), str(bundle), str(tmp_path)], stdin=subprocess.PIPE, env=env)
-    socket = tmp_path / f"pi-{process.pid}.bridge.sock"
-    marker = tmp_path / f"pi-{process.pid}.json"
-    wait_for(lambda: socket.exists() and marker.exists())
+    marker = wait_for(lambda: next(tmp_path.glob(f"pi-{process.pid}-*.json"), None))
+    socket = marker.with_suffix(".bridge.sock")
+    wait_for(socket.exists)
     yield process, socket, marker
     if process.poll() is None:
         process.communicate(b"shutdown", timeout=5)
@@ -116,6 +115,17 @@ def test_stale_pid_incarnation_is_not_a_session(external_bridge, tmp_path):
     assert not process_matches(99999999, None)
 
 
+def test_live_host_pid_does_not_keep_an_unreachable_instance(external_bridge, tmp_path):
+    process, socket, marker = external_bridge
+    registry = ExternalSessionRegistry(tmp_path)
+    assert len(registry.rows()) == 1
+    socket.unlink()
+    registry.scan(force=True)
+    assert registry.rows() == []
+    assert process.poll() is None
+    assert not marker.exists() and not Path(f"{marker}.caps").exists()
+
+
 def test_installer_live_loader_override_and_dangling_target(tmp_path, monkeypatch):
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "custom-pi"))
     assert pi_extension.extension_status()["status"] == "missing"
@@ -125,6 +135,9 @@ def test_installer_live_loader_override_and_dangling_target(tmp_path, monkeypatc
     assert Path(status["target"]) == pi_extension.bridge_path()
     Path(status["loader"]).write_text(pi_extension.loader_content(tmp_path / "gone.ts"))
     assert pi_extension.extension_status()["status"] == "error"
+    assert pi_extension.install()["status"] == "ok"
+    Path(status["loader"]).write_text('export { default } from ' + json.dumps(str(pi_extension.bridge_path())) + ';\n')
+    assert "legacy loader" in pi_extension.extension_status()["detail"]
     assert pi_extension.install()["status"] == "ok"
     assert pi_extension.uninstall()["status"] == "missing"
     Path(status["loader"]).write_text("// user's own file")

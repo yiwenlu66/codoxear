@@ -64,6 +64,12 @@ if command -v agent-browser >/dev/null; then
   agent-browser eval 'const t=document.querySelector("#msg"); t.value="/model"; t.dispatchEvent(new Event("input",{bubbles:true})); if(document.querySelector("#modelPicker").getBoundingClientRect().width) throw Error("External model picker exposed"); t.value="BROWSER real user message"; t.dispatchEvent(new Event("input",{bubbles:true})); document.querySelector("#sendBtn").click()' > "$artifacts/browser-send.json"
   sleep 3
   agent-browser eval 'const proof={externalLast:[...document.querySelectorAll(".sessionGroupLabel")].at(-1)?.textContent,reply:document.querySelector("#chat").textContent.includes("LOCAL RESPONSE") && document.querySelector("#chat").textContent.includes("BROWSER"),controls:["attachBtn","unattendedBtn","queueBtn"].map(id=>[id,document.getElementById(id)?.getBoundingClientRect().width]),overflow:document.documentElement.scrollWidth>innerWidth}; if(proof.externalLast!=="External"||!proof.reply||proof.controls.some(([,w])=>w>0)||proof.overflow) throw Error(JSON.stringify(proof)); JSON.stringify(proof)' > "$artifacts/browser-state.json"
+  agent-browser eval 'window.__externalSelectedId=document.querySelector(".session.active").dataset.sessionId' > "$artifacts/browser-before-new.json"
+  sudo docker exec "$container" tmux send-keys -t external C-u /new Enter
+  sleep 5
+  agent-browser eval 'const current=document.querySelector(".session.active"); if(!current||current.dataset.sessionId!==window.__externalSelectedId||document.querySelector("#msg").disabled||document.querySelector("#chat").textContent.includes("BROWSER real user message")) throw Error("Selected external row or transcript failed to follow /new"); const t=document.querySelector("#msg"); t.value="BROWSER after new"; t.dispatchEvent(new Event("input",{bubbles:true})); document.querySelector("#sendBtn").click()' > "$artifacts/browser-after-new.json"
+  sleep 3
+  agent-browser eval 'if(!document.querySelector("#chat").textContent.includes("BROWSER after new")) throw Error("Replacement transcript did not receive user message")' >/dev/null
   agent-browser eval 'const t=document.querySelector("#msg"); t.value="SLOW browser interrupt"; t.dispatchEvent(new Event("input",{bubbles:true})); document.querySelector("#sendBtn").click()' >/dev/null
   sleep 2
   agent-browser eval 'const b=document.querySelector("#interruptBtn"); if(!b.getBoundingClientRect().width||b.disabled) throw Error("Interrupt unavailable"); b.click()' > "$artifacts/browser-interrupt.json"
@@ -82,4 +88,4 @@ done
 sudo docker logs "$container"
 [[ "$(sudo docker inspect -f '{{.State.ExitCode}}' "$container")" == 0 ]]
 sudo docker cp "$container:/home/tester/proof/report.json" "$artifacts/report.json"
-echo 'PASS: external Pi discovery, real user turns, steering, interrupt, lifecycle, broker deduplication and cleanup'
+echo 'PASS: multi-session Pi SDK, lazy registration/disposal, terminal/broker controls and lifecycle'

@@ -11,7 +11,8 @@ type SessionManager = {
 	flushed?: boolean;
 };
 
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+type ThinkingLevel =
+	"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 type ExtensionUI = {
 	notify(message: string, type?: "info" | "warning" | "error"): void;
@@ -35,403 +36,713 @@ type ExtensionCommandContext = ExtensionContext;
 type SessionStartReason = "startup" | "reload" | "new" | "resume" | "fork";
 
 type ExtensionAPI = {
-	on(event: "session_start", handler: (event: { type: "session_start"; reason?: SessionStartReason }, ctx: ExtensionContext) => void): void;
+	on(
+		event: "session_start",
+		handler: (
+			event: { type: "session_start"; reason?: SessionStartReason },
+			ctx: ExtensionContext,
+		) => void,
+	): void;
 	on(
 		event: "session_switch",
-		handler: (event: { type: "session_switch"; reason: "new" | "resume" | "fork" }, ctx: ExtensionContext) => void,
+		handler: (
+			event: { type: "session_switch"; reason: "new" | "resume" | "fork" },
+			ctx: ExtensionContext,
+		) => void,
 	): void;
-	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
-	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
-	on(event: "model_select", handler: (event: { type: "model_select" }, ctx: ExtensionContext) => void): void;
-	on(event: "agent_start" | "agent_end" | "session_shutdown", handler: (event: unknown, ctx: ExtensionContext) => void): void;
-	on(event: "message_start", handler: (event: { type: "message_start"; message: { role?: string; content?: unknown; timestamp?: number } }, ctx: ExtensionContext) => void): void;
+	on(
+		event: "session_fork",
+		handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void,
+	): void;
+	on(
+		event: "turn_end",
+		handler: (
+			event: {
+				type: "turn_end";
+				turnIndex: number;
+				message?: unknown;
+				toolResults?: unknown[];
+			},
+			ctx: ExtensionContext,
+		) => void,
+	): void;
+	on(
+		event: "model_select",
+		handler: (event: { type: "model_select" }, ctx: ExtensionContext) => void,
+	): void;
+	on(
+		event: "turn_start" | "agent_start" | "agent_end",
+		handler: (event: unknown, ctx: ExtensionContext) => void,
+	): void;
+	on(
+		event: "message_start",
+		handler: (
+			event: {
+				type: "message_start";
+				message: { role?: string; content?: unknown; timestamp?: number };
+			},
+			ctx: ExtensionContext,
+		) => void,
+	): void;
 	registerCommand(
 		name: string,
 		options: {
 			description?: string;
-			handler: (args: string, ctx: ExtensionCommandContext) => void | Promise<void>;
+			handler: (
+				args: string,
+				ctx: ExtensionCommandContext,
+			) => void | Promise<void>;
 		},
 	): void;
-	sendUserMessage(text: string, options: { deliverAs?: "steer" | "followUp"; expandPromptTemplates: boolean }): void;
+	sendUserMessage(
+		text: string,
+		options: {
+			deliverAs?: "steer" | "followUp";
+			expandPromptTemplates: boolean;
+		},
+	): void;
+	on(
+		event: "session_shutdown",
+		handler: (
+			event: {
+				reason?: "quit" | "reload" | "new" | "resume" | "fork";
+				targetSessionFile?: string;
+			},
+			ctx: ExtensionContext,
+		) => void,
+	): void;
 	getThinkingLevel(): ThinkingLevel;
 	getCommands(): Array<{ name: string; description?: string }>;
 	setThinkingLevel(level: ThinkingLevel): void;
 	setSessionName(name: string): void;
 	getSessionName(): string | undefined;
+	events?: {
+		on(channel: string, handler: (payload: any) => void): () => void;
+		emit(channel: string, payload: unknown): void;
+	};
 };
 
-const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+const THINKING_LEVELS: readonly ThinkingLevel[] = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+];
 
 // Bumped when a new control op or capability is added. Codoxear gates every
 // bridge-backed control on both this version and the matching caps feature, so
 // a session running an older bridge simply reports the capability as absent.
-const BRIDGE_VERSION = 4;
-const BRIDGE_FEATURES: readonly string[] = ["effort", "thinking", "session-name", "send", "interrupt", "state"];
-const INSTANCE = Symbol.for("codoxear.pi-bridge");
-let markerPath: string | undefined;
-let external = false;
-let activeCtx: ExtensionContext | undefined;
-const PROCESS_STARTED = Symbol.for("codoxear.pi-process-start");
-const startedAt = globalThis[PROCESS_STARTED] || (globalThis[PROCESS_STARTED] = Date.now() / 1000);
-let processStart: string | undefined;
-try { processStart = fs.readFileSync(`/proc/${process.pid}/stat`, "utf8").split(") ").pop().split(" ")[19]; } catch {}
-
-function chooseMarker(): string | undefined {
-	const brokerMarker = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
-	const intendedPid = process.env.CODEX_WEB_PI_BRIDGE_PID;
-	if (brokerMarker && (!intendedPid || Number(intendedPid) === process.pid)) {
-		// Compatibility with a broker predating the explicit exec-pid stamp.
-		try { if (JSON.parse(fs.readFileSync(brokerMarker, "utf8")).pid !== process.pid && !intendedPid) return undefined; } catch {}
-		return brokerMarker;
-	}
-	if (process.env.PI_SUBAGENT_CHILD) return undefined;
-	external = true;
-	const dataHome = process.env.XDG_DATA_HOME || path.join(require("node:os").homedir(), ".local", "share");
-	return path.join(process.env.CODOXEAR_EXTERNAL_DIR || path.join(dataHome, "codoxear", "external"), `pi-${process.pid}.json`);
-}
-
-function bridgeState() {
-	return {
-		busy: activeCtx ? !activeCtx.isIdle() : false,
-		sessionId: activeCtx?.sessionManager.getSessionId(),
-		sessionFile: activeCtx?.sessionManager.getSessionFile(),
-		name: currentSessionName(),
-		...readLiveRunSettings(activePi, activeCtx),
-	};
-}
-
-function writeActiveSession(ctx: ExtensionContext, reason: string): void {
-	if (!markerPath) return;
-	activeCtx = ctx;
-	const sessionFile = ctx.sessionManager.getSessionFile();
-	if (!sessionFile) return;
-	const payload = {
-		version: 1,
-		bridgeVersion: BRIDGE_VERSION,
-		reason,
-		sessionFile,
-		sessionId: ctx.sessionManager.getSessionId(),
-		cwd: ctx.sessionManager.getCwd(),
-		pid: process.pid,
-		processStart,
-		startTs: startedAt,
-		features: [...BRIDGE_FEATURES],
-		...(external ? bridgeState() : {}),
-		updatedAt: new Date().toISOString(),
-	};
+const BRIDGE_VERSION = 5;
+const BRIDGE_FEATURES: readonly string[] = [
+	"effort",
+	"thinking",
+	"session-name",
+	"send",
+	"interrupt",
+	"state",
+];
+// One factory invocation is one Pi session runtime, including in SDK hosts.
+// Only immutable constants live outside this closure: a process is not a session.
+function createBridge(pi: ExtensionAPI, source: "global" | "injected"): void {
+	const activePi = pi;
+	let instanceId = crypto.randomBytes(8).toString("hex");
+	let startedAt = Date.now() / 1000;
+	let markerPath: string | undefined;
+	let external = false;
+	let activeCtx: ExtensionContext | undefined;
+	let registeredSessionId: string | undefined;
+	let stopped = false;
+	let unsubscribeBrokerClaim: (() => void) | undefined;
+	const brokerManagers = new WeakSet<object>();
+	const brokerClaimChannel = "codoxear:broker-bridge-owner:v1";
+	let processStart: string | undefined;
 	try {
-		fs.mkdirSync(path.dirname(markerPath), { recursive: true });
-		const tmp = `${markerPath}.${process.pid}.tmp`;
-		fs.writeFileSync(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
-		fs.renameSync(tmp, markerPath);
-		try {
-			fs.chmodSync(markerPath, 0o600);
-		} catch {
-			// Best effort; write mode already restricts newly created files.
-		}
-	} catch {
-		// Do not let Codoxear bookkeeping affect Pi session operation.
-	}
-}
-
-function writePromptReceipt(message: { role?: string; content?: unknown; timestamp?: number }): void {
-	if (!markerPath || message.role !== "user" || typeof message.timestamp !== "number"
-		|| !Number.isSafeInteger(message.timestamp) || message.timestamp <= 0) return;
-	const text = typeof message.content === "string" ? message.content : Array.isArray(message.content)
-		? message.content.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("")
-		: "";
-	if (!text) return;
-	// message_start(user) is emitted after input interception, auth/model checks
-	// and before_agent_start hooks, but before message_end persists anything.
-	// Keep a sibling file so session/capability rewrites cannot erase a receipt.
-	const receiptPath = `${markerPath}.receipt`;
-	try {
-		fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
-		const tmp = `${receiptPath}.${process.pid}.tmp`;
-		fs.writeFileSync(tmp, `${JSON.stringify({
-			version: 1,
-			pid: process.pid,
-			textSha256: crypto.createHash("sha256").update(text, "utf8").digest("hex"),
-			messageTimestamp: message.timestamp,
-		})}\n`, { mode: 0o600 });
-		fs.renameSync(tmp, receiptPath);
-	} catch {
-		// Receipt failure leaves the existing PTY/log evidence paths in charge.
-	}
-}
-
-function materializeNewSession(ctx: ExtensionContext): void {
-	try {
-		const mgr = ctx.sessionManager;
-		const sessionFile = mgr.getSessionFile();
-		const header = mgr.fileEntries?.[0];
-		if (!header || header.type !== "session" || typeof sessionFile !== "string" || fs.existsSync(sessionFile)) return;
-		fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
-		fs.writeFileSync(sessionFile, mgr.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""), { mode: 0o600, flag: "wx" });
-		mgr.flushed = true;
-	} catch {
-		// The bridge must not interfere with Pi if session internals change.
-	}
-}
-
-let activePi;
-
-function readLiveRunSettings(pi, ctx?: ExtensionContext) {
-	const out = {};
-	try {
-		// Real Pi 0.82.1 event ctx carries the live model as a property;
-		// ctx.getModel()/pi.getModel() are kept for runtimes that expose the
-		// function forms instead.
-		const m = (ctx && ctx.model && typeof ctx.model === "object" && ctx.model)
-			|| (ctx && typeof ctx.getModel === "function" && ctx.getModel())
-			|| (pi && typeof pi.getModel === "function" && pi.getModel())
-			|| null;
-		if (m) {
-			if (typeof m.provider === "string" && m.provider) out.model_provider = m.provider;
-			if (typeof m.id === "string" && m.id) out.model = m.id;
-		}
+		processStart = fs
+			.readFileSync(`/proc/${process.pid}/stat`, "utf8")
+			.split(") ")
+			.pop()
+			.split(" ")[19];
 	} catch {}
-	try {
-		if (pi && typeof pi.getThinkingLevel === "function") {
-			const level = pi.getThinkingLevel();
-			if (typeof level === "string" && level) out.reasoning_effort = level;
+
+	function chooseMarker(): string | undefined {
+		const brokerMarker = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
+		const intendedPid = process.env.CODEX_WEB_PI_BRIDGE_PID;
+		if (
+			source === "injected" &&
+			brokerMarker &&
+			(!intendedPid || Number(intendedPid) === process.pid)
+		) {
+			// Compatibility with a broker predating the explicit exec-pid stamp.
+			try {
+				if (
+					JSON.parse(fs.readFileSync(brokerMarker, "utf8")).pid !==
+						process.pid &&
+					!intendedPid
+				)
+					return undefined;
+			} catch {}
+			return brokerMarker;
 		}
-	} catch {}
-	return out;
-}
-
-let lastCapsModel;
-let lastCapsProvider;
-let lastCapsEffort;
-let lastCommandsSnapshot;
-
-function sameCommands(left, right) {
-	return Array.isArray(left)
-		&& Array.isArray(right)
-		&& left.length === right.length
-		&& left.every((command, index) => command.name === right[index].name && command.description === right[index].description);
-}
-
-function captureCommands() {
-	try {
-		const snapshot = activePi.getCommands().map((command) => ({
-			name: command.name,
-			description: command.description || "",
-		}));
-		lastCommandsSnapshot = sameCommands(lastCommandsSnapshot, snapshot) ? lastCommandsSnapshot : snapshot;
-		return lastCommandsSnapshot;
-	} catch {
-		return undefined;
+		if (process.env.PI_SUBAGENT_CHILD) return undefined;
+		external = true;
+		const dataHome =
+			process.env.XDG_DATA_HOME ||
+			path.join(require("node:os").homedir(), ".local", "share");
+		return path.join(
+			process.env.CODOXEAR_EXTERNAL_DIR ||
+				path.join(dataHome, "codoxear", "external"),
+			`pi-${process.pid}-${instanceId}.json`,
+		);
 	}
-}
 
-function refreshCaps(ctx?: ExtensionContext) {
-	// Re-read Pi's current settings and registry from a live lifecycle event.
-	// Retaining an unchanged registry snapshot avoids rewriting caps when the
-	// browser-visible state has not changed.
-	const previousCommandsSnapshot = lastCommandsSnapshot;
-	const commands = captureCommands();
-	const live = readLiveRunSettings(activePi, ctx);
-	const model = typeof live.model === "string" ? live.model : undefined;
-	const provider = typeof live.model_provider === "string" ? live.model_provider : undefined;
-	const effort = typeof live.reasoning_effort === "string" ? live.reasoning_effort : undefined;
-	const commandsChanged = commands !== undefined && commands !== previousCommandsSnapshot;
-	if (model === lastCapsModel && provider === lastCapsProvider && effort === lastCapsEffort && !commandsChanged) {
-		return; // nothing changed
+	// The sole cross-factory state is an exact, short-lived identity handoff
+	// for Pi runtime replacement. It holds no ctx, Pi API, socket or singleton.
+	function handoffs(): Map<
+		string,
+		{ instanceId: string; startedAt: number; expiresAt: number }
+	> {
+		const key = Symbol.for("codoxear.pi-bridge-handoffs");
+		const entries = globalThis[key] || (globalThis[key] = new Map());
+		for (const [file, entry] of entries)
+			if (entry.expiresAt <= Date.now()) entries.delete(file);
+		return entries;
 	}
-	lastCapsModel = model;
-	lastCapsProvider = provider;
-	lastCapsEffort = effort;
-	writeThinkingCapabilities(commands, live);
-}
 
-function writeThinkingCapabilities(commands, liveSettings) {
-	if (!markerPath) return;
-	const capsPath = `${markerPath}.caps`;
-	const commandsToWrite = commands !== undefined ? commands : lastCommandsSnapshot;
-	const payload = {
-		bridgeVersion: BRIDGE_VERSION,
-		features: [...BRIDGE_FEATURES],
-		commands: Array.isArray(commandsToWrite) ? commandsToWrite.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
-		pid: process.pid,
-		updatedAt: new Date().toISOString(),
-		...(liveSettings || readLiveRunSettings(activePi)),
-	};
-	try {
-		fs.mkdirSync(path.dirname(capsPath), { recursive: true });
-		const tmp = `${capsPath}.${process.pid}.tmp`;
-		fs.writeFileSync(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
-		fs.renameSync(tmp, capsPath);
-		try {
-			fs.chmodSync(capsPath, 0o600);
-		} catch {
-			// Best effort; write mode already restricts newly created files.
-		}
-	} catch {
-		// Do not let Codoxear bookkeeping affect Pi session operation.
+	function adoptHandoff(ctx: ExtensionContext) {
+		const file = ctx.sessionManager.getSessionFile();
+		if (!external || registeredSessionId !== undefined || !file) return;
+		const entries = handoffs();
+		const key = path.resolve(file);
+		const entry = entries.get(key);
+		if (!entry) return;
+		entries.delete(key); // Consume once, before publishing any live endpoint.
+		instanceId = entry.instanceId;
+		startedAt = entry.startedAt;
+		markerPath = chooseMarker();
 	}
-}
 
-// --- control channel (broker -> bridge) ------------------------------------
-//
-// The marker/caps/receipt files only carry state from Pi to the broker. Live
-// control (a rename issued in the codoxear UI) needs the other direction, so the
-// bridge listens on a sibling Unix socket. The broker connects, sends one JSON
-// line, and reads one reply. Everything here is best effort: a session without
-// the socket still works, it just reports the capability as absent.
-
-function bridgeSocketPath(): string | undefined {
-	return markerPath ? external ? markerPath.replace(/\.json$/, ".bridge.sock") : `${markerPath}.bridge.sock` : undefined;
-}
-
-function cleanSessionName(raw: unknown): string {
-	return typeof raw === "string" ? raw.replace(/[\r\n]+/g, " ").trim().slice(0, 200) : "";
-}
-
-function currentSessionName(): string {
-	try {
-		const name = activePi && typeof activePi.getSessionName === "function" ? activePi.getSessionName() : undefined;
-		return typeof name === "string" ? name : "";
-	} catch {
-		return "";
-	}
-}
-
-function handleBridgeRequest(request: unknown): Record<string, unknown> {
-	const op = request && typeof request === "object" ? (request as { op?: unknown }).op : undefined;
-	if (["state", "interrupt", "send"].includes(String(op)) && !activeCtx) return { ok: false, error: "session not ready", pid: process.pid };
-	const expected = (request as { sessionId?: unknown }).sessionId;
-	if (expected && expected !== activeCtx?.sessionManager.getSessionId()) return { ok: false, error: "stale session", pid: process.pid };
-	if (op === "state") return { ok: true, pid: process.pid, ...bridgeState(), commands: captureCommands() };
-	if (op === "interrupt") {
-		activeCtx.abort();
-		return { ok: true, pid: process.pid };
-	}
-	if (op === "send") {
-		const text = (request as { text?: unknown }).text;
-		if (typeof text !== "string" || !text.trim()) return { ok: false, error: "text required", pid: process.pid };
-		const busy = !activeCtx.isIdle();
-		activePi.sendUserMessage(text, { deliverAs: busy ? "steer" : undefined, expandPromptTemplates: true });
-		return { ok: true, pid: process.pid, delivery: busy ? "steer" : "turn" };
-	}
-	if (op === "get_session_name") {
-		return { ok: true, pid: process.pid, name: currentSessionName() };
-	}
-	if (op === "set_session_name") {
-		const name = cleanSessionName((request as { name?: unknown }).name);
-		if (!activePi || typeof activePi.setSessionName !== "function") {
-			return { ok: false, pid: process.pid, error: "session name control unavailable" };
-		}
-		activePi.setSessionName(name);
-		if (activeCtx) writeActiveSession(activeCtx, "name");
-		return { ok: true, pid: process.pid, name: currentSessionName() };
-	}
-	return { ok: false, pid: process.pid, error: "unknown op" };
-}
-
-let bridgeServer;
-
-function startBridgeControlServer(): void {
-	const socketPath = bridgeSocketPath();
-	if (!socketPath || bridgeServer) return;
-	try {
-		fs.mkdirSync(path.dirname(socketPath), { recursive: true });
-		try {
-			fs.unlinkSync(socketPath);
-		} catch {
-			// No stale socket to clear.
-		}
-		const server = net.createServer((socket) => {
-			let buffer = "";
-			let answered = false;
-			socket.setEncoding("utf8");
-			socket.on("error", () => {});
-			socket.on("data", (chunk) => {
-				if (answered) return;
-				buffer += chunk;
-				const newline = buffer.indexOf("\n");
-				if (newline < 0) {
-					if (buffer.length > 1048576) {
-						answered = true;
-						socket.destroy();
-					}
-					return;
-				}
-				answered = true;
-				let reply;
-				try {
-					reply = handleBridgeRequest(JSON.parse(buffer.slice(0, newline)));
-				} catch (error) {
-					reply = { ok: false, pid: process.pid, error: error instanceof Error ? error.message : "invalid request" };
-				}
-				try {
-					socket.end(`${JSON.stringify(reply)}\n`);
-				} catch {
-					// Peer already gone.
-				}
+	function shutdownBridge(event: {
+		reason?: string;
+		targetSessionFile?: string;
+	}) {
+		if (stopped) return;
+		let target = event.targetSessionFile;
+		if (external && event.reason === "reload" && !target)
+			target = activeCtx?.sessionManager.getSessionFile();
+		const transfer =
+			external &&
+			["reload", "new", "resume", "fork"].includes(event.reason || "") &&
+			target;
+		// Old endpoints are gone before an identity can be adopted by a successor.
+		cleanupBridge();
+		if (transfer)
+			handoffs().set(path.resolve(transfer), {
+				instanceId,
+				startedAt,
+				expiresAt: Date.now() + 10000,
 			});
-		});
-		server.on("error", () => {
+	}
+
+	function bridgeState() {
+		return {
+			instanceId,
+			cwd: activeCtx?.sessionManager.getCwd(),
+			busy: activeCtx ? !activeCtx.isIdle() : false,
+			sessionId: activeCtx?.sessionManager.getSessionId(),
+			sessionFile: activeCtx?.sessionManager.getSessionFile(),
+			name: currentSessionName(),
+			...readLiveRunSettings(activePi, activeCtx),
+		};
+	}
+
+	function writeActiveSession(ctx: ExtensionContext, reason: string): void {
+		if (!markerPath) return;
+		activeCtx = ctx;
+		const sessionFile = ctx.sessionManager.getSessionFile();
+		if (!sessionFile) return;
+		const payload = {
+			version: 1,
+			bridgeVersion: BRIDGE_VERSION,
+			reason,
+			sessionFile,
+			sessionId: ctx.sessionManager.getSessionId(),
+			cwd: ctx.sessionManager.getCwd(),
+			pid: process.pid,
+			processStart,
+			instanceId,
+			startTs: startedAt,
+			features: [...BRIDGE_FEATURES],
+			...(external ? bridgeState() : {}),
+			updatedAt: new Date().toISOString(),
+		};
+		try {
+			fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+			const tmp = `${markerPath}.${process.pid}.tmp`;
+			fs.writeFileSync(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+			fs.renameSync(tmp, markerPath);
 			try {
-				server.close();
+				fs.chmodSync(markerPath, 0o600);
 			} catch {
-				// Already closed.
+				// Best effort; write mode already restricts newly created files.
 			}
-		});
-		server.listen(socketPath, () => {
+		} catch {
+			// Do not let Codoxear bookkeeping affect Pi session operation.
+		}
+	}
+
+	function writePromptReceipt(message: {
+		role?: string;
+		content?: unknown;
+		timestamp?: number;
+	}): void {
+		if (
+			!markerPath ||
+			message.role !== "user" ||
+			typeof message.timestamp !== "number" ||
+			!Number.isSafeInteger(message.timestamp) ||
+			message.timestamp <= 0
+		)
+			return;
+		const text =
+			typeof message.content === "string"
+				? message.content
+				: Array.isArray(message.content)
+					? message.content
+							.filter(
+								(part) =>
+									part?.type === "text" && typeof part.text === "string",
+							)
+							.map((part) => part.text)
+							.join("")
+					: "";
+		if (!text) return;
+		// message_start(user) is emitted after input interception, auth/model checks
+		// and before_agent_start hooks, but before message_end persists anything.
+		// Keep a sibling file so session/capability rewrites cannot erase a receipt.
+		const receiptPath = `${markerPath}.receipt`;
+		try {
+			fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+			const tmp = `${receiptPath}.${process.pid}.tmp`;
+			fs.writeFileSync(
+				tmp,
+				`${JSON.stringify({
+					version: 1,
+					pid: process.pid,
+					textSha256: crypto
+						.createHash("sha256")
+						.update(text, "utf8")
+						.digest("hex"),
+					messageTimestamp: message.timestamp,
+				})}\n`,
+				{ mode: 0o600 },
+			);
+			fs.renameSync(tmp, receiptPath);
+		} catch {
+			// Receipt failure leaves the existing PTY/log evidence paths in charge.
+		}
+	}
+
+	function materializeNewSession(ctx: ExtensionContext): void {
+		try {
+			const mgr = ctx.sessionManager;
+			const sessionFile = mgr.getSessionFile();
+			const header = mgr.fileEntries?.[0];
+			if (
+				!header ||
+				header.type !== "session" ||
+				typeof sessionFile !== "string" ||
+				fs.existsSync(sessionFile)
+			)
+				return;
+			fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+			fs.writeFileSync(
+				sessionFile,
+				mgr.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
+				{ mode: 0o600, flag: "wx" },
+			);
+			mgr.flushed = true;
+		} catch {
+			// The bridge must not interfere with Pi if session internals change.
+		}
+	}
+
+	function readLiveRunSettings(pi, ctx?: ExtensionContext) {
+		const out = {};
+		try {
+			// Real Pi 0.82.1 event ctx carries the live model as a property;
+			// ctx.getModel()/pi.getModel() are kept for runtimes that expose the
+			// function forms instead.
+			const m =
+				(ctx && ctx.model && typeof ctx.model === "object" && ctx.model) ||
+				(ctx && typeof ctx.getModel === "function" && ctx.getModel()) ||
+				(pi && typeof pi.getModel === "function" && pi.getModel()) ||
+				null;
+			if (m) {
+				if (typeof m.provider === "string" && m.provider)
+					out.model_provider = m.provider;
+				if (typeof m.id === "string" && m.id) out.model = m.id;
+			}
+		} catch {}
+		try {
+			if (pi && typeof pi.getThinkingLevel === "function") {
+				const level = pi.getThinkingLevel();
+				if (typeof level === "string" && level) out.reasoning_effort = level;
+			}
+		} catch {}
+		return out;
+	}
+
+	let lastCapsModel;
+	let lastCapsProvider;
+	let lastCapsEffort;
+	let lastCommandsSnapshot;
+
+	function sameCommands(left, right) {
+		return (
+			Array.isArray(left) &&
+			Array.isArray(right) &&
+			left.length === right.length &&
+			left.every(
+				(command, index) =>
+					command.name === right[index].name &&
+					command.description === right[index].description,
+			)
+		);
+	}
+
+	function captureCommands() {
+		try {
+			const snapshot = activePi.getCommands().map((command) => ({
+				name: command.name,
+				description: command.description || "",
+			}));
+			lastCommandsSnapshot = sameCommands(lastCommandsSnapshot, snapshot)
+				? lastCommandsSnapshot
+				: snapshot;
+			return lastCommandsSnapshot;
+		} catch {
+			return undefined;
+		}
+	}
+
+	function refreshCaps(ctx?: ExtensionContext) {
+		// Re-read Pi's current settings and registry from a live lifecycle event.
+		// Retaining an unchanged registry snapshot avoids rewriting caps when the
+		// browser-visible state has not changed.
+		const previousCommandsSnapshot = lastCommandsSnapshot;
+		const commands = captureCommands();
+		const live = readLiveRunSettings(activePi, ctx);
+		const model = typeof live.model === "string" ? live.model : undefined;
+		const provider =
+			typeof live.model_provider === "string" ? live.model_provider : undefined;
+		const effort =
+			typeof live.reasoning_effort === "string"
+				? live.reasoning_effort
+				: undefined;
+		const commandsChanged =
+			commands !== undefined && commands !== previousCommandsSnapshot;
+		if (
+			model === lastCapsModel &&
+			provider === lastCapsProvider &&
+			effort === lastCapsEffort &&
+			!commandsChanged
+		) {
+			return; // nothing changed
+		}
+		lastCapsModel = model;
+		lastCapsProvider = provider;
+		lastCapsEffort = effort;
+		writeThinkingCapabilities(commands, live);
+	}
+
+	function writeThinkingCapabilities(commands, liveSettings) {
+		if (!markerPath) return;
+		const capsPath = `${markerPath}.caps`;
+		const commandsToWrite =
+			commands !== undefined ? commands : lastCommandsSnapshot;
+		const payload = {
+			bridgeVersion: BRIDGE_VERSION,
+			features: [...BRIDGE_FEATURES],
+			commands: Array.isArray(commandsToWrite)
+				? commandsToWrite.map((command) => ({
+						name: command.name,
+						description: command.description || "",
+					}))
+				: undefined,
+			pid: process.pid,
+			updatedAt: new Date().toISOString(),
+			...(liveSettings || readLiveRunSettings(activePi)),
+		};
+		try {
+			fs.mkdirSync(path.dirname(capsPath), { recursive: true });
+			const tmp = `${capsPath}.${process.pid}.tmp`;
+			fs.writeFileSync(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+			fs.renameSync(tmp, capsPath);
 			try {
-				fs.chmodSync(socketPath, 0o600);
+				fs.chmodSync(capsPath, 0o600);
 			} catch {
-				// Best effort; the app dir is already user-scoped.
+				// Best effort; write mode already restricts newly created files.
 			}
-		});
-		bridgeServer = server;
-		// The control channel must never be the reason a Pi process stays alive:
-		// Pi owns the event loop, and a harness that loads this bundle and exits
-		// would otherwise hang on the listening handle.
-		if (typeof server.unref === "function") server.unref();
-		process.once("exit", () => {
+		} catch {
+			// Do not let Codoxear bookkeeping affect Pi session operation.
+		}
+	}
+
+	// --- control channel (broker -> bridge) ------------------------------------
+	//
+	// The marker/caps/receipt files only carry state from Pi to the broker. Live
+	// control (a rename issued in the codoxear UI) needs the other direction, so the
+	// bridge listens on a sibling Unix socket. The broker connects, sends one JSON
+	// line, and reads one reply. Everything here is best effort: a session without
+	// the socket still works, it just reports the capability as absent.
+
+	function bridgeSocketPath(): string | undefined {
+		return markerPath
+			? external
+				? markerPath.replace(/\.json$/, ".bridge.sock")
+				: `${markerPath}.bridge.sock`
+			: undefined;
+	}
+
+	function cleanSessionName(raw: unknown): string {
+		return typeof raw === "string"
+			? raw
+					.replace(/[\r\n]+/g, " ")
+					.trim()
+					.slice(0, 200)
+			: "";
+	}
+
+	function currentSessionName(): string {
+		try {
+			const name =
+				activePi && typeof activePi.getSessionName === "function"
+					? activePi.getSessionName()
+					: undefined;
+			return typeof name === "string" ? name : "";
+		} catch {
+			return "";
+		}
+	}
+
+	function handleBridgeRequest(request: unknown): Record<string, unknown> {
+		const op =
+			request && typeof request === "object"
+				? (request as { op?: unknown }).op
+				: undefined;
+		if (["state", "interrupt", "send"].includes(String(op)) && !activeCtx)
+			return { ok: false, error: "session not ready", pid: process.pid };
+		const expectedInstance = (request as { instanceId?: unknown }).instanceId;
+		if (expectedInstance && expectedInstance !== instanceId)
+			return { ok: false, error: "stale instance", pid: process.pid };
+		if (op === "state") {
 			try {
-				server.close();
-			} catch {
-				// Already closed.
+				return {
+					ok: true,
+					pid: process.pid,
+					...bridgeState(),
+					commands: captureCommands(),
+				};
+			} catch (error) {
+				// SDK dispose invalidates ctx without emitting session_shutdown.
+				// A live process alone must never keep that disposed session listed.
+				if (external) cleanupBridge();
+				throw error;
 			}
+		}
+		const expected = (request as { sessionId?: unknown }).sessionId;
+		if (expected && expected !== activeCtx?.sessionManager.getSessionId())
+			return { ok: false, error: "stale session", pid: process.pid };
+		if (op === "interrupt") {
+			activeCtx.abort();
+			return { ok: true, pid: process.pid, instanceId };
+		}
+		if (op === "send") {
+			const text = (request as { text?: unknown }).text;
+			if (typeof text !== "string" || !text.trim())
+				return { ok: false, error: "text required", pid: process.pid };
+			const busy = !activeCtx.isIdle();
+			activePi.sendUserMessage(text, {
+				deliverAs: busy ? "steer" : undefined,
+				expandPromptTemplates: true,
+			});
+			return {
+				ok: true,
+				pid: process.pid,
+				instanceId,
+				delivery: busy ? "steer" : "turn",
+			};
+		}
+		if (op === "get_session_name") {
+			return {
+				ok: true,
+				pid: process.pid,
+				...(external ? { instanceId } : {}),
+				name: currentSessionName(),
+			};
+		}
+		if (op === "set_session_name") {
+			const name = cleanSessionName((request as { name?: unknown }).name);
+			if (!activePi || typeof activePi.setSessionName !== "function") {
+				return {
+					ok: false,
+					pid: process.pid,
+					error: "session name control unavailable",
+				};
+			}
+			activePi.setSessionName(name);
+			if (activeCtx) writeActiveSession(activeCtx, "name");
+			return {
+				ok: true,
+				pid: process.pid,
+				...(external ? { instanceId } : {}),
+				name: currentSessionName(),
+			};
+		}
+		return { ok: false, pid: process.pid, error: "unknown op" };
+	}
+
+	let bridgeServer;
+
+	function startBridgeControlServer(): void {
+		const socketPath = bridgeSocketPath();
+		if (!socketPath || (bridgeServer && fs.existsSync(socketPath))) return;
+		try {
+			try {
+				bridgeServer?.close();
+			} catch {}
+			fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 			try {
 				fs.unlinkSync(socketPath);
 			} catch {
-				// Nothing left to remove.
+				// No stale socket to clear.
 			}
-		});
-	} catch {
-		// Control channel unavailable; codoxear sees no session-name capability.
+			const server = net.createServer((socket) => {
+				let buffer = "";
+				let answered = false;
+				socket.setEncoding("utf8");
+				socket.on("error", () => {});
+				socket.on("data", (chunk) => {
+					if (answered) return;
+					buffer += chunk;
+					const newline = buffer.indexOf("\n");
+					if (newline < 0) {
+						if (buffer.length > 1048576) {
+							answered = true;
+							socket.destroy();
+						}
+						return;
+					}
+					answered = true;
+					let reply;
+					try {
+						reply = handleBridgeRequest(JSON.parse(buffer.slice(0, newline)));
+					} catch (error) {
+						reply = {
+							ok: false,
+							pid: process.pid,
+							error: error instanceof Error ? error.message : "invalid request",
+						};
+					}
+					try {
+						socket.end(`${JSON.stringify(reply)}\n`);
+					} catch {
+						// Peer already gone.
+					}
+				});
+			});
+			server.on("error", () => {
+				try {
+					server.close();
+				} catch {
+					// Already closed.
+				}
+			});
+			server.listen(socketPath, () => {
+				try {
+					fs.chmodSync(socketPath, 0o600);
+				} catch {
+					// Best effort; the app dir is already user-scoped.
+				}
+			});
+			bridgeServer = server;
+			// The control channel must never be the reason a Pi process stays alive:
+			// Pi owns the event loop, and a harness that loads this bundle and exits
+			// would otherwise hang on the listening handle.
+			if (typeof server.unref === "function") server.unref();
+		} catch {
+			// Control channel unavailable; codoxear sees no session-name capability.
+		}
 	}
-}
 
-function cleanupBridge() {
-	try { bridgeServer?.close(); } catch {}
-	bridgeServer = undefined;
-	for (const file of [bridgeSocketPath(), ...(external ? [markerPath, markerPath && `${markerPath}.caps`, markerPath && `${markerPath}.receipt`] : [])]) {
-		try { if (file) fs.unlinkSync(file); } catch {}
+	function cleanupBridge() {
+		stopped = true;
+		process.removeListener("exit", cleanupBridge);
+		try {
+			unsubscribeBrokerClaim?.();
+		} catch {}
+		try {
+			bridgeServer?.close();
+		} catch {}
+		bridgeServer = undefined;
+		for (const file of [
+			bridgeSocketPath(),
+			...(external
+				? [
+						markerPath,
+						markerPath && `${markerPath}.caps`,
+						markerPath && `${markerPath}.receipt`,
+					]
+				: []),
+		]) {
+			try {
+				if (file) fs.unlinkSync(file);
+			} catch {}
+		}
+		activeCtx = undefined;
 	}
-	delete globalThis[INSTANCE];
-	activeCtx = undefined;
-}
 
-export default function (pi: ExtensionAPI): void {
-	if (globalThis[INSTANCE]) return;
 	markerPath = chooseMarker();
 	if (!markerPath) return;
-	globalThis[INSTANCE] = true;
-	activePi = pi;
-	process.once("exit", cleanupBridge);
-	writeThinkingCapabilities(undefined, {});
-	startBridgeControlServer();
+	// Global and injected copies can coexist in one runtime. The injected copy
+	// claims only its own SessionManager through Pi's event bus. Identity here
+	// is the session manager object, not the PID (SDK hosts may share both PID
+	// and an explicitly supplied event bus across independent sessions).
+	if (source === "global" && pi.events) {
+		unsubscribeBrokerClaim = pi.events.on(brokerClaimChannel, (claim) => {
+			if (
+				claim?.pid !== process.pid ||
+				claim?.markerPath !== process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE ||
+				!claim?.sessionManager
+			)
+				return;
+			brokerManagers.add(claim.sessionManager);
+			if (activeCtx?.sessionManager === claim.sessionManager) cleanupBridge();
+		});
+	}
+	if (!external) {
+		process.once("exit", cleanupBridge);
+		writeThinkingCapabilities(undefined, {});
+		startBridgeControlServer();
+	}
 	let commandsRegistered = false;
 	function registerEffortCommands(ctx?: ExtensionContext) {
 		if (commandsRegistered) return;
+		// The global twin may receive session_start before the injected copy
+		// claims its manager. Leave broker command registration to that owner.
+		if (
+			source === "global" &&
+			process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE &&
+			Number(process.env.CODEX_WEB_PI_BRIDGE_PID) === process.pid
+		)
+			return;
 		try {
 			pi.registerCommand("effort", {
-				description: "Set the reasoning effort (thinking level) for the current model",
+				description:
+					"Set the reasoning effort (thinking level) for the current model",
 				handler: effortHandler,
 			});
 			// Backwards-compatible alias; /effort is the primary spelling.
@@ -443,40 +754,64 @@ export default function (pi: ExtensionAPI): void {
 			// Read settings with the same ctx as refreshCaps: a write missing the
 			// live model would clobber a richer caps file that refreshCaps then
 			// wrongly considers current via its in-memory dedupe.
-			writeThinkingCapabilities(captureCommands(), readLiveRunSettings(pi, ctx));
+			writeThinkingCapabilities(
+				captureCommands(),
+				readLiveRunSettings(pi, ctx),
+			);
 		} catch {
 			// Runtime not yet bound (extension loading) or already registered;
 			// retried on subsequent lifecycle events until it succeeds.
 		}
 	}
-	pi.on("session_start", (event, ctx) => {
+	function startSessionRuntime(ctx: ExtensionContext, reason: string) {
+		if (stopped) return;
+		if (brokerManagers.has(ctx.sessionManager)) {
+			cleanupBridge();
+			return;
+		}
 		activeCtx = ctx;
+		adoptHandoff(ctx);
+		if (!external)
+			pi.events?.emit(brokerClaimChannel, {
+				pid: process.pid,
+				markerPath,
+				sessionManager: ctx.sessionManager,
+			});
+		const sessionId = ctx.sessionManager.getSessionId();
+		if (external && registeredSessionId === undefined) process.once("exit", cleanupBridge);
+		if (sessionId !== registeredSessionId || reason === "new") {
+			registeredSessionId = sessionId;
+			if (external || reason === "new") materializeNewSession(ctx);
+		}
 		registerEffortCommands(ctx);
-		if (external || event.reason === "new") materializeNewSession(ctx);
-		writeActiveSession(ctx, event.reason || "session_start");
+		startBridgeControlServer();
+		writeActiveSession(ctx, reason);
 		refreshCaps(ctx);
-	});
-	pi.on("session_switch", (event, ctx) => {
+	}
+	pi.on("session_start", (event, ctx) =>
+		startSessionRuntime(ctx, event.reason || "session_start"),
+	);
+	pi.on("session_switch", (event, ctx) =>
+		startSessionRuntime(ctx, event.reason),
+	);
+	pi.on("session_fork", (_event, ctx) => startSessionRuntime(ctx, "fork"));
+	pi.on("session_shutdown", shutdownBridge);
+	// SDK hosts need not bind a mode/UI and may never emit session_start.
+	// Both fallbacks also notice session identity replacement within an instance.
+	pi.on("turn_start", (_event, ctx) => startSessionRuntime(ctx, "turn_start"));
+	pi.on("agent_start", (_event, ctx) =>
+		startSessionRuntime(ctx, "agent_start"),
+	);
+	pi.on("agent_end", (_event, ctx) => startSessionRuntime(ctx, "agent_end"));
+	pi.on("message_start", (event, ctx) => {
+		if (stopped) return;
 		activeCtx = ctx;
-		registerEffortCommands(ctx);
-		if (external || event.reason === "new") materializeNewSession(ctx);
-		writeActiveSession(ctx, event.reason);
-		refreshCaps(ctx);
+		writePromptReceipt(event.message);
 	});
-	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
-	pi.on("session_shutdown", cleanupBridge);
-	pi.on("agent_start", (_event, ctx) => writeActiveSession(ctx, "agent_start"));
-	pi.on("agent_end", (_event, ctx) => writeActiveSession(ctx, "agent_end"));
-	pi.on("message_start", (event, ctx) => { activeCtx = ctx; writePromptReceipt(event.message); });
-	// A native /model switch is only recorded in the session log; model_select
-	// lets the caps file track it immediately instead of at the next turn_end.
-	pi.on("model_select", (_event, ctx) => { activeCtx = ctx; refreshCaps(ctx); writeActiveSession(ctx, "model_select"); });
-	pi.on("turn_end", (_event, ctx) => {
-		activeCtx = ctx;
-		writeActiveSession(ctx, "turn_end");
-		registerEffortCommands(ctx);
-		refreshCaps(ctx);
-	});
+	pi.on("model_select", (_event, ctx) =>
+		startSessionRuntime(ctx, "model_select"),
+	);
+	pi.on("turn_end", (_event, ctx) => startSessionRuntime(ctx, "turn_end"));
 	const effortHandler = (args, ctx) => {
 		const requested = args.trim().toLowerCase();
 		if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {
@@ -488,9 +823,19 @@ export default function (pi: ExtensionAPI): void {
 		}
 		pi.setThinkingLevel(requested as ThinkingLevel);
 		const effective = pi.getThinkingLevel();
-		const message = effective === requested
-			? `Thinking level: ${effective}`
-			: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
+		const message =
+			effective === requested
+				? `Thinking level: ${effective}`
+				: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
 		ctx.ui.notify(message, "info");
 	};
+}
+
+// The broker injects this default entry point. The installed global loader uses
+// the named entry point so load provenance is explicit, not guessed from a PID.
+export default function (pi: ExtensionAPI): void {
+	createBridge(pi, "injected");
+}
+export function globalBridge(pi: ExtensionAPI): void {
+	createBridge(pi, "global");
 }

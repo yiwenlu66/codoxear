@@ -92,6 +92,73 @@ def has_message(path, role, text):
     return any(row.get("message", {}).get("role") == role and text in json.dumps(row["message"]) for row in logs(path))
 
 
+def sdk_api(path="/", data=None):
+    request = urllib.request.Request("http://127.0.0.1:19723" + path,
+                                     data=json.dumps(data).encode() if data is not None else None,
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.load(response)
+
+
+def verify_sdk_host():
+    lifecycle = PROOF / "sdk-lifecycle.jsonl"
+    host_log = open(PROOF / "sdk-host.log", "w")
+    host = subprocess.Popen(["node", "scripts/docker_external_pi_sdk_host.mjs"],
+                            env={**os.environ, "CODOXEAR_SDK_LIFECYCLE_LOG": str(lifecycle)},
+                            stdout=host_log, stderr=subprocess.STDOUT)
+    try:
+        info = until(sdk_api)
+        assert len(info["sessions"]) == 2 and info["pid"] == host.pid
+        assert api("/api/sessions")["external"] == [], "Unbound SDK instances registered before a lifecycle event"
+        # No bindExtensions() is called. The probe proves session_start was
+        # genuinely absent, rather than a mocked claim about the SDK lifecycle.
+        for key in ("a", "b"):
+            sdk_api("/prompt", {"key": key, "text": f"SDK bootstrap {key}"})
+        rows = until(lambda: (r := api("/api/sessions")["external"]) and len(r) == 2 and r)
+        by_key = {Path(row["cwd"]).name.removeprefix("sdk-"): row for row in rows}
+        a, b = by_key["a"], by_key["b"]
+        assert a["pid"] == b["pid"] == host.pid
+        assert a["session_id"] != b["session_id"] and a["external_instance_id"] != b["external_instance_id"]
+        assert a["log_path"] != b["log_path"]
+        events = logs(lifecycle)
+        for row in rows:
+            own = [e["event"] for e in events if e["sessionId"] == row["thread_id"]]
+            assert "session_start" not in own and "agent_start" in own and "turn_start" in own, own
+        for key, row in by_key.items():
+            api(f"/api/sessions/{row['session_id']}/send", {"text": f"SDK API real user {key}"})
+            until(lambda: has_message(row["log_path"], "assistant", f"SDK API real user {key}"))
+            assert has_message(row["log_path"], "user", f"SDK API real user {key}")
+        assert not has_message(a["log_path"], "user", "SDK API real user b")
+        assert not has_message(b["log_path"], "user", "SDK API real user a")
+        for key, row in by_key.items():
+            api(f"/api/sessions/{row['session_id']}/send", {"text": f"SLOW SDK target {key}"})
+        until(lambda: all(row["busy"] for row in api("/api/sessions")["external"]))
+        api(f"/api/sessions/{a['session_id']}/interrupt", {})
+        until(lambda: not next(r for r in api("/api/sessions")["external"] if r["session_id"] == a["session_id"])["busy"])
+        assert next(r for r in api("/api/sessions")["external"] if r["session_id"] == b["session_id"])["busy"]
+        assert any(row.get("message", {}).get("stopReason") == "aborted" for row in logs(a["log_path"]))
+        assert not any(row.get("message", {}).get("stopReason") == "aborted" for row in logs(b["log_path"]))
+        api(f"/api/sessions/{b['session_id']}/interrupt", {})
+        sdk_api("/dispose", {"key": "a"})
+        remaining = until(lambda: (r := api("/api/sessions")["external"]) and len(r) == 1 and r)
+        assert remaining[0]["session_id"] == b["session_id"] and host.poll() is None
+        marker = HOME / ".local/share/codoxear/external" / f"pi-{host.pid}-{a['external_instance_id']}.json"
+        assert not marker.exists() and not marker.with_suffix(".bridge.sock").exists()
+        assert not any(e["event"] == "session_shutdown" and e["sessionId"] == a["thread_id"] for e in logs(lifecycle))
+        # The surviving session must remain usable after its sibling disposed.
+        api(f"/api/sessions/{b['session_id']}/send", {"text": "SDK survivor real user"})
+        until(lambda: has_message(b["log_path"], "assistant", "SDK survivor real user"))
+        sdk_api("/dispose", {"key": "b"})
+        until(lambda: not api("/api/sessions")["external"])
+        return {"host_pid": host.pid, "rows": rows, "lifecycle_events": events,
+                "two_instances_same_pid": True, "lazy_without_session_start": True,
+                "real_user_send_isolated": True, "interrupt_isolated": True,
+                "dispose_removes_only_target": True, "survivor_send": True}
+    finally:
+        host.terminate()
+        host.wait(timeout=10)
+
+
 try:
     config = HOME / ".pi/agent"
     config.mkdir(parents=True, exist_ok=True)
@@ -116,20 +183,31 @@ export default function(pi) {
   });
 }
 ''')
+    (config / "extensions/sdk-lifecycle-probe.ts").write_text('''
+const fs = require("node:fs");
+export default function(pi) {
+  const target = process.env.CODOXEAR_SDK_LIFECYCLE_LOG;
+  if (!target) return;
+  for (const event of ["session_start", "turn_start", "agent_start", "session_shutdown"]) {
+    pi.on(event, (payload, ctx) => fs.appendFileSync(target, JSON.stringify({event, sessionId:ctx.sessionManager.getSessionId(), reason:payload.reason, targetSessionFile:payload.targetSessionFile}) + "\\n"));
+  }
+}
+''')
     installed = json.loads(subprocess.check_output(["codoxear-pi-extension", "status", "--json"]))
     assert installed["status"] == "ok", installed
     report["installer"] = installed
     pi = "pi --approve --no-skills --no-prompt-templates --no-context-files"
-    tmux("external", f"cd {HOME}/external-work; exec {pi}")
-    tmux("child", f"cd {HOME}/child-work; export PI_SUBAGENT_CHILD=1; exec {pi}")
     server_log = open(PROOF / "server.log", "w")
     server = subprocess.Popen(["python3", "-m", "codoxear.server"], stdout=server_log, stderr=subprocess.STDOUT)
     until(lambda: api("/api/login", {"password": "external-test-password"}))
+    report["sdk_host"] = verify_sdk_host()
+    tmux("external", f"cd {HOME}/external-work; export CODOXEAR_SDK_LIFECYCLE_LOG={PROOF}/external-lifecycle.jsonl; exec {pi}")
+    tmux("child", f"cd {HOME}/child-work; export PI_SUBAGENT_CHILD=1; exec {pi}")
     listing = until(lambda: (v := api("/api/sessions")) and len(v["external"]) == 1 and v)
     external = listing["external"][0]
     sid = external["session_id"]
     log = external["log_path"]
-    pid = int(sid.split("-")[2])
+    pid = external["pid"]
     assert listing["sessions"] == []
     tail = api(f"/api/sessions/{sid}/messages/tail")
     assert tail["transcript_state"] == "bound", tail
@@ -190,7 +268,14 @@ export default function(pi) {
     subprocess.run(["tmux", "send-keys", "-t", "external", "C-u", "/new", "Enter"], check=True)
     switched = until(lambda: (v := api("/api/sessions")["external"][0]) and v["thread_id"] != external["thread_id"] and v)
     assert switched["session_id"] == sid
+    replacement_event = next(event for event in logs(PROOF / "external-lifecycle.jsonl") if event["event"] == "session_shutdown" and event.get("reason") == "new")
+    assert replacement_event["targetSessionFile"] == switched["log_path"]
     report["new_rebind"] = switched
+    report["new_handoff_event"] = replacement_event
+    subprocess.run(["tmux", "send-keys", "-t", "external", "C-u", "/reload", "Enter"], check=True)
+    until(lambda: any(event["event"] == "session_start" and event.get("reason") == "reload" for event in logs(PROOF / "external-lifecycle.jsonl")))
+    assert api("/api/sessions")["external"][0]["session_id"] == sid
+    report["reload_identity"] = True
     # Broker path + globally installed loader: one marker/socket, no external row.
     tmux("broker", f"cd {HOME}/broker-work; export CODEX_WEB_AGENT_BACKEND=pi; exec codoxear-broker -- {pi.removeprefix('pi ')}")
     broker_listing = until(lambda: (v := api("/api/sessions")) and len(v["sessions"]) == 1 and v)
@@ -203,7 +288,7 @@ export default function(pi) {
     broker = until(lambda: (row := api("/api/sessions")["sessions"][0]) and row.get("log_path") and row)
     until(lambda: has_message(broker["log_path"], "user", "BROKER still works"))
     assert len(caps) == 1
-    assert json.loads(caps[0].read_text())["bridgeVersion"] == 4
+    assert json.loads(caps[0].read_text())["bridgeVersion"] == 5
     report["broker_and_child_exclusion"] = broker_listing
     assert len(list((HOME / ".local/share/codoxear/external").glob("pi-*.json"))) == 1
     # A nested Pi with inherited broker marker env must use its own external id.
@@ -213,7 +298,7 @@ export default function(pi) {
     assert json.loads(marker.read_text())["pid"] == parent["pid"]
     nested = next(row for row in nested_listing["external"] if row["session_id"] != sid)
     api(f"/api/sessions/{nested['session_id']}/delete", {})
-    os.kill(int(nested["session_id"].split("-")[2]), 0)  # Dismiss did not terminate it.
+    os.kill(nested["pid"], 0)  # Dismiss did not terminate it.
     report["nested_inheritance_and_dismiss"] = True
     # Expose a live transcript to the browser phase.
     api(f"/api/sessions/{sid}/send", {"text": "UI ready after new"})
