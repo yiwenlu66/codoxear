@@ -54,12 +54,14 @@
       let latestSessions = sessionCatalog.get("latestSessions");
       if (isDisposed()) return latestSessions;
       const notModified = apiResponseNotModified(data);
-      const firstLoadNeedsPopulation = notModified && latestSessions.length === 0 && Array.isArray(data.sessions) && data.sessions.length > 0;
+      const firstLoadNeedsPopulation = notModified && ((latestSessions.length === 0 && Array.isArray(data.sessions) && data.sessions.length > 0)
+        || (!(sessionCatalog.get("externalSessions") || []).length && Array.isArray(data.external) && data.external.length > 0));
       if (notModified && !hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
       if (!notModified || firstLoadNeedsPopulation) {
         latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
         sessionCatalog.applySnapshot({
           latestSessions,
+          externalSessions: Array.isArray(data.external) ? data.external.slice() : [],
           newSessionDefaults:
             data && typeof data.new_session_defaults === "object" && data.new_session_defaults
               ? data.new_session_defaults
@@ -78,7 +80,7 @@
       // priority/recency/id. Re-sorting here would be a second order writer and
       // would diverge from the tmux window mirror, which consumes this same
       // array. Render the server's order verbatim.
-      const sessions = latestSessions;
+      const sessions = latestSessions.concat(sessionCatalog.get("externalSessions") || []);
       const sessionIndex = sessionCatalog.get("sessionIndex");
       let selected = sessionState.get("selected");
       if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);

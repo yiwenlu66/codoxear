@@ -319,10 +319,11 @@ addAppEvent(document, "keydown", (e) => {
       void (async () => {
         if (!sessionState.get("selected")) return;
         const sid = sessionState.get("selected");
+        const external = Boolean(getSessionIndex().get(sid)?.external);
         const confirmed = await confirmApp({
-          title: "Delete session?",
-          message: "Delete the current session? This cannot be undone.",
-          confirmText: "Delete",
+          title: external ? "Dismiss external session?" : "Delete session?",
+          message: external ? "Hide until the server restarts. Pi keeps running in your terminal." : "Delete the current session? This cannot be undone.",
+          confirmText: external ? "Dismiss" : "Delete",
           cancelText: "Cancel",
           destructive: true,
         });
@@ -332,7 +333,7 @@ addAppEvent(document, "keydown", (e) => {
           await api(`/api/sessions/${sid}/delete`, { method: "POST", body: {} });
           getSessionLifecycleController().clearDeletedSessionClientState(sid);
           await refreshSessions();
-          setToast("session deleted");
+          setToast(external ? "external session dismissed" : "session deleted");
         } catch (err) {
           setToast(`delete error: ${err && err.message ? err.message : "unknown error"}`);
         }

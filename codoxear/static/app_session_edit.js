@@ -153,7 +153,7 @@ const global = window;
     function openEditSession(sid) {
       if (!sid) return;
       const session = getSessionInfo(sid);
-      if (!session) return;
+      if (!session || session.external) return;
       editSessionId = sid;
       editStatus.textContent = "";
       editSaveBtn.disabled = false;

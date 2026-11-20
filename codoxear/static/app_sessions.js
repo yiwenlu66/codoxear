@@ -464,6 +464,7 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
           const launchFailed = sessionLaunchFailed(session);
           const launchPending = sessionLaunchPending(session);
           const lost = !!session.lost;
+          const external = !!session.external;
           const launchRow = launchFailed || launchPending;
           if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: lost ? "lost" : "failed", title: lost ? "Broker stopped; this session can no longer accept control." : redactedLaunchErrorText(session.launch_error) || "Session launch failed" }));
           if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
@@ -483,9 +484,9 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
             if (event) { event.preventDefault(); event.stopPropagation(); }
             closeOpenSwipe();
             const confirmed = await confirmAction({
-              title: lost ? "Dismiss lost session?" : launchRow ? "Dismiss launch record?" : "Delete session?",
-              message: lost ? "Dismiss this lost session?" : launchRow ? "Dismiss this launch record?" : "Delete this session?",
-              confirmText: launchRow ? "Dismiss" : "Delete",
+              title: external ? "Dismiss external session?" : lost ? "Dismiss lost session?" : launchRow ? "Dismiss launch record?" : "Delete session?",
+              message: external ? "Hide this session until the server restarts. Pi keeps running in your terminal." : lost ? "Dismiss this lost session?" : launchRow ? "Dismiss this launch record?" : "Delete this session?",
+              confirmText: launchRow || external ? "Dismiss" : "Delete",
               cancelText: "Cancel",
               destructive: true,
             });
@@ -513,7 +514,7 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
             }
             await duplicateSession(session);
           };
-          const deleteBtn = el("button", { class: "icon-btn danger sessionDel", title: lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", "aria-label": lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", type: "button", html: iconSvg("trash") });
+          const deleteBtn = el("button", { class: "icon-btn danger sessionDel", title: external ? "Dismiss external session" : lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", "aria-label": external ? "Dismiss external session" : lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", type: "button", html: iconSvg("trash") });
           deleteBtn.onclick = (event) => void doDelete(event);
           const stateDot = el("span", { class: `stateDot${launchPending ? " pending" : session.busy ? " busy" : " idle"}` });
           const subagentsRunning = Number(session.subagents_running);
@@ -557,7 +558,7 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
           if (lost) meta.title = "Broker stopped; stale control sidecar was removed.";
           else if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
           if (launchPending) meta.title = "Session is still starting";
-          const editActions = launchRow ? [] : [renameBtn, duplicateBtn];
+          const editActions = launchRow || external ? [] : [renameBtn, duplicateBtn];
 
           if (swipeActions) {
             // TOUCH BRANCH: swipe-revealed left/right action groups
@@ -578,7 +579,7 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
               openSwipeContent = content;
             }
             bindSwipe(content, sessionId, { leftMax: 72, rightMax: editActions.length ? 104 : 0 });
-            bindCardDrag(card, content, sessionId);
+            if (!external) bindCardDrag(card, content, sessionId);
             card.onclick = () => {
               if (performanceNow() < suppressClickUntil) return;
               if (Math.abs(Number(content.dataset.swipeX || 0)) > 2) { closeOpenSwipe(); return; }
@@ -596,7 +597,7 @@ import * as CodoxearSidebarDrag from "./app_sidebar_drag.js";
             card.appendChild(content);
             card.appendChild(inlineActions);
             card.classList.add("desktop");
-            bindCardDrag(card, card, sessionId);
+            if (!external) bindCardDrag(card, card, sessionId);
             card.onclick = () => {
               if (performanceNow() < suppressClickUntil) return;
               if (launchPending) { setToast("session still starting"); return; }

@@ -3,6 +3,7 @@
     Object.freeze({ key: "now", label: "Now" }),
     Object.freeze({ key: "waiting", label: "Waiting" }),
     Object.freeze({ key: "later", label: "Later" }),
+    Object.freeze({ key: "external", label: "External" }),
   ]);
 
   function sessionLaunchFailed(s) {
@@ -41,6 +42,7 @@
   }
 
   function sessionSidebarGroupKey(s) {
+    if (s && s.external) return "external";
     if (s && s.blocked) return "waiting";
     if (s && s.snoozed) return "later";
     return "now";

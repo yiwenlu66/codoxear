@@ -137,7 +137,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       };
       addRow("Session", d && d.session_id ? d.session_id : "-");
       addRow("Thread", d && d.thread_id ? d.thread_id : "-");
-      addRow("Owned", d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
+      addRow("Owned", d?.external ? "External (Pi-owned)" : d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
       addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
       addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
       addRow("CWD", d && d.cwd ? d.cwd : "-", { mono: true });

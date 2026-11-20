@@ -537,7 +537,8 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
       // poll cannot visibly undo it and then re-apply it after the POST.
       const enabledLocallyAuthoritative = Boolean(selected && unattendedPatchIsLocallyAuthoritative(selected, "enabled"));
       const on = enabledLocallyAuthoritative ? Boolean(unattendedCfg.enabled) : Boolean(s && s.unattended_enabled);
-      const unattendedBlocked = Boolean(selected && sessionLaunchFailed(s));
+      const unattendedBlocked = Boolean(selected && (sessionLaunchFailed(s) || s?.external));
+      unattendedBtn.style.display = s?.external ? "none" : "";
       const unattendedLabel = !selected ? "Select a session for unattended mode" : unattendedBlocked ? "Failed launch has no unattended mode" : "Unattended mode";
       unattendedBtn.disabled = !selected || unattendedBlocked;
       unattendedBtn.title = unattendedLabel;
@@ -614,6 +615,7 @@ import * as CodoxearSessionHelpers from "./app_session_helpers.js";
     async function showUnattendedMenu({ opener = null } = {}) {
       const selected = sessionState.get("selected");
       if (!selected) return;
+      if (getSessionInfo(sessionState.get("selected"))?.external) return;
       if (selectedSessionLaunchFailed()) {
         setToast("failed launch has no unattended mode");
         return;

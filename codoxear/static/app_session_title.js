@@ -29,13 +29,15 @@
 
     function openSelectedSessionEditor() {
       const sessionId = sessionState.get("selected");
-      if (sessionId) openEditSession(sessionId);
+      if (sessionId && !sessionCatalog.get("sessionIndex").get(sessionId)?.external) openEditSession(sessionId);
     }
 
     function syncTitleEditState() {
-      const interactive = Boolean(sessionState.get("selected"));
+      const selected = sessionState.get("selected");
+      const external = Boolean(sessionCatalog.get("sessionIndex").get(selected)?.external);
+      const interactive = Boolean(selected && !external);
       titleLabel.style.cursor = interactive ? "pointer" : "default";
-      titleLabel.title = interactive ? "Edit conversation" : "No session selected";
+      titleLabel.title = interactive ? "Edit conversation" : external ? "External Pi session (rename in your terminal)" : "No session selected";
       titleLabel.tabIndex = interactive ? 0 : -1;
       if (interactive) {
         titleLabel.setAttribute("role", "button");

@@ -133,6 +133,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     }
 
     function commandSpec(session, kind) {
+      if (session && session.external) return null;
       const backend = sessionBackend(session);
       const spec = BACKEND_COMMAND_SPECS[backend] && BACKEND_COMMAND_SPECS[backend][kind];
       if (!spec) return null;
@@ -1003,7 +1004,9 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
     function syncSendChoiceAttachmentPolicy() {
       const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
       const label = hasAttachments ? "Attachments cannot be queued; send now or wait until idle" : "Send after current";
-      sendChoiceLaterBtn.disabled = hasAttachments;
+      const external = Boolean(getSessionInfo(sendChoicePending?.sid)?.external);
+      sendChoiceLaterBtn.style.display = external ? "none" : "";
+      sendChoiceLaterBtn.disabled = hasAttachments || external;
       sendChoiceLaterBtn.title = label;
       sendChoiceLaterBtn.setAttribute("aria-label", label);
     }
@@ -1142,6 +1145,7 @@ import * as CodoxearPickerGeometry from "./app_picker_geometry.js";
       const raw = sendChoicePending && sendChoicePending.text;
       const sessionId = sendChoicePending && sendChoicePending.sid;
       const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
+      if (getSessionInfo(sessionId)?.external) return;
       if (hasAttachments) { setToast("attachments can only be sent now; wait until idle to queue text with files"); return; }
       hideSendChoice({ restoreFocus: true });
       if (!raw || !sessionId) return;

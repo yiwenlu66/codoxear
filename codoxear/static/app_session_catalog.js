@@ -1,8 +1,9 @@
 /**
  * Session-catalog and launch-defaults authority.
  *
- * `sessionIndex` is derived atomically from `latestSessions`: callers cannot
- * set it independently and therefore cannot publish a list whose lookup index
+ * `latestSessions` contains broker rows only; `externalSessions` stays separate
+ * so broker-only workflows never consume Pi-owned processes. `sessionIndex` is
+ * derived atomically from both: callers cannot publish a list whose lookup index
  * describes a different refresh snapshot. Session records remain shared
  * objects so optimistic patches are visible through both catalog views; every
  * such patch crosses the catalog's observable write boundary.
@@ -15,6 +16,7 @@ const INITIAL_DEFAULTS = Object.freeze({
 
 const INITIAL_STATE = Object.freeze({
   latestSessions: Object.freeze([]),
+  externalSessions: Object.freeze([]),
   sessionIndex: new Map(),
   recentCwds: Object.freeze([]),
   newSessionDefaults: INITIAL_DEFAULTS,
@@ -93,6 +95,7 @@ function createSessionCatalog(options = {}) {
 
   const values = {
     latestSessions: [],
+    externalSessions: [],
     sessionIndex: new Map(),
     recentCwds: [],
     newSessionDefaults: INITIAL_DEFAULTS,
@@ -135,8 +138,8 @@ function createSessionCatalog(options = {}) {
   }
 
   function normalizedFieldValue(field, value) {
-    if (field === "latestSessions") {
-      if (!Array.isArray(value)) throw new TypeError("session catalog latestSessions must be an array");
+    if (field === "latestSessions" || field === "externalSessions") {
+      if (!Array.isArray(value)) throw new TypeError(`session catalog ${field} must be an array`);
       return value.map(reconcileRow);
     }
     if (field === "recentCwds") {
@@ -169,9 +172,9 @@ function createSessionCatalog(options = {}) {
       return !Object.is(values[field], nextValues[field]);
     });
     let nextIndex = null;
-    if (Object.prototype.hasOwnProperty.call(nextValues, "latestSessions")) {
+    if (Object.prototype.hasOwnProperty.call(nextValues, "latestSessions") || Object.prototype.hasOwnProperty.call(nextValues, "externalSessions")) {
       nextIndex = new Map();
-      for (const session of nextValues.latestSessions) {
+      for (const session of [...(nextValues.latestSessions || values.latestSessions), ...(nextValues.externalSessions || values.externalSessions)]) {
         const sessionId = session && session.session_id;
         if (sessionId !== undefined && sessionId !== null) nextIndex.set(sessionId, session);
       }
@@ -205,7 +208,7 @@ function createSessionCatalog(options = {}) {
     checkpoint(session);
     // Both views expose the same record. Notify both fields atomically so a
     // callback subscribed to either view observes the complete optimistic patch.
-    notify(["sessionIndex", "latestSessions"]);
+    notify(["sessionIndex", session.external ? "externalSessions" : "latestSessions"]);
     return session;
   }
 

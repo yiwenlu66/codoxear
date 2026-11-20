@@ -411,6 +411,7 @@
     function attachmentBlockerForSession(sessionId, sessionInfo = null) {
       if (!sessionId) return "Select a session to attach a file";
       const info = sessionInfo || getSessionInfo(sessionId) || null;
+      if (info && info.external) return "External sessions support text messages only";
       if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";
       if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
       if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
@@ -427,6 +428,7 @@
       const sessionId = sessionState.get("selected");
       const attachBlocker = attachmentBlockerForSession(sessionId, sessionId ? getSessionInfo(sessionId) || null : null);
       const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(uploadMaxBytes)})`;
+      attachBtn.style.display = getSessionInfo(sessionId)?.external ? "none" : "";
       attachBtn.disabled = Boolean(attachBlocker);
       attachBtn.title = attachLabel;
       attachBtn.setAttribute("aria-label", attachLabel);

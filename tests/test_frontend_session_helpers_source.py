@@ -84,8 +84,8 @@ def eval_session_helpers() -> dict:
 class TestFrontendSessionHelpersSource(unittest.TestCase):
     def test_session_helpers_preserve_grouping_and_launch_contracts(self) -> None:
         result = eval_session_helpers()
-        self.assertEqual([group["key"] for group in result["groups"]], ["now", "waiting", "later"])
-        self.assertEqual([group["label"] for group in result["groups"]], ["Now", "Waiting", "Later"])
+        self.assertEqual([group["key"] for group in result["groups"]], ["now", "waiting", "later", "external"])
+        self.assertEqual([group["label"] for group in result["groups"]], ["Now", "Waiting", "Later", "External"])
         self.assertEqual(result["failedKind"], "failed")
         self.assertEqual(result["failedIcon"], "info")
         self.assertFalse(result["pendingSelectable"])

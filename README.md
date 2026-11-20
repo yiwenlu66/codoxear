@@ -37,9 +37,10 @@ Requires Python 3.10+.
 
 Install the agent CLI you intend to use (`pi`, `codex`, or `claude`) separately. See [System dependencies](#system-dependencies) for feature-specific prerequisites and the optional doctor/provisioning helper.
 
-Install Codoxear (installs `codoxear-server`, `codoxear-broker`, `codoxear-sessiond`, and `codoxear-doctor`):
+Install Codoxear (installs `codoxear-server`, `codoxear-broker`, `codoxear-sessiond`, `codoxear-doctor`, and `codoxear-pi-extension`):
 
 - `python3 -m pip install .`
+- `codoxear-pi-extension install` — default-on setup step for Pi: makes plain terminal `pi` sessions visible too. To opt out, skip this step (or run `codoxear-pi-extension uninstall`). Existing Pi processes need `/reload` or a restart.
 
 1. Create `.env`:
 
@@ -75,7 +76,7 @@ Install Codoxear (installs `codoxear-server`, `codoxear-broker`, `codoxear-sessi
 
    Restart your shell or `source` your rc file.
 
-4. Use `codox` for terminal-owned Codex sessions, `piox` for terminal-owned Pi sessions, and `ccox` for terminal-owned Claude Code sessions when you want them registered with Codoxear. Leave plain `codex`, `pi`, and `claude` unwrapped.
+4. Use `codox`, `piox`, and `ccox` for brokered sessions with the full Codoxear feature set. Leave plain `codex`, `pi`, and `claude` unwrapped. With the Pi extension installed, plain `pi` also appears in the sidebar's External section.
 
    For a headless helper process without a foreground terminal wrapper, use `codoxear-sessiond` with the same backend environment convention, for example:
 
@@ -280,15 +281,29 @@ tailscale serve status
 
 ## Session ownership
 
-Codoxear shows three kinds of sessions:
+Codoxear shows three kinds of brokered sessions, plus external Pi sessions:
 
 - Terminal-owned: sessions started from your local terminal via `codox`, `piox`, or `ccox` (the broker wrappers). They are marked `T` in the UI.
 - Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
 - Web-owned tmux: sessions started from the Codoxear UI with `Create in tmux` enabled. They are marked with the tmux split-pane icon in the UI and run under tmux session `codoxear`.
 
-The current UI offers Delete for all session kinds. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
+Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned brokered session also stops the corresponding terminal session. External sessions offer Dismiss instead: it hides the row until the Codoxear server restarts, without stopping Pi.
 
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly, and Claude Code sessions through `ccox --resume <session-id>`.
+
+### External sessions
+
+With the **Codoxear Pi extension installed**, a plain `pi` started in a terminal appears in **External**, at the bottom of the sidebar. Without the extension, those sessions are invisible to Codoxear. You can read their live transcript, send **real user messages** from the composer, steer an active turn, and interrupt it. Pi subagent children are excluded. `/new` or resume in that terminal updates the same process's row rather than adding another one.
+
+```sh
+codoxear-pi-extension install
+codoxear-pi-extension status
+codoxear-pi-extension uninstall  # opt out
+```
+
+The installer writes `~/.pi/agent/extensions/codoxear-bridge.ts` (or `$PI_CODING_AGENT_DIR/extensions/codoxear-bridge.ts`). This tiny loader imports the packaged bridge by absolute path, so updates at that package location propagate without another copy. Status detects a missing target after a package/environment move; rerun install to repair it. Existing Pi sessions need `/reload` or a restart. `codoxear-doctor` reports its status; `codoxear-doctor --install --pi-extension` installs just the loader. Native-group installs include it by default; pass `--no-pi-extension` to opt out. The service itself never installs extensions.
+
+Keep `piox` or web launch for the full integration. The broker owns a PTY: it can pass `--approve` to suppress an otherwise invisible project-trust dialog, route native TUI commands and pickers such as `/model`, and observe terminal-level evidence that a prompt landed. Brokered sends have a write-ahead journal and undelivered-send draft recovery; brokered sessions can be restored after process death, launched in tmux windows mirrored to the sidebar, queued, and used in unattended mode. Those broker facilities do not apply to external sessions. Native `/new` and `/resume` still belong in the external session's real terminal; the browser's external slash menu omits TUI builtins and model/effort pickers, exposing registry commands, skills and templates with known interactive commands filtered out. External sends are text-only; there are no attachment, queue, snooze or unattended controls. External drafts and file history last for the server process, not across its restart.
 
 ## Frontend architecture
 

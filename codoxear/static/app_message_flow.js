@@ -681,7 +681,7 @@ import * as CodoxearTranscript from "./app_transcript.js";
       const startedAt = now() / 1000;
       // Only a send that opens a turn can be judged undelivered: a steering
       // send into a busy turn, or a control command, has no new turn to miss.
-      const awaitsVerdict = renderHere && !continuesOpenTurn && !isControlSlashCommand;
+      const awaitsVerdict = renderHere && !sessionInfo?.external && !continuesOpenTurn && !isControlSlashCommand;
       const sendId = awaitsVerdict ? nextSendId(now()) : null;
       if (sendId) recordOutstandingDelivery(sendId, { sessionId, localId, text: raw, ts: startedAt });
       if (renderHere && !continuesOpenTurn && !isControlSlashCommand) typingRowRuntime.resetTypingStats();

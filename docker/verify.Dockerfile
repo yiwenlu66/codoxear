@@ -2,7 +2,8 @@
 # pre-existing isolated application image while running a fresh Pi session.
 FROM node:25-slim AS pi_runtime
 
-RUN npm install --global @earendil-works/pi-coding-agent@0.82.1
+ARG PI_VERSION=0.82.1
+RUN npm install --global @earendil-works/pi-coding-agent@${PI_VERSION}
 
 FROM codoxear-iso3:latest
 
