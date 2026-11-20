@@ -78,17 +78,24 @@ def _broker(state: State) -> Broker:
 # --- control surface -------------------------------------------------------
 
 
-def test_name_command_rejects_a_rename_for_a_stale_transcript() -> None:
+def test_name_command_names_the_live_transcript_even_when_the_request_lags() -> None:
+    """The rename race: the server asks about thread-1 while the broker has
+    already rebound to thread-2 (Pi's first-message bind, /new, resume).
+
+    The name follows the session, so the broker must still name its live
+    conversation instead of rejecting the request as stale -- that rejection was
+    the intermittent "rename failed" the user saw.
+    """
     state = _state(thread_id="thread-2")
     calls: list[dict[str, Any]] = []
 
     def set_name(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
-        return {"ok": True, "backend": "pi", "name": kwargs["name"]}
+        return {"ok": True, "backend": "pi", "name": kwargs["name"], "thread_id": "thread-2"}
 
     response = _run_name_handler(state, {"name": "Alpha", "thread_id": "thread-1"}, set_session_name=set_name)
-    assert response == {"ok": False, "reason": "stale-thread"}
-    assert calls == []
+    assert response == {"ok": True, "backend": "pi", "name": "Alpha", "thread_id": "thread-2"}
+    assert calls == [{"name": "Alpha", "thread_id": "thread-1"}]
 
 
 def test_name_command_requires_a_string_name() -> None:
@@ -130,7 +137,7 @@ def test_pi_rename_goes_through_the_bridge_socket(monkeypatch: pytest.MonkeyPatc
 
     response = broker._set_session_name(name="auth refactor", thread_id="thread-1")
 
-    assert response == {"ok": True, "backend": "pi", "name": "auth refactor"}
+    assert response == {"ok": True, "backend": "pi", "name": "auth refactor", "thread_id": "thread-1"}
     assert seen == [(Path("/tmp/broker-1.json"), "auth refactor", 111)]
     assert state.backend_session_name == "auth refactor"
     assert broker.meta_writes == 1
@@ -194,8 +201,23 @@ def test_codex_rename_uses_the_typed_app_server_call(monkeypatch: pytest.MonkeyP
         "ok": True,
         "backend": "codex",
         "name": "deploy",
+        "thread_id": "thread-1",
     }
     assert seen == [{"sock": Path("/tmp/app-server.sock"), "thread_id": "thread-1", "name": "deploy"}]
+
+
+def test_pi_rename_names_the_live_session_when_the_server_snapshot_lags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The broker reports the transcript it actually named, not the stale one asked."""
+    state = _state(backend="pi", thread_id="thread-live")
+    state.session_name_control = True
+    broker = _broker(state)
+    monkeypatch.setattr(broker_module, "AGENT_BACKEND", "pi")
+    monkeypatch.setattr(broker_module, "set_bridge_session_name", lambda _m, name, **_k: {"ok": True, "name": name})
+
+    response = broker._set_session_name(name="Alpha", thread_id="thread-stale")
+
+    assert response == {"ok": True, "backend": "pi", "name": "Alpha", "thread_id": "thread-live"}
+    assert state.backend_session_name == "Alpha"
 
 
 def test_codex_refuses_to_project_a_clear(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -228,6 +250,7 @@ def test_cc_rename_is_injected_only_when_the_tui_is_idle(monkeypatch: pytest.Mon
         "ok": True,
         "backend": "cc",
         "accepted": True,
+        "thread_id": "thread-1",
     }
     assert injections == [{"fd": 9, "text": "/rename deploy", "suffix": b"\r"}]
 
@@ -237,6 +260,7 @@ def test_cc_rename_is_injected_only_when_the_tui_is_idle(monkeypatch: pytest.Mon
         "ok": True,
         "backend": "cc",
         "pending": True,
+        "thread_id": "thread-1",
     }
     assert state.pending_session_name == "later"
     assert len(injections) == 1

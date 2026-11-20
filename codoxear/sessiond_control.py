@@ -167,11 +167,9 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             return {"error": "name required"}, None
         thread_raw = req.get("thread_id")
         thread_id = thread_raw.strip() if isinstance(thread_raw, str) else ""
-        with deps.lock:
-            st = deps.state()
-            current_thread = str(st.session_id or "") if st else ""
-        if thread_id and current_thread and thread_id != current_thread:
-            return {"ok": False, "reason": "stale-thread"}, None
+        # No stale-thread guard: the name follows the session's live conversation
+        # across any rebind, so the backend hook names whatever is current and
+        # reports the thread it titled.
         if deps.set_session_name is None:
             return {"ok": False, "unsupported": True, "reason": "unsupported"}, None
         try:

@@ -202,11 +202,10 @@ def _handle_broker_control_connection(
             return {"error": "name required"}, None
         thread_raw = req.get("thread_id")
         thread_id = thread_raw.strip() if isinstance(thread_raw, str) else ""
-        with lock:
-            st = get_state()
-            current_thread = str(st.session_id or "") if st else ""
-        if thread_id and current_thread and thread_id != current_thread:
-            return {"ok": False, "reason": "stale-thread"}, None
+        # No stale-thread guard: the alias is a per-session name that follows the
+        # session's live conversation across any rebind, so naming whatever the
+        # broker is currently on is always correct. The backend hook reports the
+        # thread it actually named so the server records the real identity.
         if set_session_name is None:
             return {"ok": False, "unsupported": True, "reason": "unsupported"}, None
         try:

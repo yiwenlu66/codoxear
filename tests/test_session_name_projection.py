@@ -417,3 +417,58 @@ def test_an_unsupported_default_push_still_yields_to_a_terminal_title() -> None:
     h.session.backend_session_name = "typed in the terminal"
     assert h.projection.reconcile("s1")["reason"] == "adopted"
     assert h.aliases == {"s1": "typed in the terminal"}
+
+
+def test_a_rename_during_a_rebind_is_recorded_under_the_named_transcript() -> None:
+    """The intermittent rename failure, end to end at the projection boundary.
+
+    The server's snapshot still says ``thread-1`` while the broker has rebound to
+    ``thread-2``. The broker names its live conversation and reports
+    ``thread-2``; the projection must record that identity, so the rename reads
+    as applied and the snapshot converging afterwards costs no second push.
+    """
+    h = Harness(thread_id="thread-1")
+    h.aliases["s1"] = "Alpha"
+    h.replies = [{"ok": True, "backend": "pi", "name": "Alpha", "thread_id": "thread-2"}]
+
+    result = h.projection.reconcile("s1")
+
+    assert result == {"ok": True, "backend": "pi", "reason": "applied", "name": "Alpha"}
+    assert h.applied["pi:thread-2"]["state"] == "applied"
+    assert "pi:thread-1" not in h.applied
+
+    # The server's refresh catches up to the broker's live transcript.
+    h.session.thread_id = "thread-2"
+    assert h.projection.reconcile("s1")["reason"] == "unchanged"
+    assert len(h.calls) == 1
+
+
+def test_an_old_broker_reply_without_a_thread_keeps_the_requested_identity() -> None:
+    """Rolling deploy: a broker that predates the reply field still records."""
+    h = Harness()
+    h.aliases["s1"] = "Alpha"
+    h.replies = [{"ok": True, "backend": "pi", "name": "Alpha"}]
+    assert h.projection.reconcile("s1")["reason"] == "applied"
+    assert h.applied["pi:thread-1"]["state"] == "applied"
+
+
+def test_a_failure_keeps_its_reason_and_is_logged() -> None:
+    """A failure self-heals on retry, so its reason must survive on the record
+    and in the log -- otherwise the trigger is undiagnosable after the fact."""
+    import io
+
+    h = Harness()
+    stream = io.StringIO()
+    h.projection.deps = h.projection.deps.__class__(**{**h.projection.deps.__dict__, "stderr": stream})
+    h.aliases["s1"] = "Alpha"
+    h.replies = [{"ok": False, "backend": "pi", "reason": "transport", "detail": "bridge pid mismatch"}]
+
+    result = h.projection.reconcile("s1")
+
+    assert result["reason"] == "transport"
+    record = h.applied["pi:thread-1"]
+    assert record["state"] == "failed"
+    assert record["reason"] == "transport"
+    assert record["detail"] == "bridge pid mismatch"
+    line = stream.getvalue()
+    assert "pi:thread-1" in line and "reason=transport" in line and "bridge pid mismatch" in line

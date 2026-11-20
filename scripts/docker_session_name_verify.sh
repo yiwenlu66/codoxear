@@ -15,6 +15,9 @@
 #   2. renaming in codoxear appends exactly one `session_info` row to the Pi log
 #   3. repeating the same rename appends nothing
 #   4. clearing the name appends an empty `session_info` and stays cleared
+#   5. a name request carrying an outdated thread id (the lagging server snapshot
+#      during a transcript rebind) still titles the live Pi session instead of
+#      being rejected as `stale-thread`
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -359,6 +362,55 @@ PY
 sleep 2.5
 alias_value="$(row_field alias || true)"
 [[ -z "${alias_value:-}" ]] || fail "cleared name was re-adopted (alias=${alias_value})"
+
+# --- Step 5: a rename that names an outdated transcript still lands ----------
+# The intermittent "rename failed": while a transcript rebinds (Pi's first-message
+# bind, /new, resume) the server's thread snapshot lags the broker's live one, so
+# the server's name request carries an old thread id. The name belongs to the
+# session, so the broker must title its live conversation and report the thread
+# it named -- it used to reject the request as `stale-thread`.
+sudo docker exec -i "$container" python3 - > "$artifacts/stale-thread-name.json" <<'PY' || fail "broker name call with an outdated thread id failed"
+import glob, json, os, socket
+socks = glob.glob(os.path.expanduser("~/.local/share/codoxear/socks/*.sock"))
+assert len(socks) == 1, socks
+meta = json.load(open(socks[0][:-len(".sock")] + ".json", encoding="utf-8"))
+live = meta.get("session_id")
+assert live, meta
+conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+conn.settimeout(5.0)
+conn.connect(socks[0])
+req = {"cmd": "name", "name": "after rebind", "thread_id": "outdated-thread-from-a-lagging-snapshot"}
+conn.sendall((json.dumps(req) + "\n").encode("utf-8"))
+buf = b""
+while not buf.endswith(b"\n"):
+    chunk = conn.recv(65536)
+    if not chunk:
+        break
+    buf += chunk
+reply = json.loads(buf.decode("utf-8"))
+print(json.dumps({"live": live, "reply": reply}))
+assert reply.get("ok") is True, reply
+assert reply.get("reason") != "stale-thread", reply
+assert reply.get("thread_id") == live, (reply, live)
+PY
+for _ in $(seq 1 120); do
+  rows="$(log_rows)"
+  if python3 - "$rows" <<'PY'
+import json, sys
+data = json.loads(sys.argv[1])
+raise SystemExit(0 if (data.get("names") or [])[-1:] == ["after rebind"] else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.25
+done
+python3 - "$rows" <<'PY' || fail "a rename naming an outdated transcript never reached the live Pi session"
+import json, sys
+data = json.loads(sys.argv[1])
+assert (data.get("names") or [])[-1:] == ["after rebind"], data
+assert data.get("count") == 5, data
+PY
 
 echo "PASS: Pi default + propagated session names verified (session ${session_id}, default ${cwd_basename})"
 echo "artifacts=$artifacts"

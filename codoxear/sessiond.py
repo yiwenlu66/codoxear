@@ -368,8 +368,8 @@ class Sessiond:
             pid = int(st.codex_pid)
             busy = bool(st.busy or st.turn_open or st.pending_calls)
             ready = st.backend_ready_ts > 0.0
-        if thread_id and current_thread and thread_id != current_thread:
-            return {"ok": False, "backend": AGENT_BACKEND, "reason": "stale-thread"}
+        # The name follows the session's live conversation (see broker parity):
+        # name whatever is current and report that transcript as ``thread_id``.
         if not control:
             return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
         if AGENT_BACKEND == "pi":
@@ -386,7 +386,7 @@ class Sessiond:
                 if self.state is not None:
                     self.state.backend_session_name = effective
             self._write_meta()
-            return {"ok": True, "backend": "pi", "name": effective}
+            return {"ok": True, "backend": "pi", "name": effective, "thread_id": current_thread}
         if AGENT_BACKEND == "cc":
             if not name:
                 return {"ok": False, "backend": "cc", "reason": "unsupported-clear"}
@@ -395,7 +395,7 @@ class Sessiond:
                     if self.state is not None:
                         self.state.pending_session_name = name
                         self.state.pending_session_name_ts = _now()
-                return {"ok": True, "backend": "cc", "pending": True}
+                return {"ok": True, "backend": "cc", "pending": True, "thread_id": current_thread}
             try:
                 _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
             except Exception as exc:
@@ -403,7 +403,7 @@ class Sessiond:
             with self._lock:
                 if self.state is not None:
                     self.state.backend_session_name = name
-            return {"ok": True, "backend": "cc", "accepted": True}
+            return {"ok": True, "backend": "cc", "accepted": True, "thread_id": current_thread}
         return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
 
     def _apply_pending_session_name(self) -> None:

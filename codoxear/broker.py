@@ -466,10 +466,12 @@ class Broker:
             pid = int(st.codex_pid)
             busy = bool(st.busy or st.turn_open or st.pending_calls)
             ready = st.backend_ready_ts > 0.0
-        if thread_id and current_thread and thread_id != current_thread:
-            # The session rebound between the rename and this call; naming the
-            # new transcript would be naming the wrong conversation.
-            return {"ok": False, "backend": AGENT_BACKEND, "reason": "stale-thread"}
+        # ``thread_id`` is the server's snapshot of the transcript, which lags this
+        # broker's live value while a transcript rebinds (Pi's first-message bind,
+        # /new, resume). The name belongs to the session, not to one transcript,
+        # so naming the live conversation is correct; each success reply carries
+        # ``thread_id`` = the transcript actually named, so the server records the
+        # real identity instead of the stale one it asked about.
         if not session_control:
             return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
         if AGENT_BACKEND == "pi":
@@ -487,7 +489,7 @@ class Broker:
                 if st_name is not None:
                     st_name.backend_session_name = effective
             self._write_meta()
-            return {"ok": True, "backend": "pi", "name": effective}
+            return {"ok": True, "backend": "pi", "name": effective, "thread_id": current_thread}
         if AGENT_BACKEND == "codex":
             server = self._codex_app_server
             if server is None:
@@ -507,7 +509,7 @@ class Broker:
                 if st_name is not None:
                     st_name.backend_session_name = name
             self._write_meta()
-            return {"ok": True, "backend": "codex", "name": name}
+            return {"ok": True, "backend": "codex", "name": name, "thread_id": current_thread}
         if AGENT_BACKEND == "cc":
             if not name:
                 # Claude Code has no clear path; the title it owns stays.
@@ -518,7 +520,7 @@ class Broker:
                     if st_pending is not None:
                         st_pending.pending_session_name = name
                         st_pending.pending_session_name_ts = _now()
-                return {"ok": True, "backend": "cc", "pending": True}
+                return {"ok": True, "backend": "cc", "pending": True, "thread_id": current_thread}
             try:
                 _inject(fd, text=f"/rename {name}", suffix=_encode_enter())
             except Exception as exc:
@@ -527,7 +529,7 @@ class Broker:
                 st_name = self.state
                 if st_name is not None:
                     st_name.backend_session_name = name
-            return {"ok": True, "backend": "cc", "accepted": True}
+            return {"ok": True, "backend": "cc", "accepted": True, "thread_id": current_thread}
         return {"ok": False, "backend": AGENT_BACKEND, "unsupported": True, "reason": "unsupported"}
 
     def _apply_pending_session_name(self) -> None:

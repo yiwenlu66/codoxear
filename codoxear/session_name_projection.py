@@ -259,6 +259,12 @@ class SessionNameProjection:
         reason = reply.get("reason") if isinstance(reply.get("reason"), str) else ""
 
         if reply.get("ok") is True:
+            # Record under the transcript the broker actually named. The snapshot
+            # thread lags the broker's live one while a transcript rebinds; the
+            # name follows the session, so the broker names the live conversation
+            # and reports it. Keying by that makes the next reconcile, once the
+            # snapshot converges, a dictionary hit instead of a redundant push.
+            key = identity_key(backend, reply.get("thread_id")) or key
             if reply.get("pending") is True:
                 self._store(key, _record_with_origin({"state": "pending", "name": name, "attempts": 0, "ts": self.deps.now(), "control": snapshot["control"]}, origin))
                 return {"ok": True, "backend": backend, "reason": "pending", "name": name}
@@ -294,14 +300,33 @@ class SessionNameProjection:
         attempts = previous.get("attempts") if isinstance(previous.get("attempts"), int) else 0
         attempts = int(attempts) + 1
         control = previous.get("control") is True
-        self._store(key, _record_with_origin({"state": "failed", "name": name, "attempts": attempts, "ts": self.deps.now(), "control": control}, origin))
+        reason = failure.get("reason") or "error"
+        detail = failure.get("detail") or ""
+        # The reason is kept on the record (and logged once) because a failure
+        # self-heals on the next retry, which would otherwise erase every trace
+        # of why the backend title did not update.
+        record = {"state": "failed", "name": name, "attempts": attempts, "ts": self.deps.now(), "control": control, "reason": reason}
+        if detail:
+            record["detail"] = detail
+        self._store(key, _record_with_origin(record, origin))
+        self._log(f"session-name: {key} name={name!r} failed reason={reason} attempt={attempts}" + (f" detail={detail}" if detail else ""))
         return {
             "ok": False,
             "backend": backend,
-            "reason": failure.get("reason") or "error",
+            "reason": reason,
             "name": name,
-            "detail": failure.get("detail") or "",
+            "detail": detail,
         }
+
+    def _log(self, line: str) -> None:
+        stream = self.deps.stderr
+        if stream is None:
+            return
+        try:
+            stream.write(line + "\n")
+            stream.flush()
+        except Exception:
+            pass
 
     def _adopt(self, session_id: str, backend: str, key: str, observed: str) -> dict[str, Any]:
         """Take a terminal-set title as the display name when none exists."""
