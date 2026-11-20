@@ -178,7 +178,7 @@ class DoctorTests(unittest.TestCase):
                 return successful_run(command, **kwargs)
             out = io.StringIO()
             with redirect_stdout(out), redirect_stderr(io.StringIO()):
-                code = doctor.main(args, resolve=resolve, run=run, platform="linux", os_release="ID=ubuntu", uid=0, confirm=lambda _: "n")
+                code = doctor.main([*args, "--no-pi-extension"], resolve=resolve, run=run, platform="linux", os_release="ID=ubuntu", uid=0, confirm=lambda _: "n")
             self.assertEqual(code, expected)
             report = json.loads(out.getvalue())
             self.assertEqual(bool(installer_calls), approved)

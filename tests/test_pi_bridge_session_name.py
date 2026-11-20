@@ -122,7 +122,7 @@ def test_bridge_exposes_session_name_control_over_its_socket() -> None:
             assert json.loads(load_state.read_text(encoding="utf-8")) == {"callsAtLoad": 0}
 
             caps = json.loads(Path(f"{marker}.caps").read_text(encoding="utf-8"))
-            assert caps["bridgeVersion"] == 3
+            assert caps["bridgeVersion"] == 4
             assert "session-name" in caps["features"]
             assert caps["pid"] == proc.pid
 

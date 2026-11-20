@@ -1115,7 +1115,13 @@ class SessionManager:
     def _discover_existing(self, *, force: bool = False) -> None:
         return _core_methods.discover_existing_for_manager(self, sys.modules[__name__], force=force)
 
+    def external_sessions(self) -> Any:
+        from .external_sessions import registry_for_manager
+        return registry_for_manager(self)
+
     def get_session(self, session_id: str) -> Session | None:
+        if session_id.startswith("external-pi-"):
+            return self.external_sessions().get(session_id)
         return _core_methods.get_session_for_manager(self, sys.modules[__name__], session_id)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
@@ -1259,6 +1265,8 @@ class SessionManager:
         return self._ui_state_coordinator_for_manager().unhide_session(session_id)
 
     def alias_set(self, session_id: str, name: str) -> str:
+        if session_id.startswith("external-pi-"):
+            return str(self.external_sessions().call(session_id, "set_session_name", name=name).get("name", ""))
         return self._ui_state_coordinator_for_manager().alias_set(session_id, name)
 
     def alias_cleared(self, session_id: str) -> bool:
@@ -1273,6 +1281,8 @@ class SessionManager:
 
     def reconcile_session_name(self, session_id: str) -> dict[str, Any]:
         """Project the alias store onto the backend's own session title."""
+        if session_id.startswith("external-pi-"):
+            return {"ok": True, "reason": "Pi owns external names"}
         return self._session_name_coordinator_for_manager().reconcile(session_id)
 
     def alias_clear(self, session_id: str) -> None:
@@ -1399,12 +1409,27 @@ class SessionManager:
 
 
     def files_get(self, session_id: str) -> list[str]:
+        if session_id.startswith("external-pi-"):
+            registry = self.external_sessions()
+            registry.require(session_id)
+            return list(registry.files.get(session_id, []))
         return self._files_coordinator_for_manager().get(session_id)
 
     def files_add(self, session_id: str, path: str, api_path: str | None = None) -> list[str]:
+        if session_id.startswith("external-pi-"):
+            registry = self.external_sessions()
+            registry.require(session_id)
+            with registry.lock:
+                paths = registry.files.setdefault(session_id, [])
+                if path not in paths:
+                    paths.append(path)
+            return self.files_get(session_id)
         return self._files_coordinator_for_manager().add(session_id, path, api_path)
 
     def files_clear(self, session_id: str) -> None:
+        if session_id.startswith("external-pi-"):
+            self.external_sessions().files.pop(session_id, None)
+            return
         return self._files_coordinator_for_manager().clear(session_id)
 
     def unattended_get(self, session_id: str) -> dict[str, Any]:
@@ -1446,7 +1471,12 @@ class SessionManager:
         return self._log_runtime_for_manager().commit_log_observation(session_id, observation)
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int, start_off: int = 0, expected_log_path: Path | None = None, revision: tuple[int, int, int, int] | None = None) -> bool:
-        return self._log_runtime_for_manager().mark_log_delta(session_id, objs=objs, new_off=new_off, start_off=start_off, expected_log_path=expected_log_path, revision=revision)
+        coordinator = self._log_runtime_for_manager()
+        if session_id.startswith("external-pi-"):
+            from dataclasses import replace
+            registry = self.external_sessions()
+            coordinator = replace(coordinator, lock=registry.lock, sessions=lambda: registry.sessions)
+        return coordinator.mark_log_delta(session_id, objs=objs, new_off=new_off, start_off=start_off, expected_log_path=expected_log_path, revision=revision)
 
     def idle_from_log(self, session_id: str) -> bool:
         return self._log_runtime_for_manager().idle_from_log(session_id)
@@ -1464,6 +1494,8 @@ class SessionManager:
         return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(resume_id, resume_row)
 
     def delete_session(self, session_id: str) -> bool:
+        if session_id.startswith("external-pi-"):
+            return self.external_sessions().dismiss(session_id)
         return self._lifecycle_coordinator_for_manager().delete_session(session_id)
 
     def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
@@ -1476,9 +1508,19 @@ class SessionManager:
         return self._queue_coordinator_for_manager().list_local(session_id)
 
     def draft_get(self, session_id: str) -> dict[str, Any]:
+        if session_id.startswith("external-pi-"):
+            registry = self.external_sessions()
+            registry.require(session_id)
+            return registry.drafts.get(session_id, {"text": "", "updated_ts": 0})
         return self._draft_coordinator_for_manager().draft_get(session_id)
 
     def draft_set(self, session_id: str, text: str) -> float:
+        if session_id.startswith("external-pi-"):
+            registry = self.external_sessions()
+            registry.require(session_id)
+            updated = time.time()
+            registry.drafts[session_id] = {"text": text, "updated_ts": updated}
+            return updated
         return self._draft_coordinator_for_manager().draft_set(session_id, text)
 
     def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
@@ -1491,12 +1533,18 @@ class SessionManager:
         return self._queue_coordinator_for_manager().move_local(session_id, item_id, to_index)
 
     def get_state(self, session_id: str) -> dict[str, Any]:
+        if session_id.startswith("external-pi-"):
+            session = self.external_sessions().require(session_id)
+            return {"busy": session.busy, "queue_len": 0, "token": session.token}
         return self._control_coordinator_for_manager().get_state(session_id)
 
     def get_tail(self, session_id: str) -> str:
         return self._control_coordinator_for_manager().get_tail(session_id)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
+        if session_id.startswith("external-pi-"):
+            self.external_sessions().scan()
+            return
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
 
     def spawn_web_session(
@@ -1539,6 +1587,12 @@ class SessionManager:
         queue_item_id: str | None = None,
         send_id: str | None = None,
     ) -> dict[str, Any]:
+        if session_id.startswith("external-pi-"):
+            try:
+                reply = self.external_sessions().call(session_id, "send", text=text)
+            except (OSError, ValueError) as exc:
+                raise SessionInjectionError(str(exc)) from exc
+            return {"ok": True, "external": True, "delivery": reply.get("delivery")}
         return self._send_coordinator_for_manager().send(
             session_id,
             text,
@@ -1574,6 +1628,10 @@ class SessionManager:
         )
 
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
+        if session_id.startswith("external-pi-"):
+            if not interrupt:
+                raise ValueError("external sessions have no PTY key control")
+            return self.external_sessions().call(session_id, "interrupt")
         return self._control_coordinator_for_manager().inject_keys(
             session_id,
             seq,

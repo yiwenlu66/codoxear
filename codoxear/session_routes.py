@@ -191,6 +191,7 @@ def _handle_sessions_list(handler: Any, *, manager: Any, deps: SessionRouteDeps)
         handler,
         {
             "sessions": sessions,
+            "external": manager.external_sessions().rows() if hasattr(manager, "external_sessions") else [],
             "recent_cwds": recent_cwds,
             "new_session_defaults": new_session_defaults,
             "tmux_available": deps.tmux_available(),

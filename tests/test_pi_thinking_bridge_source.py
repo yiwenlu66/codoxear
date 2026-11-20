@@ -163,8 +163,8 @@ class TestPiThinkingBridgeLifecycle(unittest.TestCase):
         self.assertEqual(observed["afterModelSelect"]["model"], "claude-opus-4-6")
         self.assertEqual(observed["afterModelSelect"]["model_provider"], "anthropic")
         self.assertEqual(observed["afterModelSelect"]["reasoning_effort"], "high")
-        self.assertEqual(observed["afterSettingsChange"]["bridgeVersion"], 3)
-        self.assertEqual(observed["afterSettingsChange"]["features"], ["effort", "thinking", "session-name"])
+        self.assertEqual(observed["afterSettingsChange"]["bridgeVersion"], 4)
+        self.assertEqual(observed["afterSettingsChange"]["features"], ["effort", "thinking", "session-name", "send", "interrupt", "state"])
         self.assertEqual(observed["mode"], 0o600)
         self.assertFalse(observed["initialMaterialized"])
         self.assertEqual(

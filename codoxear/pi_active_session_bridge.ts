@@ -20,6 +20,8 @@ type ExtensionUI = {
 type ExtensionContext = {
 	sessionManager: SessionManager;
 	ui: ExtensionUI;
+	isIdle(): boolean;
+	abort(): void;
 	// Verified against the real Pi 0.82.1 runtime: the event ctx exposes the
 	// live model as a `model` property. The d.ts ExtensionContextActions
 	// getModel() signature does not match what handlers actually receive, so
@@ -41,6 +43,7 @@ type ExtensionAPI = {
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
 	on(event: "turn_end", handler: (event: { type: "turn_end"; turnIndex: number; message?: unknown; toolResults?: unknown[] }, ctx: ExtensionContext) => void): void;
 	on(event: "model_select", handler: (event: { type: "model_select" }, ctx: ExtensionContext) => void): void;
+	on(event: "agent_start" | "agent_end" | "session_shutdown", handler: (event: unknown, ctx: ExtensionContext) => void): void;
 	on(event: "message_start", handler: (event: { type: "message_start"; message: { role?: string; content?: unknown; timestamp?: number } }, ctx: ExtensionContext) => void): void;
 	registerCommand(
 		name: string,
@@ -49,6 +52,7 @@ type ExtensionAPI = {
 			handler: (args: string, ctx: ExtensionCommandContext) => void | Promise<void>;
 		},
 	): void;
+	sendUserMessage(text: string, options: { deliverAs?: "steer" | "followUp"; expandPromptTemplates: boolean }): void;
 	getThinkingLevel(): ThinkingLevel;
 	getCommands(): Array<{ name: string; description?: string }>;
 	setThinkingLevel(level: ThinkingLevel): void;
@@ -61,12 +65,44 @@ const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "med
 // Bumped when a new control op or capability is added. Codoxear gates every
 // bridge-backed control on both this version and the matching caps feature, so
 // a session running an older bridge simply reports the capability as absent.
-const BRIDGE_VERSION = 3;
-const BRIDGE_FEATURES: readonly string[] = ["effort", "thinking", "session-name"];
+const BRIDGE_VERSION = 4;
+const BRIDGE_FEATURES: readonly string[] = ["effort", "thinking", "session-name", "send", "interrupt", "state"];
+const INSTANCE = Symbol.for("codoxear.pi-bridge");
+let markerPath: string | undefined;
+let external = false;
+let activeCtx: ExtensionContext | undefined;
+const PROCESS_STARTED = Symbol.for("codoxear.pi-process-start");
+const startedAt = globalThis[PROCESS_STARTED] || (globalThis[PROCESS_STARTED] = Date.now() / 1000);
+let processStart: string | undefined;
+try { processStart = fs.readFileSync(`/proc/${process.pid}/stat`, "utf8").split(") ").pop().split(" ")[19]; } catch {}
+
+function chooseMarker(): string | undefined {
+	const brokerMarker = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
+	const intendedPid = process.env.CODEX_WEB_PI_BRIDGE_PID;
+	if (brokerMarker && (!intendedPid || Number(intendedPid) === process.pid)) {
+		// Compatibility with a broker predating the explicit exec-pid stamp.
+		try { if (JSON.parse(fs.readFileSync(brokerMarker, "utf8")).pid !== process.pid && !intendedPid) return undefined; } catch {}
+		return brokerMarker;
+	}
+	if (process.env.PI_SUBAGENT_CHILD) return undefined;
+	external = true;
+	const dataHome = process.env.XDG_DATA_HOME || path.join(require("node:os").homedir(), ".local", "share");
+	return path.join(process.env.CODOXEAR_EXTERNAL_DIR || path.join(dataHome, "codoxear", "external"), `pi-${process.pid}.json`);
+}
+
+function bridgeState() {
+	return {
+		busy: activeCtx ? !activeCtx.isIdle() : false,
+		sessionId: activeCtx?.sessionManager.getSessionId(),
+		sessionFile: activeCtx?.sessionManager.getSessionFile(),
+		name: currentSessionName(),
+		...readLiveRunSettings(activePi, activeCtx),
+	};
+}
 
 function writeActiveSession(ctx: ExtensionContext, reason: string): void {
-	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
+	activeCtx = ctx;
 	const sessionFile = ctx.sessionManager.getSessionFile();
 	if (!sessionFile) return;
 	const payload = {
@@ -77,6 +113,10 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 		sessionId: ctx.sessionManager.getSessionId(),
 		cwd: ctx.sessionManager.getCwd(),
 		pid: process.pid,
+		processStart,
+		startTs: startedAt,
+		features: [...BRIDGE_FEATURES],
+		...(external ? bridgeState() : {}),
 		updatedAt: new Date().toISOString(),
 	};
 	try {
@@ -95,7 +135,6 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 }
 
 function writePromptReceipt(message: { role?: string; content?: unknown; timestamp?: number }): void {
-	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath || message.role !== "user" || typeof message.timestamp !== "number"
 		|| !Number.isSafeInteger(message.timestamp) || message.timestamp <= 0) return;
 	const text = typeof message.content === "string" ? message.content : Array.isArray(message.content)
@@ -127,7 +166,8 @@ function materializeNewSession(ctx: ExtensionContext): void {
 		const sessionFile = mgr.getSessionFile();
 		const header = mgr.fileEntries?.[0];
 		if (!header || header.type !== "session" || typeof sessionFile !== "string" || fs.existsSync(sessionFile)) return;
-		fs.writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, { mode: 0o600, flag: "wx" });
+		fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+		fs.writeFileSync(sessionFile, mgr.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""), { mode: 0o600, flag: "wx" });
 		mgr.flushed = true;
 	} catch {
 		// The bridge must not interfere with Pi if session internals change.
@@ -206,7 +246,6 @@ function refreshCaps(ctx?: ExtensionContext) {
 }
 
 function writeThinkingCapabilities(commands, liveSettings) {
-	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
 	const capsPath = `${markerPath}.caps`;
 	const commandsToWrite = commands !== undefined ? commands : lastCommandsSnapshot;
@@ -242,9 +281,7 @@ function writeThinkingCapabilities(commands, liveSettings) {
 // the socket still works, it just reports the capability as absent.
 
 function bridgeSocketPath(): string | undefined {
-	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
-	if (!markerPath) return undefined;
-	return `${markerPath}.bridge.sock`;
+	return markerPath ? external ? markerPath.replace(/\.json$/, ".bridge.sock") : `${markerPath}.bridge.sock` : undefined;
 }
 
 function cleanSessionName(raw: unknown): string {
@@ -262,6 +299,21 @@ function currentSessionName(): string {
 
 function handleBridgeRequest(request: unknown): Record<string, unknown> {
 	const op = request && typeof request === "object" ? (request as { op?: unknown }).op : undefined;
+	if (["state", "interrupt", "send"].includes(String(op)) && !activeCtx) return { ok: false, error: "session not ready", pid: process.pid };
+	const expected = (request as { sessionId?: unknown }).sessionId;
+	if (expected && expected !== activeCtx?.sessionManager.getSessionId()) return { ok: false, error: "stale session", pid: process.pid };
+	if (op === "state") return { ok: true, pid: process.pid, ...bridgeState(), commands: captureCommands() };
+	if (op === "interrupt") {
+		activeCtx.abort();
+		return { ok: true, pid: process.pid };
+	}
+	if (op === "send") {
+		const text = (request as { text?: unknown }).text;
+		if (typeof text !== "string" || !text.trim()) return { ok: false, error: "text required", pid: process.pid };
+		const busy = !activeCtx.isIdle();
+		activePi.sendUserMessage(text, { deliverAs: busy ? "steer" : undefined, expandPromptTemplates: true });
+		return { ok: true, pid: process.pid, delivery: busy ? "steer" : "turn" };
+	}
 	if (op === "get_session_name") {
 		return { ok: true, pid: process.pid, name: currentSessionName() };
 	}
@@ -271,6 +323,7 @@ function handleBridgeRequest(request: unknown): Record<string, unknown> {
 			return { ok: false, pid: process.pid, error: "session name control unavailable" };
 		}
 		activePi.setSessionName(name);
+		if (activeCtx) writeActiveSession(activeCtx, "name");
 		return { ok: true, pid: process.pid, name: currentSessionName() };
 	}
 	return { ok: false, pid: process.pid, error: "unknown op" };
@@ -298,7 +351,7 @@ function startBridgeControlServer(): void {
 				buffer += chunk;
 				const newline = buffer.indexOf("\n");
 				if (newline < 0) {
-					if (buffer.length > 65536) {
+					if (buffer.length > 1048576) {
 						answered = true;
 						socket.destroy();
 					}
@@ -354,9 +407,24 @@ function startBridgeControlServer(): void {
 	}
 }
 
+function cleanupBridge() {
+	try { bridgeServer?.close(); } catch {}
+	bridgeServer = undefined;
+	for (const file of [bridgeSocketPath(), ...(external ? [markerPath, markerPath && `${markerPath}.caps`, markerPath && `${markerPath}.receipt`] : [])]) {
+		try { if (file) fs.unlinkSync(file); } catch {}
+	}
+	delete globalThis[INSTANCE];
+	activeCtx = undefined;
+}
+
 export default function (pi: ExtensionAPI): void {
+	if (globalThis[INSTANCE]) return;
+	markerPath = chooseMarker();
+	if (!markerPath) return;
+	globalThis[INSTANCE] = true;
 	activePi = pi;
-	writeThinkingCapabilities();
+	process.once("exit", cleanupBridge);
+	writeThinkingCapabilities(undefined, {});
 	startBridgeControlServer();
 	let commandsRegistered = false;
 	function registerEffortCommands(ctx?: ExtensionContext) {
@@ -382,23 +450,30 @@ export default function (pi: ExtensionAPI): void {
 		}
 	}
 	pi.on("session_start", (event, ctx) => {
+		activeCtx = ctx;
 		registerEffortCommands(ctx);
+		if (external || event.reason === "new") materializeNewSession(ctx);
 		writeActiveSession(ctx, event.reason || "session_start");
-		if (event.reason === "new") materializeNewSession(ctx);
 		refreshCaps(ctx);
 	});
 	pi.on("session_switch", (event, ctx) => {
+		activeCtx = ctx;
 		registerEffortCommands(ctx);
+		if (external || event.reason === "new") materializeNewSession(ctx);
 		writeActiveSession(ctx, event.reason);
-		if (event.reason === "new") materializeNewSession(ctx);
 		refreshCaps(ctx);
 	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
-	pi.on("message_start", (event) => writePromptReceipt(event.message));
+	pi.on("session_shutdown", cleanupBridge);
+	pi.on("agent_start", (_event, ctx) => writeActiveSession(ctx, "agent_start"));
+	pi.on("agent_end", (_event, ctx) => writeActiveSession(ctx, "agent_end"));
+	pi.on("message_start", (event, ctx) => { activeCtx = ctx; writePromptReceipt(event.message); });
 	// A native /model switch is only recorded in the session log; model_select
 	// lets the caps file track it immediately instead of at the next turn_end.
-	pi.on("model_select", (_event, ctx) => refreshCaps(ctx));
+	pi.on("model_select", (_event, ctx) => { activeCtx = ctx; refreshCaps(ctx); writeActiveSession(ctx, "model_select"); });
 	pi.on("turn_end", (_event, ctx) => {
+		activeCtx = ctx;
+		writeActiveSession(ctx, "turn_end");
 		registerEffortCommands(ctx);
 		refreshCaps(ctx);
 	});

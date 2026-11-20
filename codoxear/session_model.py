@@ -94,3 +94,5 @@ class Session:
     # sidecar after grace.
     lost: bool = False
     lost_since: float | None = None
+    # Pi extension-owned discovery/control; never inserted into broker registry.
+    external: bool = False

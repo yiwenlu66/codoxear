@@ -141,6 +141,7 @@ def test_handle_session_get_route_lists_sessions_with_etag_and_metric() -> None:
     assert etag_payloads == [
         {
             "sessions": [{"id": "s1"}],
+            "external": [],
             "recent_cwds": ["/repo"],
             "new_session_defaults": {"backend": "codex"},
             "tmux_available": True,

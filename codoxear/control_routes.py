@@ -150,7 +150,7 @@ def _handle_delete(handler: Any, *, session_id: str, manager: Any, deps: Control
         return
     # A quick workspace is machine-managed scratch space, so it is trimmed once
     # the session that owned it is gone (rmdir only when empty, never recursive).
-    if isinstance(session_cwd, str) and session_cwd:
+    if isinstance(session_cwd, str) and session_cwd and not getattr(session, "external", False):
         release_workspace(session_cwd)
     deps.json_response(handler, 200, {"ok": True})
 

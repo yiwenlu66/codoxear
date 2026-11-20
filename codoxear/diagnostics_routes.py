@@ -46,6 +46,17 @@ def handle_diagnostics_get_route(
     if not s:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return True
+    if getattr(s, "external", False):
+        # External Pi has no broker, sidebar priority, queue or tmux ownership.
+        # Details and conversation export still apply to its real transcript.
+        deps.json_response(handler, 200, {
+            "session_id": s.session_id, "thread_id": s.thread_id, "external": True,
+            "agent_backend": s.agent_backend, "owned": False, "cwd": s.cwd,
+            "start_ts": s.start_ts, "log_path": str(s.log_path) if s.log_path else None,
+            "codex_pid": s.codex_pid, "busy": s.busy, "token": s.token,
+            "model_provider": s.model_provider, "model": s.model, "reasoning_effort": s.reasoning_effort,
+        })
+        return True
     state = manager.get_state(session_id)
     log_available = s.log_path is not None and s.log_path.exists()
     runtime = manager._runtime_status_from_state_and_log(session_id, state, s.log_path)

@@ -44,6 +44,12 @@ class ServerRouteDepsFactory:
         manager = server.MANAGER
         state = manager.get_state(session_id)
         log_available = session.log_path is not None and session.log_path.exists()
+        if getattr(session, "external", False):
+            # Pi's live ctx owns liveness; an aborted/non-final log tail must
+            # never resurrect a completed external run.
+            token = server._select_runtime_token(broker_state=state, session_token=session.token,
+                                                 token_update=token_update, log_available=log_available)
+            return state, bool(state.get("busy")), 0, token
         runtime = manager._runtime_status_from_state_and_log(session_id, state, session.log_path)
         queue_val = manager._queue_len(session_id)
         token_val = server._select_runtime_token(

@@ -29,6 +29,8 @@ def session_store_paths_for_server(server: Any) -> Any:
 def init_for_manager(manager: Any, server: Any, *, coordinator_deps: Any = None) -> None:
     registry = SessionRegistry()
     manager._registry = registry
+    from .external_sessions import ExternalSessionRegistry
+    manager._external_sessions = ExternalSessionRegistry()
     manager._store = manager._new_session_store_for_manager(session_store_paths_for_server(server))
     focused_deps = coordinator_deps or server._session_manager_coordinator_deps(server)
     manager._coordinators = server._build_session_manager_coordinator_graph(manager, focused_deps)

@@ -14,7 +14,7 @@ from typing import Callable, Sequence
 
 from .system_dependencies import resolve_executable
 
-GROUPS = ("office", "fonts", "media", "git", "tmux")
+GROUPS = ("office", "fonts", "media", "git", "tmux", "pi-extension")
 # Native distribution packages only: no repository additions or system upgrades.
 PACKAGES = {
     "apt": {
@@ -96,6 +96,10 @@ def check_dependencies(
     home = Path.home() if home is None else Path(home)
     checks = {}
     for group in groups:
+        if group == "pi-extension":
+            from .pi_extension import extension_status
+            checks[group] = extension_status(home=home)
+            continue
         if group == "fonts":
             checks[group] = check_fonts(resolve=resolve, run=run, platform=platform, home=home, font_roots=font_roots)
             continue
@@ -184,8 +188,11 @@ def detect_manager(*, platform: str, os_release: str, resolve: Callable) -> str 
 def install_plan(checks: dict, *, manager: str | None, resolve: Callable = resolve_executable, uid: int = 0) -> dict:
     # A working soffice/version or text conversion does not prove Calc/Impress
     # are installed. Explicit Office provisioning must always ensure all modules.
-    needed = [group for group, check in checks.items() if group == "office" or check["status"] != "ok"]
-    plan = {"manager": manager, "groups": needed, "commands": [], "notes": []}
+    needed = [group for group, check in checks.items() if group != "pi-extension" and (group == "office" or check["status"] != "ok")]
+    extension_needed = "pi-extension" in checks and checks["pi-extension"]["status"] != "ok"
+    plan = {"manager": manager, "groups": needed + (["pi-extension"] if extension_needed else []), "commands": [], "notes": []}
+    if extension_needed:
+        plan["commands"].append([sys.executable, "-m", "codoxear.pi_extension", "install"])
     if not needed:
         return plan
     if manager not in PACKAGES:
@@ -240,11 +247,14 @@ def main(argv: Sequence[str] | None = None, *, run: Callable = subprocess.run, r
     parser.add_argument("--dry-run", action="store_true", help="show install commands without running them")
     parser.add_argument("--yes", action="store_true", help="confirm the displayed install plan non-interactively")
     parser.add_argument("--probe-office", action="store_true", help="also convert a temporary text document to PDF (not a Calc/Impress capability check)")
+    parser.add_argument("--no-pi-extension", action="store_true", help="opt out of the default-on Pi bridge installation/check")
     parser.add_argument("--clear-office-cache", action="store_true", help="explicitly remove only generated Office preview PDFs; use after font/LibreOffice changes")
     for group in GROUPS:
         parser.add_argument(f"--{group}", action="store_true", help=f"select {group} (default check: all groups)")
     args = parser.parse_args(argv)
-    selected = [group for group in GROUPS if getattr(args, group)]
+    selected = [group for group in GROUPS if getattr(args, group.replace("-", "_"))]
+    if args.pi_extension and args.no_pi_extension:
+        parser.error("--pi-extension and --no-pi-extension are mutually exclusive")
     if args.clear_office_cache:
         if selected or args.install or args.dry_run or args.probe_office or args.yes:
             parser.error("--clear-office-cache is a standalone operation; only --json may accompany it")
@@ -260,13 +270,19 @@ def main(argv: Sequence[str] | None = None, *, run: Callable = subprocess.run, r
         parser.error("installation/planning requires explicit groups, e.g. --office --fonts")
     if args.yes and not args.install:
         parser.error("--yes requires --install")
+    # Preserve the doctor's explicit native-group contract. The bridge is a
+    # per-user setup default, included with selected install groups unless
+    # explicitly deselected; no native package is ever implicitly selected.
+    if (args.install or args.dry_run) and not args.no_pi_extension and "pi-extension" not in selected:
+        selected.append("pi-extension")
+    check_groups = selected or [group for group in GROUPS if not (args.no_pi_extension and group == "pi-extension")]
     platform = sys.platform if platform is None else platform
     if os_release is None:
         try:
             os_release = Path("/etc/os-release").read_text(encoding="utf-8") if platform == "linux" else ""
         except OSError:
             os_release = ""
-    checks = check_dependencies(selected or GROUPS, resolve=resolve, run=run, platform=platform, probe_office=args.probe_office)
+    checks = check_dependencies(check_groups, resolve=resolve, run=run, platform=platform, probe_office=args.probe_office)
     report = {"platform": platform, "checks": checks}
     code = 0 if all(check["status"] == "ok" for check in checks.values()) else 1
     if args.install or args.dry_run:

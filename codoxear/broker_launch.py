@@ -619,6 +619,10 @@ def _augmented_exec_path(raw_path: str | None) -> str:
 def _agent_exec_argv_and_env(*, agent_bin: str, agent_args: list[str]) -> tuple[list[str], dict[str, str]]:
     """Build a resolvable CLI argv without relying on a shell profile."""
     env = dict(os.environ)
+    if env.get("CODEX_WEB_PI_ACTIVE_SESSION_FILE"):
+        # Executed in the PTY child immediately before exec, not in the broker.
+        # A nested plain Pi inherits this stamp but must not own this marker.
+        env["CODEX_WEB_PI_BRIDGE_PID"] = str(os.getpid())
     env["PATH"] = _augmented_exec_path(env.get("PATH"))
     executable = agent_bin
     if os.sep not in executable and not os.path.isabs(executable):

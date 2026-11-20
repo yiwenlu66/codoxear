@@ -514,6 +514,7 @@ class Sessiond:
                     service_tier=SERVICE_TIER_OVERRIDE or None,
                 )
                 if AGENT_BACKEND == "pi":
+                    os.environ["CODEX_WEB_PI_BRIDGE_PID"] = str(os.getpid())
                     launch_args = _ensure_pi_bridge_args(
                         args=launch_args,
                         marker_path=self.pi_active_session_marker_path,
