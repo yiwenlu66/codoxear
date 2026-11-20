@@ -95,6 +95,18 @@ def test_external_bridge_lifecycle_control_and_registry(external_bridge, tmp_pat
     assert not marker.exists() and not socket.exists()
 
 
+def test_external_commands_are_offered_only_when_pi_can_dispatch_them(external_bridge, tmp_path):
+    _, socket, _ = external_bridge
+    registry = ExternalSessionRegistry(tmp_path)
+    assert registry.rows()[0]["slash_commands"]
+    _request(socket, {"op": "send", "text": "start run"})
+    registry.scan(force=True)
+    assert registry.rows()[0]["slash_commands"] == []
+    _request(socket, {"op": "interrupt"})
+    registry.scan(force=True)
+    assert registry.rows()[0]["slash_commands"] == [{"name": "custom-action", "description": ""}]
+
+
 def test_stale_pid_incarnation_is_not_a_session(external_bridge, tmp_path):
     _, _, marker = external_bridge
     data = json.loads(marker.read_text())

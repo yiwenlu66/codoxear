@@ -102,7 +102,10 @@ class ExternalSessionRegistry:
         # No TUI builtins: sendUserMessage dispatches only extension commands,
         # skills and templates. Known interactive extension names stay omitted.
         excluded = {item["name"] for item in PI_BUILTIN_SLASH_COMMANDS} | set(PI_INTERACTIVE_SLASH_COMMANDS) | {"effort", "thinking"}
-        session.slash_commands = [item for item in _clean_commands(data.get("commands", [])) if item["name"] not in excluded]
+        # Pi queues busy sendUserMessage calls as literal steering text; it
+        # does not dispatch their extension commands. Do not offer that false
+        # affordance during a run.
+        session.slash_commands = [] if session.busy else [item for item in _clean_commands(data.get("commands", [])) if item["name"] not in excluded]
 
     @staticmethod
     def _call(session: Session, op: str, **fields: Any) -> dict:

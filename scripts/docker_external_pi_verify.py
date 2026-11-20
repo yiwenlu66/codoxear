@@ -106,6 +106,16 @@ try:
     provider = ThreadingHTTPServer(("127.0.0.1", 19722), Provider)
     threading.Thread(target=provider.serve_forever, daemon=True).start()
     subprocess.run(["codoxear-pi-extension", "install"], check=True)
+    (config / "extensions/external-check.ts").write_text('''
+export default function(pi) {
+  pi.on("session_start", () => {
+    pi.registerCommand("external-check", {
+      description: "Docker fixture: dispatch a real user turn",
+      handler: (args) => pi.sendUserMessage("COMMAND dispatched " + args)
+    });
+  });
+}
+''')
     installed = json.loads(subprocess.check_output(["codoxear-pi-extension", "status", "--json"]))
     assert installed["status"] == "ok", installed
     report["installer"] = installed
@@ -132,6 +142,11 @@ try:
     tail = api(f"/api/sessions/{sid}/messages/tail")
     assert any(e.get("role") == "user" and "API real user" in e.get("text", "") for e in tail["events"]), tail
     report["real_user_and_turn"] = tail
+    assert any(command["name"] == "external-check" for command in external["slash_commands"])
+    api(f"/api/sessions/{sid}/send", {"text": "/external-check API"})
+    until(lambda: has_message(log, "user", "COMMAND dispatched API"))
+    until(lambda: not api("/api/sessions")["external"][0]["busy"])
+    report["advertised_extension_command_dispatch"] = True
     (HOME / "external-work/proof.txt").write_text("external cwd file\n")
     assert api(f"/api/sessions/{sid}/file/read?path=proof.txt")["text"] == "external cwd file\n"
     assert api(f"/api/sessions/{sid}/search?q=API%20real%20user")["matches"]
@@ -156,6 +171,7 @@ try:
     until(lambda: not api("/api/sessions")["external"][0]["busy"])
     api(f"/api/sessions/{sid}/send", {"text": "SLOW interrupt target"})
     until(lambda: api("/api/sessions")["external"][0]["busy"])
+    assert api("/api/sessions")["external"][0]["slash_commands"] == []
     steering = api(f"/api/sessions/{sid}/send", {"text": "STEER busy message"})
     assert steering["delivery"] == "steer", steering
     api(f"/api/sessions/{sid}/interrupt", {})
