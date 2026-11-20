@@ -875,13 +875,23 @@ import * as CodoxearUrls from "./app_application.js";
     gfmStrikethroughRegistered = true;
   }
 
+  // Escape * in digit*alphanumeric patterns (e.g. 2*H200, 4*A800) so marked
+  // does not treat them as emphasis delimiters.  The backslash makes marked
+  // render a literal *.  Only fires outside code spans/fences (the math
+  // extractor runs later, so $...$ is still present — but $ cannot contain
+  // bare * emphasis anyway).
+  const MULT_ASTERISK_RE = /(\d)\*(?=\w)/g;
+  function escapeMultiplicationAsterisks(text) {
+    return text.replace(MULT_ASTERISK_RE, "$1\\*");
+  }
+
   function mdToHtml(src, options = null) {
     if (!window.marked || typeof window.marked.parse !== "function") throw new Error("marked failed to load");
     ensureCjkEmphasisExtension();
     ensureCjkUrlBoundary();
     ensureGfmStrikethrough();
     const mathStore = [];
-    const prepared = extractMathFromText(rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n")), mathStore);
+    const prepared = extractMathFromText(rewriteOaiMemCitations(escapeMultiplicationAsterisks(String(src ?? "").replaceAll("\r\n", "\n"))), mathStore);
     // breaks: true preserves single newlines from the raw text as line
     // breaks — agent messages are plain-text-first, not print-style prose.
     // The CJK emphasis rescue, the CJK autolink boundary, and the GFM-strict

@@ -172,7 +172,8 @@ def test_ascii_emphasis_regressions_keep_builtin_output() -> None:
     # Intraword `*` is legal CommonMark emphasis; the vendored marked renders
     # it, and the rescue extension must not change that (underscore is the
     # intraword-literal delimiter, covered below).
-    assert render_line("2*3*4") == "<p>2<em>3</em>4</p>"
+    # 2*3*4 is now treated as multiplication, not emphasis
+    assert render_line("2*3*4") == "<p>2*3*4</p>"
     assert render_line("a_b_c") == "<p>a_b_c</p>"
     assert render_line("foo_bar_baz") == "<p>foo_bar_baz</p>"
 
@@ -204,3 +205,19 @@ def test_rescue_registration_is_idempotent_across_repeated_renders() -> None:
     assert first == second
     assert "<strong>「一次」</strong>" in second
     assert "<strong>「二次」</strong>" in second
+
+
+def test_multiplication_asterisks_not_emphasis() -> None:
+    """digit*word patterns (2*H200, 4*A800) must render as literal asterisks."""
+    # Same-line
+    assert render_line("2*H200 and 4*A800") == "<p>2*H200 and 4*A800</p>"
+    # Cross-line (the original bug: * after 2 opened, * after 4 closed)
+    html = render_line("- 2*H200, the pod\n- 4*A800, now vacant")
+    assert "<em>" not in html
+    assert "2*H200" in html
+    assert "4*A800" in html
+    # Chained: 3*4*5
+    assert render_line("3*4*5") == "<p>3*4*5</p>"
+    # Does not affect real bold/italic
+    assert "<strong>" in render_line("**bold** and 2*H200")
+    assert "<em>" in render_line("*italic* and 2*H200")
