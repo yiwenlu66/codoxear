@@ -18,6 +18,8 @@ function createHelpController(options = {}) {
   const viewer = requireNode(options.viewer, "viewer");
   const closeButton = requireNode(options.closeButton, "closeButton");
   const openButton = requireNode(options.openButton, "openButton");
+  const sourceButton = requireNode(options.sourceButton, "sourceButton");
+  const openSource = requireFunction(options.openSource, "openSource");
   const documentTarget = options.documentTarget;
   const ElementCtor = options.ElementCtor;
   if (!documentTarget || typeof documentTarget !== "object") throw new TypeError("help dependency missing: documentTarget");
@@ -59,6 +61,7 @@ function createHelpController(options = {}) {
     event.stopPropagation();
     show({ opener: event.currentTarget });
   });
+  addEvent(sourceButton, "click", () => openSource());
   addEvent(closeButton, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();

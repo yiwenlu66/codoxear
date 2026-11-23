@@ -34,6 +34,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
         const backdrop = node("backdrop");
         const viewer = node("viewer");
         const closeButton = node("close");
+        const sourceButton = node("source");
         const ctx = { window: {}, requestAnimationFrame: (callback) => callback() };
         vm.createContext(ctx);
         for (const source of sources) vm.runInContext(source, ctx);
@@ -42,6 +43,8 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
           viewer,
           closeButton,
           openButton: opener,
+          sourceButton,
+          openSource: () => calls.push("open-source"),
           documentTarget: { activeElement: fallback },
           ElementCtor: ElementStub,
           prepareModalOpen: () => calls.push("prepare"),
@@ -57,6 +60,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
           stopPropagation() { calls.push("stop"); },
         };
         opener.emit("click", click);
+        sourceButton.emit("click");
         const openSnapshot = { backdrop: backdrop.style.display, viewer: viewer.style.display, isOpen: controller.isOpen() };
         closeButton.emit("click", click);
         const closeSnapshot = { backdrop: backdrop.style.display, viewer: viewer.style.display, isOpen: controller.isOpen() };
@@ -82,7 +86,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
     assert data["openSnapshot"] == {"backdrop": "block", "viewer": "flex", "isOpen": True}
     assert data["closeSnapshot"] == {"backdrop": "none", "viewer": "none", "isOpen": False}
     assert data["calls"] == [
-        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer",
+        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer", "open-source",
         "prevent", "stop", "visibility", "restore:false", "focus:opener",
         "prepare", "visibility", "focus-surface", "focus:viewer",
         "visibility", "restore:false", "focus:fallback",

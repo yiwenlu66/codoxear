@@ -397,7 +397,8 @@ function requireFunction(value, name) {
       ]),
       el("div", {
         class: "helpBody",
-        html: `<div class="muted">Sessions</div>
+        html: `<button id="helpSourceBtn" type="button" class="helpSourceAction"><strong>Ask an agent about Codoxear</strong><span>Start a session in Codoxear’s source directory.</span></button>
+<div class="muted">Sessions</div>
 <ul class="md">
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
   <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled (no pulse)</b> = snoozed or blocked, <b>filled amber + pulsing</b> = starting.</li>
