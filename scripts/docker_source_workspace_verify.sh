@@ -426,6 +426,7 @@ PY
 # existing state (an untracked marker file must survive the second POST).
 # ---------------------------------------------------------------------------
 "${docker[@]}" exec "$container" sh -c "printf 'idempotency marker\n' > '$source_path/.codoxear_idempotency_marker'"
+"${docker[@]}" exec "$container" git -C "$source_path" rev-parse HEAD > "$artifacts/idempotent-pre-head.txt"
 post_code="$(curl -sS -b "$cookie" -o "$artifacts/setup-again.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:${port}/api/source-workspace")"
 printf '{"secondPostStatus": "%s"}\n' "$post_code" > "$artifacts/idempotent-status.json"
 "${docker[@]}" exec "$container" sh -c "head -1 '$source_path/.codoxear_idempotency_marker' 2>/dev/null; git -C '$source_path' rev-parse HEAD" \
@@ -598,6 +599,7 @@ browser click '#sendBtn' > /dev/null
 wait_js 'document.getElementById("chatInner").textContent.includes("LOCAL RESPONSE")'
 normal_sid="$(evalv 'localStorage.getItem("codexweb.selected")')"
 printf '{"normalSid": "%s"}\n' "$normal_sid" > "$artifacts/normal-session.json"
+curl -fsS -b "$cookie" "http://127.0.0.1:${port}/api/sessions/${normal_sid}/messages/tail?limit=100" > "$artifacts/normal-session-tail.json"
 
 # Broker/filesystem ground truth for both launches.
 "${docker[@]}" exec -i "$container" python3 - > "$artifacts/brokers.json" <<'PY'
@@ -716,8 +718,9 @@ expect(idempotent_status.get("secondPostStatus") == "200", f"second setup POST r
 idempotent_again = read_json("setup-again.json")
 expect(idempotent_again.get("available") is True and idempotent_again.get("path") == source_path, "second setup POST returned a different workspace")
 marker = (artifacts / "idempotent-state.txt").read_text().splitlines()
+pre_head = (artifacts / "idempotent-pre-head.txt").read_text().strip()
 expect(bool(marker) and marker[0].strip() == "idempotency marker", "second setup POST destroyed existing checkout state (marker lost)")
-expect(len(marker) > 1 and marker[1].strip() == fixture_sha, "second setup POST moved the checkout HEAD")
+expect(len(marker) > 1 and marker[1].strip() == pre_head, f"second setup POST moved the checkout HEAD: post {marker[1:2]} vs pre {pre_head}")
 
 close_inv = browser_result("browse-pending.json")
 expect(close_inv.get("openAutoGet") is True, "opening the dialog fired an automatic source GET")
@@ -767,11 +770,12 @@ expect(help_after_start.get("newSessionClosed") is True, "New session dialog sta
 
 source_session = read_json("source-session.json")
 source_sid = source_session.get("sourceSid")
-tail = read_json("source-session-tail.json")
-events = tail.get("events") or []
-expect(any(e.get("role") == "user" and "SOURCE_WORKSPACE_OK" in str(e.get("text") or "") for e in events),
+source_tail = read_json("source-session-tail.json").get("events") or []
+# Receipt authority is the session transcript (user row + assistant reply);
+# the broker control 'tail' is a truncated ANSI editor redraw, not a receipt.
+expect(any(e.get("role") == "user" and "SOURCE_WORKSPACE_OK" in str(e.get("text") or "") for e in source_tail),
        "source-workspace session transcript lost the user prompt")
-expect(any(e.get("role") == "assistant" and "LOCAL RESPONSE: Reply exactly SOURCE_WORKSPACE_OK." in str(e.get("text") or "") for e in events),
+expect(any(e.get("role") == "assistant" and "LOCAL RESPONSE: Reply exactly SOURCE_WORKSPACE_OK." in str(e.get("text") or "") for e in source_tail),
        "source-workspace session produced no deterministic assistant reply")
 
 brokers = read_json("brokers.json").get("brokers") or []
@@ -781,7 +785,6 @@ source_row = by_sid.get(source_sid) or {}
 expect(source_row.get("cwd") == source_path, f"source session sidecar cwd is {source_row.get('cwd')!r}")
 expect(source_row.get("proc_cwd") == source_path, f"source session backend process cwd is {source_row.get('proc_cwd')!r}")
 expect(source_row.get("agent_backend") == "pi", f"source session backend is {source_row.get('agent_backend')!r}")
-expect("SOURCE_WORKSPACE_OK" in str(source_row.get("tail") or ""), "source session broker never received the prompt")
 
 normal = read_json("normal-session.json")
 normal_sid = normal.get("normalSid")
@@ -789,7 +792,11 @@ expect(normal_sid and normal_sid != source_sid, "ordinary launch did not create 
 normal_row = by_sid.get(normal_sid) or {}
 expect(normal_row.get("cwd") == "/tmp", f"ordinary session cwd is {normal_row.get('cwd')!r}, wanted /tmp")
 expect(normal_row.get("agent_backend") == "pi", f"ordinary session backend is {normal_row.get('agent_backend')!r}")
-expect("NORMAL_SESSION_OK" in str(normal_row.get("tail") or ""), "ordinary session broker never received the prompt")
+normal_tail = read_json("normal-session-tail.json").get("events") or []
+expect(any(e.get("role") == "user" and "NORMAL_SESSION_OK" in str(e.get("text") or "") for e in normal_tail),
+       "ordinary session transcript lost the user prompt")
+expect(any(e.get("role") == "assistant" and "LOCAL RESPONSE: Reply exactly NORMAL_SESSION_OK." in str(e.get("text") or "") for e in normal_tail),
+       "ordinary session produced no deterministic assistant reply")
 normal_dialog = browser_result("normal-dialog.json")
 expect(normal_dialog.get("contextHidden") is True, "ordinary non-source cwd shows the contextual help")
 
