@@ -23,6 +23,46 @@ No cross-module renderer calls. Reducers write stores atomically
 (`applyRuntime`/`applySnapshot`/`patchSession`); imperative render relays
 are an anti-pattern the wiring guard and reviews reject.
 
+### Transcript viewport position
+
+A reader's place in a transcript is one of two things, and both are owned by
+`app_transcript_position.js` (not by the scroll runtime, which keeps only the
+primitives):
+
+- `{kind: "tail"}` — the reader was at the bottom. Returning re-asserts the
+  bottom, and it stays re-asserted while the rendered content changes size
+  (`ResizeObserver` on `#chatInner`), because a late image ratio or a new row
+  moves the bottom without any scroll event.
+- `{kind: "anchor", messageId, cursor, offset}` — the row at the top of the
+  viewport plus how far into it the reader was. A pixel offset cannot express
+  this: the same transcript renders at a different height on another viewport,
+  and any late layout change moves content under a fixed offset. The old
+  implementation stored `{scrollTop, scrollHeight}` and restored it only when
+  the whole scroller height matched — a coincidence test that snapped every
+  other case to the bottom (`.memory/tasks/2026-11-22-session-scroll-restore/`).
+
+Rules that make it hold: one restore per render generation (after the render
+the session is finally showing, never after the cached tail); an
+epoch/session-guarded restore so a stale materialization cannot land in another
+session; a remembered row outside the fresh tail window is materialized through
+its cursor (`messages/window`); a transcript replacement drops the position
+instead of applying it to unrelated content; and the restore stands down for
+good when the reader gestures (`noteUserScroll`), another writer moves the
+viewport (`writeSeq`), or a scroll the module did not produce arrives
+(`unownedScrollSeq`) — which is also what lets Chromium's own scroll anchoring
+win without being double-corrected.
+
+The two tail affordances (`#jumpBtn`, `#chatTimeChip`) render `isAtLiveTail()`
+(geometry), not `shouldStickToBottom()` (intent): the failure this fixed was a
+viewport left 1.2 screens above the bottom while the jump control was hidden.
+`autoScroll` still decides whether new content is followed.
+
+Verification: `scripts/`-style isolated Docker app + real Chromium (numbers in
+the task OPS.md), plus `tests/test_transcript_position.py` (tail restore,
+anchor restore across a rewrap, re-assert on growth, stand-down paths,
+materialization) and `tests/test_transcript_scroll_intent.py` (attribution vs
+affordance).
+
 ### Attachment consistency and recovery
 
 The server's attachment list, pending flag and durable monotonic revision form
