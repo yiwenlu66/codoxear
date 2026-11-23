@@ -22,6 +22,9 @@ from .message_routes import MessageRouteDeps
 from .queue_routes import QueueRouteDeps
 from .session_routes import SessionRouteDeps
 from .session_snapshot_routes import SnapshotRouteDeps
+from .source_workspace import discover_source_workspace
+from .source_workspace import setup_source_workspace
+from .source_workspace_routes import SourceWorkspaceRouteDeps
 from .static_routes import StaticRouteDeps
 from .token_signal import TokenObservation
 from .update_routes import UpdateRouteDeps
@@ -124,6 +127,23 @@ class ServerRouteDepsFactory:
             app_dir=server.APP_DIR,
             working_dir=Path.cwd(),
             update_command=os.environ.get("CODOXEAR_UPDATE_COMMAND", ""),
+        )
+
+    def source_workspace_route_deps(self) -> SourceWorkspaceRouteDeps:
+        server = self.server
+        working_dir = Path.cwd()
+        return SourceWorkspaceRouteDeps(
+            require_auth=server._require_auth,
+            json_response=server._json_response,
+            read_body=server._read_body,
+            discover=lambda: discover_source_workspace(
+                app_dir=server.APP_DIR,
+                working_dir=working_dir,
+            ),
+            setup=lambda: setup_source_workspace(
+                app_dir=server.APP_DIR,
+                working_dir=working_dir,
+            ),
         )
 
     def control_route_deps(self) -> ControlRouteDeps:
