@@ -9,6 +9,18 @@ the evidence for it; 3–5 are the model and the change list; 6 lists the behavi
 changes a reviewer must accept; 7 records rejected alternatives; 8–11 are edge
 cases, tests, milestones and the decisions I do not want to take alone.
 
+> **Delta since this plan was written (commit 63bad03d).** The *viewport* authority
+> below no longer lives entirely in `createTranscriptScrollRuntime`: the
+> per-session reading position is now owned by `app_transcript_position.js` as
+> either `{kind: "tail"}` or an anchor (`messageId` + `historyCursor` +
+> intra-row offset), restored once per render generation and re-asserted on
+> content-size change (see AGENTS.md, "A session's viewport position has one
+> owner"). `createTranscriptScrollRuntime` keeps `autoScroll`/`isNearBottom`, the
+> bottom pin, and the write/foreign-scroll counters. Read "scroll memory" in the
+> table below as a pointer to that module; do not re-introduce a pixel memory
+> inside the scroll runtime. The window/tail-attachment half of this plan is
+> untouched by that change.
+
 ---
 
 ## 1. Diagnosis
@@ -124,7 +136,7 @@ Three authorities, each with one job:
 | authority | owns | module |
 | --- | --- | --- |
 | **window** | which contiguous range of the log is rendered, and whether its last row is the log's last event | `app_transcript_view.js` (policy), fed by facts returned from `app_transcript.js` |
-| **viewport** | where the reader is: `autoScroll`, `isNearBottom`, scroll memory | `createTranscriptScrollRuntime` |
+| **viewport** | where the reader is: `autoScroll`, `isNearBottom`; the remembered position (tail intent or row anchor) | `createTranscriptScrollRuntime` + `app_transcript_position.js` |
 | **agent** | running / turn open / tokens / subagents | `sessionState` (`app_session_state.js`) |
 
 ### 3.1 Window descriptor
