@@ -3285,6 +3285,9 @@ select {
         padding: 3px var(--space-3) 3px 3px;
         scrollbar-gutter: stable;
       }
+      /* The source shortcut's 44px hit lane extends above its compact row.
+         Keep that lane inside this scrollport without enlarging the row. */
+      .newSessionViewer .formBody { padding-top: 24px; }
       .formGrid {
         display: grid;
         gap: var(--dialog-group-gap, var(--space-4));
@@ -3328,6 +3331,33 @@ select {
         font-weight: 600;
         color: var(--ink);
       }
+      .sourceWorkspaceHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+      .sourceWorkspaceHeading .fieldLabel { flex: 1 1 0; min-width: 0; }
+      .sourceWorkspaceLink {
+        position: relative;
+        flex: 0 1 auto;
+        min-width: 0;
+        min-height: 0;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 0;
+        line-height: 1.35;
+        text-align: right;
+      }
+      /* The lane extends upward and only 3px into the field's 6px gap, so it
+         cannot intercept the directory input or the adjacent label. */
+      .sourceWorkspaceLink::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -3px;
+        height: 44px;
+      }
+      .sourceWorkspaceLink:hover { color: var(--ink); }
+      .helpSourceAction { display: flex; flex-direction: column; align-items: flex-start; min-height: 44px; width: 100%; gap: var(--space-1); margin-bottom: var(--space-4); text-align: left; }
+      .helpSourceAction span { color: var(--muted); }
       .fieldHint {
         font-size: var(--font-sm);
         color: var(--muted);

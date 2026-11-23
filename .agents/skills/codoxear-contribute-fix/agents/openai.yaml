@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codoxear Contribute Fix"
+  short_description: "Scoped branch, Docker verification, and upstream PR"
+  default_prompt: "Use $codoxear-contribute-fix to prepare and open a real PR against yiwenlu66/codoxear."

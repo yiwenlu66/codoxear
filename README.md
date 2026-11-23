@@ -228,6 +228,14 @@ The deploy script resolves the commit, creates or updates a detached worktree at
 
 A server restart does not lose conversations: they remain in backend logs. Do not kill `codoxear-broker` or an underlying agent CLI to deploy or restart the server. Roll back by deploying the previous commit with the same command.
 
+## Source workspace and contributing
+
+Choose **Use Codoxear source** in New Session (or **Help → Ask an agent about Codoxear**) to fill the directory field with an editable checkout. Backend/model choices stay unchanged; **Start** launches the session. If no checkout is available, **Set up source workspace** explicitly creates one — opening the dialog never clones.
+
+Inside that workspace, ask the agent to report a bug or submit a fix. `codoxear-report-issue` checks duplicates and files evidence on the canonical upstream `yiwenlu66/codoxear`; `codoxear-contribute-fix` preserves existing work, scopes the change, verifies in Docker, and opens a PR via `gh`. Pi and Codex discover the skills from `.agents/skills/`; Claude Code follows `.claude/skills/` symlinks to the same bodies.
+
+Workspace edits do not change the supported deployed service: it uses a committed snapshot installed by `scripts/deploy.sh`. A manually started development server can read an editable checkout; agent-run verification still belongs in Docker. See [docs/source-workspace.md](docs/source-workspace.md) for skill invocation, discovery paths, and deployment instructions.
+
 ## Tailscale HTTPS
 
 If you want browser notifications or iOS Web Push, use HTTPS instead of plain `http://<host>:8743`.

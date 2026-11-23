@@ -469,6 +469,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           applyDialogMenus: () => dialogMenusController.applyDialogMenus(),
           positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           setPickerButtonContent,
+          sourceWorkspace: (setup) => api("/api/source-workspace", setup ? { method: "POST", body: {}, timeoutMs: 120000 } : { cache: "no-store" }),
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
           spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         }));
@@ -951,6 +952,8 @@ import * as CodoxearWiring from "./app_wiring.js";
           viewer: helpViewer,
           closeButton: helpCloseBtn,
           openButton: $("#helpBtnSide"),
+          sourceButton: $("#helpSourceBtn"),
+          openSource: (opener) => newSessionDialogController.open({ sourceWorkspace: true, returnFocusEl: opener }),
           documentTarget: document,
           ElementCtor: HTMLElement,
           prepareModalOpen,

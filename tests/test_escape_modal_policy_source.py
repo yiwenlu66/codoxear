@@ -203,6 +203,7 @@ class TestEscapeNeverDismissesModals(unittest.TestCase):
               positionDialogMenu: () => ({{}}),
               setPickerButtonContent: () => ({{}}),
               fetchResumeCandidates: async () => ({{ sessions: [] }}),
+              sourceWorkspace: async () => ({{ available: true, path: "/source" }}),
               spawnSession: async () => 0,
               storageGetItem: storage.getItem,
               storageSetItem: storage.setItem,

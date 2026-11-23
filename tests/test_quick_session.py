@@ -56,13 +56,14 @@ function quickHarness({result=123,error=null,reserveError=null,holdReserve=false
   async resolve({ready=true}={}){await tick();if(error)spawnArgs[9]({message:error});if(ready&&result)await spawnArgs[11]('new');resolveSpawn(result)},
   block(v){blocked=v}};
 }
-function dialogHarness() {
+function dialogHarness(sourceWorkspace=async()=>({available:true,path:"/source",can_setup:false,reason:""})) {
  let result=null, args;
  const controller=ctx.window.CodoxearNewSession.createNewSessionDialogController({
   root:node(),el,iconSvg:()=>'',document:doc,window:{requestAnimationFrame:noop},addEvent:noop,
   sessionState:state,sessionCatalog:catalog,isMobile:()=>false,prepareModalOpen:noop,
   afterModalVisibilityChanged:noop,isModalTargetOpen:n=>n.style.display!=='none',applyDialogMenus:noop,
   positionDialogMenu:noop,setPickerButtonContent:noop,fetchResumeCandidates:async()=>({sessions:[]}),
+  sourceWorkspace,
   spawnSession:async(...a)=>{args=a;return result},
  });
  return {controller,setResult(v){result=v},get args(){return args}};
@@ -180,4 +181,47 @@ h.block(true);handler({key:'N'});assert.equal(h.controller.isStarting(),false);
 h.block(false);handler({key:'N',ctrlKey:true});assert.equal(h.controller.isStarting(),false);
 let prevented=false;handler({key:'N',preventDefault(){prevented=true}});assert.equal(prevented,true);assert.equal(h.controller.isStarting(),true);
 await h.resolve();
+""")
+
+
+def test_source_workspace_requires_explicit_setup_and_preserves_launch_choices():
+    run(r"""
+let calls=[];
+const h=dialogHarness(async setup=>{calls.push(setup);return setup ? {available:true,path:'/source',can_setup:false,reason:''} : {available:false,path:null,can_setup:true,reason:'Not installed'};});
+h.controller.open({cwd:'/old',launchPreset:record});
+const model=nodes.get('newSessionModelInput').value;
+nodes.get('newSessionSourceBtn').onclick(); await tick();
+assert.deepEqual(calls,[false]);
+assert.equal(nodes.get('newSessionCwdInput').value,'/old');
+assert.equal(nodes.get('newSessionSourceSetup').style.display,'');
+assert.equal(nodes.get('newSessionSourceStatus').textContent,'Not installed');
+nodes.get('newSessionSourceSetup').onclick(); await tick();
+assert.deepEqual(calls,[false,true]);
+assert.equal(nodes.get('newSessionCwdInput').value,'/source');
+assert.equal(nodes.get('newSessionModelInput').value,model);
+assert.equal(h.args,undefined);
+h.setResult('started'); nodes.get('newSessionStartBtn').onclick(); await tick();
+assert.equal(h.args[0],'/source');
+""")
+
+
+def test_delayed_source_choice_ignores_browsing_but_respects_edits_and_selections():
+    run(r"""
+async function scenario(action, expected) {
+  let resolve;
+  const h=dialogHarness(()=>new Promise(r=>{resolve=r}));
+  catalog.set('recentCwds',['/other']);
+  h.controller.open({cwd:'/old'});
+  nodes.get('newSessionSourceBtn').onclick();
+  const cwd=nodes.get('newSessionCwdInput');
+  cwd.onclick();
+  assert.equal(cwd.value,'');
+  if (action==='type') { cwd.value='/typed'; cwd.oninput(); }
+  if (action==='select') { nodes.get('newSessionCwdOption-0').onclick(); }
+  resolve({available:true,path:'/source'}); await tick();
+  assert.equal(cwd.value,expected);
+}
+await scenario('browse','/source');
+await scenario('type','/typed');
+await scenario('select','/other');
 """)

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codoxear Report Issue"
+  short_description: "File a deduplicated bug report on yiwenlu66/codoxear"
+  default_prompt: "Use $codoxear-report-issue to check duplicates and file this Codoxear bug upstream."

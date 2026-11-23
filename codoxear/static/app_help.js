@@ -18,6 +18,8 @@ function createHelpController(options = {}) {
   const viewer = requireNode(options.viewer, "viewer");
   const closeButton = requireNode(options.closeButton, "closeButton");
   const openButton = requireNode(options.openButton, "openButton");
+  const sourceButton = requireNode(options.sourceButton, "sourceButton");
+  const openSource = requireFunction(options.openSource, "openSource");
   const documentTarget = options.documentTarget;
   const ElementCtor = options.ElementCtor;
   if (!documentTarget || typeof documentTarget !== "object") throw new TypeError("help dependency missing: documentTarget");
@@ -44,20 +46,25 @@ function createHelpController(options = {}) {
     focusModalSurface(viewer);
   }
 
-  function hide() {
+  function hide({ restoreFocus = true } = {}) {
     const wasOpen = isModalTargetOpen(viewer);
     const focusTarget = returnFocusElement;
     returnFocusElement = null;
     backdrop.style.display = "none";
     viewer.style.display = "none";
     afterModalVisibilityChanged();
-    if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(viewer));
+    if (wasOpen && restoreFocus) restoreModalFocus(focusTarget, () => isModalTargetOpen(viewer));
   }
 
   addEvent(openButton, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     show({ opener: event.currentTarget });
+  });
+  addEvent(sourceButton, "click", () => {
+    const opener = returnFocusElement;
+    hide({ restoreFocus: false });
+    openSource(opener);
   });
   addEvent(closeButton, "click", (event) => {
     event.preventDefault();
