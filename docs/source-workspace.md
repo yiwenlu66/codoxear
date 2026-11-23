@@ -1,103 +1,96 @@
-# Source workspace, contribution skills, and maintenance
+# Work on Codoxear with an agent
 
-This document covers three connected things: what a Codoxear *source workspace*
-is, the repository agent skills for reporting issues and contributing fixes,
-and the maintenance rule that decides when source changes reach a running
-server.
+A **source workspace** is an editable Codoxear clone or worktree. Use it to ask
+how Codoxear works, investigate a bug, or make changes — not to edit the serving
+installation or runtime data.
 
-## Editable source is not the serving snapshot
+## Open a source session
 
-A source workspace is an editable checkout of this repository (a normal clone
-or worktree on the user's machine). It is development state. The deployed
-server never imports code or static assets from it: a deployment installs a
-**committed snapshot** — `scripts/deploy.sh <commit>` resolves the commit,
-updates a detached snapshot worktree at `~/.local/share/codoxear/deploy`, and
-installs that snapshot with pipx. Consequences:
+1. In **New Session**, choose **Use Codoxear source** beside the directory field.
+   It fills that field and keeps your backend/model choices; it does not launch.
+   **Help → Ask an agent about Codoxear** opens the same dialog with the source
+   directory prefilled.
+2. If no workspace is available, choose **Set up source workspace** explicitly.
+   Opening the dialog or checking availability never clones a repository.
+3. Review the settings and press **Start** to launch the agent session.
 
-- Edits in a source workspace change nothing on a running server. They apply
-  only after the change is committed and `scripts/deploy.sh <commit>` runs.
-- Deploys restart **only** `codoxear-server.service`. Live brokers, backend
-  CLIs, sockets, uploads, queues, and session stores are untouched — sessions
-  live in backend log files on disk, and the server only reads them. Never kill
-  a broker or a backend CLI to deploy or restart the server.
-- When an agent sets up or modifies a deployment, it must also configure
-  `CODOXEAR_UPDATE_COMMAND` in the service environment (for example
-  `/path/to/codoxear/scripts/deploy.sh origin/main`) and, once it works,
-  enable auto-update via `update_settings.json` (`{"auto_update": true}`), so
-  updates flow through the same committed-snapshot path.
+Source discovery excludes the deploy snapshot, installed package files, and live
+runtime state. The authenticated `GET /api/source-workspace` reports
+`{available, path, can_setup, reason}` without creating anything; the explicit
+setup action uses `POST /api/source-workspace`.
 
-The New Session dialog's "Use Codoxear source" shortcut opens an agent session
-in a source workspace. It fills the existing cwd field without launching, and
-the context line switches to source-workspace prompts ("Ask how Codoxear works,
-investigate a bug, or make changes."). The browser learns the workspace lazily
-through the authenticated `GET /api/source-workspace`
-(`{available, path, can_setup, reason}`); creating one is an explicit setup
-gesture via `POST /api/source-workspace` — no clone on GET. A source workspace
-is never the deploy snapshot worktree, the installed package files, or the
-live runtime state directory.
+## Report a bug or contribute a fix
 
-## Contribution skills
+Ask the agent to “report this bug” or “submit this fix,” or invoke a skill:
 
-Two project skills ship in this repository for agent sessions (Pi, Codex, and
-Claude Code) working inside a source workspace:
+| Skill | Pi | Codex | Claude Code |
+|---|---|---|---|
+| `codoxear-report-issue` | `/skill:codoxear-report-issue` | `$codoxear-report-issue` | `/codoxear-report-issue` |
+| `codoxear-contribute-fix` | `/skill:codoxear-contribute-fix` | `$codoxear-contribute-fix` | `/codoxear-contribute-fix` |
 
-| Skill | Invoke | Use when |
+Both target **`yiwenlu66/codoxear`**, even when your checkout's `origin` is a
+fork. They check for prior issues/PRs first. A bug report adds new evidence to
+an open duplicate instead of creating another issue. A contribution preserves
+existing commits and local edits, isolates only the requested fix, verifies it
+in Docker, and opens a PR against upstream `main`. They require GitHub CLI
+(`gh`) authentication to post; without it, the agent can return a prepared
+report or explain the remaining submission step. No issue/PR is posted merely
+to test a skill.
+
+Issue/PR commands specify `--repo yiwenlu66/codoxear`; repository commands use
+an explicit repository argument. Auth commands and `gh api user` act on the
+GitHub account and do not take that repository flag. Only URLs actually
+returned by GitHub/git are reported as created submissions.
+
+### Skill discovery and maintenance
+
+Each skill has one canonical body at `.agents/skills/<name>/SKILL.md`, with
+optional Codex UI metadata at `agents/openai.yaml`.
+
+| Backend | Project discovery | Repository entry |
 |---|---|---|
-| `codoxear-report-issue` | `/skill:codoxear-report-issue` (Pi), `$codoxear-report-issue` (Codex), `/codoxear-report-issue` (Claude Code) | report a bug, file an issue |
-| `codoxear-contribute-fix` | `/skill:codoxear-contribute-fix`, `$codoxear-contribute-fix`, `/codoxear-contribute-fix` | submit a fix, open a PR |
+| Pi | `.agents/skills/` from cwd through ancestors, stopping at the repository root | canonical body |
+| Codex | `.agents/skills/` from cwd through ancestors to the repository root | canonical body |
+| Claude Code | `.claude/skills/` from the start directory through ancestors to the repository root | relative symlink to `../../.agents/skills/<name>` |
 
-Both target the canonical upstream **`yiwenlu66/codoxear`**, stated explicitly
-and independently of the checkout's fork `origin`: every `gh` call passes
-`--repo yiwenlu66/codoxear`, and a remote whose URL is `yiwenlu66/codoxear`
-(HTTPS or SSH) is treated as canonical regardless of its nickname. Both check
-for duplicate issues/PRs first, gather version/environment/reproduction
-evidence, verify only inside Docker, never create issues or PRs as part of
-testing, and quote back only URLs that `gh`/`git` actually printed.
+- Edit the canonical body, never copies under backend-specific directories.
+  Preserve the Claude Code symlinks.
+- Keep frontmatter `name` equal to the directory name; `description` states
+  when the skill applies. Keep guidance portable: no local hosts, accounts,
+  credentials, or machine-specific paths.
+- Validate frontmatter and real CLI discovery from both the repository root
+  and a nested directory **inside Docker**, not through source-string tests.
+  Keep validation logs outside reader documentation.
+- `.codex/skills/codoxear-docker-test/` is historical, not a current automatic
+  discovery path. Use the referenced Docker verification scripts directly.
 
-## Skill discovery: one canonical body, documented per-backend paths
+Discovery references: [Pi skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md),
+[Codex skills](https://developers.openai.com/codex/skills), and
+[Claude Code skills](https://code.claude.com/docs/en/skills).
 
-The skill bodies live **once**, canonically, in
-`.agents/skills/<name>/SKILL.md` (+ optional `agents/openai.yaml`). No
-backend-specific copy of the text exists anywhere else in the repository, so
-the three backends cannot drift.
+## When changes reach the server
 
-| Backend | Documented discovery | Loads |
-|---|---|---|
-| Pi | Project `.agents/skills/` (Agent Skills location), found from the working directory through ancestors, stopping at the repository root; also project `.pi/skills/` | canonical body directly |
-| Codex | `.agents/skills` in every directory from the cwd up to the repository root; supports symlinked skill folders | canonical body directly |
-| Claude Code | Project `.claude/skills/<name>/SKILL.md`, from the start directory up to the repository root; a skill entry may be a **symlink** to a directory elsewhere on disk | symlink `.claude/skills/<name>` → `../../.agents/skills/<name>` |
+The supported service deployment uses a **committed snapshot**, not the editable
+workspace. After review and commit, the maintainer deploys with:
 
-Discovery evidence (no source-string tests):
+```sh
+scripts/deploy.sh <commit>
+```
 
-- **Pi (real CLI metadata)**: `pi --mode rpc` + `{"type":"get_commands"}`
-  lists both skills as `skill:codoxear-report-issue` /
-  `skill:codoxear-contribute-fix` with `sourceInfo.scope: "project"`,
-  `sourceInfo.source: "auto"`, and `path` inside `.agents/skills/` — verified
-  from the repository root and from a subdirectory. Documented in Pi's
-  `docs/skills.md` and `docs/rpc-commands.md`.
-- **Codex (official documentation)**: developers.openai.com/codex/skills
-  documents the repo-scope `.agents/skills` scan (cwd → repository root),
-  `$skill-name` invocation, `/skills` listing, optional `agents/openai.yaml`,
-  and symlinked skill folders.
-- **Claude Code (official documentation)**: code.claude.com/docs/en/skills
-  documents project `.claude/skills/` discovery from the start directory up to
-  the repository root and that a skill entry may be a symlink to a directory
-  elsewhere on disk.
+This installs the selected commit from the detached worktree at
+`~/.local/share/codoxear/deploy` and restarts only `codoxear-server.service`.
+Workspace edits do not change that deployed service. A manually started
+**development server can read an editable checkout**; that is not the supported
+service deployment. Agent-run tests still belong in Docker, never on the live
+server (port 8743) or host runtime state.
 
-Rules that keep this true:
+Deploys preserve brokers, backend CLIs, sockets, uploads, queues, and session
+stores. Conversations remain in backend logs; never kill a broker or agent CLI
+to deploy. Roll back with `scripts/deploy.sh <previous-commit>`.
 
-- Edit only the canonical `.agents/skills/<name>/SKILL.md`. Never copy skill
-  text into `.claude/`, `.pi/`, or `.codex/`; add a relative symlink there if a
-  backend needs one.
-- Skills are general project guidance: no machine-specific paths, hosts,
-  accounts, or credentials.
-- `.codex/skills/codoxear-docker-test/` is historical and preserved in place.
-  Its directory is not on Codex's documented scan list, so its content reaches
-  agents through references to `scripts/codoxear-docker-sandbox` and the
-  Docker verification scripts, not through automatic discovery.
-- Frontmatter `name` must match the skill directory name, and `description`
-  must state the real trigger conditions — it is the model-invocation surface.
-
-Note for interactive terminal sessions: adding `.agents/skills/` triggers Pi's
-project-trust dialog once per checkout. Codoxear launches Pi with `--approve`,
-so web-owned sessions are unaffected.
+When setting up or modifying a deployment, configure `CODOXEAR_UPDATE_COMMAND`
+in the service environment to use that same deployment mechanism (for example
+`/path/to/codoxear/scripts/deploy.sh origin/main`). Once configured successfully,
+enable auto-update in `~/.local/share/codoxear/update_settings.json` with
+`{"auto_update": true}`. See [deployment and operations](../README.md#deployment-and-operations)
+for prerequisites and service behavior. Contribution sessions do not deploy.

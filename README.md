@@ -230,9 +230,11 @@ A server restart does not lose conversations: they remain in backend logs. Do no
 
 ## Source workspace and contributing
 
-An agent session running in an editable checkout of this repository (a source workspace) picks up two project skills for working on Codoxear itself: `codoxear-report-issue` (check duplicates, gather version/env/repro, file a bug on the canonical upstream `yiwenlu66/codoxear`) and `codoxear-contribute-fix` (scoped branch, Docker-only verification, real PR via `gh`). Pi and Codex discover them from `.agents/skills/`; Claude Code follows the `.claude/skills/` symlinks to the same bodies.
+Choose **Use Codoxear source** in New Session (or **Help → Ask an agent about Codoxear**) to fill the directory field with an editable checkout. Backend/model choices stay unchanged; **Start** launches the session. If no checkout is available, **Set up source workspace** explicitly creates one — opening the dialog never clones.
 
-Source edits never reach a running server directly: the server serves a committed snapshot installed by `scripts/deploy.sh`. See [docs/source-workspace.md](docs/source-workspace.md) for the discovery matrix, maintenance rules, and skill authoring guidelines.
+Inside that workspace, ask the agent to report a bug or submit a fix. `codoxear-report-issue` checks duplicates and files evidence on the canonical upstream `yiwenlu66/codoxear`; `codoxear-contribute-fix` preserves existing work, scopes the change, verifies in Docker, and opens a PR via `gh`. Pi and Codex discover the skills from `.agents/skills/`; Claude Code follows `.claude/skills/` symlinks to the same bodies.
+
+Workspace edits do not change the supported deployed service: it uses a committed snapshot installed by `scripts/deploy.sh`. A manually started development server can read an editable checkout; agent-run verification still belongs in Docker. See [docs/source-workspace.md](docs/source-workspace.md) for skill invocation, discovery paths, and deployment instructions.
 
 ## Tailscale HTTPS
 
