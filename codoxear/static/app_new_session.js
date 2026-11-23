@@ -964,6 +964,8 @@ function requireFunction(value, name) {
     // One Tab at a time: a superseded Tab (another press, text that moved on, the
     // user leaving the field) must not write text or move focus.
     let cwdTabSeq = 0;
+    // Only a user-authored edit or selection supersedes a pending source choice.
+    let cwdEditSeq = 0;
     // A row counts as picked only when the arrow keys chose it; the renderer's own
     // anchored highlight on a browse-state path is not a choice.
     let cwdMenuFocusMoved = false;
@@ -1116,6 +1118,7 @@ function requireFunction(value, name) {
     // keep the menu open, so a completed directory immediately shows its children
     // and the next Tab can drill into one of them.
     function applyCwdCompletionValue(value, { fromRow = false } = {}) {
+      cwdEditSeq += 1;
       const text = String(value == null ? "" : value);
       // Rows and completions write the path itself. The trailing "/" is the
       // user's own marker for "go inside", so taking an entry never adds it —
@@ -1156,6 +1159,7 @@ function requireFunction(value, name) {
     // applyNewSessionCwdSuggestion writes the field and then closes the menu
     // through this hook, so a chosen path is a committed value, not a query.
     function commitCwdSelection() {
+      cwdEditSeq += 1;
       cwdBrowseRestore = null;
       cwdQueryDirty = false;
       dismissCwdPicker();
@@ -1308,7 +1312,7 @@ function requireFunction(value, name) {
 
     async function chooseSourceWorkspace(setup = false) {
       const seq = ++sourceSeq;
-      const originalCwd = cwdInput.value;
+      const originalCwdEditSeq = cwdEditSeq;
       sourceButton.disabled = true;
       sourceSetup.disabled = true;
       sourceStatus.textContent = setup ? "Setting up source workspace…" : "Finding source workspace…";
@@ -1319,7 +1323,7 @@ function requireFunction(value, name) {
           sourcePath = result.path;
           sourceSetup.style.display = "none";
           sourceStatus.textContent = "";
-          if (cwdInput.value === originalCwd) controller.applyNewSessionCwdSuggestion(sourcePath);
+          if (cwdEditSeq === originalCwdEditSeq) controller.applyNewSessionCwdSuggestion(sourcePath);
           syncSourceContext();
         } else {
           sourcePath = "";
@@ -1362,7 +1366,7 @@ function requireFunction(value, name) {
     closeBtn.onclick = close; cancelBtn.onclick = close; backdrop.onclick = close; viewer.onclick = (event) => event.stopPropagation();
     resumeBtn.onclick = (event) => { event.preventDefault(); event.stopPropagation(); controller.renderNewSessionResumeMenu(); dismissModelPicker(); dismissCwdPicker(); resumeMenuOpen = !resumeMenuOpen; reasoningMenuOpen = false; applyDialogMenus(); };
     cwdInput.onclick = () => { beginCwdBrowse(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; applyDialogMenus(); };
-    cwdInput.oninput = () => { syncSourceContext(); cwdTabSeq += 1; cwdMenuFocusMoved = false; controller.setCwdArrowPending(false); cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
+    cwdInput.oninput = () => { cwdEditSeq += 1; syncSourceContext(); cwdTabSeq += 1; cwdMenuFocusMoved = false; controller.setCwdArrowPending(false); cwdQueryDirty = true; cwdBrowseRestore = null; cwdMenuFocus = -1; controller.setNewSessionCwdError(""); controller.syncNewSessionNamePlaceholder(); controller.renderRecentCwdMenu(); cwdMenuOpen = true; dismissModelPicker(); controller.scheduleNewSessionResumeLoad(); applyDialogMenus(); };
     cwdInput.onblur = () => { cwdTabSeq += 1; win.requestAnimationFrame(() => { if (!cwdField.contains(doc.activeElement)) { dismissCwdPicker(); applyDialogMenus(); } }); };
     cwdInput.onkeydown = (event) => { const arrow = event.key === "ArrowDown" || event.key === "ArrowUp"; if (arrow && !cwdMenuOpen) beginCwdBrowse(); const items = controller.renderRecentCwdMenu(); if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) { event.preventDefault(); const typedRaw = String(cwdInput.value || ""); const typed = typedRaw.trim(); const seq = ++cwdTabSeq; const stillCurrent = () => seq === cwdTabSeq && String(cwdInput.value || "") === typedRaw; const advance = () => { if (!stillCurrent() || doc.activeElement !== cwdInput) return; if (cwdMenuOpen) { dismissCwdPicker(); applyDialogMenus(); } try { nameInput.focus(); } catch (_) { CodoxearPathCompletion.focusNextControl(cwdInput, { container: root }); } }; const applyPlan = (plan) => { if (!stillCurrent()) return; if (plan && typeof plan.apply === "string") { try { applyCwdCompletionValue(plan.apply, { fromRow: Boolean(plan.fromRow) }); return; } catch (_) {} } advance(); }; void controller.resolveCwdTab(typed).then(applyPlan, advance); return; } if (arrow) { if (!items.length) { controller.setCwdArrowPending(true); cwdMenuFocusMoved = true; cwdMenuOpen = true; controller.flushFilesystemCwdLoad(); applyDialogMenus(); return; } event.preventDefault(); cwdTabSeq += 1; cwdMenuFocusMoved = true; cwdMenuOpen = true; dismissModelPicker(); resumeMenuOpen = false; const delta = event.key === "ArrowDown" ? 1 : -1; cwdMenuFocus = cwdMenuFocus < 0 ? (delta > 0 ? 0 : items.length - 1) : (cwdMenuFocus + delta + items.length) % items.length; controller.renderRecentCwdMenu(); applyDialogMenus(); const active = doc.getElementById(`newSessionCwdOption-${cwdMenuFocus}`); if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" }); return; } if (event.key === "Enter" && cwdMenuOpen && cwdMenuFocus >= 0 && items[cwdMenuFocus]) { event.preventDefault(); controller.applyNewSessionCwdSuggestion(items[cwdMenuFocus].cwd); return; } if (event.key === "Escape" && cwdMenuOpen) { event.preventDefault(); event.stopPropagation(); dismissCwdPicker(); applyDialogMenus(); } };
     modelInput.onclick = () => { beginModelBrowse(); renderModelMenu(); modelMenuOpen = true; dismissCwdPicker(); reasoningMenuOpen = false; resumeMenuOpen = false; applyDialogMenus(); };

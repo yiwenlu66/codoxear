@@ -19,6 +19,7 @@ def test_source_shortcut_hit_lane_does_not_expand_row_or_cover_input():
     assert link["border"] == "0"
     assert link["background"] == "transparent"
     assert link["min-width"] == "0"
+    assert style(".newSessionViewer .formBody")["padding-top"] == "24px"
     assert lane["height"] == "44px"
     assert lane["left"] == lane["right"] == "0"
     # The field's gap separates the heading from the following input.

@@ -44,7 +44,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
           closeButton,
           openButton: opener,
           sourceButton,
-          openSource: () => calls.push("open-source"),
+          openSource: (target) => calls.push(`open-source:${viewer.style.display}:${backdrop.style.display}:${target.name}`),
           documentTarget: { activeElement: fallback },
           ElementCtor: ElementStub,
           prepareModalOpen: () => calls.push("prepare"),
@@ -60,8 +60,10 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
           stopPropagation() { calls.push("stop"); },
         };
         opener.emit("click", click);
-        sourceButton.emit("click");
         const openSnapshot = { backdrop: backdrop.style.display, viewer: viewer.style.display, isOpen: controller.isOpen() };
+        sourceButton.emit("click");
+        const handoffSnapshot = { backdrop: backdrop.style.display, viewer: viewer.style.display, isOpen: controller.isOpen() };
+        opener.emit("click", click);
         closeButton.emit("click", click);
         const closeSnapshot = { backdrop: backdrop.style.display, viewer: viewer.style.display, isOpen: controller.isOpen() };
         controller.show();
@@ -69,6 +71,7 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
         process.stdout.write(JSON.stringify({
           frozen: Object.isFrozen(controller),
           openSnapshot,
+          handoffSnapshot,
           closeSnapshot,
           calls,
         }));
@@ -84,9 +87,12 @@ def test_help_controller_owns_open_close_coordination_and_focus_restore() -> Non
     data = json.loads(result.stdout)
     assert data["frozen"] is True
     assert data["openSnapshot"] == {"backdrop": "block", "viewer": "flex", "isOpen": True}
+    assert data["handoffSnapshot"] == {"backdrop": "none", "viewer": "none", "isOpen": False}
     assert data["closeSnapshot"] == {"backdrop": "none", "viewer": "none", "isOpen": False}
     assert data["calls"] == [
-        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer", "open-source",
+        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer",
+        "visibility", "open-source:none:none:opener",
+        "prevent", "stop", "prepare", "visibility", "focus-surface", "focus:viewer",
         "prevent", "stop", "visibility", "restore:false", "focus:opener",
         "prepare", "visibility", "focus-surface", "focus:viewer",
         "visibility", "restore:false", "focus:fallback",

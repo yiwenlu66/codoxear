@@ -3285,6 +3285,9 @@ select {
         padding: 3px var(--space-3) 3px 3px;
         scrollbar-gutter: stable;
       }
+      /* The source shortcut's 44px hit lane extends above its compact row.
+         Keep that lane inside this scrollport without enlarging the row. */
+      .newSessionViewer .formBody { padding-top: 24px; }
       .formGrid {
         display: grid;
         gap: var(--dialog-group-gap, var(--space-4));

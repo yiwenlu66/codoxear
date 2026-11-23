@@ -46,14 +46,14 @@ function createHelpController(options = {}) {
     focusModalSurface(viewer);
   }
 
-  function hide() {
+  function hide({ restoreFocus = true } = {}) {
     const wasOpen = isModalTargetOpen(viewer);
     const focusTarget = returnFocusElement;
     returnFocusElement = null;
     backdrop.style.display = "none";
     viewer.style.display = "none";
     afterModalVisibilityChanged();
-    if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(viewer));
+    if (wasOpen && restoreFocus) restoreModalFocus(focusTarget, () => isModalTargetOpen(viewer));
   }
 
   addEvent(openButton, "click", (event) => {
@@ -61,7 +61,11 @@ function createHelpController(options = {}) {
     event.stopPropagation();
     show({ opener: event.currentTarget });
   });
-  addEvent(sourceButton, "click", () => openSource());
+  addEvent(sourceButton, "click", () => {
+    const opener = returnFocusElement;
+    hide({ restoreFocus: false });
+    openSource(opener);
+  });
   addEvent(closeButton, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();

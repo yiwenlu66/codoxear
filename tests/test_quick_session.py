@@ -203,3 +203,25 @@ assert.equal(h.args,undefined);
 h.setResult('started'); nodes.get('newSessionStartBtn').onclick(); await tick();
 assert.equal(h.args[0],'/source');
 """)
+
+
+def test_delayed_source_choice_ignores_browsing_but_respects_edits_and_selections():
+    run(r"""
+async function scenario(action, expected) {
+  let resolve;
+  const h=dialogHarness(()=>new Promise(r=>{resolve=r}));
+  catalog.set('recentCwds',['/other']);
+  h.controller.open({cwd:'/old'});
+  nodes.get('newSessionSourceBtn').onclick();
+  const cwd=nodes.get('newSessionCwdInput');
+  cwd.onclick();
+  assert.equal(cwd.value,'');
+  if (action==='type') { cwd.value='/typed'; cwd.oninput(); }
+  if (action==='select') { nodes.get('newSessionCwdOption-0').onclick(); }
+  resolve({available:true,path:'/source'}); await tick();
+  assert.equal(cwd.value,expected);
+}
+await scenario('browse','/source');
+await scenario('type','/typed');
+await scenario('select','/other');
+""")

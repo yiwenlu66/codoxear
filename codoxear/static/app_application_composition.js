@@ -953,7 +953,7 @@ import * as CodoxearWiring from "./app_wiring.js";
           closeButton: helpCloseBtn,
           openButton: $("#helpBtnSide"),
           sourceButton: $("#helpSourceBtn"),
-          openSource: () => newSessionDialogController.open({ sourceWorkspace: true }),
+          openSource: (opener) => newSessionDialogController.open({ sourceWorkspace: true, returnFocusEl: opener }),
           documentTarget: document,
           ElementCtor: HTMLElement,
           prepareModalOpen,
