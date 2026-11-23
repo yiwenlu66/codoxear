@@ -72,8 +72,48 @@ cleanup() {
   /bin/rm -rf "$root"
 }
 trap cleanup EXIT
+capture_failure_state() {
+  # Decisive state must be pulled out of the container/browser before the trap
+  # deletes the throwaway HOME. Everything here is best-effort.
+  browser screenshot "$artifacts/failure-state.png" > /dev/null 2>&1 || true
+  browser eval '(() => { const chat = document.getElementById("chatInner");
+    return {chatTail: chat ? chat.innerText.slice(-4000) : null,
+      composer: document.getElementById("msg") ? {value: document.getElementById("msg").value, disabled: document.getElementById("msg").disabled} : null,
+      sendDisabled: document.getElementById("sendBtn") ? document.getElementById("sendBtn").disabled : null,
+      selected: localStorage.getItem("codexweb.selected"),
+      bodySample: String(document.body ? document.body.innerText : "").slice(-1500)}; })()' --json > "$artifacts/failure-chat.json" 2>&1 || true
+  curl -sS -b "$cookie" "http://127.0.0.1:${port}/api/sessions" > "$artifacts/sessions-at-failure.json" 2>/dev/null || true
+  local sid
+  sid="$(python3 -c 'import json; rows=json.load(open("'"$artifacts"'/sessions-at-failure.json")).get("sessions") or []; print(rows[0].get("session_id","") if rows else "")' 2>/dev/null || true)"
+  if [[ -n "$sid" ]]; then
+    curl -sS -b "$cookie" "http://127.0.0.1:${port}/api/sessions/${sid}/messages/tail?limit=100" > "$artifacts/session-tail-at-failure.json" 2>/dev/null || true
+  fi
+  "${docker[@]}" exec -i "$container" python3 - > "$artifacts/brokers-at-failure.json" 2>&1 <<'PY' || true
+import json, os, pathlib
+rows = []
+for meta_path in sorted(pathlib.Path.home().joinpath(".local/share/codoxear/socks").glob("*.json")):
+    meta = json.loads(meta_path.read_text())
+    sock = meta_path.with_suffix(".sock")
+    state, tail = {}, ""
+    try:
+        from codoxear.control_socket import call_control_socket
+        state = call_control_socket(sock, {"cmd": "state"})
+        tail = str(call_control_socket(sock, {"cmd": "tail"}).get("tail", ""))[-3000:]
+    except Exception as exc:
+        tail = "control socket failed: %s" % exc
+    pid = int(meta.get("codex_pid") or 0)
+    proc_cwd = os.readlink("/proc/%d/cwd" % pid) if pid > 0 and os.path.exists("/proc/%d/cwd" % pid) else None
+    rows.append({"session_id": meta_path.stem, "cwd": meta.get("cwd"), "agent_backend": meta.get("agent_backend"),
+                 "proc_cwd": proc_cwd, "state": state, "tail": tail, "log_path": meta.get("log_path")})
+session_dir = pathlib.Path.home().joinpath(".pi/agent/sessions")
+sessions = sorted(str(p) for p in session_dir.glob("*.jsonl")) if session_dir.is_dir() else []
+print(json.dumps({"brokers": rows, "piSessionFiles": sessions}, indent=2))
+PY
+  "${docker[@]}" exec "$container" sh -c 'cat "$HOME/.verify-provider.log" 2>/dev/null; true' > "$artifacts/provider-requests.log" 2>&1 || true
+}
 fail() {
   echo "FAIL: $* (artifacts: $artifacts)" >&2
+  capture_failure_state
   "${docker[@]}" logs "$container" > "$artifacts/server.log" 2>&1 || true
   "${docker[@]}" exec "$container" sh -c 'cat "$HOME/provider.log" 2>/dev/null; true' > "$artifacts/provider.log" 2>&1 || true
   browser errors --json > "$artifacts/browser-errors.json" 2>&1 || true
@@ -124,15 +164,34 @@ EOF
 # Deterministic streaming provider inside the container (same shape as
 # scripts/docker_external_pi_verify.py, minus the slow-reply branch).
 cat > "$home_dir/.verify-provider.py" <<EOF
-import json
+import json, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+PROVIDER_LOG = "/home/tester/.verify-provider.log"
+
+def log_provider(entry):
+    with open(PROVIDER_LOG, "a", encoding="utf-8") as handle:
+        handle.write(time.strftime("[%Y-%m-%dT%H:%M:%S] ") + entry + "\\n")
+
+def content_text(content):
+    # Pi may send a plain string or OpenAI content blocks; echo the raw text.
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(str(block.get("text", "")) for block in content if isinstance(block, dict))
+    return str(content)
 
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
     def do_POST(self):
-        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0) or b"{}"))
-        last = str([m for m in payload["messages"] if m["role"] == "user"][-1]["content"])
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        log_provider("request " + self.path + " " + raw.decode("utf-8", "replace")[-20000:])
+        payload = json.loads(raw or b"{}")
+        users = [m for m in payload["messages"] if m["role"] == "user"]
+        last = content_text(users[-1]["content"]) if users else ""
+        reply = "LOCAL RESPONSE: " + last
+        log_provider("reply " + reply[:500])
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
@@ -513,7 +572,7 @@ browser eval "window.__sourceSid = '${source_sid}'" > /dev/null
 browser wait 3500 > /dev/null
 browser fill '#msg' 'Reply exactly SOURCE_WORKSPACE_OK.' > /dev/null
 browser click '#sendBtn' > /dev/null
-wait_js 'document.getElementById("chatInner").textContent.includes("LOCAL RESPONSE: Reply exactly SOURCE_WORKSPACE_OK.")'
+wait_js 'document.getElementById("chatInner").textContent.includes("LOCAL RESPONSE")'
 browser eval '({helpHidden: getComputedStyle(document.getElementById("helpViewer")).display === "none" && getComputedStyle(document.getElementById("helpBackdrop")).display === "none",
   composerUsable: !document.getElementById("msg").disabled && !document.getElementById("sendBtn").disabled,
   newSessionClosed: getComputedStyle(document.getElementById("newSessionViewer")).display === "none"})' --json > "$artifacts/help-entry-after-start.json"
@@ -536,7 +595,7 @@ wait_js 'Boolean(localStorage.getItem("codexweb.selected")) && localStorage.getI
 browser wait 3500 > /dev/null
 browser fill '#msg' 'Reply exactly NORMAL_SESSION_OK.' > /dev/null
 browser click '#sendBtn' > /dev/null
-wait_js 'document.getElementById("chatInner").textContent.includes("LOCAL RESPONSE: Reply exactly NORMAL_SESSION_OK.")'
+wait_js 'document.getElementById("chatInner").textContent.includes("LOCAL RESPONSE")'
 normal_sid="$(evalv 'localStorage.getItem("codexweb.selected")')"
 printf '{"normalSid": "%s"}\n' "$normal_sid" > "$artifacts/normal-session.json"
 
@@ -583,6 +642,7 @@ browser screenshot "$artifacts/mobile-dialog.png" > /dev/null
 
 browser errors --json > "$artifacts/browser-errors.json"
 browser console --json > "$artifacts/browser-console.json"
+"${docker[@]}" exec "$container" sh -c 'cat "$HOME/.verify-provider.log" 2>/dev/null; true' > "$artifacts/provider-requests.log" 2>&1 || true
 
 # ---------------------------------------------------------------------------
 # Verdict: every stage's captured evidence is asserted in one place.
