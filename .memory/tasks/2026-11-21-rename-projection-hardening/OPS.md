@@ -120,3 +120,54 @@ Note: a plain transcript read did not re-trigger the push in the repro loop
 `refresh_session_meta` returns early on an invalid sidecar read). The
 read-route amplification is real but intermittent and was not made a verifier
 assertion.
+
+## 2026-11-23 — the "name flips back to the default" bug (root cause D, FIXED)
+
+User report: creating a session with a chosen name sets it, then it reverts to
+the cwd basename a few seconds later.
+
+Evidence that the precondition is real: every live Pi session log contains the
+cwd-basename `session_info` row *before* the chosen name, e.g.
+`['codoxear','codox-pagination-bug','codox-pagination-bug']`,
+`['dexgem-litellm-gateway','litellm-remove-fb',...]`. So codoxear assigns and
+pushes its default before the user's rename arrives.
+
+Unit-level repro (Harness): reconcile assigns default 'repo' + pushes it; the
+broker echoes it into `backend_session_name`; the alias is then set to 'My
+Required Name'; the next reconcile returns `reason="adopted", name="repo"` and
+the alias store is back to 'repo'.
+
+Root cause: in `SessionNameProjection._reconcile_locked_identity` the
+"terminal title outranks an assigned default" rule was
+
+    if _origin(record) == ORIGIN_DEFAULT and observed and observed != desired:
+
+`desired` is the *new* alias. After the default is pushed, the backend's
+`observed` title IS the default codoxear itself wrote, and the broker's echo
+(`backend_session_name`) makes it visible to the server. A rename changes
+`desired`, so `observed != desired` holds and the rule adopts codoxear's own
+echoed default back over the user's name. The rule cannot tell a title the user
+typed in the terminal from the default codoxear projected.
+
+Fix: adopt only while the alias is still the default codoxear last projected --
+require `desired == record_name` (equivalently `observed != record_name`). Once
+the user renames in codoxear, `desired != record_name`, so the backend echo is
+not treated as a terminal title and the rename is pushed. Comment updated.
+
+Docker end-to-end repro `scripts/docker_session_name_flip_verify.sh` (real Pi +
+broker + server; pre-created broker so the bridge is live and the default actually
+reaches Pi):
+- BEFORE the fix: final projection `{"state":"adopted","name":"workspace"}`, the
+  alias flipped to the default on the very first poll after the rename.
+- AFTER the fix: `{"state":"applied","name":"My Required Name"}`, alias stays the
+  chosen name. Artifacts `/tmp/codoxear-name-flip-results.Y4EuzS` (pass) and
+  `...ZQHU6U` (repro).
+
+Regression test `test_the_echoed_default_is_not_mistaken_for_a_terminal_title`.
+Related suites 37 passed; full suite 3014 passed, 2 pre-existing failures
+(`test_hint_mode_coverage::draftUndoBtn`, `test_pi_prompt_receipt`) unchanged.
+
+Follow-up (not done): `_handle_rename` returns the alias captured before the
+reconcile, so a genuine adoption (terminal title over a default) can still make
+the response disagree with the store. With this fix the normal rename path is
+consistent; the response could be re-read after the projection for full honesty.

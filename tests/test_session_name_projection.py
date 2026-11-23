@@ -359,6 +359,26 @@ def test_a_terminal_title_outranks_an_assigned_default() -> None:
     assert len(h.calls) == calls
 
 
+def test_the_echoed_default_is_not_mistaken_for_a_terminal_title() -> None:
+    """Creating a session sets the default, which the agent echoes back.
+
+    A name then chosen in codoxear must win: the backend's observed title is
+    codoxear's own default, not a title the user typed in the terminal, so
+    adopting it would silently revert the rename.
+    """
+    h = Harness()
+    assert h.projection.reconcile("s1")["reason"] == "applied"
+    assert h.aliases == {"s1": "repo"}
+    # The broker echoes the default it accepted into the session snapshot.
+    h.session.backend_session_name = "repo"
+
+    h.aliases["s1"] = "My Required Name"
+    result = h.projection.reconcile("s1")
+    assert result["reason"] == "applied", result
+    assert h.aliases == {"s1": "My Required Name"}
+    assert [call["name"] for call in h.calls] == ["repo", "My Required Name"]
+
+
 def test_a_user_rename_does_not_yield_to_a_stale_backend_title() -> None:
     """Only a *default* yields. A name chosen in codoxear is the authority."""
     h = Harness()

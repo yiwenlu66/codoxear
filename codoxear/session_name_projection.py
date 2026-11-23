@@ -190,10 +190,18 @@ class SessionNameProjection:
                 return self._push(session_id, snapshot, key, desired, record, origin=ORIGIN_DEFAULT)
 
         if desired:
-            if _origin(record) == ORIGIN_DEFAULT and observed and observed != desired:
-                # The name in place is one codoxear assigned, not one the user
-                # chose, and the backend now carries a different title: the user
-                # named it in the terminal, so that title wins.
+            if (
+                _origin(record) == ORIGIN_DEFAULT
+                and desired == record_name
+                and observed
+                and observed != desired
+            ):
+                # The alias is still the default codoxear assigned -- untouched by
+                # the user -- and the backend carries a different title: the user
+                # named it in the terminal, so that title wins. `desired ==
+                # record_name` is load-bearing: once the user renames in codoxear,
+                # the backend's observed title is codoxear's own echoed default
+                # (not a terminal title), and adopting it would revert the rename.
                 return self._adopt(session_id, backend, key, observed)
             if record_name == desired and state in ("applied", "adopted", "pending"):
                 return {"ok": True, "backend": backend, "reason": "unchanged", "name": desired}
