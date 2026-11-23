@@ -198,7 +198,7 @@ if sys.argv[1] == "sabotage":
     subprocess.run(["git", "config", "--global", "--unset-all", key], check=False)
 else:
     subprocess.run(["git", "config", "--global", "--replace-all", key, "https://github.com/yiwenlu66/codoxear"], check=True)
-    subprocess.run(["git", "config", "--global", "--replace-all", key, "https://github.com/yiwenlu66/codoxear.git"], check=True)
+    subprocess.run(["git", "config", "--global", "--add", key, "https://github.com/yiwenlu66/codoxear.git"], check=True)
 PY
 }
 
