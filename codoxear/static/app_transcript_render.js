@@ -5,6 +5,7 @@ import * as CodoxearMessageIdentity from "./app_transcript.js";
 import * as CodoxearMessageRows from "./app_message_rows.js";
 import * as CodoxearTranscript from "./app_transcript.js";
 import * as CodoxearTranscriptView from "./app_transcript_view.js";
+import * as CodoxearTranscriptPosition from "./app_transcript_position.js";
 
 
 /* Transcript rendering, viewport state, search wiring, and row projection. */
@@ -137,6 +138,7 @@ function invalidateOlderLoad() {
 
 function resetChatRenderState() {
   invalidateOlderLoad();
+  transcriptPositionController.cancel();
   transcriptScrollRuntime.enableAutoScroll();
   sessionState.set("sending", false);
   transcriptEventRuntime.resetRecentEvents();
@@ -520,6 +522,8 @@ function syncTypingRowRuntime() {
 
 const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime(wiring.createTranscriptScrollOptions({
   chat,
+  content: chatInner,
+  resizeObserver: typeof ResizeObserver === "function" ? ResizeObserver : null,
   jumpButton: jumpBtn,
   timeChip: chatTimeChip,
   requestAnimationFrame: (callback) => requestAnimationFrame(callback),
@@ -535,6 +539,32 @@ const transcriptScrollRuntime = CodoxearTranscript.createTranscriptScrollRuntime
   olderTopTriggerPx: OLDER_TOP_TRIGGER_PX,
   olderCancelPx: OLDER_CANCEL_PX,
 }));
+
+// One owner for the reader's per-session viewport position (see
+// app_transcript_position.js). The lifecycle saves on switch-out and restores
+// after the render the session is finally showing.
+const transcriptPositionController = CodoxearTranscriptPosition.createTranscriptPositionController(wiring.createTranscriptPositionOptions({
+  chat,
+  content: chatInner,
+  scrollRuntime: transcriptScrollRuntime,
+  getSelectedSessionId: () => sessionState.get("selected"),
+  renderedRows: () => CodoxearMessageRows.renderedMessageRows(chatInner),
+  resolveAnchorWindow: (cursor) => getHistoryController().loadTranscriptWindowAtCursor(cursor),
+  resizeObserver: typeof ResizeObserver === "function" ? ResizeObserver : null,
+  consoleError: (...args) => console.error(...args),
+}));
+
+function saveTranscriptPosition(sessionId) {
+  return transcriptPositionController.save(sessionId);
+}
+
+function restoreTranscriptPosition(sessionId) {
+  return transcriptPositionController.restore(sessionId);
+}
+
+function clearTranscriptPosition(sessionId) {
+  return transcriptPositionController.clear(sessionId);
+}
 
 const transcriptDomRuntime = CodoxearTranscript.createTranscriptDomRuntime(wiring.createTranscriptDomOptions({
   root: chatInner,
@@ -867,7 +897,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
     }
 
     return Object.freeze({
-      transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime,
+      transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime, transcriptPositionController,
       transcriptEventRuntime, chatSearchController, chatNavigationController,
       resetChatRenderState, clearOlderLoadError, showOlderLoadError, setOlderState,
       clearTranscriptDom, clearRenderedTranscriptRange: () => getHistoryController().clearRenderedTranscriptRange(),
@@ -875,6 +905,7 @@ function prependOlderEvents(events, { preserveViewport = false, historyCursor = 
       beginTranscriptRenewal, tailCacheMatchesSession, rememberTailSnapshot, appendTailSnapshotEvents,
       applySessionListTranscriptIdentity, updateTypingStatsFromSession,
       appendEvent, normalizedTranscriptEvents, renderTranscript, renderDetachedTranscriptWindow,
+      saveTranscriptPosition, restoreTranscriptPosition, clearTranscriptPosition,
       prependOlderEvents, dropPendingUserRows, restorePendingUserRowsForSession,
       renderedMessageRows, loadedUserMessageRows, loadedCopyMessageRows, loadedUserJumpTarget,
       loadedCopyJumpTarget, rowSearchText, firstVisibleMessageRow, prefersReducedMotion,

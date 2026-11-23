@@ -202,3 +202,76 @@ def test_chat_markdown_renders_image_attachments_inline() -> None:
 def test_chat_markdown_leaves_messages_without_prefix_untouched() -> None:
     html = json.loads(run_markdown_expr('context.window.CodoxearMarkdown.chatMarkdownHtmlCached("hello world", "sid-1")'))
     assert "<p>hello world</p>" in html
+
+
+def _run_markdown_program(body: str) -> dict:
+    app_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    marked_source = MARKED_JS.read_text(encoding="utf-8")
+    program = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const context = {{
+          URL,
+          location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          window: {{ CodoxearUrls: {{ resolveAppUrl: (path) => path }} }},
+          console,
+        }};
+        vm.createContext(context);
+        vm.runInContext({json.dumps(marked_source)}, context);
+        context.window.marked = context.marked;
+        vm.runInContext({json.dumps(app_source)}, context);
+        const image = () => ({{
+          style: {{}},
+          dataset: {{}},
+          attributes: {{}},
+          setAttribute(name, value) {{ this.attributes[name] = String(value); }},
+          getAttribute(name) {{ return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; }},
+        }});
+        {body}
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", program],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def test_an_image_box_is_reserved_before_its_ratio_is_known() -> None:
+    """A source-less pending image must still occupy a box.
+
+    The transcript's height has to be stable while the image's header
+    dimensions are in flight: a collapsed box grows by a whole screen when the
+    ratio lands and moves whatever the reader is looking at (which is the
+    reported session-switch symptom).
+    """
+    out = _run_markdown_program(
+        """
+        const unknown = image();
+        context.window.CodoxearMarkdown.prepareImageForDisplay(unknown, "/api/files/blob?path=shot.png");
+        const known = image();
+        context.window.localStorage = {
+          _value: JSON.stringify({ "/api/files/blob?path=tall.png": { width: 900, height: 1600, usedAt: 1 } }),
+          getItem() { return this._value; },
+          setItem(_key, value) { this._value = value; },
+        };
+        context.window.CodoxearMarkdown.prepareImageForDisplay(known, "/api/files/blob?path=tall.png");
+        process.stdout.write(JSON.stringify({ unknown: {
+          ratio: unknown.style.aspectRatio, width: unknown.style.width, height: unknown.style.height,
+          attrWidth: unknown.getAttribute("width"), attrHeight: unknown.getAttribute("height"),
+        }, known: {
+          ratio: known.style.aspectRatio, attrWidth: known.getAttribute("width"), attrHeight: known.getAttribute("height"),
+        } }));
+        """
+    )
+    # Unknown ratio: reserve the default 16:9 box instead of collapsing.
+    assert out["unknown"]["ratio"] == "16 / 9"
+    assert out["unknown"]["width"] == "100%"
+    assert out["unknown"]["height"] == "auto"
+    assert (out["unknown"]["attrWidth"], out["unknown"]["attrHeight"]) == ("16", "9")
+    # Known ratio: the cached dimensions are the box.
+    assert out["known"]["ratio"] == "900 / 1600"
+    assert (out["known"]["attrWidth"], out["known"]["attrHeight"]) == ("900", "1600")

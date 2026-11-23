@@ -411,9 +411,13 @@ import * as CodoxearUrls from "./app_application.js";
       const dimensionsUrl = options && typeof options.resolveImageDimensionsUrl === "function" ? options.resolveImageDimensionsUrl(rawSrc, localRef) : null;
       if (!src) image.replaceWith(doc.createTextNode(image.alt || ""));
       else if (dimensionsUrl && !cachedImageDimensions(src)) {
-        // A server-readable file stays source-less until its header dimensions
-        // arrive. This prevents the browser from beginning the image request
-        // with a guessed 16:9 layout box.
+        // The header dimensions are still in flight. Reserve the box now: a
+        // source-less <img> with no aspect ratio collapses to its alt-text line
+        // and the transcript's height jumps by a whole screen when the real
+        // ratio lands, which moves a reader who is not at the live tail. `src`
+        // stays unset so no request begins with a guessed ratio — the box, not
+        // the fetch, is what has to be stable.
+        applyImageDimensions(image, src, DEFAULT_IMAGE_DIMENSIONS);
         image.removeAttribute("src");
         image.dataset.codoxearImageSrc = src;
         image.dataset.codoxearImageDimensionsUrl = dimensionsUrl;

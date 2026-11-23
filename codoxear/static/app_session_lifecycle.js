@@ -109,9 +109,9 @@
     const refreshFileCandidates = get("refreshFileCandidates");
     const isUnattendedOpen = get("isUnattendedOpen");
     const hideUnattendedMenu = get("hideUnattendedMenu");
-    const saveSessionScrollPosition = get("saveSessionScrollPosition");
-    const restoreSessionScrollPosition = get("restoreSessionScrollPosition");
-    const clearSessionScrollPosition = get("clearSessionScrollPosition");
+    const saveTranscriptPosition = get("saveTranscriptPosition");
+    const restoreTranscriptPosition = get("restoreTranscriptPosition");
+    const clearTranscriptPosition = get("clearTranscriptPosition");
     const setActiveTranscriptPending = get("setActiveTranscriptPending");
     const deleteTranscriptSession = get("deleteTranscriptSession");
     const dropPendingUserRows = get("dropPendingUserRows");
@@ -158,7 +158,7 @@
 
     function clearDeletedSessionClientState(sessionId) {
       const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
-      clearSessionScrollPosition(sessionId);
+      clearTranscriptPosition(sessionId);
       deleteTranscriptSession(sessionId);
       dropPendingUserRows(sessionId);
       return selectedCleared;
@@ -169,7 +169,7 @@
       messageFlow().prepareSessionOpen();
       const oldSelected = sessionState.get("selected");
       const reloadingSelectedSession = oldSelected === sessionId;
-      if (oldSelected && oldSelected !== sessionId) saveSessionScrollPosition(oldSelected);
+      if (oldSelected && oldSelected !== sessionId) saveTranscriptPosition(oldSelected);
       sessionState.set("selected", sessionId);
       if (oldSelected && oldSelected !== sessionId) saveComposerDraft(oldSelected);
       loadComposerDraft(sessionId);
@@ -205,7 +205,6 @@
       let displayedCachedTail = false;
       if (useCache && session && cachedTail && tailCacheMatchesSession(cachedTail, session) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
         applyCachedTail(sessionId, cachedTail, session);
-        restoreSessionScrollPosition(sessionId);
         displayedCachedTail = true;
       }
       if (!displayedCachedTail && !reloadingSelectedSession) renderTranscriptLoading(sessionId);
@@ -228,7 +227,7 @@
         }
         if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && session && cachedTail && tailCacheMatchesSession(cachedTail, session) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
           applyCachedTail(sessionId, cachedTail, session);
-          restoreSessionScrollPosition(sessionId);
+          restoreTranscriptPosition(sessionId);
           displayedCachedTail = true;
         }
         renderTranscriptLoadError(sessionId, error, { preserveTranscript: displayedCachedTail || reloadingSelectedSession });
@@ -272,9 +271,13 @@
         // preserve the rendered rows and scroll.
         if (slotChange.current.state === "bound" || slotChange.current.state === "failed") {
           replaceWith(tailEvents);
-          // Replacement renders land at the new tail: restoring the old
-          // transcript's saved scroll position would misplace the view.
-          if (!forceRender && !transcriptReplaced) restoreSessionScrollPosition(sessionId);
+          // This is the render the reader will actually see, so this is the one
+          // restore for this open. A replacement render is a *different*
+          // transcript (Pi /new, resume, a terminal-initiated renewal): the
+          // remembered position names a row that no longer exists, so it is
+          // dropped rather than applied to unrelated content.
+          if (transcriptReplaced) clearTranscriptPosition(sessionId);
+          else if (!forceRender) restoreTranscriptPosition(sessionId);
         } else {
           renderPendingTranscriptSlot(sessionId);
         }

@@ -93,6 +93,7 @@ MODULE_NAMESPACES = {
     "app_storage.js": ["CodoxearStorage"],
     "app_sw.js": ["CodoxearSW"],
     "app_transcript.js": ["CodoxearMessageIdentity", "CodoxearPendingUser", "CodoxearTranscript"],
+    "app_transcript_position.js": ["CodoxearTranscriptPosition"],
     "app_transcript_render.js": ["CodoxearNavigationPulse", "CodoxearTranscriptRender"],
     "app_transcript_view.js": ["CodoxearTranscriptView"],
     "app_unattended.js": ["CodoxearUnattended"],

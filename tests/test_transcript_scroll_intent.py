@@ -1,11 +1,14 @@
-"""Behavioral contract: who may move the transcript's "away from the live tail" state.
+"""Behavioral contract: who may move the transcript's "away from the live tail" state,
+and what the two tail affordances mean.
 
-The date chip (`#chatTimeChip`) and the jump button both render
-`shouldStickToBottom()`, so a scroll event that nobody asked for must not be
-able to flip that predicate. A phone's soft keyboard produces exactly those
-events (the platform clamping the container when the composer or the keyboard
-changes its height, and its caret-reveal pan settling), which is why typing
-used to make the chip strobe.
+`autoScroll` is an intent: only a reader gesture may clear it, so a scroll event
+nobody asked for (a phone's soft keyboard clamping the container, its
+caret-reveal pan settling) cannot make typing read as "the reader left".
+
+The date chip (`#chatTimeChip`) and the jump button are *geometry*: they report
+where the viewport actually is. They used to render the intent, which meant a
+viewport left a screen above the bottom by a late layout change still claimed to
+be at the live tail and hid the only control that could return to it.
 """
 
 from __future__ import annotations
@@ -196,12 +199,14 @@ class TestTranscriptScrollIntent:
     def test_only_a_reader_gesture_can_leave_the_live_tail(self) -> None:
         out = _run_node(_harness())
 
-        # The reported symptom: typing on a phone moves the scroller, and the
-        # chip used to appear. Platform movement alone now changes nothing.
+        # Platform movement alone never clears the intent ...
         assert out["unprompted"]["snap"]["autoScroll"] is True
         assert out["unprompted"]["snap"]["renderedAtLiveTail"] is True
-        assert out["unprompted"]["chip"] == {"display": "none", "text": ""}
-        assert out["unprompted"]["jump"] == "none"
+        # ... but the affordances report geometry, so a viewport that the
+        # platform left 300px above the bottom says so and offers the return,
+        # instead of claiming the tail and hiding it.
+        assert out["unprompted"]["chip"] == {"display": "inline-flex", "text": "Day · 12:34"}
+        assert out["unprompted"]["jump"] == "inline-flex"
 
         # A wheel spin (or touch drag, or scrollbar grab, or scroll shortcut)
         # still detaches and shows both surfaces.
@@ -230,8 +235,11 @@ class TestTranscriptScrollIntent:
         out = _run_node(_harness())
 
         assert out["reasserted"]["snap"]["autoScroll"] is True
-        assert out["reasserted"]["chip"] == {"display": "none", "text": ""}
-        assert out["reasserted"]["jump"] == "none"
+        # The app's own write does not clear the intent either; the platform
+        # jiggle that follows leaves the viewport 300px above the bottom, and
+        # the affordances report that geometry.
+        assert out["reasserted"]["chip"] == {"display": "inline-flex", "text": "Day · 12:34"}
+        assert out["reasserted"]["jump"] == "inline-flex"
 
         # Already at the tail: no write at all (the per-keystroke composer
         # auto-grow used to re-issue it on every input).

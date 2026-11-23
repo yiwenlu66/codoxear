@@ -968,60 +968,37 @@
     const bottomThresholdPx = Math.max(0, Number(options.bottomThresholdPx) || 80);
     const olderTopTriggerPx = Math.max(0, Number(options.olderTopTriggerPx) || 0);
     const olderCancelPx = Math.max(0, Number(options.olderCancelPx) || 0);
+    // Content box whose height changes when the transcript grows (a new row, a
+    // day separator, or an image whose ratio arrives after paint). Watching it
+    // is what makes "follow the tail" an invariant instead of a single write.
+    const content = options.content ? requireNode(options.content, "content") : null;
+    const ResizeObserverCtor = typeof options.resizeObserver === "function" ? options.resizeObserver : null;
     let autoScroll = true;
     let renderedAtLiveTail = true;
     let lastScrollTop = Number(chat.scrollTop) || 0;
+    // Writers other than this runtime (a caller placing a remembered row) use
+    // these counters to know whether they still own the position: `writeSeq`
+    // counts this module's own writes, `unownedScrollSeq` counts scroll events
+    // whose delta this module did not produce (a reader gesture, a
+    // `scrollIntoView` from navigation, or the platform's own anchoring).
+    let writeSeq = 0;
+    let unownedScrollSeq = 0;
+    let scheduledBottomToken = 0;
     // Who owns the scroll position right now. Leaving the live tail is a
     // reader decision, so only a scroll event the reader is actually driving
     // may clear `autoScroll`. A phone's soft keyboard produces scroll events
     // nobody asked for — the platform clamping the container when the composer
     // or the keyboard changes its height, and its caret-reveal pan settling —
     // and treating those as "the reader scrolled away" made the date chip and
-    // the jump button (both read this predicate) strobe at keystroke cadence.
+    // the jump button strobe at keystroke cadence (they used to render this
+    // predicate; they now render geometry, which the platform's clamp keeps at
+    // the tail).
     let readerOwnsScroll = false;
     let touchY = null;
-    const scrollPositions = new Map();
 
-    function sessionIdForScrollMemory(sessionId) {
-      return typeof sessionId === "string" && sessionId ? sessionId : "";
-    }
-
-    function saveSessionScrollPosition(sessionId) {
-      const id = sessionIdForScrollMemory(sessionId);
-      if (!id) return false;
-      scrollPositions.set(id, Object.freeze({
-        scrollTop: Number(chat.scrollTop) || 0,
-        scrollHeight: Number(chat.scrollHeight) || 0,
-      }));
-      return true;
-    }
-
-    function restoreSessionScrollPosition(sessionId) {
-      const position = scrollPositions.get(sessionIdForScrollMemory(sessionId));
-      if (!position) return false;
-      // renderSessionTail schedules a double bottom-scroll. Restore on the
-      // following frame so its final scheduled write cannot overwrite a
-      // remembered position.
-      requestAnimationFrameFn(() => requestAnimationFrameFn(() => {
-        if ((Number(chat.scrollHeight) || 0) === position.scrollHeight) {
-          setScrollTop(position.scrollTop);
-          autoScroll = isNearBottom();
-        } else {
-          scrollToBottom();
-          autoScroll = true;
-        }
-        syncJumpButton();
-      }));
-      return true;
-    }
-
-    function clearSessionScrollPosition(sessionId) {
-      return scrollPositions.delete(sessionIdForScrollMemory(sessionId));
-    }
-
-    function sessionScrollPosition(sessionId) {
-      return scrollPositions.get(sessionIdForScrollMemory(sessionId)) || null;
-    }
+    // Remembering where a reader was inside a transcript is a position problem,
+    // not a scroll-offset problem: it belongs to the session-view controller
+    // (app_transcript_position.js), which stores a message row plus its offset.
 
     function snapshot() {
       return Object.freeze({ autoScroll, renderedAtLiveTail, lastScrollTop });
@@ -1043,7 +1020,7 @@
     }
 
     function syncVisibleTimeIndicator() {
-      if (!hasSelection() || isSearchOpen() || shouldStickToBottom()) {
+      if (!hasSelection() || isSearchOpen() || isAtLiveTail()) {
         timeChip.style.display = "none";
         timeChip.textContent = "";
         return Object.freeze({ visible: false, text: "" });
@@ -1062,8 +1039,20 @@
       return Object.freeze({ visible: true, text });
     }
 
+    // The live tail is a geometric fact: the rendered window ends at the tail
+    // AND the viewport holds the bottom. `autoScroll` alone is intent, and the
+    // two disagree for a moment after any late layout change.
+    function isAtLiveTail() {
+      return Boolean(renderedAtLiveTail && isNearBottom());
+    }
+
     function syncJumpButton() {
-      jumpButton.style.display = shouldStickToBottom() ? "none" : "inline-flex";
+      // The affordance is rendered from geometry, never from intent: content
+      // that grows below the viewport (an image whose ratio arrives after
+      // paint) leaves the intent flag saying "following the tail" while the
+      // reader sits a screen above it, and hiding the control there removes the
+      // only way back.
+      jumpButton.style.display = isAtLiveTail() ? "none" : "inline-flex";
       syncVisibleTimeIndicator();
       return snapshot();
     }
@@ -1115,6 +1104,7 @@
 
     function setScrollTop(nextTop) {
       const top = Math.max(0, Number(nextTop) || 0);
+      writeSeq += 1;
       chat.scrollTop = top;
       readerOwnsScroll = false;
       lastScrollTop = Number(chat.scrollTop) || 0;
@@ -1123,21 +1113,39 @@
 
     function scrollToBottom() {
       const target = maxScrollTop();
+      readerOwnsScroll = false;
       // Never re-write the position the viewport already holds. The composer's
       // per-keystroke auto-grow used to re-issue `scrollTop = scrollHeight` on
       // every input; on mobile those writes land inside the platform's own
       // keyboard scroll work and its correction came back as an upward scroll
       // event indistinguishable from the reader scrolling away.
-      if (Math.abs((Number(chat.scrollTop) || 0) - target) > 1) chat.scrollTop = target;
-      readerOwnsScroll = false;
+      if (Math.abs((Number(chat.scrollTop) || 0) - target) > 1) {
+        writeSeq += 1;
+        chat.scrollTop = target;
+      }
       lastScrollTop = Number(chat.scrollTop) || 0;
       return snapshot();
     }
 
+    // A caller that is about to place the viewport at a remembered row cancels
+    // any bottom write already queued for this frame; otherwise the queued
+    // write lands after the placement and the reader is thrown to the tail.
+    function cancelScheduledBottomWrites() {
+      scheduledBottomToken += 1;
+      return scheduledBottomToken;
+    }
+
     function scheduleScrollToBottom({ double = false, syncJump = false } = {}) {
+      const token = scheduledBottomToken;
       requestAnimationFrameFn(() => {
+        if (token !== scheduledBottomToken) return;
         scrollToBottom();
-        if (double) requestAnimationFrameFn(() => scrollToBottom());
+        if (double) {
+          requestAnimationFrameFn(() => {
+            if (token !== scheduledBottomToken) return;
+            scrollToBottom();
+          });
+        }
         if (syncJump) syncJumpButton();
       });
     }
@@ -1172,6 +1180,11 @@
       const cur = Number(chat.scrollTop) || 0;
       const delta = cur - lastScrollTop;
       lastScrollTop = cur;
+      // A non-zero delta means something other than this module moved the
+      // viewport: a reader gesture, a `scrollIntoView` from navigation, or the
+      // platform's own anchoring. A caller settling a remembered row uses this
+      // to stand down instead of fighting the movement.
+      if (delta !== 0) unownedScrollSeq += 1;
       // A scroll event can only prove the reader left the tail when the reader
       // is driving the scroll and the event does not simply end pinned at the
       // (possibly new) tail — a clamp to a smaller bottom scroll offset looks
@@ -1216,9 +1229,23 @@
       return snapshot();
     }
 
+    // "Following the tail" is an invariant over content growth, not one write.
+    // An image that reserves no box until its header dimensions arrive, or a
+    // row inserted after the last scroll, moves the bottom away from the
+    // viewport without any scroll event. Re-assert it whenever the rendered
+    // content changes size while the reader is meant to be following.
+    if (content && ResizeObserverCtor) {
+      const pinObserver = new ResizeObserverCtor(() => {
+        if (!shouldStickToBottom()) return;
+        scrollToBottom();
+        syncJumpButton();
+      });
+      pinObserver.observe(content);
+    }
+
     return Object.freeze({
+      cancelScheduledBottomWrites,
       captureScrollPosition,
-      clearSessionScrollPosition,
       disableAutoScroll,
       enableAutoScroll,
       handleScroll,
@@ -1232,19 +1259,19 @@
       noteUserScroll,
       preserveScrollFrom,
       reset,
-      restoreSessionScrollPosition,
-      saveSessionScrollPosition,
       scheduleScrollToBottom,
       scrollToBottom,
       setAutoScroll,
       setRenderedAtLiveTail,
       setScrollTop,
-      sessionScrollPosition,
+      isAtLiveTail,
       shouldAutoScrollOrNearBottom,
       shouldStickToBottom,
       snapshot,
       syncJumpButton,
       syncVisibleTimeIndicator,
+      unownedScrollSeq: () => unownedScrollSeq,
+      writeSeq: () => writeSeq,
     });
   }
 
