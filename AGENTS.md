@@ -223,6 +223,13 @@ The sanctioned component branches are:
   - Broker (Pi): `CODEX_WEB_AGENT_BACKEND=pi codoxear-broker -- <pi args>`
   - Broker (Claude Code): `CODEX_WEB_AGENT_BACKEND=cc codoxear-broker -- <claude args>`
 
+## Project agent skills
+
+- Contribution skills (`codoxear-report-issue`, `codoxear-contribute-fix`) have one canonical body each at `.agents/skills/<name>/SKILL.md` (+ optional `agents/openai.yaml`). Pi and Codex discover `.agents/skills` from the cwd through ancestors, stopping at the repository root; Claude Code loads `.claude/skills/`, whose `<name>` entries are relative symlinks to `../../.agents/skills/<name>`. Edit only the canonical body; never copy skill text into `.claude/`, `.pi/`, or `.codex/` — add a symlink there if a backend needs one.
+- Both skills target the canonical upstream `yiwenlu66/codoxear` explicitly, independent of the checkout's fork origin: every `gh` call passes `--repo yiwenlu66/codoxear`, and only URLs that `gh`/`git` actually print are quoted back. They check duplicates first, verify in Docker only (`scripts/codoxear-docker-sandbox`, `scripts/docker_verify.sh`, `scripts/docker_*_verify.sh`), never touch the live server, and never create issues/PRs as part of testing.
+- `.codex/skills/codoxear-docker-test/` is historical and preserved in place; its directory is not on Codex's documented scan list, so its content reaches agents through references to the Docker verification scripts, not automatic discovery.
+- Skills are general project guidance: no machine-specific paths, hosts, accounts, or credentials. Skill discovery evidence comes from CLI/list metadata (`pi --mode rpc` + `get_commands`) or documented backend discovery — never source-string tests.
+
 ## Deployment: committed snapshot only
 
 The deployed server must never import Python or static assets from `/home/yiwen/codoxear`, because concurrent edits in that checkout are development state, not release state. Deploy a reviewed commit with:
