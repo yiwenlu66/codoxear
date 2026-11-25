@@ -512,6 +512,7 @@ const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime(wiring.
   // The viewer owns the name; the download runtime only carries it. Resolved per
   // click so a session switch or a renamed file cannot hand over a stale path.
   resolveDownloadFileName: () => {
+    if (!fileViewerController || typeof currentActiveFileIdentity !== "function") return "";
     const identity = currentActiveFileIdentity() || {};
     return identity.path || "";
   },
