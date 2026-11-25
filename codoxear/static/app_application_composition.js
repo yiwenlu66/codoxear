@@ -856,6 +856,11 @@ import * as CodoxearWiring from "./app_wiring.js";
         fileOpsController = CodoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
           wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
           $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
+          // The installed-app download flow is the one platform surface that
+          // cannot name a streamed file, so the page buffers the bytes there and
+          // hands over a blob whose name and type it owns. Resolved per click
+          // because the iOS viewport controller is created later in this scope.
+          shouldBufferDownload: () => iosViewportController.isIOS(),
           subscribeTheme: (subscriber) => themeController.subscribe(subscriber),
           sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
           blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,

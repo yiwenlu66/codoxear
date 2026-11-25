@@ -153,7 +153,7 @@ function requireFunction(value, name) {
   }
 
   const { createFileCandidateRefreshRuntime } = CodoxearFileCandidates;
-  const { createFileDownloadRuntime } = CodoxearFileDownload;
+  const { createFileDownloadRuntime, downloadFileName } = CodoxearFileDownload;
   const { createFileViewerLifecycleRuntime } = CodoxearFileViewerLifecycle;
   const { createFileViewerPanelRuntime } = CodoxearFileViewerPanel;
   const { createFileUnsavedDialogRuntime } = CodoxearFileUnsavedDialog;
@@ -277,7 +277,7 @@ function requireFunction(value, name) {
 
     function renderDownload(rel, url, reason = "Preview unavailable", { title = "Preview unavailable", onRetry = null } = {}) {
       host.innerHTML = "";
-      const link = el("a", { href: url, download: "", target: "_blank", rel: "noopener", text: "Download original file" });
+      const link = el("a", { href: url, download: downloadFileName(rel), target: "_blank", rel: "noopener", text: "Download original file" });
       const actions = [];
       if (typeof onRetry === "function") {
         const retry = el("button", { class: "icon-btn text-btn", type: "button", text: "Retry preview" });
@@ -1101,4 +1101,4 @@ function requireFunction(value, name) {
     return Object.freeze({ ensure });
   }
 
-export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileMediaPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };
+export { bindFileTouchClick, bindFileTouchPress, createFileDownloadRuntime, downloadFileName, createFileFallbackRuntime, createFileInspectRuntime, createFileLoadResultRuntime, createFileCandidateRefreshRuntime, createFileMediaPreviewRuntime, createFileViewerPanelRuntime, createFileViewerLifecycleRuntime, createFileModeControlsRuntime, createFilePasteDialogRuntime, createFilePdfRenderRuntime, createFileViewerModalRuntime, createFileReferenceRuntime, createFileRenderSurfaceRuntime, createOpenedFileRuntime, createFileTouchToolbarRuntime, createFileUnsavedDialogRuntime, createFileViewerController, createPdfLoader };

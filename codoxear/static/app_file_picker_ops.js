@@ -113,7 +113,7 @@ eventBindings.on(fileMediaPreviewBtn, 'click', (e) => {
 eventBindings.on(fileDownloadBtn, 'click', (e) => {
   e.preventDefault();
   e.stopPropagation();
-  fileDownloadRuntime.download(activeFileDownloadApiPath());
+  void fileDownloadRuntime.downloadActive(activeFileDownloadApiPath());
 });
 codoxearFileViewer.bindFileTouchPress(fileTouchSelectBtn, () => {
   toggleFileTouchSelectionMode();

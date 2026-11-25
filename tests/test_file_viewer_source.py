@@ -53,7 +53,7 @@ const fallback = viewer.createFileFallbackRuntime({ host, el, normalizeLineNumbe
 const plain = fallback.applyPlainText('notes.txt', 'hello', 3);
 fallback.applyBlocked('blob.bin', 'binary', 0, 3);
 const blocked = host.node.children[1].text;
-downloadRuntime.download('app:/download');
+downloadRuntime.download('app:/download', 'src/notes.md');
 process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff, imageState, videoState, download, downloadAttribute, plain, blocked }));
 '''
         )
@@ -62,7 +62,7 @@ process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff,
         self.assertEqual(result["imageState"], {"display": "block", "diff": "none", "video": "none"})
         self.assertEqual(result["videoState"], {"display": "block", "diff": "none", "image": "none"})
         self.assertEqual(result["download"], ["app:/download"])
-        self.assertEqual(result["downloadAttribute"], "")
+        self.assertEqual(result["downloadAttribute"], "notes.md")
         self.assertEqual(result["plain"], {"targetLine": 3})
         self.assertContains("not renderable", result["blocked"])
 

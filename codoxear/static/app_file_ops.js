@@ -373,7 +373,7 @@ import * as CodoxearSessionEdit from "./app_session_edit.js";
     const getSessionLifecycleController = requireFunction(options.getSessionLifecycleController, "getSessionLifecycleController");
     const {
       wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
-      $, el, iconSvg, resolveAppUrl, subscribeTheme, api, setToast, confirmApp, addAppEvent,
+      $, el, iconSvg, resolveAppUrl, subscribeTheme, api, setToast, shouldBufferDownload, confirmApp, addAppEvent,
       normalizeLineNumber, markdownPreviewHtml,
       blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
       codoxearFilePicker, codoxearFilePickerOps, codoxearFileViewer, codoxearFileEditor, codoxearFileEditorOps, codoxearFileEditMode,
@@ -509,6 +509,19 @@ const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime(wiring.
 const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime(wiring.createFileDownloadOptions({
   resolveAppUrl,
   document,
+  // The viewer owns the name; the download runtime only carries it. Resolved per
+  // click so a session switch or a renamed file cannot hand over a stale path.
+  resolveDownloadFileName: () => {
+    const identity = currentActiveFileIdentity() || {};
+    return identity.path || "";
+  },
+  fetchFn: (url, init) => fetch(url, init),
+  createObjectUrl: (blob) => URL.createObjectURL(blob),
+  revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+  BlobCtor: (parts, blobOptions) => new Blob(parts, blobOptions),
+  shouldBufferDownload: () => Boolean(shouldBufferDownload && shouldBufferDownload()),
+  setTimeoutFn: (callback, delay) => setTimeout(callback, delay),
+  onError: (message) => setToast(message),
 }));
 const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime(wiring.createFilePdfRenderOptions({
   host: fileDiff,
