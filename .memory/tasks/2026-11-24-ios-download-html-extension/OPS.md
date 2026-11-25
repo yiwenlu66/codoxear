@@ -254,3 +254,99 @@ Sources with code quoted per Safari 15/16/17 branch. Findings that changed the p
    (WebKit engineer's suggestion for SW-generated content, bug 202142; practitioner
    reports for iOS 13 PWAs). Caveats: Safari 17 PWA still previewed the blob; iOS 13
    stopped sniffing `application/octet-stream` responses; buffering cost.
+
+### 2026-11-24 — implementation (commit 9c875932, pushed to origin/main)
+
+Decision from `EPISTEMIC.md`: ship the two levers with mechanism, skip the two
+the research retired (plain `filename=`, real MIME type), and make the iOS
+transfer page-owned because the platform's own save path is the broken layer.
+
+Client:
+- `app_file_download.js`: `downloadFileName(path)` (basename, control chars
+  stripped, lone surrogates made well-formed, `.`/`..`/empty → ""),
+  `download(apiPath, filename)` sets the anchor's `download` attribute,
+  `downloadActive(apiPath)` chooses streaming vs buffered. Buffered:
+  `fetch(cache:"no-store", credentials:"same-origin")` → cap-enforcing reader
+  (32 MiB, cancels past the cap) → `Blob(application/octet-stream)` →
+  `createObjectURL` → click → revoke after 60 s. 401 → `reason:"auth"` toast;
+  other failures → transport toast; never clicks on failure; in-flight guard.
+- `app_file_picker_ops.js`: the button dispatches `downloadActive(activeFileDownloadApiPath())`.
+- `app_file_ops.js`: wires `resolveDownloadFileName` (viewer identity, guarded on
+  a null controller), fetch/URL/Blob/setTimeout seams, `onError: setToast`.
+- `app_application_composition.js`: `shouldBufferDownload: () => iosViewportController.isIOS()`.
+- `app_wiring.js`: select lists extended (download options + file ops options).
+- `app_file_viewer.js`: the "Download original file" fallback link now carries
+  `downloadFileName(rel)`; `downloadFileName` re-exported.
+
+Tests: new `tests/test_file_download_runtime.py` (12 cases: naming/sanitization,
+streaming, no-file, non-buffering platform, missing buffering deps, blob handoff
+with fetch init + object-URL lifetime, oversize fallback with reader cancel, auth
+failure, transport failure, in-flight guard). Updated
+`tests/test_file_viewer_source.py` (attribute is now the real name) and
+`tests/test_frontend_file_picker_ops.py` (button → `downloadActive` with the
+viewer's path; harness rewritten around a shared option-bag template).
+
+Docs: AGENTS.md gains "The app owns the download filename" and "iOS buffers the
+transfer into a page-owned blob", including why the disposition stays
+`filename*`-only and the response stays octet-stream.
+
+Local gates: `scripts/check_wiring.py` green; `node --check` on the edited
+modules; `esbuild --bundle` to /tmp builds and the bundle contains
+`downloadActive`/`shouldBufferDownload`. Full suite: 3056 passed with two
+pre-existing failures that also fail on HEAD (`test_hint_mode_coverage::
+test_rendered_shell_interactives_are_declared_or_explicitly_excluded` —
+`draftUndoBtn`; `test_pi_prompt_receipt::
+test_bridge_writes_user_ingestion_receipt_without_materializing_rollout`).
+
+### 2026-11-24 — deployed
+
+`scripts/deploy.sh fc8b6acd` succeeded: detached worktree at
+`~/.local/share/codoxear/deploy` moved to the commit, esbuild rebuilt
+`dist/app.bundle.js` (contains `downloadActive`), `check_wiring.py` green in the
+snapshot, pipx reinstalled, unit repointed, `codoxear-server.service` restarted,
+and the script's own checks passed ("smoke test passed: initial load and reload
+rendered a session card").
+
+Live health boundary (the sanctioned check): `GET /` → 200, unauthenticated
+`GET /api/sessions` → 401, service active. Deployed bundle contains the new
+runtime.
+
+Follow-up commit `fc8b6acd` guards the name resolver when the viewer controller
+is not yet assembled (`fileViewerController` null → empty name → the browser's
+own derivation), because the resolver runs per click.
+
+Not verifiable on this machine: whether iOS Safari now saves the intended name.
+That requires the user's device; the local engines cannot speak for Cocoa or for
+the installed-PWA save path (see EPISTEMIC.md).
+
+### 2026-11-24 — delegated verification a6ce9539 (real SPA, Docker, both UA branches)
+
+Setup: `codoxear-sandbox:latest` (server, port 19942) + `codoxear-safari-video-playwright:1.62.0`
+(Chromium 151); the verifier copied the source to /tmp and rebuilt that copy's
+bundle, seeded three files in the session cwd, logged in, opened each file, and
+clicked the real `#fileDownloadBtn` in two contexts (desktop UA, iPhone 17 UA).
+
+Results (all six downloads):
+- Saved names: `payload.bin`, `notes.txt`, `notes.md` in **both** contexts; sha256
+  equals the seeded bytes in all six (`c0d5545b…`, `344390ba…`, `0bda1583…`).
+- Desktop: streaming. Anchor was the HTTP `/file/download` URL with
+  `download="<name>"`; Chromium NetLog shows the three browser GETs with 200 and
+  matching body lengths; no page fetch.
+- iPhone UA: buffered. `resource_type: "fetch"` for every `/file/download`
+  request, init observed `cache: "no-store"` + `credentials: "same-origin"`,
+  response `from_service_worker: false`, clicked anchor href was `blob:http://…`
+  and matched the download URL.
+- Service worker: page was controlling; after every download the caches were
+  `codoxear-html-v1`, `codoxear-api-v1`, `codoxear-static-v1` with **zero**
+  `/file/download` keys (13 ordinary API keys present). Confirms `no-store` keeps
+  the body out of Cache Storage.
+- `bufferLimitBytes` default 33554432 confirmed by inspection (no oversized
+  fixture run).
+- Noise observed and not explained: Playwright logged `net::ERR_ABORTED` for the
+  iPhone-UA fetches despite HTTP 200, complete NetLog byte counts and matching
+  blob downloads; also CSP/font messages, 409s, clipboard permission errors and
+  unrelated "Canceled" page errors. Bounded: the downloads themselves are
+  byte-correct, and the same noise appears in the desktop run's console.
+
+Still unverified (and unverifiable here): the native iOS save step — Cocoa naming
+and the installed-PWA download UI.
